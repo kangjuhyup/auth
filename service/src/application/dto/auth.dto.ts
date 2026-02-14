@@ -19,7 +19,6 @@ export class PasswordResetRequestDto {
 }
 
 export class PasswordResetDto {
-  token!: string;
   newPassword!: string;
 }
 
