@@ -1,4 +1,5 @@
 import { DomainEvent } from '@domain/events';
+import { UserCreatedEvent } from '@domain/events/user/user-created.event';
 import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
 
@@ -173,6 +174,53 @@ describe('UserModel', () => {
       const user = UserModel.rehydrate([makeCreatedEvent(), withdrawnEvent]);
 
       expect(() => user.withdraw()).toThrow();
+    });
+  });
+
+  describe('changePassword', () => {
+    it('rehydrate 후 getPasswordCredential()로 현재 credential을 얻는다', () => {
+      const user = UserModel.rehydrate([makeCreatedEvent()]);
+      const cred = user.getPasswordCredential();
+
+      expect(cred).toBeTruthy();
+    });
+
+    it('changePassword를 호출하면 이벤트가 1개 발생하고 eventType이 맞다', () => {
+      const user = UserModel.rehydrate([makeCreatedEvent()]);
+
+      user.changePassword({
+        tenantId: 'tenant-1',
+        newCredential: {
+          type: 'password',
+          secretHash: 'new-hash',
+          hashAlg: 'argon2id',
+          hashParams: null,
+          hashVersion: null,
+          enabled: true,
+          expiresAt: null,
+        } as any,
+      });
+
+      const events = user.pullEvents();
+
+      expect(events).toHaveLength(1);
+      expect((events[0] as any).eventType).toBe('user.password_changed');
+    });
+
+    it('changePassword를 호출하면 모델의 현재 passwordCredential이 갱신된다', () => {
+      const user = UserModel.rehydrate([makeCreatedEvent()]);
+
+      user.changePassword({
+        tenantId: 'tenant-1',
+        newCredential: {
+          type: 'password',
+          secretHash: 'new-hash',
+          hashAlg: 'argon2id',
+        } as any,
+      });
+
+      const cred = user.getPasswordCredential();
+      expect((cred as any).secretHash).toBe('new-hash');
     });
   });
 });

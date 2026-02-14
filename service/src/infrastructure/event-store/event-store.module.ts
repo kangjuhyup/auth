@@ -7,6 +7,14 @@ import { Module } from '@nestjs/common';
 import { MikroEventStoreAdapter } from './mikro-event-store.adapter';
 import { InProcessEventBusAdapter } from '../adapters/in-proccess-event-bus.adapter';
 import { UserCreatedProjector } from '../projections/user/user-created.projection';
+import { UserPasswordChangedProjector } from '@infrastructure/projections/user/user-password-changed.projection';
+import { UserWithdrawnProjector } from '@infrastructure/projections/user/user-withdrawn.projection';
+
+const projectors = [
+  UserCreatedProjector,
+  UserWithdrawnProjector,
+  UserPasswordChangedProjector,
+];
 
 @Module({
   providers: [
@@ -14,11 +22,10 @@ import { UserCreatedProjector } from '../projections/user/user-created.projectio
       provide: EVENT_STORE_PORT,
       useClass: MikroEventStoreAdapter,
     },
-    UserCreatedProjector,
     {
       provide: DOMAIN_EVENT_HANDLERS,
-      useFactory: (userCreated: UserCreatedProjector) => [userCreated],
-      inject: [UserCreatedProjector],
+      useFactory: (...handlers: any[]) => handlers,
+      inject: projectors,
     },
     {
       provide: EVENT_BUS_PORT,

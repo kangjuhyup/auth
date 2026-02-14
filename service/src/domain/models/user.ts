@@ -3,6 +3,7 @@ import { PersistenceModel } from './persistence-model';
 import { UserCredentialModel } from './user-credential';
 import { UserCreatedEvent } from '@domain/events/user/user-created.event';
 import { UserWithdrawnEvent } from '@domain/events/user/user-withdrawn.event';
+import { UserPasswordChangedEvent } from '@domain/events/user/user-password-change.event';
 
 export type UserStatus = 'ACTIVE' | 'LOCKED' | 'DISABLED' | 'WITHDRAWN';
 
@@ -14,6 +15,8 @@ interface UserProps {
   phone?: string;
   phoneVerified: boolean;
   status: UserStatus;
+
+  passwordCredential?: UserCredentialModel;
 }
 
 type UserCreatedLike = {
@@ -107,6 +110,7 @@ export class UserModel extends PersistenceModel<string, UserProps> {
         phone: created.payload.phone,
         phoneVerified: created.payload.phoneVerified,
         status: (created.payload.status ?? 'ACTIVE') as UserStatus,
+        passwordCredential: created.payload.credential as UserCredentialModel,
       },
       created.aggregateId,
     );
@@ -135,6 +139,30 @@ export class UserModel extends PersistenceModel<string, UserProps> {
     );
   }
 
+  getPasswordCredential(): UserCredentialModel {
+    const c = this.etc.passwordCredential;
+    if (!c) throw new Error('PasswordCredentialNotFound');
+    return c;
+  }
+
+  changePassword(params: {
+    tenantId: string;
+    newCredential: UserCredentialModel;
+    occurredAt?: Date;
+  }): void {
+    if (this.status === 'WITHDRAWN') throw new Error('UserAlreadyWithdrawn');
+
+    const occurredAt = params.occurredAt ?? new Date();
+
+    this.record(
+      new UserPasswordChangedEvent(this.id, occurredAt, this.nextVersion(), {
+        tenantId: params.tenantId,
+        changedAt: occurredAt,
+        credential: params.newCredential,
+      }),
+    );
+  }
+
   /* ==============================
      Event handling
   =============================== */
@@ -146,7 +174,8 @@ export class UserModel extends PersistenceModel<string, UserProps> {
   }
 
   private nextVersion(): number {
-    return this.currentVersion + 1;
+    this.currentVersion += 1;
+    return this.currentVersion;
   }
 
   /**
@@ -155,7 +184,6 @@ export class UserModel extends PersistenceModel<string, UserProps> {
   private record(event: DomainEvent): void {
     this.apply(event, { isReplaying: false });
     this.uncommitted.push(event);
-    this.currentVersion = event.version;
   }
 
   private apply(ev: DomainEvent, ctx: { isReplaying: boolean }): void {
@@ -172,11 +200,19 @@ export class UserModel extends PersistenceModel<string, UserProps> {
         this.etc.phone = e.payload.phone;
         this.etc.phoneVerified = !!e.payload.phoneVerified;
         this.etc.status = (e.payload.status ?? 'ACTIVE') as UserStatus;
+        this.etc.passwordCredential = e.payload
+          .credential as UserCredentialModel;
         break;
       }
 
       case 'user.withdrawn': {
         this.etc.status = 'WITHDRAWN';
+        break;
+      }
+
+      case 'user.password_changed': {
+        const e = ev as UserPasswordChangedEvent;
+        this.etc.passwordCredential = e.payload.credential;
         break;
       }
 

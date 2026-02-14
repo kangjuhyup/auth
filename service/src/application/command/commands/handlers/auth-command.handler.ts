@@ -13,6 +13,7 @@ import { UserModel } from '@domain/models/user';
 import { EventStorePort, EventBusPort } from '@application/command/ports';
 import { UserCredentialModel } from '@domain/models/user-credential';
 import { PasswordHashPort } from '@application/command/ports/password-hash.port';
+import { DomainEvent } from '@domain/events';
 
 export class AuthCommandHandler implements AuthCommandPort {
   private readonly logger = new Logger(AuthCommandHandler.name);
@@ -117,7 +118,7 @@ export class AuthCommandHandler implements AuthCommandPort {
     await this.eventBus.publishAll(newEvents);
   }
 
-  changePassword(
+  async changePassword(
     tenantId: string,
     userId: string,
     dto: ChangePasswordDto,
@@ -125,7 +126,48 @@ export class AuthCommandHandler implements AuthCommandPort {
     this.logger.log(
       `Changing password for user ${userId} in tenant ${tenantId} ${dto}`,
     );
-    throw new Error('Method not implemented.');
+    // 1) EventStore에서 기존 이벤트 로드
+    const events = await this.eventStore.getEvents(userId);
+    if (!events?.length) throw new Error('UserNotFound');
+
+    // 2) UserModel 복원 (현재 password credential 상태 포함)
+    const user = UserModel.rehydrate(events);
+
+    // 3) 현재 credential로 기존 비밀번호 검증
+    const currentCred = user.getPasswordCredential();
+
+    const ok = await this.passwordHash.verify(
+      currentCred.secretHash,
+      dto.currentPassword,
+      currentCred.hashAlg,
+    );
+    if (!ok) throw new Error('InvalidPassword');
+
+    const hashResult = await this.passwordHash.hash(dto.newPassword);
+    // hashed 예시: { secretHash, hashAlg, hashParams, hashVersion }
+    const newCred = UserCredentialModel.password({
+      secretHash: hashResult.hash,
+      hashAlg: hashResult.alg,
+      hashParams: hashResult.params,
+      hashVersion: hashResult.version,
+    });
+
+    // 5) Aggregate에 명령 전달 (여기서 AlreadyWithdrawn 등 불변성 체크)
+    user.changePassword({
+      tenantId,
+      newCredential: newCred,
+    });
+
+    const newEvents = user.pullEvents();
+    if (newEvents.length === 0) return; // 방어적 코드(보통은 1개)
+
+    // 6) EventStore 저장 (optimistic concurrency)
+    const expectedVersion = Math.max(...events.map((e) => e.version));
+
+    await this.eventStore.save(userId, newEvents, expectedVersion);
+
+    // 7) EventBus 발행
+    await this.eventBus.publishAll(newEvents);
   }
 
   requestPasswordReset(
@@ -135,7 +177,11 @@ export class AuthCommandHandler implements AuthCommandPort {
     this.logger.log(`Requesting password reset for tenant ${tenantId} ${dto}`);
     throw new Error('Method not implemented.');
   }
-  resetPassword(tenantId: string, dto: PasswordResetDto): Promise<void> {
+  resetPassword(
+    tenantId: string,
+    userId: string,
+    dto: PasswordResetDto,
+  ): Promise<void> {
     this.logger.log(`Resetting password for tenant ${tenantId} ${dto}`);
     throw new Error('Method not implemented.');
   }

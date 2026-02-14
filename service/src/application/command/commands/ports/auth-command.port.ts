@@ -60,7 +60,11 @@ export interface AuthCommandPort {
    * @param dto - The password reset DTO
    * @returns The void
    */
-  resetPassword(tenantId: string, dto: PasswordResetDto): Promise<void>;
+  resetPassword(
+    tenantId: string,
+    userId: string,
+    dto: PasswordResetDto,
+  ): Promise<void>;
 
   /**
    * Update the profile of a user
