@@ -1,6 +1,6 @@
 import { PasswordHashAdapter } from '@infrastructure/crypto/password/password.adapter';
 import type { PasswordHash } from '@infrastructure/crypto/password/password-hash';
-import type { HashPolicy } from '@application/command/ports/password-hash.port';
+import type { HashPolicy } from '@application/ports/password-hash.port';
 
 function createMockHasher(alg: string): jest.Mocked<PasswordHash> {
   return {
@@ -77,7 +77,9 @@ describe('PasswordHashAdapter', () => {
       });
 
       expect(result.alg).toBe('pbkdf2-sha256');
-      expect(pbkdf.hash).toHaveBeenCalledWith('plain-text', { iterations: 100000 });
+      expect(pbkdf.hash).toHaveBeenCalledWith('plain-text', {
+        iterations: 100000,
+      });
     });
 
     it('지원하지 않는 알고리즘이면 에러를 던진다', async () => {
@@ -105,9 +107,9 @@ describe('PasswordHashAdapter', () => {
       const hasher = createMockHasher('argon2id');
       const adapter = new PasswordHashAdapter([hasher], defaultPolicy);
 
-      await expect(
-        adapter.verify('hashed', 'plain', 'scrypt'),
-      ).rejects.toThrow('UnsupportedAlgorithm:scrypt');
+      await expect(adapter.verify('hashed', 'plain', 'scrypt')).rejects.toThrow(
+        'UnsupportedAlgorithm:scrypt',
+      );
     });
   });
 });

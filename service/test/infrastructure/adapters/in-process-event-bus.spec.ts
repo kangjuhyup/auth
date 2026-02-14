@@ -1,6 +1,6 @@
 import { InProcessEventBusAdapter } from '@infrastructure/adapters/in-proccess-event-bus.adapter';
 import type { DomainEvent } from '@domain/events';
-import type { DomainEventHandler } from '@application/command/ports/domain-event-handler';
+import type { DomainEventHandler } from '@application/ports/domain-event-handler';
 
 function createEvent(
   eventType: string,

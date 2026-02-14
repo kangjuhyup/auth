@@ -2,7 +2,7 @@ import {
   EVENT_STORE_PORT,
   EVENT_BUS_PORT,
   DOMAIN_EVENT_HANDLERS,
-} from '@application/command/ports';
+} from '@application/ports';
 import { Module } from '@nestjs/common';
 import { MikroEventStoreAdapter } from './mikro-event-store.adapter';
 import { InProcessEventBusAdapter } from '../adapters/in-proccess-event-bus.adapter';

@@ -1,9 +1,9 @@
 import Provider from 'oidc-provider';
 import type { EntityManager } from '@mikro-orm/core';
 import type Redis from 'ioredis';
-import type { AccountQueryPort } from '@application/query/ports/account-query.port';
+import type { AccountQueryPort } from '@application/queries/ports/account-query.port';
 import { buildOidcConfiguration } from './oidc-provider.config';
-import { ClientQueryPort } from '@application/query/ports/client-query.port';
+import { ClientQueryPort } from '@application/queries/ports/client-query.port';
 
 export type CreateOidcProviderParams = {
   issuer: string;

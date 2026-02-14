@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { EntityManager } from '@mikro-orm/core';
 import { ulid } from 'ulid';
 import type { DomainEvent } from '@domain/events';
-import type { EventStorePort } from '@application/command/ports/event-store.port';
+import type { EventStorePort } from '@application/ports/event-store.port';
 import { EventSourcingOrmEntity } from '@infrastructure/mikro-orm/entities/event-sourcing';
 
 function serializeEventData(e: DomainEvent): Record<string, unknown> {

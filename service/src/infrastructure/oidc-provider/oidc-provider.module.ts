@@ -11,13 +11,13 @@ import { AccessVerifierAdapter } from './access-verifier.adapter';
 import {
   AccountQueryPort,
   ACCOUNT_QUERY_PORT,
-} from '@application/query/ports/account-query.port';
+} from '@application/queries/ports/account-query.port';
 import { MikroORM } from '@mikro-orm/core';
 import Redis from 'ioredis';
 import {
   ClientQueryPort,
   CLIENT_QUERY_PORT,
-} from '@application/query/ports/client-query.port';
+} from '@application/queries/ports/client-query.port';
 import { TenantMiddleware } from '@presentation/http/tenant.middleware';
 import { OidcDelegateMiddleware } from '@presentation/http/oidc.middleware';
 import { OidcProviderRegistry } from './oidc-provider.registry';

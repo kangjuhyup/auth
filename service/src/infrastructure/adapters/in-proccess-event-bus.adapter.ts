@@ -1,8 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { DomainEvent } from '@domain/events';
-import type { EventBusPort } from '@application/command/ports/event-bus.port';
-import type { DomainEventHandler } from '@application/command/ports/domain-event-handler';
-import { DOMAIN_EVENT_HANDLERS } from '@application/command/ports';
+import type { EventBusPort } from '@application/ports/event-bus.port';
+import type { DomainEventHandler } from '@application/ports/domain-event-handler';
+import { DOMAIN_EVENT_HANDLERS } from '@application/ports';
 
 @Injectable()
 export class InProcessEventBusAdapter implements EventBusPort {

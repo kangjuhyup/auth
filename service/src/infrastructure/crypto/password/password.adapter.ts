@@ -3,7 +3,7 @@ import type {
   PasswordHashPort,
   HashPolicy,
   HashResult,
-} from '@application/command/ports/password-hash.port';
+} from '@application/ports/password-hash.port';
 import type { PasswordHash } from './password-hash';
 
 export const PASSWORD_HASHERS = Symbol('PASSWORD_HASHERS');

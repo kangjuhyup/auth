@@ -1,11 +1,11 @@
-import { AuthCommandHandler } from '@application/command/commands/handlers/auth-command.handler';
-import type { EventStorePort } from '@application/command/ports/event-store.port';
-import type { EventBusPort } from '@application/command/ports/event-bus.port';
+import { AuthCommandHandler } from '@application/commands/handlers/auth-command.handler';
+import type { EventStorePort } from '@application/ports/event-store.port';
+import type { EventBusPort } from '@application/ports/event-bus.port';
 import type {
   PasswordHashPort,
   HashResult,
   HashPolicy,
-} from '@application/command/ports/password-hash.port';
+} from '@application/ports/password-hash.port';
 
 function createMockEventStore(): jest.Mocked<EventStorePort> {
   return {

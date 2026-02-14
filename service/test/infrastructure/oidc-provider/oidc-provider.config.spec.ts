@@ -1,8 +1,8 @@
 import type { EntityManager } from '@mikro-orm/core';
 import type Redis from 'ioredis';
 import { buildOidcConfiguration } from '@infrastructure/oidc-provider/oidc-provider.config';
-import type { AccountQueryPort } from '@application/query/ports/account-query.port';
-import type { ClientQueryPort } from '@application/query/ports/client-query.port';
+import type { AccountQueryPort } from '@application/queries/ports/account-query.port';
+import type { ClientQueryPort } from '@application/queries/ports/client-query.port';
 
 describe('buildOidcConfiguration', () => {
   const makeCtx = (tenantId?: string) =>

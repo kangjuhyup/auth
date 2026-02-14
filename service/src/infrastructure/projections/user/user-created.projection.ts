@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { EntityManager } from '@mikro-orm/core';
 import type { DomainEvent } from '@domain/events';
-import type { DomainEventHandler } from '@application/command/ports/domain-event-handler';
+import type { DomainEventHandler } from '@application/ports/domain-event-handler';
 import { UserOrmEntity } from '../../mikro-orm/entities/user';
 import { TenantOrmEntity } from '../../mikro-orm/entities/tenant';
 import { UserCreatedEvent } from '@domain/events/user/user-created.event';

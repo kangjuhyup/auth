@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { EntityManager } from '@mikro-orm/core';
 import type { DomainEvent } from '@domain/events';
-import type { DomainEventHandler } from '@application/command/ports/domain-event-handler';
+import type { DomainEventHandler } from '@application/ports/domain-event-handler';
 import { UserOrmEntity } from '@infrastructure/mikro-orm/entities/user';
 import { UserCredentialOrmEntity } from '@infrastructure/mikro-orm/entities/user-credential';
 import { withProjectionCheckpoint } from '../projection-helper';

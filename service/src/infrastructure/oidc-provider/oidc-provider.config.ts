@@ -2,9 +2,9 @@
 import { type Configuration } from 'oidc-provider';
 import type { EntityManager } from '@mikro-orm/core';
 import type Redis from 'ioredis';
-import type { AccountQueryPort } from '@application/query/ports/account-query.port';
+import type { AccountQueryPort } from '@application/queries/ports/account-query.port';
 import { buildOidcAdapterFactory } from './adapters/oidc-apdater.factory';
-import { ClientQueryPort } from '@application/query/ports/client-query.port';
+import { ClientQueryPort } from '@application/queries/ports/client-query.port';
 
 export function buildOidcConfiguration(params: {
   em: EntityManager;
