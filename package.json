@@ -1,0 +1,28 @@
+{
+  "name": "auth",
+  "version": "0.0.1",
+  "private": true,
+  "license": "UNLICENSED",
+  "packageManager": "yarn@4.12.0",
+  "workspaces": [
+    "ui",
+    "service",
+    "packages/*"
+  ],
+  "scripts": {
+    "service:dev": "yarn workspace @auth/service start:dev",
+    "service:build": "yarn workspace @auth/service build",
+    "service:test": "yarn workspace @auth/service test",
+    "ui:dev": "yarn workspace @auth/ui dev",
+    "ui:build": "yarn workspace @auth/ui build",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-prettier": "^5.2.2",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3"
+  }
+}
