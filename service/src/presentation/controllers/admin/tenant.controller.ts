@@ -1,9 +1,19 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, Inject } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+  Query,
+  Inject,
+} from '@nestjs/common';
 import {
   ADMIN_COMMAND_PORT,
   AdminCommandPort,
-} from '@application/command/commands/ports/admin-command.port';
-import { ADMIN_QUERY_PORT, AdminQueryPort } from '@application/query/ports';
+} from '@application/commands/ports/admin-command.port';
+import { ADMIN_QUERY_PORT, AdminQueryPort } from '@application/queries/ports';
 import {
   CreateTenantDto,
   UpdateTenantDto,
@@ -20,7 +30,9 @@ export class AdminTenantController {
   ) {}
 
   @Get()
-  list(@Query() query: PaginationQuery): Promise<PaginatedResult<TenantResponse>> {
+  list(
+    @Query() query: PaginationQuery,
+  ): Promise<PaginatedResult<TenantResponse>> {
     return this.queryPort.getTenants(query);
   }
 

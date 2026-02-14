@@ -10,9 +10,9 @@ import { AuthCommandPort } from '../ports/auth-command.port';
 import { Logger } from '@nestjs/common';
 import { ulid } from 'ulid';
 import { UserModel } from '@domain/models/user';
-import { EventStorePort, EventBusPort } from '@application/command/ports';
+import { EventStorePort, EventBusPort } from '@application/ports';
 import { UserCredentialModel } from '@domain/models/user-credential';
-import { PasswordHashPort } from '@application/command/ports/password-hash.port';
+import { PasswordHashPort } from '@application/ports/password-hash.port';
 import { DomainEvent } from '@domain/events';
 
 export class AuthCommandHandler implements AuthCommandPort {

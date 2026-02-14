@@ -2,8 +2,8 @@ import { Controller, Get, Post, Inject } from '@nestjs/common';
 import {
   ADMIN_COMMAND_PORT,
   AdminCommandPort,
-} from '@application/command/commands/ports/admin-command.port';
-import { ADMIN_QUERY_PORT, AdminQueryPort } from '@application/query/ports';
+} from '@application/commands/ports/admin-command.port';
+import { ADMIN_QUERY_PORT, AdminQueryPort } from '@application/queries/ports';
 import { TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 

@@ -12,8 +12,8 @@ import {
 import {
   AUTH_COMMAND_PORT,
   AuthCommandPort,
-} from '@application/command/commands/ports/auth-command.port';
-import { AUTH_QUERY_PORT, AuthQueryPort } from '@application/query/ports';
+} from '@application/commands/ports/auth-command.port';
+import { AUTH_QUERY_PORT, AuthQueryPort } from '@application/queries/ports';
 import {
   SignupDto,
   WithdrawDto,
