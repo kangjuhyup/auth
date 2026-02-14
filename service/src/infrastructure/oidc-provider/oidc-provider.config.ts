@@ -1,6 +1,16 @@
 import { type Configuration } from 'oidc-provider';
+import { buildOidcAdapterFactory } from './adapters/oidc-apdater.factory';
+import Redis from 'ioredis';
+import { EntityManager } from '@mikro-orm/core';
 
-export function buildOidcConfiguration(): Configuration {
+export function buildOidcConfiguration(
+  em?: EntityManager,
+  redis?: Redis,
+): Configuration {
+  if (!em || !redis) {
+    throw new Error('EntityManager and Redis are required');
+  }
+
   return {
     features: {
       devInteractions: { enabled: false },
@@ -20,6 +30,14 @@ export function buildOidcConfiguration(): Configuration {
     jwks: {
       keys: [],
     },
+
+    adapter: buildOidcAdapterFactory({
+      driver: process.env.OIDC_ADAPTER_DRIVER as any,
+      em,
+      redis,
+      cacheTtlMarginSec: Number(process.env.OIDC_CACHE_TTL_MARGIN_SEC ?? 5),
+      negativeTtlSec: Number(process.env.OIDC_CACHE_NEGATIVE_TTL_SEC ?? 3),
+    }),
 
     ttl: {
       AccessToken: 60 * 60,

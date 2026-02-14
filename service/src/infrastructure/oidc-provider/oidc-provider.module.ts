@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { OIDC_PROVIDER } from './oidc-provider.constants';
 import { createOidcProvider } from './oidc-provider.factory';
+import { ACCESS_VERIFIER_PORT } from '@application/ports/access-verifier.port';
+import { AccessVerifierAdapter } from './access-verifier.adapter';
 
 @Module({
   providers: [
@@ -11,7 +13,11 @@ import { createOidcProvider } from './oidc-provider.factory';
         return createOidcProvider(issuer);
       },
     },
+    {
+      provide: ACCESS_VERIFIER_PORT,
+      useClass: AccessVerifierAdapter,
+    },
   ],
-  exports: [OIDC_PROVIDER],
+  exports: [OIDC_PROVIDER, ACCESS_VERIFIER_PORT],
 })
 export class OidcProviderModule {}

@@ -1,8 +1,8 @@
 import { EntityManager } from '@mikro-orm/core';
 import type { Adapter, AdapterPayload } from 'oidc-provider';
-import { OidcModelOrmEntity } from '../mikro-orm/entities/oidc-model';
+import { OidcModelOrmEntity } from '../../mikro-orm/entities/oidc-model';
 
-export class MikroOrmAdapter implements Adapter {
+export class RdbOidcAdapter implements Adapter {
   constructor(
     private readonly kind: string,
     private readonly em: EntityManager,
@@ -76,9 +76,7 @@ export class MikroOrmAdapter implements Adapter {
     } as AdapterPayload;
   }
 
-  async findByUserCode(
-    userCode: string,
-  ): Promise<AdapterPayload | undefined> {
+  async findByUserCode(userCode: string): Promise<AdapterPayload | undefined> {
     const em = this.em.fork();
     const model = await em.findOne(OidcModelOrmEntity, {
       userCode,
