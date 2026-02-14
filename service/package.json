@@ -27,6 +27,7 @@
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/swagger": "^11.2.6",
     "argon2": "^0.44.0",
+    "ioredis": "^5.9.3",
     "oidc-provider": "^9.6.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
