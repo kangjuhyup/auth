@@ -2,17 +2,17 @@
 import { type Configuration } from 'oidc-provider';
 import type { EntityManager } from '@mikro-orm/core';
 import type Redis from 'ioredis';
-import type { AccountQueryPort } from '@application/queries/ports/account-query.port';
 import { buildOidcAdapterFactory } from './adapters/oidc-apdater.factory';
 import { ClientQueryPort } from '@application/queries/ports/client-query.port';
+import { UserQueryPort } from '@application/queries/ports/user-query.port';
 
 export function buildOidcConfiguration(params: {
   em: EntityManager;
   redis: Redis;
-  accountQuery: AccountQueryPort;
+  userQuery: UserQueryPort;
   clientQuery: ClientQueryPort;
 }): Configuration {
-  const { em, redis, accountQuery, clientQuery } = params;
+  const { em, redis, userQuery, clientQuery } = params;
 
   const accessTokenFormat = (process.env.OIDC_ACCESS_TOKEN_FORMAT ??
     'opaque') as 'opaque' | 'jwt';
@@ -95,7 +95,7 @@ export function buildOidcConfiguration(params: {
         throw new Error('missing_tenant');
       }
 
-      const view = await accountQuery.findClaimsBySub({
+      const view = await userQuery.findClaimsBySub({
         tenantId,
         sub: String(sub),
       });

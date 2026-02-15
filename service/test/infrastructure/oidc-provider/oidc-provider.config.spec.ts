@@ -1,8 +1,8 @@
 import type { EntityManager } from '@mikro-orm/core';
 import type Redis from 'ioredis';
 import { buildOidcConfiguration } from '@infrastructure/oidc-provider/oidc-provider.config';
-import type { AccountQueryPort } from '@application/queries/ports/account-query.port';
 import type { ClientQueryPort } from '@application/queries/ports/client-query.port';
+import { UserQueryPort } from '@application/queries/ports/user-query.port';
 
 describe('buildOidcConfiguration', () => {
   const makeCtx = (tenantId?: string) =>
@@ -19,7 +19,7 @@ describe('buildOidcConfiguration', () => {
     const em = {} as EntityManager;
     const redis = {} as Redis;
 
-    const accountQuery: jest.Mocked<AccountQueryPort> = {
+    const userQuery: jest.Mocked<UserQueryPort> = {
       findClaimsBySub: jest.fn().mockResolvedValue({
         sub: 'user-1',
         email: 'u@example.com',
@@ -33,7 +33,7 @@ describe('buildOidcConfiguration', () => {
         .mockResolvedValue(['https://api.example.com']),
     } as any;
 
-    return { em, redis, accountQuery, clientQuery };
+    return { em, redis, accountQuery: userQuery, clientQuery };
   };
 
   beforeEach(() => {
@@ -48,7 +48,7 @@ describe('buildOidcConfiguration', () => {
     const cfg = buildOidcConfiguration({
       em,
       redis,
-      accountQuery,
+      userQuery: accountQuery,
       clientQuery,
     });
 
@@ -63,7 +63,7 @@ describe('buildOidcConfiguration', () => {
     const cfg = buildOidcConfiguration({
       em,
       redis,
-      accountQuery,
+      userQuery: accountQuery,
       clientQuery,
     });
 
@@ -79,7 +79,7 @@ describe('buildOidcConfiguration', () => {
     const cfg = buildOidcConfiguration({
       em,
       redis,
-      accountQuery,
+      userQuery: accountQuery,
       clientQuery,
     });
     const fn = (cfg.features?.resourceIndicators as any).getResourceServerInfo;
@@ -94,7 +94,7 @@ describe('buildOidcConfiguration', () => {
     const cfg = buildOidcConfiguration({
       em,
       redis,
-      accountQuery,
+      userQuery: accountQuery,
       clientQuery,
     });
     const fn = (cfg.features?.resourceIndicators as any).getResourceServerInfo;
@@ -113,7 +113,7 @@ describe('buildOidcConfiguration', () => {
     const cfg = buildOidcConfiguration({
       em,
       redis,
-      accountQuery,
+      userQuery: accountQuery,
       clientQuery,
     });
     const fn = (cfg.features?.resourceIndicators as any).getResourceServerInfo;
@@ -140,7 +140,7 @@ describe('buildOidcConfiguration', () => {
     const cfg = buildOidcConfiguration({
       em,
       redis,
-      accountQuery,
+      userQuery: accountQuery,
       clientQuery,
     });
     const fn = (cfg.features?.resourceIndicators as any).getResourceServerInfo;
@@ -163,7 +163,7 @@ describe('buildOidcConfiguration', () => {
     const cfg = buildOidcConfiguration({
       em,
       redis,
-      accountQuery,
+      userQuery: accountQuery,
       clientQuery,
     });
 
@@ -179,7 +179,7 @@ describe('buildOidcConfiguration', () => {
     const cfg = buildOidcConfiguration({
       em,
       redis,
-      accountQuery,
+      userQuery: accountQuery,
       clientQuery,
     });
 
@@ -199,7 +199,7 @@ describe('buildOidcConfiguration', () => {
     const cfg = buildOidcConfiguration({
       em,
       redis,
-      accountQuery,
+      userQuery: accountQuery,
       clientQuery,
     });
 
@@ -230,7 +230,7 @@ describe('buildOidcConfiguration', () => {
     const cfg = buildOidcConfiguration({
       em,
       redis,
-      accountQuery,
+      userQuery: accountQuery,
       clientQuery,
     });
     const fn = (cfg.features?.resourceIndicators as any).getResourceServerInfo;
@@ -255,7 +255,7 @@ describe('buildOidcConfiguration', () => {
     const cfg = buildOidcConfiguration({
       em,
       redis,
-      accountQuery,
+      userQuery: accountQuery,
       clientQuery,
     });
     const fn = (cfg.features?.resourceIndicators as any).getResourceServerInfo;

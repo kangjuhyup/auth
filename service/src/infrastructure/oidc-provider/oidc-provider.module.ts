@@ -8,10 +8,6 @@ import { OIDC_PROVIDER } from './oidc-provider.constants';
 import { createOidcProvider } from './oidc-provider.factory';
 import { ACCESS_VERIFIER_PORT } from '@application/ports/access-verifier.port';
 import { AccessVerifierAdapter } from './access-verifier.adapter';
-import {
-  AccountQueryPort,
-  ACCOUNT_QUERY_PORT,
-} from '@application/queries/ports/account-query.port';
 import { MikroORM } from '@mikro-orm/core';
 import Redis from 'ioredis';
 import {
@@ -21,6 +17,10 @@ import {
 import { TenantMiddleware } from '@presentation/http/tenant.middleware';
 import { OidcDelegateMiddleware } from '@presentation/http/oidc.middleware';
 import { OidcProviderRegistry } from './oidc-provider.registry';
+import {
+  USER_QUERY_PORT,
+  UserQueryPort,
+} from '@application/queries/ports/user-query.port';
 
 @Module({
   providers: [
@@ -29,7 +29,7 @@ import { OidcProviderRegistry } from './oidc-provider.registry';
       useFactory: (
         orm: MikroORM,
         redis: Redis,
-        accountQuery: AccountQueryPort,
+        userQuery: UserQueryPort,
         clientQuery: ClientQueryPort,
       ) => {
         const base = process.env.OIDC_ISSUER;
@@ -41,14 +41,14 @@ import { OidcProviderRegistry } from './oidc-provider.registry';
             issuer,
             em: orm.em.fork(),
             redis,
-            accountQuery,
+            userQuery,
             clientQuery,
           });
         });
 
         return registry;
       },
-      inject: [MikroORM, Redis, ACCOUNT_QUERY_PORT, CLIENT_QUERY_PORT],
+      inject: [MikroORM, Redis, USER_QUERY_PORT, CLIENT_QUERY_PORT],
     },
     {
       provide: ACCESS_VERIFIER_PORT,
