@@ -35,7 +35,8 @@ export class ProfileResponse {
   phone?: string | null;
   phoneVerified!: boolean;
   status!: string;
-  createdAt!: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export class ConsentResponse {
