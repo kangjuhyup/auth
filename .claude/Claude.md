@@ -509,3 +509,43 @@ Claude must reject it and propose a secure alternative.
 
 node-oidc-provider is the source of protocol truth.
 We extend it, not replace it.
+
+---
+
+# 18. Claude Skills System
+
+See [CLAUDE_SKILLS.md](.claude/CLAUDE_SKILLS.md) for the full skill routing rules.
+
+Claude must classify each request and activate the appropriate skill set before generating or modifying code.
+Priority: Security > Architecture > Correctness > Performance > Convenience
+
+---
+
+# 19. Sub-Agent Rules
+
+Claude Code는 Task tool을 통해 서브에이전트를 생성할 수 있다.
+서브에이전트는 CLAUDE.md를 자동으로 읽지 않으므로, 아래 규칙을 반드시 따른다.
+
+## 서브에이전트 생성 시 필수 포함 컨텍스트
+
+서브에이전트 prompt에 반드시 다음을 명시:
+
+1. **활성화된 스킬 세트** — CLAUDE_SKILLS.md의 Skill Router에 따라 해당 작업에 필요한 스킬의 Do/Don't/Checklist를 prompt에 포함
+2. **아키텍처 제약** — 의존 방향(presentation → application → domain), domain에 프레임워크 금지
+3. **CQRS 규칙** — Write side는 event store만, Read side는 projection만
+4. **테스트 규칙** — NestJS 모듈 의존성 X, mock 서비스 생성, 외부 서비스 전달값 검증 X
+
+## 서브에이전트 유형별 가이드
+
+| 유형 | 용도 | 스킬 포함 |
+|------|------|-----------|
+| Explore | 코드베이스 탐색, 패턴 분석 | Architecture Skill 포함 |
+| Plan | 구현 계획 설계 | 관련 스킬 전체 포함 |
+| Bash | 빌드, 테스트 실행 | 불필요 |
+| general-purpose | 복합 작업 | 관련 스킬 전체 포함 |
+
+## 금지사항
+
+- 스킬 컨텍스트 없이 코드 생성/수정 작업을 서브에이전트에 위임하지 않는다
+- 서브에이전트가 domain 레이어에 프레임워크 의존성을 추가하는 것을 허용하지 않는다
+- 서브에이전트 결과물이 스킬 체크리스트를 통과하지 못하면 메인 에이전트가 수정한다
