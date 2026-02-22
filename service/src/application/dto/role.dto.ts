@@ -1,19 +1,19 @@
-export class CreateRoleDto {
-  code!: string;
-  name!: string;
+export interface CreateRoleDto {
+  code: string;
+  name: string;
   description?: string;
 }
 
-export class UpdateRoleDto {
+export interface UpdateRoleDto {
   name?: string;
   description?: string;
 }
 
-export class RoleResponse {
-  id!: string;
-  code!: string;
-  name!: string;
+export interface RoleResponse {
+  id: string;
+  code: string;
+  name: string;
   description?: string | null;
-  createdAt!: Date;
-  updatedAt!: Date;
+  createdAt: Date;
+  updatedAt: Date;
 }

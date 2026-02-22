@@ -4,28 +4,28 @@ export interface TenantContext {
   name: string;
 }
 
-export class CreateTenantDto {
-  code!: string;
-  name!: string;
+export interface CreateTenantDto {
+  code: string;
+  name: string;
   signupPolicy?: 'invite' | 'open';
   requirePhoneVerify?: boolean;
   brandName?: string;
 }
 
-export class UpdateTenantDto {
+export interface UpdateTenantDto {
   name?: string;
   signupPolicy?: 'invite' | 'open';
   requirePhoneVerify?: boolean;
   brandName?: string;
 }
 
-export class TenantResponse {
-  id!: string;
-  code!: string;
-  name!: string;
-  signupPolicy!: string;
-  requirePhoneVerify!: boolean;
+export interface TenantResponse {
+  id: string;
+  code: string;
+  name: string;
+  signupPolicy: string;
+  requirePhoneVerify: boolean;
   brandName?: string | null;
-  createdAt!: Date;
-  updatedAt!: Date;
+  createdAt: Date;
+  updatedAt: Date;
 }

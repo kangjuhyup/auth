@@ -1,6 +1,6 @@
-export interface CreateClientDto {
-  clientId: string;
-  name: string;
+export class CreateClientDto {
+  clientId!: string;
+  name!: string;
   type?: 'confidential' | 'public' | 'service';
   redirectUris?: string[];
   grantTypes?: string[];
@@ -10,7 +10,7 @@ export interface CreateClientDto {
   postLogoutRedirectUris?: string[];
 }
 
-export interface UpdateClientDto {
+export class UpdateClientDto {
   name?: string;
   enabled?: boolean;
   redirectUris?: string[];
@@ -21,18 +21,18 @@ export interface UpdateClientDto {
   postLogoutRedirectUris?: string[];
 }
 
-export interface ClientResponse {
-  id: string;
-  clientId: string;
-  name: string;
-  type: string;
-  enabled: boolean;
-  redirectUris: string[];
-  grantTypes: string[];
-  responseTypes: string[];
-  tokenEndpointAuthMethod: string;
-  scope: string;
-  postLogoutRedirectUris: string[];
-  createdAt: Date;
-  updatedAt: Date;
+export class ClientResponse {
+  id!: string;
+  clientId!: string;
+  name!: string;
+  type!: string;
+  enabled!: boolean;
+  redirectUris!: string[];
+  grantTypes!: string[];
+  responseTypes!: string[];
+  tokenEndpointAuthMethod!: string;
+  scope!: string;
+  postLogoutRedirectUris!: string[];
+  createdAt!: Date;
+  updatedAt!: Date;
 }

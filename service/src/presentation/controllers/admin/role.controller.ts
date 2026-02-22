@@ -10,9 +10,9 @@ import {
   Inject,
 } from '@nestjs/common';
 import {
-  ADMIN_COMMAND_PORT,
-  AdminCommandPort,
-} from '@application/commands/ports/admin-command.port';
+  ROLE_COMMAND_PORT,
+  RoleCommandPort,
+} from '@application/commands/ports/role-command.port';
 import { ADMIN_QUERY_PORT, AdminQueryPort } from '@application/queries/ports';
 import {
   CreateRoleDto,
@@ -20,14 +20,14 @@ import {
   RoleResponse,
   PaginationQuery,
   PaginatedResult,
-  TenantContext,
-} from '@application/dto';
+} from '@presentation/dto';
+import { TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 
 @Controller('admin/roles')
 export class AdminRoleController {
   constructor(
-    @Inject(ADMIN_COMMAND_PORT) private readonly commandPort: AdminCommandPort,
+    @Inject(ROLE_COMMAND_PORT) private readonly commandPort: RoleCommandPort,
     @Inject(ADMIN_QUERY_PORT) private readonly queryPort: AdminQueryPort,
   ) {}
 

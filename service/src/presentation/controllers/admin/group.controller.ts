@@ -10,9 +10,9 @@ import {
   Inject,
 } from '@nestjs/common';
 import {
-  ADMIN_COMMAND_PORT,
-  AdminCommandPort,
-} from '@application/commands/ports/admin-command.port';
+  GROUP_COMMAND_PORT,
+  GroupCommandPort,
+} from '@application/commands/ports/group-command.port';
 import { ADMIN_QUERY_PORT, AdminQueryPort } from '@application/queries/ports';
 import {
   CreateGroupDto,
@@ -20,14 +20,14 @@ import {
   GroupResponse,
   PaginationQuery,
   PaginatedResult,
-  TenantContext,
-} from '@application/dto';
+} from '@presentation/dto';
+import { TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 
 @Controller('admin/groups')
 export class AdminGroupController {
   constructor(
-    @Inject(ADMIN_COMMAND_PORT) private readonly commandPort: AdminCommandPort,
+    @Inject(GROUP_COMMAND_PORT) private readonly commandPort: GroupCommandPort,
     @Inject(ADMIN_QUERY_PORT) private readonly queryPort: AdminQueryPort,
   ) {}
 

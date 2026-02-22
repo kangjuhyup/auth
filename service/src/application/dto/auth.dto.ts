@@ -1,47 +1,49 @@
-export class SignupDto {
-  username!: string;
-  password!: string;
+export interface SignupDto {
+  username: string;
+  password: string;
   email?: string;
   phone?: string;
 }
 
-export class WithdrawDto {
-  password!: string;
+export interface WithdrawDto {
+  password: string;
 }
 
-export class ChangePasswordDto {
-  currentPassword!: string;
-  newPassword!: string;
+export interface ChangePasswordDto {
+  currentPassword: string;
+  newPassword: string;
 }
 
-export class PasswordResetRequestDto {
-  email!: string;
-}
-
-export class PasswordResetDto {
-  newPassword!: string;
-}
-
-export class UpdateProfileDto {
+export interface PasswordResetRequestDto {
   email?: string;
   phone?: string;
 }
 
-export class ProfileResponse {
-  id!: string;
-  username!: string;
+export interface PasswordResetDto {
+  token: string;
+  newPassword: string;
+}
+
+export interface UpdateProfileDto {
+  email?: string;
+  phone?: string;
+}
+
+export interface ProfileResponse {
+  id: string;
+  username: string;
   email?: string | null;
-  emailVerified!: boolean;
+  emailVerified: boolean;
   phone?: string | null;
-  phoneVerified!: boolean;
-  status!: string;
+  phoneVerified: boolean;
+  status: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-export class ConsentResponse {
-  clientId!: string;
-  clientName!: string;
-  grantedScopes!: string;
-  grantedAt!: Date;
+export interface ConsentResponse {
+  clientId: string;
+  clientName: string;
+  grantedScopes: string;
+  grantedAt: Date;
 }

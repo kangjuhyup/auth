@@ -1,25 +1,25 @@
-export class CreateUserDto {
-  username!: string;
-  password!: string;
+export interface CreateUserDto {
+  username: string;
+  password: string;
   email?: string;
   phone?: string;
   status?: 'ACTIVE' | 'LOCKED' | 'DISABLED';
 }
 
-export class UpdateUserDto {
+export interface UpdateUserDto {
   email?: string;
   phone?: string;
   status?: 'ACTIVE' | 'LOCKED' | 'DISABLED';
 }
 
-export class UserResponse {
-  id!: string;
-  username!: string;
+export interface UserResponse {
+  id: string;
+  username: string;
   email?: string | null;
-  emailVerified!: boolean;
+  emailVerified: boolean;
   phone?: string | null;
-  phoneVerified!: boolean;
-  status!: string;
-  createdAt!: Date;
-  updatedAt!: Date;
+  phoneVerified: boolean;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
 }

@@ -10,9 +10,9 @@ import {
   Inject,
 } from '@nestjs/common';
 import {
-  ADMIN_COMMAND_PORT,
-  AdminCommandPort,
-} from '@application/commands/ports/admin-command.port';
+  CLIENT_COMMAND_PORT,
+  ClientCommandPort,
+} from '@application/commands/ports/client-command.port';
 import { ADMIN_QUERY_PORT, AdminQueryPort } from '@application/queries/ports';
 import {
   CreateClientDto,
@@ -20,14 +20,14 @@ import {
   ClientResponse,
   PaginationQuery,
   PaginatedResult,
-  TenantContext,
-} from '@application/dto';
+} from '@presentation/dto';
+import { TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 
 @Controller('admin/clients')
 export class AdminClientController {
   constructor(
-    @Inject(ADMIN_COMMAND_PORT) private readonly commandPort: AdminCommandPort,
+    @Inject(CLIENT_COMMAND_PORT) private readonly commandPort: ClientCommandPort,
     @Inject(ADMIN_QUERY_PORT) private readonly queryPort: AdminQueryPort,
   ) {}
 

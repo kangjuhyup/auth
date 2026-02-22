@@ -23,8 +23,8 @@ import {
   UpdateProfileDto,
   ProfileResponse,
   ConsentResponse,
-  TenantContext,
-} from '@application/dto';
+} from '@presentation/dto';
+import { TenantContext } from '@application/dto';
 import { Tenant } from '../http/tenant.decorator';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { AccessGuard } from '@presentation/http/access.guard';

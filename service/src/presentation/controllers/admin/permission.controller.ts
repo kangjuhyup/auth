@@ -10,9 +10,9 @@ import {
   Inject,
 } from '@nestjs/common';
 import {
-  ADMIN_COMMAND_PORT,
-  AdminCommandPort,
-} from '@application/commands/ports/admin-command.port';
+  PERMISSION_COMMAND_PORT,
+  PermissionCommandPort,
+} from '@application/commands/ports/permission-command.port';
 import { ADMIN_QUERY_PORT, AdminQueryPort } from '@application/queries/ports';
 import {
   CreatePermissionDto,
@@ -20,14 +20,14 @@ import {
   PermissionResponse,
   PaginationQuery,
   PaginatedResult,
-  TenantContext,
-} from '@application/dto';
+} from '@presentation/dto';
+import { TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 
 @Controller('admin/permissions')
 export class AdminPermissionController {
   constructor(
-    @Inject(ADMIN_COMMAND_PORT) private readonly commandPort: AdminCommandPort,
+    @Inject(PERMISSION_COMMAND_PORT) private readonly commandPort: PermissionCommandPort,
     @Inject(ADMIN_QUERY_PORT) private readonly queryPort: AdminQueryPort,
   ) {}
 

@@ -1,10 +1,7 @@
 import { Controller, Get, Query, Inject } from '@nestjs/common';
 import { ADMIN_QUERY_PORT, AdminQueryPort } from '@application/queries/ports';
-import {
-  PaginationQuery,
-  PaginatedResult,
-  TenantContext,
-} from '@application/dto';
+import { PaginationQuery, PaginatedResult } from '@presentation/dto';
+import { TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 
 @Controller('admin/audit-logs')
