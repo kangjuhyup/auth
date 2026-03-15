@@ -1,6 +1,6 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { RoleCommandHandler } from '@application/commands/handlers/role-command.handler';
-import type { RoleRepository } from '@domain/repositories';
+import type { RoleRepository, PermissionRepository, RolePermissionRepository } from '@domain/repositories';
 import { RoleModel } from '@domain/models/role';
 
 function makeRole(id = 'role-1', tenantId = 'tenant-1'): RoleModel {
@@ -22,14 +22,37 @@ function createMockRoleRepo(): jest.Mocked<RoleRepository> {
   };
 }
 
+function createMockPermissionRepo(): jest.Mocked<PermissionRepository> {
+  return {
+    findById: jest.fn().mockResolvedValue(null),
+    findByCode: jest.fn().mockResolvedValue(null),
+    list: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+    save: jest.fn(),
+    delete: jest.fn(),
+  };
+}
+
+function createMockRolePermissionRepo(): jest.Mocked<RolePermissionRepository> {
+  return {
+    add: jest.fn().mockResolvedValue(undefined),
+    remove: jest.fn().mockResolvedValue(undefined),
+    exists: jest.fn().mockResolvedValue(false),
+    listByRole: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+  };
+}
+
 describe('RoleCommandHandler', () => {
   let handler: RoleCommandHandler;
   let roleRepo: jest.Mocked<RoleRepository>;
+  let permissionRepo: jest.Mocked<PermissionRepository>;
+  let rolePermissionRepo: jest.Mocked<RolePermissionRepository>;
 
   beforeEach(() => {
     jest.clearAllMocks();
     roleRepo = createMockRoleRepo();
-    handler = new RoleCommandHandler(roleRepo);
+    permissionRepo = createMockPermissionRepo();
+    rolePermissionRepo = createMockRolePermissionRepo();
+    handler = new RoleCommandHandler(roleRepo, permissionRepo, rolePermissionRepo);
   });
 
   describe('createRole', () => {

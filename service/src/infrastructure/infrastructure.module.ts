@@ -20,6 +20,7 @@ import { OtpHashPort } from '@application/ports/otp-hash.port';
 import { OtpTokenPort } from '@application/ports/otp-token.port';
 import { TransactionManagerPort } from '@application/ports/transaction-manager.port';
 import { JwksKeyCryptoPort } from '@application/ports/jwks-key-crypto.port';
+import { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
 
 // Crypto Adapters
 import { PasswordHashAdapter } from './crypto/password/password.adapter';
@@ -27,6 +28,7 @@ import { OtpHashAdapter } from './crypto/otp/otp-hash.adapter';
 import { OtpTokenAdapter } from './crypto/otp/otp-token.adapter';
 import { MikroOrmTransactionManager } from './transactions/mikro-orm-transaction-manager';
 import { JwksKeyCryptoAdapter } from './crypto/jwks/jwks-key-crypto.adapter';
+import { SymmetricCryptoAdapter } from './crypto/symmetric/symmetric-crypto.adapter';
 
 // Password Hash Implementations
 import { Argon2idHash } from './crypto/password/impl/argon2-hash';
@@ -111,6 +113,14 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
       },
       inject: [ConfigService],
     },
+    {
+      provide: SymmetricCryptoPort,
+      useFactory: (config: ConfigService) => {
+        const key = config.getOrThrow<string>('JWKS_ENCRYPTION_KEY');
+        return new SymmetricCryptoAdapter(key);
+      },
+      inject: [ConfigService],
+    },
   ],
   exports: [
     UserPersistenceModule,
@@ -130,6 +140,7 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     OtpTokenPort,
     TransactionManagerPort,
     JwksKeyCryptoPort,
+    SymmetricCryptoPort,
   ],
 })
 export class InfrastructureModule {}

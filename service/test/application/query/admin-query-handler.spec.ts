@@ -1,9 +1,18 @@
 import { NotFoundException } from '@nestjs/common';
 import { AdminQueryHandler } from '@application/queries/handlers/admin-query.handler';
-import type { TenantRepository, GroupRepository, RoleRepository, PermissionRepository } from '@domain/repositories';
+import type {
+  TenantRepository,
+  GroupRepository,
+  RoleRepository,
+  PermissionRepository,
+  RolePermissionRepository,
+  RoleAssignmentRepository,
+  ClientRepository,
+} from '@domain/repositories';
 import { TenantModel } from '@domain/models/tenant';
 import { GroupModel } from '@domain/models/group';
 import { RoleModel } from '@domain/models/role';
+import { ClientModel } from '@domain/models/client';
 
 function makeTenant(id: string, code: string, name: string): TenantModel {
   const t = new TenantModel({ code, name });
@@ -15,6 +24,35 @@ function makeGroup(id: string, tenantId: string): GroupModel {
   const g = new GroupModel({ tenantId, code: 'dev', name: 'Dev' });
   g.setPersistence(id, new Date('2024-01-01'), new Date('2024-01-01'));
   return g;
+}
+
+function makeRole(id: string, tenantId: string): RoleModel {
+  const r = new RoleModel({ tenantId, code: 'admin', name: 'Admin', description: null });
+  r.setPersistence(id, new Date('2024-01-01'), new Date('2024-01-01'));
+  return r;
+}
+
+function makeClient(id: string, tenantId: string): ClientModel {
+  const c = new ClientModel({
+    tenantId,
+    clientId: 'app-web',
+    secretEnc: null,
+    name: 'Web App',
+    type: 'public',
+    enabled: true,
+    redirectUris: ['https://app.example.com/callback'],
+    grantTypes: ['authorization_code'],
+    responseTypes: ['code'],
+    tokenEndpointAuthMethod: 'none',
+    scope: 'openid',
+    postLogoutRedirectUris: [],
+    applicationType: 'web',
+    backchannelLogoutUri: 'https://app.example.com/bc-logout',
+    frontchannelLogoutUri: null,
+    allowedResources: ['https://api.example.com'],
+  });
+  c.setPersistence(id, new Date('2024-01-01'), new Date('2024-01-01'));
+  return c;
 }
 
 function createMockTenantRepo(): jest.Mocked<TenantRepository> {
@@ -37,12 +75,6 @@ function createMockGroupRepo(): jest.Mocked<GroupRepository> {
   };
 }
 
-function makeRole(id: string, tenantId: string): RoleModel {
-  const r = new RoleModel({ tenantId, code: 'admin', name: 'Admin', description: null });
-  r.setPersistence(id, new Date('2024-01-01'), new Date('2024-01-01'));
-  return r;
-}
-
 function createMockRoleRepo(): jest.Mocked<RoleRepository> {
   return {
     findById: jest.fn(),
@@ -63,20 +95,75 @@ function createMockPermissionRepo(): jest.Mocked<PermissionRepository> {
   };
 }
 
+function createMockRolePermissionRepo(): jest.Mocked<RolePermissionRepository> {
+  return {
+    assign: jest.fn(),
+    remove: jest.fn(),
+    listByRole: jest.fn(),
+  } as any;
+}
+
+function createMockRoleAssignmentRepo(): jest.Mocked<RoleAssignmentRepository> {
+  return {
+    assignToUser: jest.fn(),
+    removeFromUser: jest.fn(),
+    assignToGroup: jest.fn(),
+    removeFromGroup: jest.fn(),
+    listForGroup: jest.fn().mockResolvedValue([]),
+    listForUser: jest.fn().mockResolvedValue([]),
+  } as any;
+}
+
+function createMockClientRepo(): jest.Mocked<ClientRepository> {
+  return {
+    findById: jest.fn(),
+    findByClientId: jest.fn(),
+    list: jest.fn(),
+    save: jest.fn(),
+    delete: jest.fn(),
+  };
+}
+
+function createHandler() {
+  const tenantRepo = createMockTenantRepo();
+  const groupRepo = createMockGroupRepo();
+  const roleRepo = createMockRoleRepo();
+  const permissionRepo = createMockPermissionRepo();
+  const rolePermissionRepo = createMockRolePermissionRepo();
+  const roleAssignmentRepo = createMockRoleAssignmentRepo();
+  const clientRepo = createMockClientRepo();
+
+  const handler = new AdminQueryHandler(
+    tenantRepo,
+    groupRepo,
+    roleRepo,
+    permissionRepo,
+    rolePermissionRepo,
+    roleAssignmentRepo,
+    clientRepo,
+  );
+
+  return {
+    handler,
+    tenantRepo,
+    groupRepo,
+    roleRepo,
+    permissionRepo,
+    rolePermissionRepo,
+    roleAssignmentRepo,
+    clientRepo,
+  };
+}
+
 describe('AdminQueryHandler - Tenant', () => {
   let handler: AdminQueryHandler;
   let tenantRepo: jest.Mocked<TenantRepository>;
-  let groupRepo: jest.Mocked<GroupRepository>;
-  let roleRepo: jest.Mocked<RoleRepository>;
-  let permissionRepo: jest.Mocked<PermissionRepository>;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    tenantRepo = createMockTenantRepo();
-    groupRepo = createMockGroupRepo();
-    roleRepo = createMockRoleRepo();
-    permissionRepo = createMockPermissionRepo();
-    handler = new AdminQueryHandler(tenantRepo, groupRepo, roleRepo, permissionRepo);
+    const deps = createHandler();
+    handler = deps.handler;
+    tenantRepo = deps.tenantRepo;
   });
 
   describe('getTenants', () => {
@@ -145,18 +232,13 @@ describe('AdminQueryHandler - Tenant', () => {
 
 describe('AdminQueryHandler - Group', () => {
   let handler: AdminQueryHandler;
-  let tenantRepo: jest.Mocked<TenantRepository>;
   let groupRepo: jest.Mocked<GroupRepository>;
-  let roleRepo: jest.Mocked<RoleRepository>;
-  let permissionRepo: jest.Mocked<PermissionRepository>;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    tenantRepo = createMockTenantRepo();
-    groupRepo = createMockGroupRepo();
-    roleRepo = createMockRoleRepo();
-    permissionRepo = createMockPermissionRepo();
-    handler = new AdminQueryHandler(tenantRepo, groupRepo, roleRepo, permissionRepo);
+    const deps = createHandler();
+    handler = deps.handler;
+    groupRepo = deps.groupRepo;
   });
 
   describe('getGroups', () => {
@@ -212,18 +294,13 @@ describe('AdminQueryHandler - Group', () => {
 
 describe('AdminQueryHandler - Role', () => {
   let handler: AdminQueryHandler;
-  let tenantRepo: jest.Mocked<TenantRepository>;
-  let groupRepo: jest.Mocked<GroupRepository>;
   let roleRepo: jest.Mocked<RoleRepository>;
-  let permissionRepo: jest.Mocked<PermissionRepository>;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    tenantRepo = createMockTenantRepo();
-    groupRepo = createMockGroupRepo();
-    roleRepo = createMockRoleRepo();
-    permissionRepo = createMockPermissionRepo();
-    handler = new AdminQueryHandler(tenantRepo, groupRepo, roleRepo, permissionRepo);
+    const deps = createHandler();
+    handler = deps.handler;
+    roleRepo = deps.roleRepo;
   });
 
   describe('getRoles', () => {
@@ -281,6 +358,88 @@ describe('AdminQueryHandler - Role', () => {
       roleRepo.findById.mockResolvedValue(makeRole('r-1', 'other-tenant'));
 
       await expect(handler.getRole('tenant-1', 'r-1')).rejects.toThrow(NotFoundException);
+    });
+  });
+});
+
+describe('AdminQueryHandler - Client', () => {
+  let handler: AdminQueryHandler;
+  let clientRepo: jest.Mocked<ClientRepository>;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    const deps = createHandler();
+    handler = deps.handler;
+    clientRepo = deps.clientRepo;
+  });
+
+  describe('getClients', () => {
+    it('tenantId로 페이지네이션된 클라이언트 목록을 반환한다', async () => {
+      clientRepo.list.mockResolvedValue({
+        items: [makeClient('c-1', 'tenant-1'), makeClient('c-2', 'tenant-1')],
+        total: 2,
+      });
+
+      const result = await handler.getClients('tenant-1', { page: 1, limit: 10 });
+
+      expect(clientRepo.list).toHaveBeenCalledWith({ tenantId: 'tenant-1', page: 1, limit: 10 });
+      expect(result.items).toHaveLength(2);
+      expect(result.total).toBe(2);
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(10);
+    });
+
+    it('page/limit 미지정 시 기본값(1/20)을 사용한다', async () => {
+      clientRepo.list.mockResolvedValue({ items: [], total: 0 });
+
+      await handler.getClients('tenant-1', {});
+
+      expect(clientRepo.list).toHaveBeenCalledWith({ tenantId: 'tenant-1', page: 1, limit: 20 });
+    });
+
+    it('반환 항목에 신규 필드가 포함된다', async () => {
+      clientRepo.list.mockResolvedValue({
+        items: [makeClient('c-1', 'tenant-1')],
+        total: 1,
+      });
+
+      const result = await handler.getClients('tenant-1', { page: 1, limit: 10 });
+      const item = result.items[0];
+
+      expect(item.applicationType).toBe('web');
+      expect(item.backchannelLogoutUri).toBe('https://app.example.com/bc-logout');
+      expect(item.frontchannelLogoutUri).toBeNull();
+      expect(item.allowedResources).toEqual(['https://api.example.com']);
+    });
+  });
+
+  describe('getClient', () => {
+    it('tenantId + id로 클라이언트를 조회하여 반환한다', async () => {
+      clientRepo.findById.mockResolvedValue(makeClient('c-1', 'tenant-1'));
+
+      const result = await handler.getClient('tenant-1', 'c-1');
+
+      expect(clientRepo.findById).toHaveBeenCalledWith('c-1');
+      expect(result.id).toBe('c-1');
+      expect(result.clientId).toBe('app-web');
+      expect(result.applicationType).toBe('web');
+      expect(result.allowedResources).toEqual(['https://api.example.com']);
+    });
+
+    it('클라이언트가 없으면 NotFoundException을 던진다', async () => {
+      clientRepo.findById.mockResolvedValue(null);
+
+      await expect(handler.getClient('tenant-1', 'no-such')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('tenantId 불일치 시 NotFoundException을 던진다', async () => {
+      clientRepo.findById.mockResolvedValue(makeClient('c-1', 'other-tenant'));
+
+      await expect(handler.getClient('tenant-1', 'c-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

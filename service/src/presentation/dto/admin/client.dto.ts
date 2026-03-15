@@ -1,5 +1,6 @@
 export class CreateClientDto {
   clientId!: string;
+  secret?: string;
   name!: string;
   type?: 'confidential' | 'public' | 'service';
   redirectUris?: string[];
@@ -8,9 +9,14 @@ export class CreateClientDto {
   tokenEndpointAuthMethod?: string;
   scope?: string;
   postLogoutRedirectUris?: string[];
+  applicationType?: 'web' | 'native';
+  backchannelLogoutUri?: string;
+  frontchannelLogoutUri?: string;
+  allowedResources?: string[];
 }
 
 export class UpdateClientDto {
+  secret?: string | null;
   name?: string;
   enabled?: boolean;
   redirectUris?: string[];
@@ -19,6 +25,10 @@ export class UpdateClientDto {
   tokenEndpointAuthMethod?: string;
   scope?: string;
   postLogoutRedirectUris?: string[];
+  applicationType?: 'web' | 'native';
+  backchannelLogoutUri?: string | null;
+  frontchannelLogoutUri?: string | null;
+  allowedResources?: string[];
 }
 
 export class ClientResponse {
@@ -33,6 +43,10 @@ export class ClientResponse {
   tokenEndpointAuthMethod!: string;
   scope!: string;
   postLogoutRedirectUris!: string[];
+  applicationType!: string;
+  backchannelLogoutUri!: string | null;
+  frontchannelLogoutUri!: string | null;
+  allowedResources!: string[];
   createdAt!: Date;
   updatedAt!: Date;
 }

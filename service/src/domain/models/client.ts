@@ -1,10 +1,12 @@
 import { PersistenceModel } from './persistence-model';
 
 export type ClientType = 'confidential' | 'public' | 'service';
+export type ApplicationType = 'web' | 'native';
 
 interface ClientModelProps {
   tenantId: string;
   clientId: string;
+  secretEnc?: string | null;
   name: string;
   type: ClientType;
   enabled: boolean;
@@ -14,6 +16,10 @@ interface ClientModelProps {
   tokenEndpointAuthMethod: string;
   scope: string;
   postLogoutRedirectUris: string[];
+  applicationType: ApplicationType;
+  backchannelLogoutUri?: string | null;
+  frontchannelLogoutUri?: string | null;
+  allowedResources: string[];
 }
 
 export class ClientModel extends PersistenceModel<string, ClientModelProps> {
@@ -27,6 +33,10 @@ export class ClientModel extends PersistenceModel<string, ClientModelProps> {
 
   get clientId(): string {
     return this.etc.clientId;
+  }
+
+  get secretEnc(): string | null | undefined {
+    return this.etc.secretEnc;
   }
 
   get name(): string {
@@ -65,8 +75,28 @@ export class ClientModel extends PersistenceModel<string, ClientModelProps> {
     return this.etc.postLogoutRedirectUris;
   }
 
+  get applicationType(): ApplicationType {
+    return this.etc.applicationType;
+  }
+
+  get backchannelLogoutUri(): string | null | undefined {
+    return this.etc.backchannelLogoutUri;
+  }
+
+  get frontchannelLogoutUri(): string | null | undefined {
+    return this.etc.frontchannelLogoutUri;
+  }
+
+  get allowedResources(): string[] {
+    return this.etc.allowedResources;
+  }
+
   changeName(name: string): void {
     this.etc.name = name;
+  }
+
+  changeSecretEnc(secretEnc: string | null): void {
+    this.etc.secretEnc = secretEnc;
   }
 
   setEnabled(enabled: boolean): void {
@@ -95,5 +125,21 @@ export class ClientModel extends PersistenceModel<string, ClientModelProps> {
 
   changePostLogoutRedirectUris(uris: string[]): void {
     this.etc.postLogoutRedirectUris = uris;
+  }
+
+  changeApplicationType(type: ApplicationType): void {
+    this.etc.applicationType = type;
+  }
+
+  changeBackchannelLogoutUri(uri: string | null): void {
+    this.etc.backchannelLogoutUri = uri;
+  }
+
+  changeFrontchannelLogoutUri(uri: string | null): void {
+    this.etc.frontchannelLogoutUri = uri;
+  }
+
+  changeAllowedResources(resources: string[]): void {
+    this.etc.allowedResources = resources;
   }
 }

@@ -6,6 +6,8 @@ import { ConfigService } from '@nestjs/config';
 import { buildOidcAdapterFactory } from './adapters/oidc-apdater.factory';
 import { ClientQueryPort } from '@application/queries/ports/client-query.port';
 import { UserQueryPort } from '@application/queries/ports/user-query.port';
+import type { ClientRepository, TenantRepository } from '@domain/repositories';
+import type { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
 
 export function buildOidcConfiguration(params: {
   em: EntityManager;
@@ -13,8 +15,15 @@ export function buildOidcConfiguration(params: {
   userQuery: UserQueryPort;
   clientQuery: ClientQueryPort;
   configService: ConfigService;
+  tenantCode: string;
+  clientRepository: ClientRepository;
+  tenantRepository: TenantRepository;
+  symmetricCrypto: SymmetricCryptoPort;
 }): Configuration {
-  const { em, redis, userQuery, clientQuery, configService } = params;
+  const {
+    em, redis, userQuery, clientQuery, configService,
+    tenantCode, clientRepository, tenantRepository, symmetricCrypto,
+  } = params;
 
   const accessTokenFormat = configService.getOrThrow<string>(
     'OIDC_ACCESS_TOKEN_FORMAT',
@@ -88,6 +97,10 @@ export function buildOidcConfiguration(params: {
       cacheTtlMarginSec: Number(configService.getOrThrow<string>('OIDC_CACHE_TTL_MARGIN_SEC')),
       negativeTtlSec: Number(configService.getOrThrow<string>('OIDC_CACHE_NEGATIVE_TTL_SEC')),
       backfillTtlSec: Number(configService.getOrThrow<string>('OIDC_CACHE_BACKFILL_TTL_SEC')),
+      tenantCode,
+      clientRepository,
+      tenantRepository,
+      symmetricCrypto,
     }),
 
     // ✅ findAccount: opaque/jwt 상관없이 결국 "sub"로 계정 조회

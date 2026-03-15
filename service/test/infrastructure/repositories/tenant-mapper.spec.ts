@@ -1,4 +1,4 @@
-import { TenantMapper } from '@infrastructure/repositories/tenant.mapper';
+import { TenantMapper } from '@infrastructure/repositories/mapper/tenant.mapper';
 import { TenantModel } from '@domain/models/tenant';
 import { TenantOrmEntity } from '@infrastructure/mikro-orm/entities';
 

@@ -3,6 +3,9 @@ import type Redis from 'ioredis';
 import { buildOidcConfiguration } from '@infrastructure/oidc-provider/oidc-provider.config';
 import type { ClientQueryPort } from '@application/queries/ports/client-query.port';
 import { UserQueryPort } from '@application/queries/ports/user-query.port';
+import type { ConfigService } from '@nestjs/config';
+import type { ClientRepository, TenantRepository } from '@domain/repositories';
+import type { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
 
 describe('buildOidcConfiguration', () => {
   const makeCtx = (tenantId?: string) =>
@@ -15,7 +18,25 @@ describe('buildOidcConfiguration', () => {
       clientId,
     }) as any;
 
-  const makeDeps = () => {
+  const makeConfigService = (overrides: Record<string, string> = {}): jest.Mocked<ConfigService> => {
+    const defaults: Record<string, string> = {
+      OIDC_ACCESS_TOKEN_FORMAT: 'opaque',
+      OIDC_COOKIE_KEYS: 'k1,k2',
+      OIDC_ADAPTER_DRIVER: 'redis',
+      OIDC_CACHE_TTL_MARGIN_SEC: '5',
+      OIDC_CACHE_NEGATIVE_TTL_SEC: '3',
+      OIDC_CACHE_BACKFILL_TTL_SEC: '60',
+      ...overrides,
+    };
+    return {
+      getOrThrow: jest.fn().mockImplementation((key: string) => {
+        if (key in defaults) return defaults[key];
+        throw new Error(`Missing env: ${key}`);
+      }),
+    } as any;
+  };
+
+  const makeDeps = (configOverrides: Record<string, string> = {}) => {
     const em = {} as EntityManager;
     const redis = {} as Redis;
 
@@ -33,23 +54,29 @@ describe('buildOidcConfiguration', () => {
         .mockResolvedValue(['https://api.example.com']),
     } as any;
 
-    return { em, redis, accountQuery: userQuery, clientQuery };
-  };
+    const configService = makeConfigService(configOverrides);
 
-  beforeEach(() => {
-    jest.resetModules();
-    delete process.env.OIDC_ACCESS_TOKEN_FORMAT;
-    process.env.OIDC_COOKIE_KEYS = 'k1,k2';
-    process.env.OIDC_ADAPTER_DRIVER = 'redis'; // adapter factory 내부 검증 회피 목적(테스트는 여기서 검증 X)
-  });
+    const clientRepository = {} as ClientRepository;
+    const tenantRepository = {} as TenantRepository;
+    const symmetricCrypto = {} as SymmetricCryptoPort;
 
-  it('resourceIndicators가 enabled=true로 설정된다', () => {
-    const { em, redis, accountQuery, clientQuery } = makeDeps();
-    const cfg = buildOidcConfiguration({
+    return {
       em,
       redis,
-      userQuery: accountQuery,
+      userQuery,
       clientQuery,
+      configService,
+      clientRepository,
+      tenantRepository,
+      symmetricCrypto,
+    };
+  };
+
+  it('resourceIndicators가 enabled=true로 설정된다', () => {
+    const deps = makeDeps();
+    const cfg = buildOidcConfiguration({
+      ...deps,
+      tenantCode: 'acme',
     });
 
     expect(cfg.features?.resourceIndicators?.enabled).toBe(true);
@@ -59,12 +86,10 @@ describe('buildOidcConfiguration', () => {
   });
 
   it('tenant가 없으면 getResourceServerInfo에서 에러(missing_tenant)를 던진다', async () => {
-    const { em, redis, accountQuery, clientQuery } = makeDeps();
+    const deps = makeDeps();
     const cfg = buildOidcConfiguration({
-      em,
-      redis,
-      userQuery: accountQuery,
-      clientQuery,
+      ...deps,
+      tenantCode: 'acme',
     });
 
     const fn = (cfg.features?.resourceIndicators as any).getResourceServerInfo;
@@ -75,12 +100,10 @@ describe('buildOidcConfiguration', () => {
   });
 
   it('resource가 https가 아니면 invalid_target을 던진다', async () => {
-    const { em, redis, accountQuery, clientQuery } = makeDeps();
+    const deps = makeDeps();
     const cfg = buildOidcConfiguration({
-      em,
-      redis,
-      userQuery: accountQuery,
-      clientQuery,
+      ...deps,
+      tenantCode: 'acme',
     });
     const fn = (cfg.features?.resourceIndicators as any).getResourceServerInfo;
 
@@ -90,12 +113,10 @@ describe('buildOidcConfiguration', () => {
   });
 
   it('resource host가 localhost면 invalid_target을 던진다', async () => {
-    const { em, redis, accountQuery, clientQuery } = makeDeps();
+    const deps = makeDeps();
     const cfg = buildOidcConfiguration({
-      em,
-      redis,
-      userQuery: accountQuery,
-      clientQuery,
+      ...deps,
+      tenantCode: 'acme',
     });
     const fn = (cfg.features?.resourceIndicators as any).getResourceServerInfo;
 
@@ -105,16 +126,14 @@ describe('buildOidcConfiguration', () => {
   });
 
   it('allowedResources에 없으면 invalid_target을 던진다', async () => {
-    const { em, redis, accountQuery, clientQuery } = makeDeps();
-    clientQuery.getAllowedResources.mockResolvedValue([
+    const deps = makeDeps();
+    deps.clientQuery.getAllowedResources.mockResolvedValue([
       'https://other.example.com',
     ]);
 
     const cfg = buildOidcConfiguration({
-      em,
-      redis,
-      userQuery: accountQuery,
-      clientQuery,
+      ...deps,
+      tenantCode: 'acme',
     });
     const fn = (cfg.features?.resourceIndicators as any).getResourceServerInfo;
 
@@ -126,22 +145,15 @@ describe('buildOidcConfiguration', () => {
       ),
     ).rejects.toThrow('invalid_target');
 
-    expect(clientQuery.getAllowedResources).toHaveBeenCalledTimes(1);
+    expect(deps.clientQuery.getAllowedResources).toHaveBeenCalledTimes(1);
   });
 
   it('allowedResources에 있으면 ResourceServerInfo를 반환한다 (accessTokenFormat 포함)', async () => {
-    process.env.OIDC_ACCESS_TOKEN_FORMAT = 'jwt';
-
-    const { em, redis, accountQuery, clientQuery } = makeDeps();
-    clientQuery.getAllowedResources.mockResolvedValue([
-      'https://api.example.com',
-    ]);
+    const deps = makeDeps({ OIDC_ACCESS_TOKEN_FORMAT: 'jwt' });
 
     const cfg = buildOidcConfiguration({
-      em,
-      redis,
-      userQuery: accountQuery,
-      clientQuery,
+      ...deps,
+      tenantCode: 'acme',
     });
     const fn = (cfg.features?.resourceIndicators as any).getResourceServerInfo;
 
@@ -154,17 +166,14 @@ describe('buildOidcConfiguration', () => {
     expect(info).toBeDefined();
     expect(info.accessTokenFormat).toBe('jwt');
     expect(info.audience).toBe('https://api.example.com');
-    // scope 고정
     expect(info.scope).toBe('openid profile email');
   });
 
   it('findAccount: tenant가 없으면 missing_tenant를 던진다', async () => {
-    const { em, redis, accountQuery, clientQuery } = makeDeps();
+    const deps = makeDeps();
     const cfg = buildOidcConfiguration({
-      em,
-      redis,
-      userQuery: accountQuery,
-      clientQuery,
+      ...deps,
+      tenantCode: 'acme',
     });
 
     await expect(
@@ -173,14 +182,12 @@ describe('buildOidcConfiguration', () => {
   });
 
   it('findAccount: 계정 조회가 안되면 account_not_found를 던진다', async () => {
-    const { em, redis, accountQuery, clientQuery } = makeDeps();
-    accountQuery.findClaimsBySub.mockResolvedValue(null as any);
+    const deps = makeDeps();
+    deps.userQuery.findClaimsBySub.mockResolvedValue(null as any);
 
     const cfg = buildOidcConfiguration({
-      em,
-      redis,
-      userQuery: accountQuery,
-      clientQuery,
+      ...deps,
+      tenantCode: 'acme',
     });
 
     await expect(
@@ -189,18 +196,11 @@ describe('buildOidcConfiguration', () => {
   });
 
   it('findAccount: 정상일 때 accountId와 claims 함수를 반환한다', async () => {
-    const { em, redis, accountQuery, clientQuery } = makeDeps();
-    accountQuery.findClaimsBySub.mockResolvedValue({
-      sub: 'user-1',
-      email: 'u@example.com',
-      email_verified: true,
-    } as any);
+    const deps = makeDeps();
 
     const cfg = buildOidcConfiguration({
-      em,
-      redis,
-      userQuery: accountQuery,
-      clientQuery,
+      ...deps,
+      tenantCode: 'acme',
     });
 
     const account = await cfg.findAccount!(makeCtx('tenant-1'), 'user-1');
@@ -219,19 +219,12 @@ describe('buildOidcConfiguration', () => {
     expect(claims.email_verified).toBe(true);
   });
 
-  it('OIDC_ACCESS_TOKEN_FORMAT이 없으면 accessTokenFormat은 opaque다', async () => {
-    delete process.env.OIDC_ACCESS_TOKEN_FORMAT;
-
-    const { em, redis, accountQuery, clientQuery } = makeDeps();
-    clientQuery.getAllowedResources.mockResolvedValue([
-      'https://api.example.com',
-    ]);
+  it('OIDC_ACCESS_TOKEN_FORMAT=opaque이면 accessTokenFormat은 opaque다', async () => {
+    const deps = makeDeps({ OIDC_ACCESS_TOKEN_FORMAT: 'opaque' });
 
     const cfg = buildOidcConfiguration({
-      em,
-      redis,
-      userQuery: accountQuery,
-      clientQuery,
+      ...deps,
+      tenantCode: 'acme',
     });
     const fn = (cfg.features?.resourceIndicators as any).getResourceServerInfo;
 
@@ -245,18 +238,11 @@ describe('buildOidcConfiguration', () => {
   });
 
   it('OIDC_ACCESS_TOKEN_FORMAT=jwt이면 accessTokenFormat은 jwt다', async () => {
-    process.env.OIDC_ACCESS_TOKEN_FORMAT = 'jwt';
-
-    const { em, redis, accountQuery, clientQuery } = makeDeps();
-    clientQuery.getAllowedResources.mockResolvedValue([
-      'https://api.example.com',
-    ]);
+    const deps = makeDeps({ OIDC_ACCESS_TOKEN_FORMAT: 'jwt' });
 
     const cfg = buildOidcConfiguration({
-      em,
-      redis,
-      userQuery: accountQuery,
-      clientQuery,
+      ...deps,
+      tenantCode: 'acme',
     });
     const fn = (cfg.features?.resourceIndicators as any).getResourceServerInfo;
 

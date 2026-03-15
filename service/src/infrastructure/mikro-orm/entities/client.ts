@@ -6,6 +6,7 @@ import { GroupRoleOrmEntity } from './group-role';
 import { TenantClientOrmEntity } from './tenant-client';
 
 export type ClientType = 'confidential' | 'public' | 'service';
+export type ApplicationType = 'web' | 'native';
 
 @Entity({ tableName: 'client' })
 @Unique({ properties: ['tenant', 'clientId'], name: 'uk_client_tenant_clientid' })
@@ -19,8 +20,8 @@ export class ClientOrmEntity extends BaseEntity {
   @Property({ fieldName: 'client_id', type: 'varchar', length: 128, index: true })
   clientId!: string;
 
-  @Property({ fieldName: 'secret_hash', type: 'varchar', length: 255, nullable: true })
-  secretHash?: string | null;
+  @Property({ fieldName: 'secret_enc', type: 'varchar', length: 512, nullable: true })
+  secretEnc?: string | null;
 
   @Property({ type: 'varchar', length: 128 })
   name!: string;
@@ -61,6 +62,23 @@ export class ClientOrmEntity extends BaseEntity {
     default: '[]',
   })
   postLogoutRedirectUris!: string[];
+
+  @Property({
+    fieldName: 'application_type',
+    type: 'varchar',
+    length: 10,
+    default: 'web',
+  })
+  applicationType!: ApplicationType;
+
+  @Property({ fieldName: 'backchannel_logout_uri', type: 'varchar', length: 512, nullable: true })
+  backchannelLogoutUri?: string | null;
+
+  @Property({ fieldName: 'frontchannel_logout_uri', type: 'varchar', length: 512, nullable: true })
+  frontchannelLogoutUri?: string | null;
+
+  @Property({ fieldName: 'allowed_resources', type: 'json', default: '[]' })
+  allowedResources!: string[];
 
   @OneToMany(() => UserRoleOrmEntity, (ur) => ur.client)
   userRoles = new Collection<UserRoleOrmEntity>(this);

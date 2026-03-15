@@ -8,6 +8,7 @@ import type {
 import type { OtpHashPort } from '@application/ports/otp-hash.port';
 import type { OtpTokenPort, OtpTokenRecord } from '@application/ports/otp-token.port';
 import type { NotificationPort } from '@application/ports/notification.port';
+import type { ConfigService } from '@nestjs/config';
 import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
 
@@ -92,6 +93,7 @@ describe('AuthCommandHandler', () => {
   let otpHash: jest.Mocked<OtpHashPort>;
   let otpToken: jest.Mocked<OtpTokenPort>;
   let notification: jest.Mocked<NotificationPort>;
+  let configService: jest.Mocked<ConfigService>;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -100,6 +102,9 @@ describe('AuthCommandHandler', () => {
     otpHash = createMockOtpHash();
     otpToken = createMockOtpToken();
     notification = createMockNotification();
+    configService = {
+      getOrThrow: jest.fn().mockReturnValue('600'),
+    } as any;
 
     handler = new AuthCommandHandler(
       userWriteRepo,
@@ -107,6 +112,7 @@ describe('AuthCommandHandler', () => {
       otpHash,
       otpToken,
       notification,
+      configService,
     );
   });
 
