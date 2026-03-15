@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { EntityManager } from '@mikro-orm/core';
+import { EntityManager, ref } from '@mikro-orm/core';
 import { RolePermissionRepository, RolePermissionListQuery } from '@domain/repositories';
 import { PermissionModel } from '@domain/models/permission';
 import { RolePermissionOrmEntity } from '../mikro-orm/entities/role-permission';
@@ -13,8 +13,8 @@ export class RolePermissionRepositoryImpl implements RolePermissionRepository {
 
   async add(params: { roleId: string; permissionId: string }): Promise<void> {
     const entity = new RolePermissionOrmEntity();
-    entity.role = this.em.getReference(RoleOrmEntity, params.roleId);
-    entity.permission = this.em.getReference(PermissionOrmEntity, params.permissionId);
+    entity.role = ref(this.em.getReference(RoleOrmEntity, params.roleId));
+    entity.permission = ref(this.em.getReference(PermissionOrmEntity, params.permissionId));
     await this.em.persist(entity).flush();
   }
 

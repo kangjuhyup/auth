@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { EntityManager } from '@mikro-orm/core';
+import { EntityManager, ref } from '@mikro-orm/core';
 import { RoleRepository, RoleListQuery } from '@domain/repositories';
 import { RoleModel } from '@domain/models/role';
 import { RoleOrmEntity } from '../mikro-orm/entities/role';
@@ -52,7 +52,7 @@ export class RoleRepositoryImpl implements RoleRepository {
       return RoleMapper.toDomain(existing);
     } else {
       const entity = RoleMapper.toOrm(role);
-      entity.tenant = this.em.getReference(TenantOrmEntity, role.tenantId);
+      entity.tenant = ref(this.em.getReference(TenantOrmEntity, role.tenantId));
       await this.em.persist(entity).flush();
       return RoleMapper.toDomain(entity);
     }

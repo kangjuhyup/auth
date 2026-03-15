@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ApplicationModule } from '@application/application.module';
 import { HealthController } from './controllers/health.controller';
 import { AuthController } from './controllers/auth.controller';
 import { AdminClientController } from './controllers/admin/client.controller';
@@ -10,8 +11,10 @@ import { AdminUserController } from './controllers/admin/user.controller';
 import { AdminRoleController } from './controllers/admin/role.controller';
 import { AdminPermissionController } from './controllers/admin/permission.controller';
 import { AdminGroupController } from './controllers/admin/group.controller';
+import { AdminSessionController } from './controllers/admin/session.controller';
 
 @Module({
+  imports: [ApplicationModule],
   controllers: [
     HealthController,
     AuthController,
@@ -24,6 +27,7 @@ import { AdminGroupController } from './controllers/admin/group.controller';
     AdminRoleController,
     AdminPermissionController,
     AdminGroupController,
+    AdminSessionController,
   ],
 })
 export class PresentationModule {}

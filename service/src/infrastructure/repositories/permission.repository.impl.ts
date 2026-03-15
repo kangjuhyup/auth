@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { EntityManager } from '@mikro-orm/core';
+import { EntityManager, ref } from '@mikro-orm/core';
 import { PermissionRepository, PermissionListQuery } from '@domain/repositories';
 import { PermissionModel } from '@domain/models/permission';
 import { PermissionOrmEntity } from '../mikro-orm/entities/permission';
@@ -52,7 +52,7 @@ export class PermissionRepositoryImpl implements PermissionRepository {
       return PermissionMapper.toDomain(existing);
     } else {
       const entity = PermissionMapper.toOrm(permission);
-      entity.tenant = this.em.getReference(TenantOrmEntity, permission.tenantId);
+      entity.tenant = ref(this.em.getReference(TenantOrmEntity, permission.tenantId));
       await this.em.persist(entity).flush();
       return PermissionMapper.toDomain(entity);
     }

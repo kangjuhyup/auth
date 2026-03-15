@@ -1,15 +1,14 @@
 import { GroupModel } from '@domain/models/group';
 import { GroupOrmEntity } from '../mikro-orm/entities/group';
-import { wrap } from '@mikro-orm/core';
 
 export class GroupMapper {
   static toDomain(entity: GroupOrmEntity): GroupModel {
     const group = new GroupModel(
       {
-        tenantId: wrap(entity.tenant).unwrap().id,
+        tenantId: entity.tenant.id,
         code: entity.code,
         name: entity.name,
-        parentId: entity.parent ? wrap(entity.parent).unwrap().id : null,
+        parentId: entity.parent ? entity.parent.id : null,
       },
       entity.id,
     );

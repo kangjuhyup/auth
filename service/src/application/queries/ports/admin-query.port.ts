@@ -50,4 +50,8 @@ export abstract class AdminQueryPort {
   // Group
   abstract getGroups(tenantId: string, query: PaginationQuery): Promise<PaginatedResult<GroupResponse>>;
   abstract getGroup(tenantId: string, id: string): Promise<GroupResponse>;
+  abstract getGroupRoles(tenantId: string, groupId: string): Promise<RoleResponse[]>;
+
+  // User roles
+  abstract getUserRoles(tenantId: string, userId: string): Promise<RoleResponse[]>;
 }

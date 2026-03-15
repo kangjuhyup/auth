@@ -1,4 +1,3 @@
-import { wrap } from '@mikro-orm/core';
 import { PermissionModel } from '@domain/models/permission';
 import { PermissionOrmEntity } from '../mikro-orm/entities/permission';
 
@@ -6,7 +5,7 @@ export class PermissionMapper {
   static toDomain(entity: PermissionOrmEntity): PermissionModel {
     const permission = new PermissionModel(
       {
-        tenantId: wrap(entity.tenant).unwrap().id,
+        tenantId: entity.tenant.id,
         code: entity.code,
         resource: entity.resource ?? null,
         action: entity.action ?? null,

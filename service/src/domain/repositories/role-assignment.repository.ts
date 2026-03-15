@@ -1,3 +1,5 @@
+import { RoleModel } from '../models/role';
+
 export abstract class RoleAssignmentRepository {
   abstract assignToUser(params: {
     userId: string;
@@ -18,4 +20,7 @@ export abstract class RoleAssignmentRepository {
     groupId: string;
     roleId: string;
   }): Promise<void>;
+
+  abstract listForUser(userId: string): Promise<RoleModel[]>;
+  abstract listForGroup(groupId: string): Promise<RoleModel[]>;
 }

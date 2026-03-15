@@ -4,3 +4,6 @@ export { RoleRepository, RoleListQuery } from './role.repository';
 export { PermissionRepository, PermissionListQuery } from './permission.repository';
 export { RolePermissionRepository, RolePermissionListQuery } from './role-permission.repository';
 export { RoleAssignmentRepository } from './role-assignment.repository';
+export { ClientRepository, ClientListQuery } from './client.repository';
+export { TenantConfigRepository } from './tenant-config.repository';
+export { JwksKeyRepository } from './jwks-key.repository';

@@ -10,7 +10,7 @@ import {
   PermissionResponse,
   GroupResponse,
 } from '@application/dto';
-import { TenantRepository, GroupRepository, RoleRepository, PermissionRepository, RolePermissionRepository } from '@domain/repositories';
+import { TenantRepository, GroupRepository, RoleRepository, PermissionRepository, RolePermissionRepository, RoleAssignmentRepository, ClientRepository } from '@domain/repositories';
 
 export class AdminQueryHandler implements AdminQueryPort {
   constructor(
@@ -19,6 +19,8 @@ export class AdminQueryHandler implements AdminQueryPort {
     private readonly roleRepo: RoleRepository,
     private readonly permissionRepo: PermissionRepository,
     private readonly rolePermissionRepo: RolePermissionRepository,
+    private readonly roleAssignmentRepo: RoleAssignmentRepository,
+    private readonly clientRepo: ClientRepository,
   ) {}
 
   // ── Tenant ──────────────────────────────────────────────────────────────
@@ -66,12 +68,57 @@ export class AdminQueryHandler implements AdminQueryPort {
 
   // ── Not implemented ──────────────────────────────────────────────────────
 
-  getClients(_tenantId: string, _query: PaginationQuery): Promise<PaginatedResult<ClientResponse>> {
-    throw new Error('Method not implemented.');
+  async getClients(
+    tenantId: string,
+    query: PaginationQuery,
+  ): Promise<PaginatedResult<ClientResponse>> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+
+    const { items, total } = await this.clientRepo.list({ tenantId, page, limit });
+
+    return {
+      items: items.map((c) => ({
+        id: c.id,
+        clientId: c.clientId,
+        name: c.name,
+        type: c.type,
+        enabled: c.enabled,
+        redirectUris: c.redirectUris,
+        grantTypes: c.grantTypes,
+        responseTypes: c.responseTypes,
+        tokenEndpointAuthMethod: c.tokenEndpointAuthMethod,
+        scope: c.scope,
+        postLogoutRedirectUris: c.postLogoutRedirectUris,
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt,
+      })),
+      total,
+      page,
+      limit,
+    };
   }
 
-  getClient(_tenantId: string, _id: string): Promise<ClientResponse> {
-    throw new Error('Method not implemented.');
+  async getClient(tenantId: string, id: string): Promise<ClientResponse> {
+    const client = await this.clientRepo.findById(id);
+    if (!client || client.tenantId !== tenantId)
+      throw new NotFoundException('Client not found');
+
+    return {
+      id: client.id,
+      clientId: client.clientId,
+      name: client.name,
+      type: client.type,
+      enabled: client.enabled,
+      redirectUris: client.redirectUris,
+      grantTypes: client.grantTypes,
+      responseTypes: client.responseTypes,
+      tokenEndpointAuthMethod: client.tokenEndpointAuthMethod,
+      scope: client.scope,
+      postLogoutRedirectUris: client.postLogoutRedirectUris,
+      createdAt: client.createdAt,
+      updatedAt: client.updatedAt,
+    };
   }
 
   getKeys(_tenantId: string): Promise<unknown[]> {
@@ -244,5 +291,33 @@ export class AdminQueryHandler implements AdminQueryPort {
       createdAt: group.createdAt,
       updatedAt: group.updatedAt,
     };
+  }
+
+  async getGroupRoles(tenantId: string, groupId: string): Promise<RoleResponse[]> {
+    const group = await this.groupRepo.findById(groupId);
+    if (!group || group.tenantId !== tenantId)
+      throw new NotFoundException('Group not found');
+
+    const roles = await this.roleAssignmentRepo.listForGroup(groupId);
+    return roles.map((r) => ({
+      id: r.id,
+      code: r.code,
+      name: r.name,
+      description: r.description ?? null,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    }));
+  }
+
+  async getUserRoles(tenantId: string, userId: string): Promise<RoleResponse[]> {
+    const roles = await this.roleAssignmentRepo.listForUser(userId);
+    return roles.map((r) => ({
+      id: r.id,
+      code: r.code,
+      name: r.name,
+      description: r.description ?? null,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    }));
   }
 }

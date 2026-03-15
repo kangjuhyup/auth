@@ -14,6 +14,7 @@ import {
   CreateGroupDto,
   UpdateGroupDto,
   GroupResponse,
+  RoleResponse,
   PaginationQuery,
   PaginatedResult,
 } from '@presentation/dto';
@@ -66,6 +67,14 @@ export class AdminGroupController {
     @Param('id') id: string,
   ): Promise<void> {
     return this.commandPort.deleteGroup(tenant.id, id);
+  }
+
+  @Get(':id/roles')
+  getRoles(
+    @Tenant() tenant: TenantContext,
+    @Param('id') id: string,
+  ): Promise<RoleResponse[]> {
+    return this.queryPort.getGroupRoles(tenant.id, id);
   }
 
   @Post(':id/roles/:roleId')

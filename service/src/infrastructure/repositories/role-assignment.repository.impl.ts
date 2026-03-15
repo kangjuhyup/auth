@@ -1,11 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { EntityManager } from '@mikro-orm/core';
+import { EntityManager, ref } from '@mikro-orm/core';
 import { RoleAssignmentRepository } from '@domain/repositories';
+import { RoleModel } from '@domain/models/role';
 import { UserRoleOrmEntity } from '../mikro-orm/entities/user-role';
 import { GroupRoleOrmEntity } from '../mikro-orm/entities/group-role';
 import { UserOrmEntity } from '../mikro-orm/entities/user';
 import { RoleOrmEntity } from '../mikro-orm/entities/role';
 import { GroupOrmEntity } from '../mikro-orm/entities/group';
+import { RoleMapper } from './role.mapper';
 
 @Injectable()
 export class RoleAssignmentRepositoryImpl implements RoleAssignmentRepository {
@@ -13,8 +15,8 @@ export class RoleAssignmentRepositoryImpl implements RoleAssignmentRepository {
 
   async assignToUser(params: { userId: string; roleId: string }): Promise<void> {
     const entity = new UserRoleOrmEntity();
-    entity.user = this.em.getReference(UserOrmEntity, params.userId);
-    entity.role = this.em.getReference(RoleOrmEntity, params.roleId);
+    entity.user = ref(this.em.getReference(UserOrmEntity, params.userId));
+    entity.role = ref(this.em.getReference(RoleOrmEntity, params.roleId));
     await this.em.persist(entity).flush();
   }
 
@@ -31,8 +33,8 @@ export class RoleAssignmentRepositoryImpl implements RoleAssignmentRepository {
     roleId: string;
   }): Promise<void> {
     const entity = new GroupRoleOrmEntity();
-    entity.group = this.em.getReference(GroupOrmEntity, params.groupId);
-    entity.role = this.em.getReference(RoleOrmEntity, params.roleId);
+    entity.group = ref(this.em.getReference(GroupOrmEntity, params.groupId));
+    entity.role = ref(this.em.getReference(RoleOrmEntity, params.roleId));
     await this.em.persist(entity).flush();
   }
 
@@ -45,5 +47,23 @@ export class RoleAssignmentRepositoryImpl implements RoleAssignmentRepository {
       role: { id: params.roleId },
     });
     await this.em.remove(entity).flush();
+  }
+
+  async listForUser(userId: string): Promise<RoleModel[]> {
+    const entries = await this.em.find(
+      UserRoleOrmEntity,
+      { user: { id: userId } },
+      { populate: ['role', 'role.tenant'] },
+    );
+    return entries.map((e) => RoleMapper.toDomain(e.role.unwrap()));
+  }
+
+  async listForGroup(groupId: string): Promise<RoleModel[]> {
+    const entries = await this.em.find(
+      GroupRoleOrmEntity,
+      { group: { id: groupId } },
+      { populate: ['role', 'role.tenant'] },
+    );
+    return entries.map((e) => RoleMapper.toDomain(e.role.unwrap()));
   }
 }

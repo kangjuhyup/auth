@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { EntityManager } from '@mikro-orm/core';
+import { EntityManager, ref } from '@mikro-orm/core';
 import { GroupRepository, GroupListQuery } from '@domain/repositories';
 import { GroupModel } from '@domain/models/group';
 import { GroupOrmEntity } from '../mikro-orm/entities/group';
@@ -51,7 +51,7 @@ export class GroupRepositoryImpl implements GroupRepository {
 
       if (group.parentId !== undefined) {
         existing.parent = group.parentId
-          ? this.em.getReference(GroupOrmEntity, group.parentId)
+          ? ref(this.em.getReference(GroupOrmEntity, group.parentId))
           : null;
       }
 
@@ -59,10 +59,10 @@ export class GroupRepositoryImpl implements GroupRepository {
       return GroupMapper.toDomain(existing);
     } else {
       const entity = GroupMapper.toOrm(group);
-      entity.tenant = this.em.getReference(TenantOrmEntity, group.tenantId);
+      entity.tenant = ref(this.em.getReference(TenantOrmEntity, group.tenantId));
 
       if (group.parentId) {
-        entity.parent = this.em.getReference(GroupOrmEntity, group.parentId);
+        entity.parent = ref(this.em.getReference(GroupOrmEntity, group.parentId));
       }
 
       await this.em.persist(entity).flush();

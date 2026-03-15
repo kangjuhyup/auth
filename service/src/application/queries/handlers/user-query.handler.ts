@@ -1,53 +1,77 @@
-import type { ProfileResponse } from '@application/dto';
-import type { UserQueryPort } from '@application/queries/ports/user-query.port';
+import type { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
+import type {
+  UserClaimsView,
+  UserProfileView,
+  UserQueryPort,
+} from '@application/queries/ports/user-query.port';
 
-export class UserQueryService {
-  constructor(private readonly userQuery: UserQueryPort) {}
+export class UserQueryHandler implements UserQueryPort {
+  constructor(
+    private readonly userWriteRepository: UserWriteRepositoryPort,
+  ) {}
 
-  async getProfile(params: {
+  async findProfile(params: {
     tenantId: string;
     userId: string;
-  }): Promise<ProfileResponse> {
-    const view = await this.userQuery.findProfile(params);
-    if (!view) throw new Error('UserNotFound');
-
-    if (view.status === 'WITHDRAWN') throw new Error('UserWithdrawn');
+  }): Promise<UserProfileView | null> {
+    const user = await this.userWriteRepository.findById(params.userId);
+    if (!user || user.tenantId !== params.tenantId) {
+      return null;
+    }
 
     return {
-      id: view.userId,
-      username: view.username,
-      email: view.email ?? null,
-      emailVerified: view.emailVerified,
-      phone: view.phone ?? null,
-      phoneVerified: view.phoneVerified,
-      status: view.status,
-      createdAt: view.createdAt,
-      updatedAt: view.updatedAt,
+      userId: user.id,
+      tenantId: user.tenantId,
+      username: user.username,
+      email: user.email ?? undefined,
+      emailVerified: user.emailVerified,
+      phone: user.phone ?? undefined,
+      phoneVerified: user.phoneVerified,
+      status: user.status,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
     };
   }
 
-  /**
-   * OIDC findAccount에서 사용할 최소 claims 조회
-   * - sub == userId(ULID) 가정
-   */
-  async findAccountClaimsBySub(params: {
+  async findClaimsBySub(params: {
     tenantId: string;
     sub: string;
-  }): Promise<{
-    accountId: string;
-    claims: () => Promise<Record<string, unknown>>;
-  } | null> {
-    const view = await this.userQuery.findClaimsBySub(params);
-    if (!view) return null;
+  }): Promise<UserClaimsView | null> {
+    const user = await this.userWriteRepository.findById(params.sub);
+    if (!user || user.tenantId !== params.tenantId) {
+      return null;
+    }
 
-    // 화이트리스트 claims만 반환 (민감정보 누출 방지)
     return {
-      accountId: String(view.sub),
-      claims: async () => ({
-        sub: view.sub,
-        email: view.email ?? undefined,
-        email_verified: view.email_verified ?? undefined,
-      }),
+      sub: user.id,
+      email: user.email ?? undefined,
+      email_verified: user.emailVerified,
+    };
+  }
+
+  async findByUsername(params: {
+    tenantId: string;
+    username: string;
+  }): Promise<UserProfileView | null> {
+    const user = await this.userWriteRepository.findByUsername(
+      params.tenantId,
+      params.username,
+    );
+    if (!user) {
+      return null;
+    }
+
+    return {
+      userId: user.id,
+      tenantId: user.tenantId,
+      username: user.username,
+      email: user.email ?? undefined,
+      emailVerified: user.emailVerified,
+      phone: user.phone ?? undefined,
+      phoneVerified: user.phoneVerified,
+      status: user.status,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
     };
   }
 }

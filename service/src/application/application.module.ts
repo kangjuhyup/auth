@@ -4,7 +4,6 @@ import { InfrastructureModule } from '@infrastructure/infrastructure.module';
 // Command Ports
 import { AuthCommandPort } from './commands/ports/auth-command.port';
 import { TenantCommandPort } from './commands/ports/tenant-command.port';
-import { UserWriteRepositoryPort } from './commands/ports/user-write-repository.port';
 
 // Command Handlers
 import { AuthCommandHandler } from './commands/handlers/auth-command.handler';
@@ -19,94 +18,84 @@ import { PermissionCommandPort } from './commands/ports/permission-command.port'
 import { PermissionCommandHandler } from './commands/handlers/permission-command.handler';
 
 // Infrastructure Ports
-import { PasswordHashPort } from './ports/password-hash.port';
-import { OtpHashPort } from './ports/otp-hash.port';
-import { OtpTokenPort } from './ports/otp-token.port';
-import { NotificationPort } from './ports/notification.port';
 import { AdminQueryPort } from './queries/ports/admin-query.port';
 import { AdminQueryHandler } from './queries/handlers/admin-query.handler';
+import { AuthQueryPort } from './queries/ports/auth-query.port';
+import { AuthQueryHandler } from './queries/handlers/auth-query.handler';
 import { UserQueryPort } from './queries/ports/user-query.port';
-import { UserQueryService } from './queries/handlers/user-query.handler';
+import { UserQueryHandler } from './queries/handlers/user-query.handler';
 import { ClientQueryPort } from './queries/ports/client-query.port';
 
 // Domain Repositories
-import { TenantRepository, GroupRepository, RoleRepository, PermissionRepository, RoleAssignmentRepository, RolePermissionRepository } from '@domain/repositories';
+import { ClientCommandPort } from './commands/ports/client-command.port';
+import { ClientCommandHandler } from './commands/handlers/client-command.handler';
+import { ClientQueryHandler } from './queries/handlers/client-query.handler';
+import { KeyCommandPort } from './commands/ports/key-command.port';
+import { KeyCommandHandler } from './commands/handlers/key-command.handler';
+import { PolicyCommandPort } from './commands/ports/policy-command.port';
+import { PolicyCommandHandler } from './commands/handlers/policy-command.handler';
+
+const commands = [
+  {
+    provide: AuthCommandPort,
+    useClass: AuthCommandHandler,
+  },
+  {
+    provide: TenantCommandPort,
+    useClass: TenantCommandHandler,
+  },
+  {
+    provide: GroupCommandPort,
+    useClass: GroupCommandHandler,
+  },
+  {
+    provide: UserCommandPort,
+    useClass: UserCommandHandler,
+  },
+  {
+    provide: RoleCommandPort,
+    useClass: RoleCommandHandler,
+  },
+  {
+    provide: PermissionCommandPort,
+    useClass: PermissionCommandHandler,
+  },
+  {
+    provide: ClientCommandPort,
+    useClass: ClientCommandHandler,
+  },
+  {
+    provide: KeyCommandPort,
+    useClass: KeyCommandHandler,
+  },
+  {
+    provide: PolicyCommandPort,
+    useClass: PolicyCommandHandler,
+  },
+];
+
+const queries = [
+  {
+    provide: AdminQueryPort,
+    useClass: AdminQueryHandler,
+  },
+  {
+    provide: AuthQueryPort,
+    useClass: AuthQueryHandler,
+  },
+  {
+    provide: UserQueryPort,
+    useClass: UserQueryHandler,
+  },
+  {
+    provide: ClientQueryPort,
+    useClass: ClientQueryHandler,
+  },
+];
 
 @Module({
   imports: [InfrastructureModule],
-  providers: [
-    {
-      provide: AuthCommandPort,
-      useFactory: (userWriteRepo, passwordHash, otpHash, otpToken, notification) => {
-        return new AuthCommandHandler(
-          userWriteRepo,
-          passwordHash,
-          otpHash,
-          otpToken,
-          notification,
-        );
-      },
-      inject: [
-        UserWriteRepositoryPort,
-        PasswordHashPort,
-        OtpHashPort,
-        OtpTokenPort,
-        NotificationPort,
-      ],
-    },
-    {
-      provide: TenantCommandPort,
-      useFactory: (tenantRepo: TenantRepository) =>
-        new TenantCommandHandler(tenantRepo),
-      inject: [TenantRepository],
-    },
-    {
-      provide: GroupCommandPort,
-      useFactory: (groupRepo: GroupRepository, roleRepo: RoleRepository, roleAssignment: RoleAssignmentRepository) =>
-        new GroupCommandHandler(groupRepo, roleRepo, roleAssignment),
-      inject: [GroupRepository, RoleRepository, RoleAssignmentRepository],
-    },
-    {
-      provide: UserCommandPort,
-      useFactory: (userWriteRepo: UserWriteRepositoryPort, roleRepo: RoleRepository, roleAssignment: RoleAssignmentRepository) =>
-        new UserCommandHandler(userWriteRepo, roleRepo, roleAssignment),
-      inject: [UserWriteRepositoryPort, RoleRepository, RoleAssignmentRepository],
-    },
-    {
-      provide: RoleCommandPort,
-      useFactory: (
-        roleRepo: RoleRepository,
-        permissionRepo: PermissionRepository,
-        rolePermissionRepo: RolePermissionRepository,
-      ) => new RoleCommandHandler(roleRepo, permissionRepo, rolePermissionRepo),
-      inject: [RoleRepository, PermissionRepository, RolePermissionRepository],
-    },
-    {
-      provide: PermissionCommandPort,
-      useFactory: (permissionRepo: PermissionRepository) =>
-        new PermissionCommandHandler(permissionRepo),
-      inject: [PermissionRepository],
-    },
-    {
-      provide: AdminQueryPort,
-      useFactory: (
-        tenantRepo: TenantRepository,
-        groupRepo: GroupRepository,
-        roleRepo: RoleRepository,
-        permissionRepo: PermissionRepository,
-        rolePermissionRepo: RolePermissionRepository,
-      ) => new AdminQueryHandler(tenantRepo, groupRepo, roleRepo, permissionRepo, rolePermissionRepo),
-      inject: [TenantRepository, GroupRepository, RoleRepository, PermissionRepository, RolePermissionRepository],
-    },
-    {
-      provide: UserQueryPort,
-      useClass: UserQueryService,
-    },
-    {
-      provide: ClientQueryPort,
-      useValue: { getAllowedResources: async () => [] },
-    },
-  ],
-  exports: [AuthCommandPort, TenantCommandPort, UserCommandPort, GroupCommandPort, RoleCommandPort, PermissionCommandPort, AdminQueryPort, UserQueryPort],
+  providers: [...commands, ...queries],
+  exports: [...commands, ...queries],
 })
 export class ApplicationModule {}

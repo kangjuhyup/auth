@@ -14,6 +14,7 @@ import {
   CreateUserDto,
   UpdateUserDto,
   UserResponse,
+  RoleResponse,
   PaginationQuery,
   PaginatedResult,
 } from '@presentation/dto';
@@ -66,6 +67,14 @@ export class AdminUserController {
     @Param('id') id: string,
   ): Promise<void> {
     return this.commandPort.deleteUser(tenant.id, id);
+  }
+
+  @Get(':id/roles')
+  getRoles(
+    @Tenant() tenant: TenantContext,
+    @Param('id') id: string,
+  ): Promise<RoleResponse[]> {
+    return this.queryPort.getUserRoles(tenant.id, id);
   }
 
   @Post(':id/roles/:roleId')
