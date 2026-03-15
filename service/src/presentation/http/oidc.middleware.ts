@@ -16,7 +16,7 @@ export class OidcDelegateMiddleware implements NestMiddleware {
     private readonly registry: OidcProviderRegistry,
   ) {}
 
-  use(req: Request, res: Response) {
+  async use(req: Request, res: Response) {
     const tenantCode = req.params.tenantCode;
     if (tenantCode === undefined) {
       throw new BadRequestException('Tenant code is required');
@@ -24,7 +24,7 @@ export class OidcDelegateMiddleware implements NestMiddleware {
     if (Array.isArray(tenantCode)) {
       throw new BadRequestException('Tenant code is must be a string');
     }
-    const provider = this.registry.get(tenantCode);
+    const provider = await this.registry.get(tenantCode);
 
     const prefix = `/t/${tenantCode}/oidc`;
     if (req.url.startsWith(prefix)) {

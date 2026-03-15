@@ -7,7 +7,7 @@ type ProviderLike = {
 };
 
 type RegistryLike = {
-  get: (tenantCode: string) => ProviderLike;
+  get: (tenantCode: string) => Promise<ProviderLike>;
 };
 
 describe('OidcDelegateMiddleware', () => {
@@ -20,54 +20,58 @@ describe('OidcDelegateMiddleware', () => {
 
   const makeRes = (): Response => ({}) as any;
 
-  it('tenantCode가 없으면 BadRequestException을 던진다', () => {
+  it('tenantCode가 없으면 BadRequestException을 던진다', async () => {
     const registry: RegistryLike = {
-      get: jest.fn(),
+      get: jest.fn().mockResolvedValue({
+        callback: jest.fn(),
+      }),
     };
     const mw = new OidcDelegateMiddleware(registry as any);
 
     const req = makeReq({ params: {} as any });
 
-    expect(() => mw.use(req, makeRes())).toThrow(BadRequestException);
+    await expect(mw.use(req, makeRes())).rejects.toThrow(BadRequestException);
     expect(registry.get).not.toHaveBeenCalled();
   });
 
-  it('tenantCode가 배열이면 BadRequestException을 던진다', () => {
+  it('tenantCode가 배열이면 BadRequestException을 던진다', async () => {
     const registry: RegistryLike = {
-      get: jest.fn(),
+      get: jest.fn().mockResolvedValue({
+        callback: jest.fn(),
+      }),
     };
     const mw = new OidcDelegateMiddleware(registry as any);
 
     const req = makeReq({ params: { tenantCode: ['a', 'b'] } as any });
 
-    expect(() => mw.use(req, makeRes())).toThrow(BadRequestException);
+    await expect(mw.use(req, makeRes())).rejects.toThrow(BadRequestException);
     expect(registry.get).not.toHaveBeenCalled();
   });
 
-  it('tenantCode가 문자열이면 registry.get을 호출한다', () => {
+  it('tenantCode가 문자열이면 registry.get을 호출한다', async () => {
     const provider: ProviderLike = {
       callback: jest.fn().mockReturnValue(jest.fn()),
     };
     const registry: RegistryLike = {
-      get: jest.fn().mockReturnValue(provider),
+      get: jest.fn().mockResolvedValue(provider),
     };
     const mw = new OidcDelegateMiddleware(registry as any);
 
     const req = makeReq({ params: { tenantCode: 'tenant-a' } as any });
 
-    mw.use(req, makeRes());
+    await mw.use(req, makeRes());
 
     expect(registry.get).toHaveBeenCalledTimes(1);
     expect(registry.get).toHaveBeenCalledWith('tenant-a');
   });
 
-  it('요청 URL에서 /t/{tenantCode}/oidc prefix를 제거하고 provider.callback을 호출한다', () => {
+  it('요청 URL에서 /t/{tenantCode}/oidc prefix를 제거하고 provider.callback을 호출한다', async () => {
     const handler = jest.fn();
     const provider: ProviderLike = {
       callback: jest.fn().mockReturnValue(handler),
     };
     const registry: RegistryLike = {
-      get: jest.fn().mockReturnValue(provider),
+      get: jest.fn().mockResolvedValue(provider),
     };
     const mw = new OidcDelegateMiddleware(registry as any);
 
@@ -78,7 +82,7 @@ describe('OidcDelegateMiddleware', () => {
 
     const res = makeRes();
 
-    mw.use(req, res);
+    await mw.use(req, res);
 
     expect(req.url).toBe('/.well-known/openid-configuration');
     expect(provider.callback).toHaveBeenCalledTimes(1);
@@ -86,13 +90,13 @@ describe('OidcDelegateMiddleware', () => {
     expect(handler).toHaveBeenCalledWith(req, res);
   });
 
-  it('URL이 prefix로 시작하지 않으면 url을 변경하지 않고 provider.callback을 호출한다', () => {
+  it('URL이 prefix로 시작하지 않으면 url을 변경하지 않고 provider.callback을 호출한다', async () => {
     const handler = jest.fn();
     const provider: ProviderLike = {
       callback: jest.fn().mockReturnValue(handler),
     };
     const registry: RegistryLike = {
-      get: jest.fn().mockReturnValue(provider),
+      get: jest.fn().mockResolvedValue(provider),
     };
     const mw = new OidcDelegateMiddleware(registry as any);
 
@@ -103,19 +107,19 @@ describe('OidcDelegateMiddleware', () => {
 
     const res = makeRes();
 
-    mw.use(req, res);
+    await mw.use(req, res);
 
     expect(req.url).toBe('/something-else');
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
-  it('prefix만 있는 경우 url을 "/"로 만든다', () => {
+  it('prefix만 있는 경우 url을 "/"로 만든다', async () => {
     const handler = jest.fn();
     const provider: ProviderLike = {
       callback: jest.fn().mockReturnValue(handler),
     };
     const registry: RegistryLike = {
-      get: jest.fn().mockReturnValue(provider),
+      get: jest.fn().mockResolvedValue(provider),
     };
     const mw = new OidcDelegateMiddleware(registry as any);
 
@@ -126,7 +130,7 @@ describe('OidcDelegateMiddleware', () => {
 
     const res = makeRes();
 
-    mw.use(req, res);
+    await mw.use(req, res);
 
     expect(req.url).toBe('/');
     expect(handler).toHaveBeenCalledTimes(1);

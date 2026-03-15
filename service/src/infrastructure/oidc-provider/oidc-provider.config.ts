@@ -1,5 +1,5 @@
 // service/src/infrastructure/oidc-provider/oidc-provider.config.ts
-import { type Configuration } from 'oidc-provider';
+import type { Configuration } from 'oidc-provider';
 import type { EntityManager } from '@mikro-orm/core';
 import type Redis from 'ioredis';
 import { buildOidcAdapterFactory } from './adapters/oidc-apdater.factory';
