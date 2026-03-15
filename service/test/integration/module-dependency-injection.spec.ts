@@ -2,10 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { EntityManager } from '@mikro-orm/core';
 
 // Application Ports
-import { PASSWORD_HASHER_PORT } from '@application/ports/password-hash.port';
-import { OTP_HASH_PORT } from '@application/ports/otp-hash.port';
-import { OTP_TOKEN_PORT } from '@application/ports/otp-token.port';
-import { USER_WRITE_REPOSITORY_PORT } from '@application/commands/ports/user-write-repository.port';
+import { PasswordHashPort } from '@application/ports/password-hash.port';
+import { OtpHashPort } from '@application/ports/otp-hash.port';
+import { OtpTokenPort } from '@application/ports/otp-token.port';
+import { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
 
 // Infrastructure Adapters
 import { PasswordHashAdapter } from '@infrastructure/crypto/password/password.adapter';
@@ -16,7 +16,7 @@ import { OtpTokenAdapter } from '@infrastructure/crypto/otp/otp-token.adapter';
 import { UserWriteRepositoryImpl } from '@infrastructure/repositories/user-write.repository.impl';
 
 // Domain Repositories
-import { TENANT_REPOSITORY } from '@domain/repositories';
+import { TenantRepository } from '@domain/repositories';
 import { TenantRepositoryImpl } from '@infrastructure/repositories/tenant.repository.impl';
 
 /**
@@ -50,25 +50,25 @@ describe('Infrastructure Adapters DI', () => {
         Argon2idHash,
         Pbkdf2Sha256Hash,
         {
-          provide: PASSWORD_HASHER_PORT,
+          provide: PasswordHashPort,
           useFactory: (argon2: Argon2idHash, pbkdf2: Pbkdf2Sha256Hash) =>
             new PasswordHashAdapter([argon2, pbkdf2], { alg: 'argon2id', params: {}, version: 1 }),
           inject: [Argon2idHash, Pbkdf2Sha256Hash],
         },
         {
-          provide: OTP_HASH_PORT,
+          provide: OtpHashPort,
           useFactory: () => new OtpHashAdapter('test-secret-minimum-16-chars'),
         },
         {
-          provide: OTP_TOKEN_PORT,
+          provide: OtpTokenPort,
           useClass: OtpTokenAdapter,
         },
         {
-          provide: USER_WRITE_REPOSITORY_PORT,
+          provide: UserWriteRepositoryPort,
           useClass: UserWriteRepositoryImpl,
         },
         {
-          provide: TENANT_REPOSITORY,
+          provide: TenantRepository,
           useClass: TenantRepositoryImpl,
         },
         {
@@ -84,8 +84,8 @@ describe('Infrastructure Adapters DI', () => {
   });
 
   describe('Crypto Adapters', () => {
-    it('PASSWORD_HASHER_PORT가 PasswordHashAdapter로 주입된다', () => {
-      const passwordHash = module.get(PASSWORD_HASHER_PORT, { strict: false });
+    it('PasswordHashPort가 PasswordHashAdapter로 주입된다', () => {
+      const passwordHash = module.get(PasswordHashPort, { strict: false });
 
       expect(passwordHash).toBeDefined();
       expect(passwordHash).toBeInstanceOf(PasswordHashAdapter);
@@ -94,8 +94,8 @@ describe('Infrastructure Adapters DI', () => {
       expect(passwordHash.defaultPolicy).toBeDefined();
     });
 
-    it('OTP_HASH_PORT가 OtpHashAdapter로 주입된다', () => {
-      const otpHash = module.get(OTP_HASH_PORT, { strict: false });
+    it('OtpHashPort가 OtpHashAdapter로 주입된다', () => {
+      const otpHash = module.get(OtpHashPort, { strict: false });
 
       expect(otpHash).toBeDefined();
       expect(otpHash).toBeInstanceOf(OtpHashAdapter);
@@ -103,8 +103,8 @@ describe('Infrastructure Adapters DI', () => {
       expect(otpHash.generateToken).toBeDefined();
     });
 
-    it('OTP_TOKEN_PORT가 OtpTokenAdapter로 주입된다', () => {
-      const otpToken = module.get(OTP_TOKEN_PORT, { strict: false });
+    it('OtpTokenPort가 OtpTokenAdapter로 주입된다', () => {
+      const otpToken = module.get(OtpTokenPort, { strict: false });
 
       expect(otpToken).toBeDefined();
       expect(otpToken).toBeInstanceOf(OtpTokenAdapter);
@@ -115,8 +115,8 @@ describe('Infrastructure Adapters DI', () => {
   });
 
   describe('Repository Adapters', () => {
-    it('USER_WRITE_REPOSITORY_PORT가 UserWriteRepositoryImpl로 주입된다', () => {
-      const userWriteRepo = module.get(USER_WRITE_REPOSITORY_PORT, { strict: false });
+    it('UserWriteRepositoryPort가 UserWriteRepositoryImpl로 주입된다', () => {
+      const userWriteRepo = module.get(UserWriteRepositoryPort, { strict: false });
 
       expect(userWriteRepo).toBeDefined();
       expect(userWriteRepo).toBeInstanceOf(UserWriteRepositoryImpl);
@@ -126,8 +126,8 @@ describe('Infrastructure Adapters DI', () => {
       expect(userWriteRepo.save).toBeDefined();
     });
 
-    it('TENANT_REPOSITORY가 TenantRepositoryImpl로 주입된다', () => {
-      const tenantRepo = module.get(TENANT_REPOSITORY, { strict: false });
+    it('TenantRepository가 TenantRepositoryImpl로 주입된다', () => {
+      const tenantRepo = module.get(TenantRepository, { strict: false });
 
       expect(tenantRepo).toBeDefined();
       expect(tenantRepo).toBeInstanceOf(TenantRepositoryImpl);
@@ -146,13 +146,13 @@ describe('Provider 메서드 시그니처 검증', () => {
         Argon2idHash,
         Pbkdf2Sha256Hash,
         {
-          provide: PASSWORD_HASHER_PORT,
+          provide: PasswordHashPort,
           useFactory: (argon2: Argon2idHash, pbkdf2: Pbkdf2Sha256Hash) =>
             new PasswordHashAdapter([argon2, pbkdf2], { alg: 'argon2id', params: {}, version: 1 }),
           inject: [Argon2idHash, Pbkdf2Sha256Hash],
         },
         {
-          provide: OTP_HASH_PORT,
+          provide: OtpHashPort,
           useFactory: () => new OtpHashAdapter('test-secret-minimum-16-chars'),
         },
       ],
@@ -164,7 +164,7 @@ describe('Provider 메서드 시그니처 검증', () => {
   });
 
   it('PasswordHashPort 메서드가 올바른 시그니처를 가진다', () => {
-    const passwordHash = module.get(PASSWORD_HASHER_PORT, { strict: false });
+    const passwordHash = module.get(PasswordHashPort, { strict: false });
 
     expect(typeof passwordHash.hash).toBe('function');
     expect(typeof passwordHash.verify).toBe('function');
@@ -172,7 +172,7 @@ describe('Provider 메서드 시그니처 검증', () => {
   });
 
   it('OtpHashPort 메서드가 올바른 시그니처를 가진다', () => {
-    const otpHash = module.get(OTP_HASH_PORT, { strict: false });
+    const otpHash = module.get(OtpHashPort, { strict: false });
 
     expect(typeof otpHash.hash).toBe('function');
     expect(typeof otpHash.generateToken).toBe('function');

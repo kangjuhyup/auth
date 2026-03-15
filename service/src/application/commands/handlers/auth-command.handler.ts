@@ -14,10 +14,7 @@ import { UserCredentialModel } from '@domain/models/user-credential';
 import { PasswordHashPort } from '@application/ports/password-hash.port';
 import { OtpHashPort } from '@application/ports/otp-hash.port';
 import { OtpTokenPort } from '@application/ports/otp-token.port';
-import {
-  NotificationPort,
-  NOTIFICATION_PORT,
-} from '@application/ports/notification.port';
+import { NotificationPort } from '@application/ports/notification.port';
 import { UserWriteRepositoryPort } from '../ports/user-write-repository.port';
 
 export class AuthCommandHandler implements AuthCommandPort {

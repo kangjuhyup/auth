@@ -1,1 +1,1 @@
-export { TenantRepository, TENANT_REPOSITORY } from './tenant.repository';
+export { TenantRepository } from './tenant.repository';

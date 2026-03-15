@@ -7,21 +7,15 @@ import {
 } from '@nestjs/common';
 import { OIDC_PROVIDER } from './oidc-provider.constants';
 import { createOidcProvider } from './oidc-provider.factory';
-import { ACCESS_VERIFIER_PORT } from '@application/ports/access-verifier.port';
+import { AccessVerifierPort } from '@application/ports/access-verifier.port';
 import { AccessVerifierAdapter } from './access-verifier.adapter';
 import { MikroORM } from '@mikro-orm/core';
 import Redis from 'ioredis';
-import {
-  ClientQueryPort,
-  CLIENT_QUERY_PORT,
-} from '@application/queries/ports/client-query.port';
+import { ClientQueryPort } from '@application/queries/ports/client-query.port';
 import { TenantMiddleware } from '@presentation/http/tenant.middleware';
 import { OidcDelegateMiddleware } from '@presentation/http/oidc.middleware';
 import { OidcProviderRegistry } from './oidc-provider.registry';
-import {
-  USER_QUERY_PORT,
-  UserQueryPort,
-} from '@application/queries/ports/user-query.port';
+import { UserQueryPort } from '@application/queries/ports/user-query.port';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
 import { REDIS, RedisModule } from '@infrastructure/redis/redis.module';
 import { ApplicationModule } from '@application/application.module';
@@ -57,14 +51,14 @@ import { ApplicationModule } from '@application/application.module';
 
         return registry;
       },
-      inject: [MikroORM, REDIS, USER_QUERY_PORT, CLIENT_QUERY_PORT],
+      inject: [MikroORM, REDIS, UserQueryPort, ClientQueryPort],
     },
     {
-      provide: ACCESS_VERIFIER_PORT,
+      provide: AccessVerifierPort,
       useClass: AccessVerifierAdapter,
     },
   ],
-  exports: [OIDC_PROVIDER, ACCESS_VERIFIER_PORT],
+  exports: [OIDC_PROVIDER, AccessVerifierPort],
 })
 export class OidcProviderModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

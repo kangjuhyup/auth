@@ -2,18 +2,14 @@ import {
   Injectable,
   NestMiddleware,
   NotFoundException,
-  Inject,
   BadRequestException,
 } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
-import { TENANT_REPOSITORY, TenantRepository } from '@domain/repositories';
+import { TenantRepository } from '@domain/repositories';
 
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
-  constructor(
-    @Inject(TENANT_REPOSITORY)
-    private readonly tenantRepository: TenantRepository,
-  ) {}
+  constructor(private readonly tenantRepository: TenantRepository) {}
 
   async use(req: Request, _res: Response, next: NextFunction): Promise<void> {
     const tenantCode = req.params.tenantCode;

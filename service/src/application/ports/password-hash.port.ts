@@ -1,5 +1,3 @@
-export const PASSWORD_HASHER_PORT = Symbol('PASSWORD_HASHER_PORT');
-
 export type HashPolicy = Readonly<{
   alg: string; // 'argon2id' | 'pbkdf2-sha256' | ...
   params?: Record<string, unknown>;
@@ -13,8 +11,8 @@ export type HashResult = Readonly<{
   hash: string;
 }>;
 
-export interface PasswordHashPort {
-  defaultPolicy(): HashPolicy;
-  hash(plain: string, policy?: HashPolicy): Promise<HashResult>;
-  verify(hash: string, plain: string, alg: string): Promise<boolean>;
+export abstract class PasswordHashPort {
+  abstract defaultPolicy(): HashPolicy;
+  abstract hash(plain: string, policy?: HashPolicy): Promise<HashResult>;
+  abstract verify(hash: string, plain: string, alg: string): Promise<boolean>;
 }

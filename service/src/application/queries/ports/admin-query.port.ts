@@ -6,45 +6,43 @@ import { RoleResponse } from '@application/dto';
 import { PermissionResponse } from '@application/dto';
 import { GroupResponse } from '@application/dto';
 
-export const ADMIN_QUERY_PORT = Symbol('ADMIN_QUERY_PORT');
-
-export interface AdminQueryPort {
+export abstract class AdminQueryPort {
   // Client
-  getClients(tenantId: string, query: PaginationQuery): Promise<PaginatedResult<ClientResponse>>;
-  getClient(tenantId: string, id: string): Promise<ClientResponse>;
+  abstract getClients(tenantId: string, query: PaginationQuery): Promise<PaginatedResult<ClientResponse>>;
+  abstract getClient(tenantId: string, id: string): Promise<ClientResponse>;
 
   // Key
-  getKeys(tenantId: string): Promise<unknown[]>;
+  abstract getKeys(tenantId: string): Promise<unknown[]>;
 
   // Policy
-  getPolicies(tenantId: string): Promise<Record<string, unknown>>;
+  abstract getPolicies(tenantId: string): Promise<Record<string, unknown>>;
 
   // Audit Log
-  getAuditLogs(
+  abstract getAuditLogs(
     tenantId: string,
     query: PaginationQuery,
   ): Promise<PaginatedResult<Record<string, unknown>>>;
 
   // Tenant
-  getTenants(query: PaginationQuery): Promise<PaginatedResult<TenantResponse>>;
-  getTenant(id: string): Promise<TenantResponse>;
+  abstract getTenants(query: PaginationQuery): Promise<PaginatedResult<TenantResponse>>;
+  abstract getTenant(id: string): Promise<TenantResponse>;
 
   // User
-  getUsers(tenantId: string, query: PaginationQuery): Promise<PaginatedResult<UserResponse>>;
-  getUser(tenantId: string, id: string): Promise<UserResponse>;
+  abstract getUsers(tenantId: string, query: PaginationQuery): Promise<PaginatedResult<UserResponse>>;
+  abstract getUser(tenantId: string, id: string): Promise<UserResponse>;
 
   // Role
-  getRoles(tenantId: string, query: PaginationQuery): Promise<PaginatedResult<RoleResponse>>;
-  getRole(tenantId: string, id: string): Promise<RoleResponse>;
+  abstract getRoles(tenantId: string, query: PaginationQuery): Promise<PaginatedResult<RoleResponse>>;
+  abstract getRole(tenantId: string, id: string): Promise<RoleResponse>;
 
   // Permission
-  getPermissions(
+  abstract getPermissions(
     tenantId: string,
     query: PaginationQuery,
   ): Promise<PaginatedResult<PermissionResponse>>;
-  getPermission(tenantId: string, id: string): Promise<PermissionResponse>;
+  abstract getPermission(tenantId: string, id: string): Promise<PermissionResponse>;
 
   // Group
-  getGroups(tenantId: string, query: PaginationQuery): Promise<PaginatedResult<GroupResponse>>;
-  getGroup(tenantId: string, id: string): Promise<GroupResponse>;
+  abstract getGroups(tenantId: string, query: PaginationQuery): Promise<PaginatedResult<GroupResponse>>;
+  abstract getGroup(tenantId: string, id: string): Promise<GroupResponse>;
 }

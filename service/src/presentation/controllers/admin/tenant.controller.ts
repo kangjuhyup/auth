@@ -7,13 +7,9 @@ import {
   Body,
   Param,
   Query,
-  Inject,
 } from '@nestjs/common';
-import {
-  TENANT_COMMAND_PORT,
-  TenantCommandPort,
-} from '@application/commands/ports/tenant-command.port';
-import { ADMIN_QUERY_PORT, AdminQueryPort } from '@application/queries/ports';
+import { TenantCommandPort } from '@application/commands/ports/tenant-command.port';
+import { AdminQueryPort } from '@application/queries/ports';
 import {
   CreateTenantDto,
   UpdateTenantDto,
@@ -25,8 +21,8 @@ import {
 @Controller('admin/tenants')
 export class AdminTenantController {
   constructor(
-    @Inject(TENANT_COMMAND_PORT) private readonly commandPort: TenantCommandPort,
-    @Inject(ADMIN_QUERY_PORT) private readonly queryPort: AdminQueryPort,
+    private readonly commandPort: TenantCommandPort,
+    private readonly queryPort: AdminQueryPort,
   ) {}
 
   @Get()

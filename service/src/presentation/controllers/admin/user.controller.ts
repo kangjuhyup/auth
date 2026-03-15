@@ -7,13 +7,9 @@ import {
   Body,
   Param,
   Query,
-  Inject,
 } from '@nestjs/common';
-import {
-  USER_COMMAND_PORT,
-  UserCommandPort,
-} from '@application/commands/ports/user-command.port';
-import { ADMIN_QUERY_PORT, AdminQueryPort } from '@application/queries/ports';
+import { UserCommandPort } from '@application/commands/ports/user-command.port';
+import { AdminQueryPort } from '@application/queries/ports';
 import {
   CreateUserDto,
   UpdateUserDto,
@@ -27,8 +23,8 @@ import { Tenant } from '../../http/tenant.decorator';
 @Controller('admin/users')
 export class AdminUserController {
   constructor(
-    @Inject(USER_COMMAND_PORT) private readonly commandPort: UserCommandPort,
-    @Inject(ADMIN_QUERY_PORT) private readonly queryPort: AdminQueryPort,
+    private readonly commandPort: UserCommandPort,
+    private readonly queryPort: AdminQueryPort,
   ) {}
 
   @Get()

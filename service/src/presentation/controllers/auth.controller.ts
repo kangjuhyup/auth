@@ -6,14 +6,10 @@ import {
   Delete,
   Body,
   Param,
-  Inject,
   UseGuards,
 } from '@nestjs/common';
-import {
-  AUTH_COMMAND_PORT,
-  AuthCommandPort,
-} from '@application/commands/ports/auth-command.port';
-import { AUTH_QUERY_PORT, AuthQueryPort } from '@application/queries/ports';
+import { AuthCommandPort } from '@application/commands/ports/auth-command.port';
+import { AuthQueryPort } from '@application/queries/ports';
 import {
   SignupDto,
   WithdrawDto,
@@ -34,9 +30,7 @@ import { AuthUser } from '@presentation/http/auth-user.decorator';
 @Controller('auth')
 export class AuthController {
   constructor(
-    @Inject(AUTH_COMMAND_PORT)
     private readonly commandPort: AuthCommandPort,
-    @Inject(AUTH_QUERY_PORT)
     private readonly queryPort: AuthQueryPort,
   ) {}
 

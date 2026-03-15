@@ -1,21 +1,14 @@
-import {
-  ACCESS_VERIFIER_PORT,
-  AccessVerifierPort,
-} from '@application/ports/access-verifier.port';
+import { AccessVerifierPort } from '@application/ports/access-verifier.port';
 import {
   CanActivate,
   ExecutionContext,
-  Inject,
   Injectable,
 } from '@nestjs/common';
 import type { Request } from 'express';
 
 @Injectable()
 export class AccessGuard implements CanActivate {
-  constructor(
-    @Inject(ACCESS_VERIFIER_PORT)
-    private readonly verifier: AccessVerifierPort,
-  ) {}
+  constructor(private readonly verifier: AccessVerifierPort) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest<Request>();

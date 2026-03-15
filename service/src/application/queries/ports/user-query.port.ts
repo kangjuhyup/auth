@@ -1,15 +1,8 @@
-export const USER_QUERY_PORT = Symbol('USER_QUERY_PORT');
-
-/**
- * User 읽기 전용 조회 인터페이스
- * - Projection 기반 조회 전용
- * - Aggregate/EventStore 접근 금지
- */
-export interface UserQueryPort {
+export abstract class UserQueryPort {
   /**
    * 프로필 조회 (UI / API용)
    */
-  findProfile(params: {
+  abstract findProfile(params: {
     tenantId: string;
     userId: string;
   }): Promise<UserProfileView | null>;
@@ -18,7 +11,7 @@ export interface UserQueryPort {
    * OIDC findAccount 전용 Claims 조회
    * - sub 기반 조회
    */
-  findClaimsBySub(params: {
+  abstract findClaimsBySub(params: {
     tenantId: string;
     sub: string;
   }): Promise<UserClaimsView | null>;
@@ -26,7 +19,7 @@ export interface UserQueryPort {
   /**
    * username 기반 조회 (관리자 화면용)
    */
-  findByUsername(params: {
+  abstract findByUsername(params: {
     tenantId: string;
     username: string;
   }): Promise<UserProfileView | null>;

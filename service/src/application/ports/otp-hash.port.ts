@@ -1,6 +1,4 @@
-export const OTP_HASH_PORT = Symbol('OTP_HASH_PORT');
-
-export interface OtpHashPort {
-  generateToken(bytes: number): string;
-  hash(plain: string): string;
+export abstract class OtpHashPort {
+  abstract generateToken(bytes: number): string;
+  abstract hash(plain: string): string;
 }

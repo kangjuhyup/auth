@@ -1,14 +1,12 @@
-import { Controller, Get, Query, Inject } from '@nestjs/common';
-import { ADMIN_QUERY_PORT, AdminQueryPort } from '@application/queries/ports';
+import { Controller, Get, Query } from '@nestjs/common';
+import { AdminQueryPort } from '@application/queries/ports';
 import { PaginationQuery, PaginatedResult } from '@presentation/dto';
 import { TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 
 @Controller('admin/audit-logs')
 export class AdminAuditLogController {
-  constructor(
-    @Inject(ADMIN_QUERY_PORT) private readonly queryPort: AdminQueryPort,
-  ) {}
+  constructor(private readonly queryPort: AdminQueryPort) {}
 
   @Get()
   list(

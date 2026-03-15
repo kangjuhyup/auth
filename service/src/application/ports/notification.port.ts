@@ -1,5 +1,3 @@
-export const NOTIFICATION_PORT = Symbol('NOTIFICATION_PORT');
-
 export type NotificationChannel = 'email' | 'sms';
 
 export type NotificationMessage = Readonly<{
@@ -18,6 +16,6 @@ export type NotificationMessage = Readonly<{
   channels: NotificationChannel[]; // 보낼 채널 목록
 }>;
 
-export interface NotificationPort {
-  notify(msg: NotificationMessage): Promise<void>;
+export abstract class NotificationPort {
+  abstract notify(msg: NotificationMessage): Promise<void>;
 }

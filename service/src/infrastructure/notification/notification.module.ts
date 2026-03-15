@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import {
-  NOTIFICATION_PORT,
+  NotificationPort,
   NotificationMessage,
 } from '@application/ports/notification.port';
 import { NotificationService } from '@application/services/notification.service';
 import { SmsChannel } from './channels/sms.channel';
-import { SMS_PROVIDER } from '@application/ports/sms.port';
+import { SmsProviderPort } from '@application/ports/sms.port';
 import { ConsoleSmsProvider } from '../sms/console-sms.provider';
 
 @Module({
@@ -15,7 +15,7 @@ import { ConsoleSmsProvider } from '../sms/console-sms.provider';
 
     // SMS Provider (기본 Console)
     {
-      provide: SMS_PROVIDER,
+      provide: SmsProviderPort,
       useClass: ConsoleSmsProvider,
     },
 
@@ -31,13 +31,13 @@ import { ConsoleSmsProvider } from '../sms/console-sms.provider';
 
     // NotificationPort export
     {
-      provide: NOTIFICATION_PORT,
+      provide: NotificationPort,
       useFactory: (svc: NotificationService) => ({
         notify: (m: NotificationMessage) => svc.notify(m),
       }),
       inject: [NotificationService],
     },
   ],
-  exports: [NOTIFICATION_PORT, SMS_PROVIDER],
+  exports: [NotificationPort, SmsProviderPort],
 })
 export class NotificationModule {}

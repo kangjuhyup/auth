@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
-import { USER_WRITE_REPOSITORY_PORT } from '@application/commands/ports/user-write-repository.port';
+import { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
 import { UserWriteRepositoryImpl } from '../repositories/user-write.repository.impl';
 import {
   UserOrmEntity,
@@ -20,10 +20,10 @@ import {
   ],
   providers: [
     {
-      provide: USER_WRITE_REPOSITORY_PORT,
+      provide: UserWriteRepositoryPort,
       useClass: UserWriteRepositoryImpl,
     },
   ],
-  exports: [USER_WRITE_REPOSITORY_PORT],
+  exports: [UserWriteRepositoryPort],
 })
 export class UserPersistenceModule {}

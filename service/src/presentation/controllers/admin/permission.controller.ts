@@ -7,13 +7,9 @@ import {
   Body,
   Param,
   Query,
-  Inject,
 } from '@nestjs/common';
-import {
-  PERMISSION_COMMAND_PORT,
-  PermissionCommandPort,
-} from '@application/commands/ports/permission-command.port';
-import { ADMIN_QUERY_PORT, AdminQueryPort } from '@application/queries/ports';
+import { PermissionCommandPort } from '@application/commands/ports/permission-command.port';
+import { AdminQueryPort } from '@application/queries/ports';
 import {
   CreatePermissionDto,
   UpdatePermissionDto,
@@ -27,8 +23,8 @@ import { Tenant } from '../../http/tenant.decorator';
 @Controller('admin/permissions')
 export class AdminPermissionController {
   constructor(
-    @Inject(PERMISSION_COMMAND_PORT) private readonly commandPort: PermissionCommandPort,
-    @Inject(ADMIN_QUERY_PORT) private readonly queryPort: AdminQueryPort,
+    private readonly commandPort: PermissionCommandPort,
+    private readonly queryPort: AdminQueryPort,
   ) {}
 
   @Get()

@@ -1,17 +1,14 @@
-import { Controller, Get, Put, Body, Inject } from '@nestjs/common';
-import {
-  POLICY_COMMAND_PORT,
-  PolicyCommandPort,
-} from '@application/commands/ports/policy-command.port';
-import { ADMIN_QUERY_PORT, AdminQueryPort } from '@application/queries/ports';
+import { Controller, Get, Put, Body } from '@nestjs/common';
+import { PolicyCommandPort } from '@application/commands/ports/policy-command.port';
+import { AdminQueryPort } from '@application/queries/ports';
 import { TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 
 @Controller('admin/policies')
 export class AdminPolicyController {
   constructor(
-    @Inject(POLICY_COMMAND_PORT) private readonly commandPort: PolicyCommandPort,
-    @Inject(ADMIN_QUERY_PORT) private readonly queryPort: AdminQueryPort,
+    private readonly commandPort: PolicyCommandPort,
+    private readonly queryPort: AdminQueryPort,
   ) {}
 
   @Get()

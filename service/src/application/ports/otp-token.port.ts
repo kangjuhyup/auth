@@ -1,5 +1,3 @@
-export const OTP_TOKEN_PORT = Symbol('OTP_TOKEN_PORT');
-
 export type OtpPurpose = 'PASSWORD_RESET';
 
 export type OtpTokenRecord = Readonly<{
@@ -12,11 +10,11 @@ export type OtpTokenRecord = Readonly<{
   consumedAt?: Date | null;
 }>;
 
-export interface OtpTokenPort {
+export abstract class OtpTokenPort {
   /**
    * OTP 토큰을 생성한다.
    */
-  create(params: {
+  abstract create(params: {
     tenantId: string;
     userId: string;
     purpose: OtpPurpose;
@@ -30,7 +28,7 @@ export interface OtpTokenPort {
    * tokenHash로 유효한(미소비/미만료) OTP 토큰을 가져온다.
    * - 없으면 undefined
    */
-  findValidByTokenHash(params: {
+  abstract findValidByTokenHash(params: {
     tenantId: string;
     purpose: OtpPurpose;
     tokenHash: string;
@@ -41,7 +39,7 @@ export interface OtpTokenPort {
    * 토큰을 소비(1회성) 처리한다.
    * - 멱등성: 이미 consumed면 그대로 반환/무시 가능
    */
-  consume(params: {
+  abstract consume(params: {
     tenantId: string;
     purpose: OtpPurpose;
     otpTokenId: string;
