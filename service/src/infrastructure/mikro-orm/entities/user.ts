@@ -6,6 +6,7 @@ import {
   OneToMany,
   Collection,
   Unique,
+  Ref,
 } from '@mikro-orm/core';
 import { BaseEntity } from '../base';
 import { TenantOrmEntity } from './tenant';
@@ -27,8 +28,9 @@ export class UserOrmEntity extends BaseEntity {
   @ManyToOne(() => TenantOrmEntity, {
     fieldName: 'tenant_id',
     deleteRule: 'restrict',
+    ref: true,
   })
-  tenant!: TenantOrmEntity;
+  tenant!: Ref<TenantOrmEntity>;
 
   @Property({ type: 'varchar', length: 128, index: true })
   username!: string;

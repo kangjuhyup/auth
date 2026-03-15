@@ -1,4 +1,4 @@
-import { Entity, PrimaryKey, Property, ManyToOne, Unique } from '@mikro-orm/core';
+import { Entity, PrimaryKey, Property, ManyToOne, Unique, Ref } from '@mikro-orm/core';
 import { BaseEntity } from '../base';
 import { TenantOrmEntity } from './tenant';
 import { UserOrmEntity } from './user';
@@ -10,11 +10,11 @@ export class UserIdentityOrmEntity extends BaseEntity {
   @PrimaryKey({ type: 'bigint', autoincrement: true })
   id!: string;
 
-  @ManyToOne(() => TenantOrmEntity, { fieldName: 'tenant_id', deleteRule: 'restrict' })
-  tenant!: TenantOrmEntity;
+  @ManyToOne(() => TenantOrmEntity, { fieldName: 'tenant_id', deleteRule: 'restrict', ref: true })
+  tenant!: Ref<TenantOrmEntity>;
 
-  @ManyToOne(() => UserOrmEntity, { fieldName: 'user_id', deleteRule: 'cascade' })
-  user!: UserOrmEntity;
+  @ManyToOne(() => UserOrmEntity, { fieldName: 'user_id', deleteRule: 'cascade', ref: true })
+  user!: Ref<UserOrmEntity>;
 
   @Property({ type: 'varchar', length: 20 })
   provider!: IdpProvider;

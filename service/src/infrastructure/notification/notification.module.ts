@@ -10,14 +10,25 @@ import { ConsoleSmsProvider } from '../sms/console-sms.provider';
 
 @Module({
   providers: [
-    NotificationService,
+    // Channels
     SmsChannel,
 
-    // ✅ default SMS provider (OSS 기본 제공)
+    // SMS Provider (기본 Console)
     {
       provide: SMS_PROVIDER,
       useClass: ConsoleSmsProvider,
     },
+
+    // NotificationService with channels injected
+    {
+      provide: NotificationService,
+      useFactory: (smsChannel: SmsChannel) => {
+        const channels = [smsChannel];
+        return new NotificationService(channels);
+      },
+      inject: [SmsChannel],
+    },
+
     // NotificationPort export
     {
       provide: NOTIFICATION_PORT,

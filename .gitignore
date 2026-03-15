@@ -2,7 +2,8 @@
 /node_modules
 /service/dist
 /service/coverage
-
+/ui/dist
+/ui/node_modules
 # Yarn Berry PnP
 .pnp.*
 .yarn/*

@@ -4,6 +4,7 @@ import {
   Property,
   ManyToOne,
   Index,
+  Ref,
 } from '@mikro-orm/core';
 import { BaseEntity } from '../base';
 import { UserOrmEntity } from './user';
@@ -19,8 +20,9 @@ export class UserCredentialOrmEntity extends BaseEntity {
   @ManyToOne(() => UserOrmEntity, {
     fieldName: 'user_id',
     deleteRule: 'cascade',
+    ref: true,
   })
-  user!: UserOrmEntity;
+  user!: Ref<UserOrmEntity>;
 
   @Property({ type: 'varchar', length: 20 })
   type!: CredentialType;

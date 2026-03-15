@@ -1,4 +1,4 @@
-import { Entity, PrimaryKey, Property, ManyToOne, Index } from '@mikro-orm/core';
+import { Entity, PrimaryKey, Property, ManyToOne, Index, Ref } from '@mikro-orm/core';
 import { TenantOrmEntity } from './tenant';
 
 export type KeyStatus = 'active' | 'rotated' | 'revoked';
@@ -12,8 +12,9 @@ export class JwksKeyOrmEntity {
   @ManyToOne(() => TenantOrmEntity, {
     fieldName: 'tenant_id',
     deleteRule: 'restrict',
+    ref: true,
   })
-  tenant!: TenantOrmEntity;
+  tenant!: Ref<TenantOrmEntity>;
 
   @Property({ type: 'varchar', length: 16 })
   algorithm!: string;

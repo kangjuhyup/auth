@@ -1,4 +1,13 @@
-import { Entity, PrimaryKey, Property, ManyToOne, OneToMany, Collection, Unique } from '@mikro-orm/core';
+import {
+  Entity,
+  PrimaryKey,
+  Property,
+  ManyToOne,
+  OneToMany,
+  Unique,
+  Ref,
+  Collection,
+} from '@mikro-orm/core';
 import { BaseEntity } from '../base';
 import { TenantOrmEntity } from './tenant';
 import { RolePermissionOrmEntity } from './role-permission';
@@ -9,8 +18,12 @@ export class PermissionOrmEntity extends BaseEntity {
   @PrimaryKey({ type: 'bigint', autoincrement: true })
   id!: string;
 
-  @ManyToOne(() => TenantOrmEntity, { fieldName: 'tenant_id', deleteRule: 'restrict' })
-  tenant!: TenantOrmEntity;
+  @ManyToOne(() => TenantOrmEntity, {
+    fieldName: 'tenant_id',
+    deleteRule: 'restrict',
+    ref: true,
+  })
+  tenant!: Ref<TenantOrmEntity>;
 
   @Property({ type: 'varchar', length: 128, index: true })
   code!: string;

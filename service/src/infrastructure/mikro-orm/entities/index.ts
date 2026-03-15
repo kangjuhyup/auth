@@ -5,6 +5,7 @@ export * from './group';
 export * from './group-role';
 export * from './indentity-provider';
 export * from './jwks-key';
+export * from './otp-token';
 export * from './permission';
 export * from './role';
 export * from './role-inherit';

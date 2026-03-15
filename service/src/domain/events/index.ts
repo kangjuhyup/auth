@@ -1,1 +1,1 @@
-export { DomainEvent } from './domain-event';
+// Domain events have been removed (Event Sourcing removed)

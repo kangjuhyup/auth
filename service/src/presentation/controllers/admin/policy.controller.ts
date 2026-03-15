@@ -1,8 +1,8 @@
 import { Controller, Get, Put, Body, Inject } from '@nestjs/common';
 import {
-  ADMIN_COMMAND_PORT,
-  AdminCommandPort,
-} from '@application/commands/ports/admin-command.port';
+  POLICY_COMMAND_PORT,
+  PolicyCommandPort,
+} from '@application/commands/ports/policy-command.port';
 import { ADMIN_QUERY_PORT, AdminQueryPort } from '@application/queries/ports';
 import { TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
@@ -10,7 +10,7 @@ import { Tenant } from '../../http/tenant.decorator';
 @Controller('admin/policies')
 export class AdminPolicyController {
   constructor(
-    @Inject(ADMIN_COMMAND_PORT) private readonly commandPort: AdminCommandPort,
+    @Inject(POLICY_COMMAND_PORT) private readonly commandPort: PolicyCommandPort,
     @Inject(ADMIN_QUERY_PORT) private readonly queryPort: AdminQueryPort,
   ) {}
 

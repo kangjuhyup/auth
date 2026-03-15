@@ -1,4 +1,4 @@
-import { Entity, PrimaryKey, Property, ManyToOne, Unique } from '@mikro-orm/core';
+import { Entity, PrimaryKey, Property, ManyToOne, Unique, Ref } from '@mikro-orm/core';
 import { TenantOrmEntity } from './tenant';
 import { UserOrmEntity } from './user';
 import { ClientOrmEntity } from './client';
@@ -15,20 +15,23 @@ export class ConsentOrmEntity {
   @ManyToOne(() => TenantOrmEntity, {
     fieldName: 'tenant_id',
     deleteRule: 'cascade',
+    ref: true,
   })
-  tenant!: TenantOrmEntity;
+  tenant!: Ref<TenantOrmEntity>;
 
   @ManyToOne(() => UserOrmEntity, {
     fieldName: 'user_id',
     deleteRule: 'cascade',
+    ref: true,
   })
-  user!: UserOrmEntity;
+  user!: Ref<UserOrmEntity>;
 
   @ManyToOne(() => ClientOrmEntity, {
     fieldName: 'client_id',
     deleteRule: 'cascade',
+    ref: true,
   })
-  client!: ClientOrmEntity;
+  client!: Ref<ClientOrmEntity>;
 
   @Property({ fieldName: 'granted_scopes', type: 'varchar', length: 512 })
   grantedScopes!: string;

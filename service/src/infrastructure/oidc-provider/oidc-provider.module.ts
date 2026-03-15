@@ -1,4 +1,5 @@
 import {
+  forwardRef,
   MiddlewareConsumer,
   Module,
   NestModule,
@@ -21,8 +22,16 @@ import {
   USER_QUERY_PORT,
   UserQueryPort,
 } from '@application/queries/ports/user-query.port';
+import { MikroOrmModule } from '@mikro-orm/nestjs';
+import { REDIS, RedisModule } from '@infrastructure/redis/redis.module';
+import { ApplicationModule } from '@application/application.module';
 
 @Module({
+  imports: [
+    MikroOrmModule.forFeature([]),
+    RedisModule,
+    forwardRef(() => ApplicationModule),
+  ],
   providers: [
     {
       provide: OIDC_PROVIDER,
@@ -48,7 +57,7 @@ import {
 
         return registry;
       },
-      inject: [MikroORM, Redis, USER_QUERY_PORT, CLIENT_QUERY_PORT],
+      inject: [MikroORM, REDIS, USER_QUERY_PORT, CLIENT_QUERY_PORT],
     },
     {
       provide: ACCESS_VERIFIER_PORT,

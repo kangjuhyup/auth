@@ -1,1 +1,1 @@
-export { AggregateRoot } from './aggregate-root';
+// AggregateRoot has been removed (Event Sourcing removed)
