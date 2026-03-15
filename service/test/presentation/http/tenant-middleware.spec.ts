@@ -7,6 +7,9 @@ function createMockRepository(): jest.Mocked<TenantRepository> {
   return {
     findByCode: jest.fn().mockResolvedValue(null),
     findById: jest.fn().mockResolvedValue(null),
+    list: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+    save: jest.fn().mockResolvedValue(undefined),
+    delete: jest.fn().mockResolvedValue(undefined),
   };
 }
 

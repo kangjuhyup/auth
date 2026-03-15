@@ -34,6 +34,11 @@ export abstract class AdminQueryPort {
   // Role
   abstract getRoles(tenantId: string, query: PaginationQuery): Promise<PaginatedResult<RoleResponse>>;
   abstract getRole(tenantId: string, id: string): Promise<RoleResponse>;
+  abstract getRolePermissions(
+    tenantId: string,
+    roleId: string,
+    query: PaginationQuery,
+  ): Promise<PaginatedResult<PermissionResponse>>;
 
   // Permission
   abstract getPermissions(

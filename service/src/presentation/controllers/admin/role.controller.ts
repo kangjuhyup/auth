@@ -7,6 +7,8 @@ import {
   Body,
   Param,
   Query,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { RoleCommandPort } from '@application/commands/ports/role-command.port';
 import { AdminQueryPort } from '@application/queries/ports';
@@ -14,6 +16,7 @@ import {
   CreateRoleDto,
   UpdateRoleDto,
   RoleResponse,
+  PermissionResponse,
   PaginationQuery,
   PaginatedResult,
 } from '@presentation/dto';
@@ -66,5 +69,36 @@ export class AdminRoleController {
     @Param('id') id: string,
   ): Promise<void> {
     return this.commandPort.deleteRole(tenant.id, id);
+  }
+
+  // ── Role-Permission ───────────────────────────────────────────────────────
+
+  @Get(':id/permissions')
+  listPermissions(
+    @Tenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @Query() query: PaginationQuery,
+  ): Promise<PaginatedResult<PermissionResponse>> {
+    return this.queryPort.getRolePermissions(tenant.id, id, query);
+  }
+
+  @Post(':id/permissions')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  addPermission(
+    @Tenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @Body('permissionId') permissionId: string,
+  ): Promise<void> {
+    return this.commandPort.addPermissionToRole(tenant.id, id, permissionId);
+  }
+
+  @Delete(':id/permissions/:permissionId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removePermission(
+    @Tenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @Param('permissionId') permissionId: string,
+  ): Promise<void> {
+    return this.commandPort.removePermissionFromRole(tenant.id, id, permissionId);
   }
 }

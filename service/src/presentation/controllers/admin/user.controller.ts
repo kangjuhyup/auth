@@ -67,4 +67,22 @@ export class AdminUserController {
   ): Promise<void> {
     return this.commandPort.deleteUser(tenant.id, id);
   }
+
+  @Post(':id/roles/:roleId')
+  assignRole(
+    @Tenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @Param('roleId') roleId: string,
+  ): Promise<void> {
+    return this.commandPort.assignRole(tenant.id, id, roleId);
+  }
+
+  @Delete(':id/roles/:roleId')
+  removeRole(
+    @Tenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @Param('roleId') roleId: string,
+  ): Promise<void> {
+    return this.commandPort.removeRole(tenant.id, id, roleId);
+  }
 }
