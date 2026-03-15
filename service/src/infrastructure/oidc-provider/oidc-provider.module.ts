@@ -5,6 +5,7 @@ import {
   NestModule,
   RequestMethod,
 } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { OIDC_PROVIDER } from './oidc-provider.constants';
 import { createOidcProvider } from './oidc-provider.factory';
 import { AccessVerifierPort } from '@application/ports/access-verifier.port';
@@ -22,6 +23,7 @@ import { ApplicationModule } from '@application/application.module';
 
 @Module({
   imports: [
+    ConfigModule,
     MikroOrmModule.forFeature([]),
     RedisModule,
     forwardRef(() => ApplicationModule),
@@ -34,8 +36,9 @@ import { ApplicationModule } from '@application/application.module';
         redis: Redis,
         userQuery: UserQueryPort,
         clientQuery: ClientQueryPort,
+        configService: ConfigService,
       ) => {
-        const base = process.env.OIDC_ISSUER;
+        const base = configService.getOrThrow<string>('OIDC_ISSUER');
 
         const registry = new OidcProviderRegistry((tenantCode) => {
           const issuer = `${base}/t/${tenantCode}/oidc`;
@@ -46,12 +49,13 @@ import { ApplicationModule } from '@application/application.module';
             redis,
             userQuery,
             clientQuery,
+            configService,
           });
         });
 
         return registry;
       },
-      inject: [MikroORM, REDIS, UserQueryPort, ClientQueryPort],
+      inject: [MikroORM, REDIS, UserQueryPort, ClientQueryPort, ConfigService],
     },
     {
       provide: AccessVerifierPort,

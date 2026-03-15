@@ -7,7 +7,8 @@ import {
   SignupDto,
 } from '@application/dto';
 import { AuthCommandPort } from '../ports/auth-command.port';
-import { BadRequestException, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ulid } from 'ulid';
 import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
@@ -17,6 +18,7 @@ import { OtpTokenPort } from '@application/ports/otp-token.port';
 import { NotificationPort } from '@application/ports/notification.port';
 import { UserWriteRepositoryPort } from '../ports/user-write-repository.port';
 
+@Injectable()
 export class AuthCommandHandler implements AuthCommandPort {
   private readonly logger = new Logger(AuthCommandHandler.name);
 
@@ -26,6 +28,7 @@ export class AuthCommandHandler implements AuthCommandPort {
     private readonly otpHash: OtpHashPort,
     private readonly otpToken: OtpTokenPort,
     private readonly notification: NotificationPort,
+    private readonly configService: ConfigService,
   ) {}
 
   async signup(tenantId: string, dto: SignupDto): Promise<{ userId: string }> {
@@ -130,7 +133,7 @@ export class AuthCommandHandler implements AuthCommandPort {
     const rawToken = this.otpHash.generateToken(32);
     const tokenHash = this.otpHash.hash(rawToken);
 
-    const ttlSec = Number(process.env.OTP_PASSWORD_RESET_TTL_SEC ?? 15 * 60);
+    const ttlSec = Number(this.configService.getOrThrow<string>('OTP_PASSWORD_RESET_TTL_SEC'));
     const issuedAt = new Date();
     const expiresAt = new Date(issuedAt.getTime() + ttlSec * 1000);
 

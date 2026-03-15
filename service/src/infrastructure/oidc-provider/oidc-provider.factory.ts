@@ -1,6 +1,7 @@
 import type { EntityManager } from '@mikro-orm/core';
 import type Redis from 'ioredis';
 import type Provider from 'oidc-provider';
+import { ConfigService } from '@nestjs/config';
 import { buildOidcConfiguration } from './oidc-provider.config';
 import { ClientQueryPort } from '@application/queries/ports/client-query.port';
 import { UserQueryPort } from '@application/queries/ports/user-query.port';
@@ -12,6 +13,7 @@ export type CreateOidcProviderParams = {
   redis: Redis;
   userQuery: UserQueryPort;
   clientQuery: ClientQueryPort;
+  configService: ConfigService;
 };
 
 export async function createOidcProvider(
@@ -22,6 +24,7 @@ export async function createOidcProvider(
     redis: params.redis,
     userQuery: params.userQuery,
     clientQuery: params.clientQuery,
+    configService: params.configService,
   });
 
   const Provider = await loadOidcProviderConstructor();

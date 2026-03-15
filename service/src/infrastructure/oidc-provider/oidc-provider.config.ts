@@ -2,6 +2,7 @@
 import type { Configuration } from 'oidc-provider';
 import type { EntityManager } from '@mikro-orm/core';
 import type Redis from 'ioredis';
+import { ConfigService } from '@nestjs/config';
 import { buildOidcAdapterFactory } from './adapters/oidc-apdater.factory';
 import { ClientQueryPort } from '@application/queries/ports/client-query.port';
 import { UserQueryPort } from '@application/queries/ports/user-query.port';
@@ -11,11 +12,13 @@ export function buildOidcConfiguration(params: {
   redis: Redis;
   userQuery: UserQueryPort;
   clientQuery: ClientQueryPort;
+  configService: ConfigService;
 }): Configuration {
-  const { em, redis, userQuery, clientQuery } = params;
+  const { em, redis, userQuery, clientQuery, configService } = params;
 
-  const accessTokenFormat = (process.env.OIDC_ACCESS_TOKEN_FORMAT ??
-    'opaque') as 'opaque' | 'jwt';
+  const accessTokenFormat = configService.getOrThrow<string>(
+    'OIDC_ACCESS_TOKEN_FORMAT',
+  ) as 'opaque' | 'jwt';
 
   return {
     features: {
@@ -72,19 +75,19 @@ export function buildOidcConfiguration(params: {
     pkce: { required: () => true },
     scopes: ['openid', 'profile', 'email'],
 
-    cookies: { keys: getSecretKeys('OIDC_COOKIE_KEYS') },
+    cookies: { keys: getSecretKeys(configService, 'OIDC_COOKIE_KEYS') },
 
     jwks: { keys: [] }, // TODO: KeyRing/JWKS 연동
 
     // ✅ Adapter는 "opaque 토큰 저장"만을 위한 게 아님
     // (Session/Grant/Interaction 등 provider 모델 전반 저장에 필요)
     adapter: buildOidcAdapterFactory({
-      driver: process.env.OIDC_ADAPTER_DRIVER as any,
+      driver: configService.getOrThrow<string>('OIDC_ADAPTER_DRIVER') as any,
       em,
       redis,
-      cacheTtlMarginSec: Number(process.env.OIDC_CACHE_TTL_MARGIN_SEC ?? 5),
-      negativeTtlSec: Number(process.env.OIDC_CACHE_NEGATIVE_TTL_SEC ?? 3),
-      backfillTtlSec: Number(process.env.OIDC_CACHE_BACKFILL_TTL_SEC ?? 60),
+      cacheTtlMarginSec: Number(configService.getOrThrow<string>('OIDC_CACHE_TTL_MARGIN_SEC')),
+      negativeTtlSec: Number(configService.getOrThrow<string>('OIDC_CACHE_NEGATIVE_TTL_SEC')),
+      backfillTtlSec: Number(configService.getOrThrow<string>('OIDC_CACHE_BACKFILL_TTL_SEC')),
     }),
 
     // ✅ findAccount: opaque/jwt 상관없이 결국 "sub"로 계정 조회
@@ -125,9 +128,8 @@ export function buildOidcConfiguration(params: {
   };
 }
 
-function getSecretKeys(envKey: string): string[] {
-  const raw = process.env[envKey];
-  if (!raw) throw new Error(`Environment variable ${envKey} is required`);
+function getSecretKeys(configService: ConfigService, envKey: string): string[] {
+  const raw = configService.getOrThrow<string>(envKey);
   return raw.split(',').map((k) => k.trim());
 }
 

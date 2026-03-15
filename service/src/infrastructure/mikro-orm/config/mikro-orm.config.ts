@@ -1,6 +1,9 @@
 import { Options } from '@mikro-orm/core';
 
 export type SupportedDriver = 'postgresql' | 'mysql' | 'mssql';
+type ConfigReader = {
+  get(key: string): string | undefined;
+};
 
 const DRIVER_MAP: Record<SupportedDriver, string> = {
   postgresql: '@mikro-orm/postgresql',
@@ -20,8 +23,8 @@ const DEFAULT_PORTS: Record<SupportedDriver, number> = {
   mssql: 1433,
 };
 
-function getDriverName(): SupportedDriver {
-  const raw = process.env.DB_DRIVER ?? 'postgresql';
+function getDriverNameFrom(config: ConfigReader): SupportedDriver {
+  const raw = config.get('DB_DRIVER') ?? 'postgresql';
   if (!(raw in DRIVER_MAP)) {
     throw new Error(
       `Unsupported DB_DRIVER "${raw}". Allowed: ${Object.keys(DRIVER_MAP).join(', ')}`,
@@ -30,25 +33,29 @@ function getDriverName(): SupportedDriver {
   return raw as SupportedDriver;
 }
 
-const driverName = getDriverName();
+function buildDriverClass(driverName: SupportedDriver) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const driverModule = require(DRIVER_MAP[driverName]);
+  return driverModule[DRIVER_CLASS_NAME[driverName]];
+}
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const driverModule = require(DRIVER_MAP[driverName]);
-const DriverClass = driverModule[DRIVER_CLASS_NAME[driverName]];
+export function buildMikroOrmConfig(config: ConfigReader): Options {
+  const driverName = getDriverNameFrom(config);
+  const DriverClass = buildDriverClass(driverName);
 
-const config: Options = {
-  driver: DriverClass,
-  entities: ['./dist/infrastructure/mikro-orm/entities/**/*.js'],
-  entitiesTs: ['./src/infrastructure/mikro-orm/entities/**/*.ts'],
-  dbName: process.env.DB_NAME ?? 'auth',
-  host: process.env.DB_HOST ?? 'localhost',
-  port: Number(process.env.DB_PORT ?? DEFAULT_PORTS[driverName]),
-  user: process.env.DB_USER ?? 'postgres',
-  password: process.env.DB_PASSWORD ?? '',
-  migrations: {
-    path: `./src/infrastructure/mikro-orm/migrations/${driverName}`,
-  },
-};
+  return {
+    driver: DriverClass,
+    entities: ['./dist/infrastructure/mikro-orm/entities/**/*.js'],
+    entitiesTs: ['./src/infrastructure/mikro-orm/entities/**/*.ts'],
+    dbName: config.get('DB_NAME') ?? 'auth',
+    host: config.get('DB_HOST') ?? 'localhost',
+    port: Number(config.get('DB_PORT') ?? DEFAULT_PORTS[driverName]),
+    user: config.get('DB_USER') ?? 'postgres',
+    password: config.get('DB_PASSWORD') ?? '',
+    migrations: {
+      path: `./src/infrastructure/mikro-orm/migrations/${driverName}`,
+    },
+  };
+}
 
-export default config;
-export { getDriverName, DEFAULT_PORTS };
+export { getDriverNameFrom, DEFAULT_PORTS };
