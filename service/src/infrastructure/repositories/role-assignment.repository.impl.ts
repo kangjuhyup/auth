@@ -7,20 +7,26 @@ import { GroupRoleOrmEntity } from '../mikro-orm/entities/group-role';
 import { UserOrmEntity } from '../mikro-orm/entities/user';
 import { RoleOrmEntity } from '../mikro-orm/entities/role';
 import { GroupOrmEntity } from '../mikro-orm/entities/group';
-import { RoleMapper } from './role.mapper';
+import { RoleMapper } from './mapper/role.mapper';
 
 @Injectable()
 export class RoleAssignmentRepositoryImpl implements RoleAssignmentRepository {
   constructor(private readonly em: EntityManager) {}
 
-  async assignToUser(params: { userId: string; roleId: string }): Promise<void> {
+  async assignToUser(params: {
+    userId: string;
+    roleId: string;
+  }): Promise<void> {
     const entity = new UserRoleOrmEntity();
     entity.user = ref(this.em.getReference(UserOrmEntity, params.userId));
     entity.role = ref(this.em.getReference(RoleOrmEntity, params.roleId));
     await this.em.persist(entity).flush();
   }
 
-  async removeFromUser(params: { userId: string; roleId: string }): Promise<void> {
+  async removeFromUser(params: {
+    userId: string;
+    roleId: string;
+  }): Promise<void> {
     const entity = await this.em.findOneOrFail(UserRoleOrmEntity, {
       user: { id: params.userId },
       role: { id: params.roleId },

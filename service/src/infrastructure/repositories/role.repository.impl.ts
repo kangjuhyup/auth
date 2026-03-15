@@ -4,7 +4,7 @@ import { RoleRepository, RoleListQuery } from '@domain/repositories';
 import { RoleModel } from '@domain/models/role';
 import { RoleOrmEntity } from '../mikro-orm/entities/role';
 import { TenantOrmEntity } from '../mikro-orm/entities/tenant';
-import { RoleMapper } from './role.mapper';
+import { RoleMapper } from './mapper/role.mapper';
 
 @Injectable()
 export class RoleRepositoryImpl implements RoleRepository {

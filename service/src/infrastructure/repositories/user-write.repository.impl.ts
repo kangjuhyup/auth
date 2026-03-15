@@ -5,7 +5,7 @@ import { UserModel } from '@domain/models/user';
 import { UserOrmEntity } from '../mikro-orm/entities/user';
 import { UserCredentialOrmEntity } from '../mikro-orm/entities/user-credential';
 import { TenantOrmEntity } from '../mikro-orm/entities/tenant';
-import { UserMapper } from './user.mapper';
+import { UserMapper } from './mapper/user.mapper';
 
 @Injectable()
 export class UserWriteRepositoryImpl implements UserWriteRepositoryPort {

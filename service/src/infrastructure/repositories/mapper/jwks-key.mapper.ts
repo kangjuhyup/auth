@@ -1,5 +1,5 @@
 import { JwksKeyModel, KeyAlgorithm } from '@domain/models/jwks-key';
-import { JwksKeyOrmEntity } from '../mikro-orm/entities/jwks-key';
+import { JwksKeyOrmEntity } from '../../mikro-orm/entities/jwks-key';
 
 export class JwksKeyMapper {
   static toDomain(entity: JwksKeyOrmEntity): JwksKeyModel {
@@ -16,7 +16,10 @@ export class JwksKeyMapper {
     });
   }
 
-  static toOrm(domain: JwksKeyModel, existing: JwksKeyOrmEntity): JwksKeyOrmEntity {
+  static toOrm(
+    domain: JwksKeyModel,
+    existing: JwksKeyOrmEntity,
+  ): JwksKeyOrmEntity {
     existing.algorithm = domain.algorithm;
     existing.publicKey = domain.publicKey;
     existing.privateKeyEnc = domain.privateKeyEnc;

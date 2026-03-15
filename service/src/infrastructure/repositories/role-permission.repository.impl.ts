@@ -1,11 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { EntityManager, ref } from '@mikro-orm/core';
-import { RolePermissionRepository, RolePermissionListQuery } from '@domain/repositories';
+import {
+  RolePermissionRepository,
+  RolePermissionListQuery,
+} from '@domain/repositories';
 import { PermissionModel } from '@domain/models/permission';
 import { RolePermissionOrmEntity } from '../mikro-orm/entities/role-permission';
 import { RoleOrmEntity } from '../mikro-orm/entities/role';
 import { PermissionOrmEntity } from '../mikro-orm/entities/permission';
-import { PermissionMapper } from './permission.mapper';
+import { PermissionMapper } from './mapper/permission.mapper';
 
 @Injectable()
 export class RolePermissionRepositoryImpl implements RolePermissionRepository {
@@ -14,11 +17,16 @@ export class RolePermissionRepositoryImpl implements RolePermissionRepository {
   async add(params: { roleId: string; permissionId: string }): Promise<void> {
     const entity = new RolePermissionOrmEntity();
     entity.role = ref(this.em.getReference(RoleOrmEntity, params.roleId));
-    entity.permission = ref(this.em.getReference(PermissionOrmEntity, params.permissionId));
+    entity.permission = ref(
+      this.em.getReference(PermissionOrmEntity, params.permissionId),
+    );
     await this.em.persist(entity).flush();
   }
 
-  async remove(params: { roleId: string; permissionId: string }): Promise<void> {
+  async remove(params: {
+    roleId: string;
+    permissionId: string;
+  }): Promise<void> {
     const entity = await this.em.findOneOrFail(RolePermissionOrmEntity, {
       role: { id: params.roleId },
       permission: { id: params.permissionId },
@@ -26,7 +34,10 @@ export class RolePermissionRepositoryImpl implements RolePermissionRepository {
     await this.em.remove(entity).flush();
   }
 
-  async exists(params: { roleId: string; permissionId: string }): Promise<boolean> {
+  async exists(params: {
+    roleId: string;
+    permissionId: string;
+  }): Promise<boolean> {
     const count = await this.em.count(RolePermissionOrmEntity, {
       role: { id: params.roleId },
       permission: { id: params.permissionId },
@@ -41,7 +52,11 @@ export class RolePermissionRepositoryImpl implements RolePermissionRepository {
     const [entities, total] = await this.em.findAndCount(
       RolePermissionOrmEntity,
       { role: { id: query.roleId } },
-      { populate: ['permission', 'permission.tenant'], limit: query.limit, offset },
+      {
+        populate: ['permission', 'permission.tenant'],
+        limit: query.limit,
+        offset,
+      },
     );
     return {
       items: entities.map((rp) =>

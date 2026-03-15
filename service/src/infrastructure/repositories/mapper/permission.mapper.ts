@@ -1,5 +1,5 @@
 import { PermissionModel } from '@domain/models/permission';
-import { PermissionOrmEntity } from '../mikro-orm/entities/permission';
+import { PermissionOrmEntity } from '../../mikro-orm/entities/permission';
 
 export class PermissionMapper {
   static toDomain(entity: PermissionOrmEntity): PermissionModel {

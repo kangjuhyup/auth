@@ -4,7 +4,7 @@ import { TenantConfigRepository } from '@domain/repositories/tenant-config.repos
 import { TenantConfigModel } from '@domain/models/tenant-config';
 import { TenantConfigOrmEntity } from '../mikro-orm/entities/tenant-config';
 import { TenantOrmEntity } from '../mikro-orm/entities/tenant';
-import { TenantConfigMapper } from './tenant-config.mapper';
+import { TenantConfigMapper } from './mapper/tenant-config.mapper';
 
 @Injectable()
 export class TenantConfigRepositoryImpl implements TenantConfigRepository {

@@ -3,7 +3,7 @@ import { EntityManager } from '@mikro-orm/core';
 import { TenantRepository, TenantListQuery } from '@domain/repositories';
 import { Tenant } from '@domain/models';
 import { TenantOrmEntity } from '../mikro-orm/entities';
-import { TenantMapper } from './tenant.mapper';
+import { TenantMapper } from './mapper/tenant.mapper';
 
 @Injectable()
 export class TenantRepositoryImpl implements TenantRepository {
@@ -29,7 +29,9 @@ export class TenantRepositoryImpl implements TenantRepository {
     return TenantMapper.toDomain(entity);
   }
 
-  async list(query: TenantListQuery): Promise<{ items: Tenant[]; total: number }> {
+  async list(
+    query: TenantListQuery,
+  ): Promise<{ items: Tenant[]; total: number }> {
     const offset = (query.page - 1) * query.limit;
     const [entities, total] = await this.em.findAndCount(
       TenantOrmEntity,

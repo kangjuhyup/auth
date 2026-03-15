@@ -1,5 +1,5 @@
 import { RoleModel } from '@domain/models/role';
-import { RoleOrmEntity } from '../mikro-orm/entities/role';
+import { RoleOrmEntity } from '../../mikro-orm/entities/role';
 
 export class RoleMapper {
   static toDomain(entity: RoleOrmEntity): RoleModel {

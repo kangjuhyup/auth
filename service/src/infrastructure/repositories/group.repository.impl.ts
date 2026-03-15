@@ -4,7 +4,7 @@ import { GroupRepository, GroupListQuery } from '@domain/repositories';
 import { GroupModel } from '@domain/models/group';
 import { GroupOrmEntity } from '../mikro-orm/entities/group';
 import { TenantOrmEntity } from '../mikro-orm/entities/tenant';
-import { GroupMapper } from './group.mapper';
+import { GroupMapper } from './mapper/group.mapper';
 
 @Injectable()
 export class GroupRepositoryImpl implements GroupRepository {
@@ -59,10 +59,14 @@ export class GroupRepositoryImpl implements GroupRepository {
       return GroupMapper.toDomain(existing);
     } else {
       const entity = GroupMapper.toOrm(group);
-      entity.tenant = ref(this.em.getReference(TenantOrmEntity, group.tenantId));
+      entity.tenant = ref(
+        this.em.getReference(TenantOrmEntity, group.tenantId),
+      );
 
       if (group.parentId) {
-        entity.parent = ref(this.em.getReference(GroupOrmEntity, group.parentId));
+        entity.parent = ref(
+          this.em.getReference(GroupOrmEntity, group.parentId),
+        );
       }
 
       await this.em.persist(entity).flush();

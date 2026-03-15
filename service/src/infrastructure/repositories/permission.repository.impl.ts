@@ -1,10 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { EntityManager, ref } from '@mikro-orm/core';
-import { PermissionRepository, PermissionListQuery } from '@domain/repositories';
+import {
+  PermissionRepository,
+  PermissionListQuery,
+} from '@domain/repositories';
 import { PermissionModel } from '@domain/models/permission';
 import { PermissionOrmEntity } from '../mikro-orm/entities/permission';
 import { TenantOrmEntity } from '../mikro-orm/entities/tenant';
-import { PermissionMapper } from './permission.mapper';
+import { PermissionMapper } from './mapper/permission.mapper';
 
 @Injectable()
 export class PermissionRepositoryImpl implements PermissionRepository {
@@ -19,7 +22,10 @@ export class PermissionRepositoryImpl implements PermissionRepository {
     return entity ? PermissionMapper.toDomain(entity) : null;
   }
 
-  async findByCode(tenantId: string, code: string): Promise<PermissionModel | null> {
+  async findByCode(
+    tenantId: string,
+    code: string,
+  ): Promise<PermissionModel | null> {
     const entity = await this.em.findOne(
       PermissionOrmEntity,
       { tenant: { id: tenantId }, code },
@@ -52,7 +58,9 @@ export class PermissionRepositoryImpl implements PermissionRepository {
       return PermissionMapper.toDomain(existing);
     } else {
       const entity = PermissionMapper.toOrm(permission);
-      entity.tenant = ref(this.em.getReference(TenantOrmEntity, permission.tenantId));
+      entity.tenant = ref(
+        this.em.getReference(TenantOrmEntity, permission.tenantId),
+      );
       await this.em.persist(entity).flush();
       return PermissionMapper.toDomain(entity);
     }

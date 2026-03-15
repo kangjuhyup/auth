@@ -1,7 +1,7 @@
 import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
-import { UserOrmEntity } from '../mikro-orm/entities/user';
-import { UserCredentialOrmEntity } from '../mikro-orm/entities/user-credential';
+import { UserOrmEntity } from '../../mikro-orm/entities/user';
+import { UserCredentialOrmEntity } from '../../mikro-orm/entities/user-credential';
 
 export class UserMapper {
   static toDomain(
@@ -22,7 +22,11 @@ export class UserMapper {
       phoneVerified: entity.phoneVerified,
       status: entity.status,
       passwordCredential: credential,
-    }).setPersistence(entity.id, entity.createdAt ?? new Date(), entity.updatedAt ?? new Date());
+    }).setPersistence(
+      entity.id,
+      entity.createdAt ?? new Date(),
+      entity.updatedAt ?? new Date(),
+    );
   }
 
   static credentialToDomain(

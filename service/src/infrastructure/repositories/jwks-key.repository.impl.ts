@@ -4,7 +4,7 @@ import { JwksKeyRepository } from '@domain/repositories/jwks-key.repository';
 import { JwksKeyModel } from '@domain/models/jwks-key';
 import { JwksKeyOrmEntity } from '../mikro-orm/entities/jwks-key';
 import { TenantOrmEntity } from '../mikro-orm/entities/tenant';
-import { JwksKeyMapper } from './jwks-key.mapper';
+import { JwksKeyMapper } from './mapper/jwks-key.mapper';
 
 @Injectable()
 export class JwksKeyRepositoryImpl implements JwksKeyRepository {
@@ -38,14 +38,18 @@ export class JwksKeyRepositoryImpl implements JwksKeyRepository {
 
   async saveMany(keys: JwksKeyModel[]): Promise<void> {
     for (const key of keys) {
-      const existing = await this.em.findOne(JwksKeyOrmEntity, { kid: key.kid });
+      const existing = await this.em.findOne(JwksKeyOrmEntity, {
+        kid: key.kid,
+      });
 
       if (existing) {
         JwksKeyMapper.toOrm(key, existing);
       } else {
         const entity = new JwksKeyOrmEntity();
         entity.kid = key.kid;
-        entity.tenant = ref(this.em.getReference(TenantOrmEntity, key.tenantId));
+        entity.tenant = ref(
+          this.em.getReference(TenantOrmEntity, key.tenantId),
+        );
         entity.createdAt = key.createdAt;
         JwksKeyMapper.toOrm(key, entity);
         this.em.persist(entity);

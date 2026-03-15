@@ -1,5 +1,5 @@
 import { GroupModel } from '@domain/models/group';
-import { GroupOrmEntity } from '../mikro-orm/entities/group';
+import { GroupOrmEntity } from '../../mikro-orm/entities/group';
 
 export class GroupMapper {
   static toDomain(entity: GroupOrmEntity): GroupModel {

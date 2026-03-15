@@ -1,5 +1,5 @@
 import { TenantConfigModel } from '@domain/models/tenant-config';
-import { TenantConfigOrmEntity } from '../mikro-orm/entities/tenant-config';
+import { TenantConfigOrmEntity } from '../../mikro-orm/entities/tenant-config';
 
 export class TenantConfigMapper {
   static toDomain(entity: TenantConfigOrmEntity): TenantConfigModel {

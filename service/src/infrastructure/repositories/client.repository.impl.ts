@@ -4,7 +4,7 @@ import { ClientRepository, ClientListQuery } from '@domain/repositories';
 import { ClientModel } from '@domain/models/client';
 import { ClientOrmEntity } from '../mikro-orm/entities/client';
 import { TenantOrmEntity } from '../mikro-orm/entities/tenant';
-import { ClientMapper } from './client.mapper';
+import { ClientMapper } from './mapper/client.mapper';
 
 @Injectable()
 export class ClientRepositoryImpl implements ClientRepository {
@@ -19,7 +19,10 @@ export class ClientRepositoryImpl implements ClientRepository {
     return entity ? ClientMapper.toDomain(entity) : null;
   }
 
-  async findByClientId(tenantId: string, clientId: string): Promise<ClientModel | null> {
+  async findByClientId(
+    tenantId: string,
+    clientId: string,
+  ): Promise<ClientModel | null> {
     const entity = await this.em.findOne(
       ClientOrmEntity,
       { tenant: { id: tenantId }, clientId },
@@ -28,7 +31,9 @@ export class ClientRepositoryImpl implements ClientRepository {
     return entity ? ClientMapper.toDomain(entity) : null;
   }
 
-  async list(query: ClientListQuery): Promise<{ items: ClientModel[]; total: number }> {
+  async list(
+    query: ClientListQuery,
+  ): Promise<{ items: ClientModel[]; total: number }> {
     const offset = (query.page - 1) * query.limit;
     const [entities, total] = await this.em.findAndCount(
       ClientOrmEntity,
@@ -50,7 +55,9 @@ export class ClientRepositoryImpl implements ClientRepository {
       return ClientMapper.toDomain(existing);
     } else {
       const entity = ClientMapper.toOrm(client);
-      entity.tenant = ref(this.em.getReference(TenantOrmEntity, client.tenantId));
+      entity.tenant = ref(
+        this.em.getReference(TenantOrmEntity, client.tenantId),
+      );
       await this.em.persist(entity).flush();
       return ClientMapper.toDomain(entity);
     }

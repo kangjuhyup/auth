@@ -1,5 +1,5 @@
 import { Tenant } from '@domain/models';
-import { TenantOrmEntity } from '../mikro-orm/entities';
+import { TenantOrmEntity } from '../../mikro-orm/entities';
 
 export class TenantMapper {
   static toDomain(entity: TenantOrmEntity): Tenant {
