@@ -1,0 +1,352 @@
+# OIDC Overview
+
+이 프로젝트의 OIDC 서버는 `node-oidc-provider`를 프로토콜 엔진으로 사용하고, 우리 코드는 그 위에 멀티테넌시, 저장소, 클레임 조회, 토큰 검증 어댑터를 붙이는 형태로 구현되어 있다.
+
+핵심 원칙:
+
+- OAuth 2.0 / OIDC 프로토콜 처리 자체는 `node-oidc-provider`에 위임
+- 우리 코드는 `service/src/infrastructure/oidc-provider/*` 에서 provider 설정과 저장소 연결만 담당
+- 멀티테넌트는 path 기반 issuer 로 분리
+
+---
+
+# 1. Runtime Structure
+
+관련 파일:
+
+- [oidc-provider.module.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/oidc-provider.module.ts)
+- [oidc-provider.factory.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/oidc-provider.factory.ts)
+- [oidc-provider.config.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/oidc-provider.config.ts)
+- [oidc.middleware.ts](/Users/kangjuhyup/Documents/auth/service/src/presentation/http/oidc.middleware.ts)
+- [oidc-provider.registry.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/oidc-provider.registry.ts)
+
+구성 흐름:
+
+1. `OidcProviderModule` 이 `OIDC_PROVIDER` registry 를 생성한다.
+2. registry 는 `tenantCode` 별로 `Provider` 인스턴스를 lazy 생성하고 캐시한다.
+3. 요청은 `/t/:tenantCode/oidc/*` 로 들어온다.
+4. `OidcDelegateMiddleware` 가 tenant prefix 를 제거한 뒤 해당 tenant provider 의 `callback()` 으로 위임한다.
+5. 실제 `/authorize`, `/token`, `/userinfo`, `/revoke`, `/session/end` 같은 엔드포인트 처리는 `node-oidc-provider` 가 수행한다.
+
+---
+
+# 2. Tenant-aware Issuer
+
+issuer 는 tenant 별로 분리된다.
+
+형식:
+
+```text
+{OIDC_ISSUER}/t/{tenantCode}/oidc
+```
+
+예:
+
+```text
+http://localhost:3000/t/acme/oidc
+```
+
+즉 `acme` 테넌트의 discovery 문서와 token endpoint 는 모두 이 issuer 기준으로 노출된다.
+
+---
+
+# 3. Exposed OIDC Endpoints
+
+실제 provider 엔드포인트는 tenant prefix 아래에 노출된다.
+
+예시:
+
+```text
+/t/:tenantCode/oidc/.well-known/openid-configuration
+/t/:tenantCode/oidc/auth
+/t/:tenantCode/oidc/token
+/t/:tenantCode/oidc/userinfo
+/t/:tenantCode/oidc/revoke
+/t/:tenantCode/oidc/session/end
+/t/:tenantCode/oidc/interaction/:uid
+```
+
+주의:
+
+- 실제 path 이름은 `node-oidc-provider` 기본 라우팅을 따른다.
+- 일반적으로 RP 가 직접 참조해야 하는 canonical 경로는 discovery 문서의 각 endpoint 값을 따르는 것이 안전하다.
+
+---
+
+# 4. Endpoint Details
+
+## 4.1 `/.well-known/openid-configuration`
+
+용도:
+
+- issuer metadata 제공
+- client 가 authorization, token, userinfo, jwks, revocation, end-session endpoint 를 discovery 하는 진입점
+
+이 프로젝트에서:
+
+- tenant issuer 기준으로 동적으로 응답
+- `OidcDelegateMiddleware` 가 tenant별 provider 로 위임
+
+## 4.2 `/token`
+
+용도:
+
+- authorization code 교환
+- refresh token 교환
+- access token / id token 발급
+
+이 프로젝트에서:
+
+- 토큰 발급/검증은 `node-oidc-provider` 가 처리
+- access token 형식은 `resourceIndicators.getResourceServerInfo()` 에서 결정
+- `OIDC_ACCESS_TOKEN_FORMAT` 값으로 `opaque` 또는 `jwt` 선택
+
+관련 코드:
+
+- [oidc-provider.config.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/oidc-provider.config.ts)
+
+특징:
+
+- PKCE 는 강제(`pkce.required: () => true`)
+- scope 기본값은 `openid profile email`
+- resource indicator 사용 시 허용된 resource origin 만 통과
+
+## 4.3 `/userinfo`
+
+용도:
+
+- access token 기반 사용자 클레임 조회
+
+이 프로젝트에서:
+
+- 계정 조회는 `findAccount` 콜백을 통해 `UserQueryPort.findClaimsBySub()` 로 수행
+- 현재 반환 클레임은 최소 집합만 사용
+
+현재 클레임:
+
+- `sub`
+- `email`
+- `email_verified`
+
+주의:
+
+- 민감정보나 내부 상태는 userinfo/claims 에 직접 노출하지 않음
+
+## 4.4 `/revoke`
+
+용도:
+
+- RFC 7009 토큰 폐기
+
+이 프로젝트에서:
+
+- revocation 엔드포인트 자체는 `node-oidc-provider` 가 처리
+- 저장소 정리는 OIDC adapter 가 담당
+- adapter 에는 `revokeByGrantId(grantId)` 구현이 존재
+
+관련 코드:
+
+- [rdb-oidc.adapter.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/adapters/rdb-oidc.adapter.ts)
+- [redis-oidc.adapter.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/adapters/redis-oidc.adapter.ts)
+- [hybrid-oidc.adapter.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/adapters/hybrid-oidc.adapter.ts)
+
+의미:
+
+- 같은 grant 에 속한 토큰/세션 정리가 adapter 레벨에서 수행된다.
+
+## 4.5 `/session/end`
+
+용도:
+
+- RP-initiated logout / end-session 처리
+
+이 프로젝트에서:
+
+- endpoint 자체는 provider 기본 기능으로 노출
+- 세션/쿠키 정리는 provider 가 수행
+- post logout redirect 동작은 client metadata 의 `postLogoutRedirectUris` 와 연결된다.
+
+주의:
+
+- custom logout UI 나 후처리 로직은 현재 별도 구현되어 있지 않다.
+
+## 4.6 `/interaction/:uid`
+
+용도:
+
+- 로그인/동의(consent) 같은 interaction 세션 처리
+
+이 프로젝트에서:
+
+- interaction 모델 자체는 provider/adapter 가 저장 가능
+- 하지만 `features.devInteractions` 는 `false`
+- 즉 기본 개발용 interaction UI 는 비활성화되어 있다.
+
+현재 상태:
+
+- interaction endpoint 경로 개념은 존재
+- 그러나 커스텀 login/consent 화면 및 처리 흐름은 아직 구현되어 있지 않다.
+
+즉, authorization flow 를 완전하게 서비스하려면 별도 interaction UI/handler 구현이 추가로 필요하다.
+
+---
+
+# 5. How This Project Uses `node-oidc-provider`
+
+## 5.1 Provider 생성
+
+[oidc-provider.factory.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/oidc-provider.factory.ts) 에서 provider 를 생성한다.
+
+특징:
+
+- `oidc-provider` 는 ESM-only 이므로 dynamic import loader 사용
+- tenant 별 issuer 로 provider 인스턴스 생성
+- config 는 `buildOidcConfiguration(...)` 로 조립
+
+## 5.2 Provider 설정
+
+[oidc-provider.config.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/oidc-provider.config.ts) 에서 현재 다음을 설정한다.
+
+- `pkce.required: () => true`
+- `scopes: ['openid', 'profile', 'email']`
+- `cookies.keys`
+- `ttl`
+- `adapter`
+- `findAccount`
+- `features.resourceIndicators`
+
+## 5.3 Storage Adapter
+
+provider persistence 는 adapter factory 로 연결된다.
+
+지원 드라이버:
+
+- `rdb`
+- `redis`
+- `hybrid`
+
+환경변수:
+
+```env
+OIDC_ADAPTER_DRIVER=rdb|redis|hybrid
+```
+
+의도:
+
+- `rdb`: 권위 저장소 중심
+- `redis`: 인메모리 중심
+- `hybrid`: RDB + Redis 캐시
+
+## 5.4 Account Lookup
+
+`findAccount` 는 application query port 를 통해 사용자 claims 를 읽는다.
+
+흐름:
+
+1. request 에서 tenant 추출
+2. `sub` 기반 조회
+3. 최소 claims 반환
+
+이 설계 덕분에 provider 내부는 protocol 처리에 집중하고, 실제 사용자 정보는 application 계층에서 가져온다.
+
+## 5.5 Resource Indicators
+
+현재 access token 발급 정책은 resource indicator 기반이다.
+
+흐름:
+
+1. client 가 `resource` 파라미터 제시
+2. URL 을 origin 단위로 정규화
+3. `ClientQueryPort.getAllowedResources()` 로 tenant/client 기준 허용 여부 확인
+4. 허용된 경우에만 access token 발급
+5. `OIDC_ACCESS_TOKEN_FORMAT` 에 따라 `jwt` 또는 `opaque` 결정
+
+보안상 제약:
+
+- `https:` 만 허용
+- `localhost`, `.local` 차단
+- tenant 없는 요청 차단
+
+---
+
+# 6. Token Verification Inside This Project
+
+외부 API 보호용 access token 검증은 provider callback 과 별도로 [access-verifier.adapter.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/access-verifier.adapter.ts) 에서 처리한다.
+
+동작:
+
+- `Provider.AccessToken.find(token)` 호출
+- payload 추출
+- `exp` 검사
+- 필요 시 `tenantId` 바인딩 검사
+- `userId`, `clientId`, `scope` 반환
+
+이는 내부 API 가 bearer token 을 해석할 때 사용하는 adapter 이며, OIDC 표준 endpoint 의 토큰 발급 로직과는 별개다.
+
+---
+
+# 7. Environment Variables
+
+OIDC 관련 주요 환경변수:
+
+```env
+OIDC_ISSUER=http://localhost:3000
+OIDC_ADAPTER_DRIVER=hybrid
+OIDC_ACCESS_TOKEN_FORMAT=opaque
+OIDC_COOKIE_KEYS=dev1,dev2
+OIDC_CACHE_TTL_MARGIN_SEC=5
+OIDC_CACHE_NEGATIVE_TTL_SEC=3
+OIDC_CACHE_BACKFILL_TTL_SEC=60
+```
+
+---
+
+# 8. Current Limitations / TODO
+
+현재 코드 기준으로 아직 비어 있거나 보완이 필요한 부분:
+
+## 8.1 JWKS
+
+현재 설정:
+
+```ts
+jwks: { keys: [] }
+```
+
+즉, JWKS / signing key 연동은 아직 TODO 이다.
+
+관련 후보 구현:
+
+- `JwksKeyRepository`
+- `JwksKeyCryptoPort`
+- `KeyCommandHandler.rotateKeys`
+
+## 8.2 Client Resource Policy
+
+[client-query.handler.ts](/Users/kangjuhyup/Documents/auth/service/src/application/queries/handlers/client-query.handler.ts) 의 `getAllowedResources()` 는 아직 구현되지 않았다.
+
+따라서 resource indicator 기반 access token 발급 정책은 현재 완성 전 상태다.
+
+## 8.3 Interaction UI
+
+`devInteractions` 가 꺼져 있으므로, 실제 로그인/동의 화면을 사용하려면 별도 interaction UI 와 처리 흐름이 필요하다.
+
+## 8.4 Consent / revoke 연계
+
+Auth command 쪽의 `revokeConsent()` 는 아직 구현되지 않았다.
+
+즉 OIDC 표준 revocation endpoint 와 비즈니스 consent 관리 사이의 연결은 추가 작업이 필요하다.
+
+---
+
+# 9. Summary
+
+이 프로젝트는 `node-oidc-provider` 를 프로토콜 엔진으로 사용하고, 다음을 우리 코드에서 보완한다.
+
+- tenant-aware issuer 및 path routing
+- storage adapter 선택(rdb/redis/hybrid)
+- application query port 기반 account lookup
+- resource indicator 검증
+- 내부 API 용 access token 검증 adapter
+
+OIDC 표준 endpoint 자체는 provider 가 담당하고, 우리 코드는 멀티테넌시와 persistence, 정책, 클레임 조회를 연결하는 구조다.
