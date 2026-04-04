@@ -35,6 +35,15 @@ import { KeyCommandHandler } from './commands/handlers/key-command.handler';
 import { PolicyCommandPort } from './commands/ports/policy-command.port';
 import { PolicyCommandHandler } from './commands/handlers/policy-command.handler';
 
+// MFA Strategies
+import {
+  MFA_STRATEGIES,
+  TotpMfaStrategy,
+  WebAuthnMfaStrategy,
+  RecoveryCodeMfaStrategy,
+} from './queries/strategies';
+import type { MfaStrategy } from './queries/strategies';
+
 const commands = [
   {
     provide: AuthCommandPort,
@@ -74,6 +83,12 @@ const commands = [
   },
 ];
 
+const mfaStrategies = [
+  TotpMfaStrategy,
+  WebAuthnMfaStrategy,
+  RecoveryCodeMfaStrategy,
+];
+
 const queries = [
   {
     provide: AdminQueryPort,
@@ -82,6 +97,12 @@ const queries = [
   {
     provide: AuthQueryPort,
     useClass: AuthQueryHandler,
+  },
+  ...mfaStrategies,
+  {
+    provide: MFA_STRATEGIES,
+    useFactory: (...strategies: MfaStrategy[]) => strategies,
+    inject: mfaStrategies,
   },
   {
     provide: UserQueryPort,

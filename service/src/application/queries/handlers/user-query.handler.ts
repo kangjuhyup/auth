@@ -1,3 +1,4 @@
+import { Inject } from '@nestjs/common';
 import type { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
 import type {
   UserClaimsView,
@@ -5,14 +6,20 @@ import type {
   UserQueryPort,
 } from '@application/queries/ports/user-query.port';
 import type { PasswordHashPort } from '@application/ports/password-hash.port';
-import type { MfaVerificationPort, MfaMethodType } from '@application/ports/mfa-verification.port';
+import type { MfaMethodType } from '@application/ports/mfa-verification.port';
+import { MFA_STRATEGIES } from '@application/queries/strategies';
+import type { MfaStrategy } from '@application/queries/strategies';
 
 export class UserQueryHandler implements UserQueryPort {
+  private readonly mfaStrategies: Map<MfaMethodType, MfaStrategy>;
+
   constructor(
     private readonly userWriteRepository: UserWriteRepositoryPort,
     private readonly passwordHash: PasswordHashPort,
-    private readonly mfaVerification: MfaVerificationPort,
-  ) {}
+    @Inject(MFA_STRATEGIES) strategies: MfaStrategy[],
+  ) {
+    this.mfaStrategies = new Map(strategies.map((s) => [s.method, s]));
+  }
 
   async findProfile(params: {
     tenantId: string;
@@ -138,114 +145,15 @@ export class UserQueryHandler implements UserQueryPort {
     const user = await this.userWriteRepository.findById(params.userId);
     if (!user || user.tenantId !== params.tenantId) return false;
 
-    switch (params.method) {
-      case 'totp':
-        return this.verifyTotpMfa(params.userId, params.code);
+    const strategy = this.mfaStrategies.get(params.method);
+    if (!strategy) return false;
 
-      case 'webauthn':
-        return this.verifyWebAuthnMfa(
-          params.userId,
-          params.rpId,
-          params.expectedOrigin,
-          params.webauthnResponse,
-        );
-
-      case 'recovery_code':
-        return this.verifyRecoveryCodeMfa(params.userId, params.code);
-
-      default:
-        return false;
-    }
-  }
-
-  private async verifyTotpMfa(
-    userId: string,
-    code?: string,
-  ): Promise<boolean> {
-    if (!code) return false;
-
-    const [cred] = await this.userWriteRepository.findCredentialsByType(
-      userId,
-      ['totp'],
-    );
-    if (!cred) return false;
-
-    return this.mfaVerification.verifyTotp(cred.secretHash, code);
-  }
-
-  private async verifyWebAuthnMfa(
-    userId: string,
-    rpId?: string,
-    expectedOrigin?: string,
-    webauthnResponse?: Record<string, unknown>,
-  ): Promise<boolean> {
-    if (!webauthnResponse || !rpId || !expectedOrigin) return false;
-
-    const credentialId = (webauthnResponse as any)?.id as string | undefined;
-    if (!credentialId) return false;
-
-    const credentials = await this.userWriteRepository.findCredentialsByType(
-      userId,
-      ['webauthn'],
-    );
-
-    const matchingCred = credentials.find((c) => {
-      const meta = c.hashParams;
-      return meta?.credentialID === credentialId;
+    return strategy.verify({
+      userId: params.userId,
+      code: params.code,
+      webauthnResponse: params.webauthnResponse,
+      rpId: params.rpId,
+      expectedOrigin: params.expectedOrigin,
     });
-    if (!matchingCred) return false;
-
-    try {
-      const result = await this.mfaVerification.verifyWebAuthn({
-        credentialPublicKey: matchingCred.secretHash,
-        credentialId,
-        counter: (matchingCred.hashParams?.counter as number) ?? 0,
-        rpId,
-        expectedOrigin,
-        response: webauthnResponse,
-      });
-
-      if (result.verified) {
-        matchingCred.updateHashParams({
-          ...matchingCred.hashParams,
-          counter: result.newCounter,
-        });
-        await this.userWriteRepository.saveCredential(matchingCred);
-      }
-
-      return result.verified;
-    } catch {
-      return false;
-    }
-  }
-
-  private async verifyRecoveryCodeMfa(
-    userId: string,
-    code?: string,
-  ): Promise<boolean> {
-    if (!code) return false;
-
-    const credentials = await this.userWriteRepository.findCredentialsByType(
-      userId,
-      ['recovery_code'],
-    );
-
-    for (const cred of credentials) {
-      try {
-        const isValid = await this.mfaVerification.verifyRecoveryCode(
-          cred.secretHash,
-          code,
-        );
-        if (isValid) {
-          cred.disable();
-          await this.userWriteRepository.saveCredential(cred);
-          return true;
-        }
-      } catch {
-        continue;
-      }
-    }
-
-    return false;
   }
 }
