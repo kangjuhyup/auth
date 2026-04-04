@@ -41,6 +41,26 @@ export class UserCredentialModel extends PersistenceModel<
     });
   }
 
+  static of(params: {
+    type: CredentialType;
+    secretHash: string;
+    hashAlg: string;
+    hashParams?: Record<string, unknown> | null;
+    hashVersion?: number | null;
+    enabled: boolean;
+    expiresAt?: Date | null;
+  }, id?: string): UserCredentialModel {
+    return new UserCredentialModel(params, id);
+  }
+
+  disable(): void {
+    this.etc.enabled = false;
+  }
+
+  updateHashParams(params: Record<string, unknown>): void {
+    this.etc.hashParams = params;
+  }
+
   get type(): CredentialType {
     return this.etc.type;
   }

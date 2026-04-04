@@ -18,3 +18,6 @@ export type { CredentialType } from './user-credential';
 export { ConsentModel } from './consent';
 export { EventModel } from './event';
 export type { EventCategory, EventSeverity, EventAction } from './event';
+export { IdentityProviderModel } from './identity-provider';
+export type { IdpProvider } from './identity-provider';
+export { UserIdentityModel } from './user-identity';
