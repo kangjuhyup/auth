@@ -38,6 +38,8 @@ export class PolicyCommandHandler implements PolicyCommandPort {
         signupPolicy: 'open',
         requirePhoneVerify: false,
         brandName: null,
+        accessTokenTtlSec: 60 * 60,
+        refreshTokenTtlSec: 14 * 24 * 60 * 60,
         extra: null,
       });
     }

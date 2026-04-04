@@ -18,6 +18,12 @@ import { TenantModel } from '@domain/models/tenant';
 import { GroupModel } from '@domain/models/group';
 import { RoleModel } from '@domain/models/role';
 import { ClientModel } from '@domain/models/client';
+import { ClientAuthPolicyModel } from '@domain/models/client-auth-policy';
+import { PermissionModel } from '@domain/models/permission';
+import { JwksKeyModel } from '@domain/models/jwks-key';
+import { EventModel } from '@domain/models/event';
+import { UserModel } from '@domain/models/user';
+import { TenantConfigModel } from '@domain/models/tenant-config';
 
 function makeTenant(id: string, code: string, name: string): TenantModel {
   const t = new TenantModel({ code, name });
@@ -550,6 +556,533 @@ describe('AdminQueryHandler - Client', () => {
       await expect(handler.getClient('tenant-1', 'c-1')).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+});
+
+// ── helper factories ─────────────────────────────────────────────────────────
+
+function makeClientAuthPolicy(clientRefId: string): ClientAuthPolicyModel {
+  const p = new ClientAuthPolicyModel({
+    tenantId: 'tenant-1',
+    clientRefId,
+    allowedAuthMethods: ['password'],
+    defaultAcr: 'urn:mace:incommon:iap:bronze',
+    mfaRequired: false,
+    allowedMfaMethods: ['totp'],
+    maxSessionDurationSec: 3600,
+    consentRequired: true,
+    requireAuthTime: false,
+  });
+  p.setPersistence('policy-1', new Date('2024-01-01'), new Date('2024-01-01'));
+  return p;
+}
+
+function makePermission(id: string, tenantId: string): PermissionModel {
+  const p = new PermissionModel({
+    tenantId,
+    code: 'read:users',
+    resource: 'users',
+    action: 'read',
+    description: null,
+  });
+  p.setPersistence(id, new Date('2024-01-01'), new Date('2024-01-01'));
+  return p;
+}
+
+function makeJwksKey(kid: string): JwksKeyModel {
+  return new JwksKeyModel({
+    kid,
+    tenantId: 'tenant-1',
+    algorithm: 'RS256',
+    publicKey: 'pub-pem',
+    privateKeyEnc: 'enc-priv',
+    status: 'active',
+    rotatedAt: null,
+    expiresAt: null,
+    createdAt: new Date('2024-01-01'),
+  });
+}
+
+function makeEvent(id: string): EventModel {
+  return new EventModel(
+    {
+      tenantId: 'tenant-1',
+      category: 'AUTH',
+      severity: 'INFO',
+      action: 'LOGIN',
+      success: true,
+      occurredAt: new Date('2024-01-01'),
+    },
+    id,
+  );
+}
+
+function makeUser(id: string, tenantId: string): UserModel {
+  return UserModel.of({
+    id,
+    tenantId,
+    username: 'testuser',
+    email: 'test@example.com',
+    emailVerified: false,
+    phone: null,
+    phoneVerified: false,
+    status: 'ACTIVE',
+  });
+}
+
+function makeTenantConfig(tenantId: string): TenantConfigModel {
+  return new TenantConfigModel({
+    tenantId,
+    signupPolicy: 'open',
+    requirePhoneVerify: true,
+    brandName: 'Test Brand',
+    accessTokenTtlSec: 3600,
+    refreshTokenTtlSec: 86400,
+    extra: { foo: 'bar' },
+  });
+}
+
+// ── ClientAuthPolicy ──────────────────────────────────────────────────────────
+
+describe('AdminQueryHandler - ClientAuthPolicy', () => {
+  let handler: AdminQueryHandler;
+  let clientRepo: jest.Mocked<ClientRepository>;
+  let clientAuthPolicyRepo: jest.Mocked<ClientAuthPolicyRepository>;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    const deps = createHandler();
+    handler = deps.handler;
+    clientRepo = deps.clientRepo;
+    clientAuthPolicyRepo = deps.clientAuthPolicyRepo;
+  });
+
+  describe('getClientAuthPolicy', () => {
+    it('클라이언트가 없으면 NotFoundException을 던진다', async () => {
+      clientRepo.findById.mockResolvedValue(null);
+
+      await expect(
+        handler.getClientAuthPolicy('tenant-1', 'c-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('tenantId 불일치 시 NotFoundException을 던진다', async () => {
+      clientRepo.findById.mockResolvedValue(makeClient('c-1', 'other-tenant'));
+
+      await expect(
+        handler.getClientAuthPolicy('tenant-1', 'c-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('policy가 없으면 NotFoundException을 던진다', async () => {
+      clientRepo.findById.mockResolvedValue(makeClient('c-1', 'tenant-1'));
+      clientAuthPolicyRepo.findByClientRefId.mockResolvedValue(null);
+
+      await expect(
+        handler.getClientAuthPolicy('tenant-1', 'c-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('policy 반환 성공', async () => {
+      clientRepo.findById.mockResolvedValue(makeClient('c-1', 'tenant-1'));
+      clientAuthPolicyRepo.findByClientRefId.mockResolvedValue(
+        makeClientAuthPolicy('c-1'),
+      );
+
+      const result = await handler.getClientAuthPolicy('tenant-1', 'c-1');
+
+      expect(result.clientRefId).toBe('c-1');
+      expect(result.allowedAuthMethods).toEqual(['password']);
+      expect(result.mfaRequired).toBe(false);
+      expect(result.consentRequired).toBe(true);
+    });
+  });
+});
+
+// ── Keys & Policies ──────────────────────────────────────────────────────────
+
+describe('AdminQueryHandler - Keys & Policies', () => {
+  let handler: AdminQueryHandler;
+  let jwksKeyRepo: jest.Mocked<JwksKeyRepository>;
+  let tenantConfigRepo: jest.Mocked<TenantConfigRepository>;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    const deps = createHandler();
+    handler = deps.handler;
+    jwksKeyRepo = deps.jwksKeyRepo;
+    tenantConfigRepo = deps.tenantConfigRepo;
+  });
+
+  describe('getKeys', () => {
+    it('active 키 목록을 매핑하여 반환한다', async () => {
+      jwksKeyRepo.findActiveByTenantId.mockResolvedValue([
+        makeJwksKey('kid-1'),
+        makeJwksKey('kid-2'),
+      ]);
+
+      const result = await handler.getKeys('tenant-1');
+
+      expect(jwksKeyRepo.findActiveByTenantId).toHaveBeenCalledWith('tenant-1');
+      expect(result).toHaveLength(2);
+      const first = result[0] as Record<string, unknown>;
+      expect(first['kid']).toBe('kid-1');
+      expect(first['algorithm']).toBe('RS256');
+      expect(first['status']).toBe('active');
+      expect(first['rotatedAt']).toBeNull();
+    });
+
+    it('키가 없으면 빈 배열 반환', async () => {
+      jwksKeyRepo.findActiveByTenantId.mockResolvedValue([]);
+
+      const result = await handler.getKeys('tenant-1');
+
+      expect(result).toHaveLength(0);
+    });
+  });
+
+  describe('getPolicies', () => {
+    it('config 있으면 실제 값 반환', async () => {
+      tenantConfigRepo.findByTenantId.mockResolvedValue(
+        makeTenantConfig('tenant-1'),
+      );
+
+      const result = await handler.getPolicies('tenant-1');
+
+      expect(result['signupPolicy']).toBe('open');
+      expect(result['requirePhoneVerify']).toBe(true);
+      expect(result['brandName']).toBe('Test Brand');
+      expect(result['extra']).toEqual({ foo: 'bar' });
+    });
+
+    it('config 없으면 기본값 반환', async () => {
+      tenantConfigRepo.findByTenantId.mockResolvedValue(null);
+
+      const result = await handler.getPolicies('tenant-1');
+
+      expect(result['signupPolicy']).toBe('open');
+      expect(result['requirePhoneVerify']).toBe(false);
+      expect(result['brandName']).toBeNull();
+      expect(result['extra']).toBeNull();
+    });
+  });
+});
+
+// ── AuditLogs ────────────────────────────────────────────────────────────────
+
+describe('AdminQueryHandler - AuditLogs', () => {
+  let handler: AdminQueryHandler;
+  let eventRepo: jest.Mocked<EventRepository>;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    const deps = createHandler();
+    handler = deps.handler;
+    eventRepo = deps.eventRepo;
+  });
+
+  describe('getAuditLogs', () => {
+    it('페이지네이션된 이벤트 목록을 반환한다', async () => {
+      eventRepo.list.mockResolvedValue({
+        items: [makeEvent('e-1'), makeEvent('e-2')],
+        total: 2,
+      });
+
+      const result = await handler.getAuditLogs('tenant-1', {
+        page: 1,
+        limit: 10,
+      });
+
+      expect(eventRepo.list).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        page: 1,
+        limit: 10,
+      });
+      expect(result.items).toHaveLength(2);
+      expect(result.total).toBe(2);
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(10);
+    });
+
+    it('page/limit 미지정 시 기본값(1/20)을 사용한다', async () => {
+      eventRepo.list.mockResolvedValue({ items: [], total: 0 });
+
+      await handler.getAuditLogs('tenant-1', {});
+
+      expect(eventRepo.list).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        page: 1,
+        limit: 20,
+      });
+    });
+
+    it('반환 항목에 필수 필드가 포함된다', async () => {
+      eventRepo.list.mockResolvedValue({
+        items: [makeEvent('e-1')],
+        total: 1,
+      });
+
+      const result = await handler.getAuditLogs('tenant-1', { page: 1, limit: 10 });
+      const item = result.items[0];
+
+      expect(item['id']).toBe('e-1');
+      expect(item['category']).toBe('AUTH');
+      expect(item['action']).toBe('LOGIN');
+      expect(item['success']).toBe(true);
+    });
+  });
+});
+
+// ── Users ────────────────────────────────────────────────────────────────────
+
+describe('AdminQueryHandler - Users', () => {
+  let handler: AdminQueryHandler;
+  let userRepo: jest.Mocked<UserWriteRepositoryPort>;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    const deps = createHandler();
+    handler = deps.handler;
+    userRepo = deps.userRepo;
+  });
+
+  describe('getUsers', () => {
+    it('페이지네이션된 사용자 목록을 반환한다', async () => {
+      userRepo.list.mockResolvedValue({
+        items: [makeUser('u-1', 'tenant-1'), makeUser('u-2', 'tenant-1')],
+        total: 2,
+      });
+
+      const result = await handler.getUsers('tenant-1', { page: 1, limit: 10 });
+
+      expect(userRepo.list).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        page: 1,
+        limit: 10,
+      });
+      expect(result.items).toHaveLength(2);
+      expect(result.total).toBe(2);
+    });
+
+    it('반환 항목에 필수 필드가 포함된다', async () => {
+      userRepo.list.mockResolvedValue({
+        items: [makeUser('u-1', 'tenant-1')],
+        total: 1,
+      });
+
+      const result = await handler.getUsers('tenant-1', { page: 1, limit: 10 });
+      const item = result.items[0];
+
+      expect(item.id).toBe('u-1');
+      expect(item.username).toBe('testuser');
+      expect(item.status).toBe('ACTIVE');
+    });
+  });
+
+  describe('getUser', () => {
+    it('id로 사용자를 조회하여 반환한다', async () => {
+      userRepo.findById.mockResolvedValue(makeUser('u-1', 'tenant-1'));
+
+      const result = await handler.getUser('tenant-1', 'u-1');
+
+      expect(userRepo.findById).toHaveBeenCalledWith('u-1');
+      expect(result.id).toBe('u-1');
+    });
+
+    it('사용자가 없으면 NotFoundException을 던진다', async () => {
+      userRepo.findById.mockResolvedValue(undefined);
+
+      await expect(handler.getUser('tenant-1', 'no-such')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('tenantId 불일치 시 NotFoundException을 던진다', async () => {
+      userRepo.findById.mockResolvedValue(makeUser('u-1', 'other-tenant'));
+
+      await expect(handler.getUser('tenant-1', 'u-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+});
+
+// ── Permissions ──────────────────────────────────────────────────────────────
+
+describe('AdminQueryHandler - Permissions', () => {
+  let handler: AdminQueryHandler;
+  let permissionRepo: jest.Mocked<PermissionRepository>;
+  let rolePermissionRepo: jest.Mocked<RolePermissionRepository>;
+  let roleRepo: jest.Mocked<RoleRepository>;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    const deps = createHandler();
+    handler = deps.handler;
+    permissionRepo = deps.permissionRepo;
+    rolePermissionRepo = deps.rolePermissionRepo;
+    roleRepo = deps.roleRepo;
+  });
+
+  describe('getPermissions', () => {
+    it('페이지네이션된 권한 목록을 반환한다', async () => {
+      permissionRepo.list.mockResolvedValue({
+        items: [makePermission('p-1', 'tenant-1')],
+        total: 1,
+      });
+
+      const result = await handler.getPermissions('tenant-1', {
+        page: 1,
+        limit: 10,
+      });
+
+      expect(permissionRepo.list).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        page: 1,
+        limit: 10,
+      });
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].code).toBe('read:users');
+    });
+  });
+
+  describe('getPermission', () => {
+    it('id로 권한을 조회하여 반환한다', async () => {
+      permissionRepo.findById.mockResolvedValue(makePermission('p-1', 'tenant-1'));
+
+      const result = await handler.getPermission('tenant-1', 'p-1');
+
+      expect(result.id).toBe('p-1');
+      expect(result.code).toBe('read:users');
+      expect(result.resource).toBe('users');
+    });
+
+    it('권한이 없으면 NotFoundException을 던진다', async () => {
+      permissionRepo.findById.mockResolvedValue(null);
+
+      await expect(
+        handler.getPermission('tenant-1', 'no-such'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('tenantId 불일치 시 NotFoundException을 던진다', async () => {
+      permissionRepo.findById.mockResolvedValue(
+        makePermission('p-1', 'other-tenant'),
+      );
+
+      await expect(handler.getPermission('tenant-1', 'p-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('getRolePermissions', () => {
+    it('역할이 없으면 NotFoundException을 던진다', async () => {
+      roleRepo.findById.mockResolvedValue(null);
+
+      await expect(
+        handler.getRolePermissions('tenant-1', 'r-1', { page: 1, limit: 10 }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('tenantId 불일치 시 NotFoundException을 던진다', async () => {
+      roleRepo.findById.mockResolvedValue(makeRole('r-1', 'other-tenant'));
+
+      await expect(
+        handler.getRolePermissions('tenant-1', 'r-1', { page: 1, limit: 10 }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('역할의 권한 목록을 반환한다', async () => {
+      roleRepo.findById.mockResolvedValue(makeRole('r-1', 'tenant-1'));
+      rolePermissionRepo.listByRole.mockResolvedValue({
+        items: [makePermission('p-1', 'tenant-1')],
+        total: 1,
+      });
+
+      const result = await handler.getRolePermissions('tenant-1', 'r-1', {
+        page: 1,
+        limit: 10,
+      });
+
+      expect(rolePermissionRepo.listByRole).toHaveBeenCalledWith({
+        roleId: 'r-1',
+        page: 1,
+        limit: 10,
+      });
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].code).toBe('read:users');
+    });
+  });
+});
+
+// ── GroupRoles & UserRoles ────────────────────────────────────────────────────
+
+describe('AdminQueryHandler - GroupRoles & UserRoles', () => {
+  let handler: AdminQueryHandler;
+  let groupRepo: jest.Mocked<GroupRepository>;
+  let roleAssignmentRepo: jest.Mocked<RoleAssignmentRepository>;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    const deps = createHandler();
+    handler = deps.handler;
+    groupRepo = deps.groupRepo;
+    roleAssignmentRepo = deps.roleAssignmentRepo;
+  });
+
+  describe('getGroupRoles', () => {
+    it('그룹이 없으면 NotFoundException을 던진다', async () => {
+      groupRepo.findById.mockResolvedValue(null);
+
+      await expect(
+        handler.getGroupRoles('tenant-1', 'g-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('tenantId 불일치 시 NotFoundException을 던진다', async () => {
+      groupRepo.findById.mockResolvedValue(makeGroup('g-1', 'other-tenant'));
+
+      await expect(
+        handler.getGroupRoles('tenant-1', 'g-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('그룹의 역할 목록을 반환한다', async () => {
+      groupRepo.findById.mockResolvedValue(makeGroup('g-1', 'tenant-1'));
+      roleAssignmentRepo.listForGroup.mockResolvedValue([
+        makeRole('r-1', 'tenant-1'),
+        makeRole('r-2', 'tenant-1'),
+      ]);
+
+      const result = await handler.getGroupRoles('tenant-1', 'g-1');
+
+      expect(roleAssignmentRepo.listForGroup).toHaveBeenCalledWith('g-1');
+      expect(result).toHaveLength(2);
+      expect(result[0].code).toBe('admin');
+    });
+  });
+
+  describe('getUserRoles', () => {
+    it('사용자의 역할 목록을 반환한다', async () => {
+      roleAssignmentRepo.listForUser.mockResolvedValue([
+        makeRole('r-1', 'tenant-1'),
+      ]);
+
+      const result = await handler.getUserRoles('tenant-1', 'u-1');
+
+      expect(roleAssignmentRepo.listForUser).toHaveBeenCalledWith('u-1');
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('r-1');
+    });
+
+    it('역할이 없으면 빈 배열 반환', async () => {
+      roleAssignmentRepo.listForUser.mockResolvedValue([]);
+
+      const result = await handler.getUserRoles('tenant-1', 'u-1');
+
+      expect(result).toHaveLength(0);
     });
   });
 });

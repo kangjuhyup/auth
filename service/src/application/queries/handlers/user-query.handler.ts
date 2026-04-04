@@ -1,15 +1,16 @@
-import { Inject } from '@nestjs/common';
-import type { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
+import { Inject, Injectable } from '@nestjs/common';
+import { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
 import type {
   UserClaimsView,
   UserProfileView,
   UserQueryPort,
 } from '@application/queries/ports/user-query.port';
-import type { PasswordHashPort } from '@application/ports/password-hash.port';
+import { PasswordHashPort } from '@application/ports/password-hash.port';
 import type { MfaMethodType } from '@application/ports/mfa-verification.port';
 import { MFA_STRATEGIES } from '@application/queries/strategies';
 import type { MfaStrategy } from '@application/queries/strategies';
 
+@Injectable()
 export class UserQueryHandler implements UserQueryPort {
   private readonly mfaStrategies: Map<MfaMethodType, MfaStrategy>;
 
