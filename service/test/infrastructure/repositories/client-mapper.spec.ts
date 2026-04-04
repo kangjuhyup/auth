@@ -21,6 +21,7 @@ function makeOrmEntity(): ClientOrmEntity {
     backchannelLogoutUri: 'https://app.example.com/backchannel-logout',
     frontchannelLogoutUri: null,
     allowedResources: ['https://api.example.com'],
+    skipConsent: false,
     createdAt: new Date('2025-01-01'),
     updatedAt: new Date('2025-01-02'),
   });
@@ -45,6 +46,7 @@ function makeDomainModel(id?: string): ClientModel {
       backchannelLogoutUri: 'https://app.example.com/backchannel-logout',
       frontchannelLogoutUri: null,
       allowedResources: ['https://api.example.com'],
+      skipConsent: false,
     },
     id,
   );

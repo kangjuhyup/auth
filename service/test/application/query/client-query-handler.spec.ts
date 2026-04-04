@@ -22,6 +22,7 @@ function makeClient(
     backchannelLogoutUri: null,
     frontchannelLogoutUri: null,
     allowedResources,
+    skipConsent: false,
   });
   c.setPersistence('client-1', new Date(), new Date());
   return c;

@@ -44,6 +44,7 @@ export class ClientCommandHandler implements ClientCommandPort {
       backchannelLogoutUri: dto.backchannelLogoutUri ?? null,
       frontchannelLogoutUri: dto.frontchannelLogoutUri ?? null,
       allowedResources: dto.allowedResources ?? [],
+      skipConsent: dto.skipConsent ?? false,
     });
 
     const saved = await this.clientRepo.save(client);
@@ -84,6 +85,8 @@ export class ClientCommandHandler implements ClientCommandPort {
       client.changeFrontchannelLogoutUri(dto.frontchannelLogoutUri ?? null);
     if (dto.allowedResources !== undefined)
       client.changeAllowedResources(dto.allowedResources);
+    if (dto.skipConsent !== undefined)
+      client.setSkipConsent(dto.skipConsent);
 
     await this.clientRepo.save(client);
   }

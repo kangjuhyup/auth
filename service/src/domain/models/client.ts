@@ -20,6 +20,7 @@ interface ClientModelProps {
   backchannelLogoutUri?: string | null;
   frontchannelLogoutUri?: string | null;
   allowedResources: string[];
+  skipConsent: boolean;
 }
 
 export class ClientModel extends PersistenceModel<string, ClientModelProps> {
@@ -89,6 +90,14 @@ export class ClientModel extends PersistenceModel<string, ClientModelProps> {
 
   get allowedResources(): string[] {
     return this.etc.allowedResources;
+  }
+
+  get skipConsent(): boolean {
+    return this.etc.skipConsent;
+  }
+
+  setSkipConsent(value: boolean): void {
+    this.etc.skipConsent = value;
   }
 
   changeName(name: string): void {

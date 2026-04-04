@@ -13,6 +13,7 @@ export interface CreateClientDto {
   backchannelLogoutUri?: string;
   frontchannelLogoutUri?: string;
   allowedResources?: string[];
+  skipConsent?: boolean;
 }
 
 export interface UpdateClientDto {
@@ -29,6 +30,7 @@ export interface UpdateClientDto {
   backchannelLogoutUri?: string | null;
   frontchannelLogoutUri?: string | null;
   allowedResources?: string[];
+  skipConsent?: boolean;
 }
 
 export interface ClientResponse {
@@ -47,6 +49,7 @@ export interface ClientResponse {
   backchannelLogoutUri: string | null;
   frontchannelLogoutUri: string | null;
   allowedResources: string[];
+  skipConsent: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -13,6 +13,7 @@ export class CreateClientDto {
   backchannelLogoutUri?: string;
   frontchannelLogoutUri?: string;
   allowedResources?: string[];
+  skipConsent?: boolean;
 }
 
 export class UpdateClientDto {
@@ -29,6 +30,7 @@ export class UpdateClientDto {
   backchannelLogoutUri?: string | null;
   frontchannelLogoutUri?: string | null;
   allowedResources?: string[];
+  skipConsent?: boolean;
 }
 
 export class ClientResponse {
@@ -47,6 +49,7 @@ export class ClientResponse {
   backchannelLogoutUri!: string | null;
   frontchannelLogoutUri!: string | null;
   allowedResources!: string[];
+  skipConsent!: boolean;
   createdAt!: Date;
   updatedAt!: Date;
 }

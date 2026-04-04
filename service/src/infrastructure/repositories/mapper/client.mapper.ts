@@ -21,6 +21,7 @@ export class ClientMapper {
         backchannelLogoutUri: entity.backchannelLogoutUri ?? null,
         frontchannelLogoutUri: entity.frontchannelLogoutUri ?? null,
         allowedResources: entity.allowedResources,
+        skipConsent: entity.skipConsent ?? false,
       },
       entity.id,
     );
@@ -52,6 +53,7 @@ export class ClientMapper {
     entity.backchannelLogoutUri = domain.backchannelLogoutUri ?? null;
     entity.frontchannelLogoutUri = domain.frontchannelLogoutUri ?? null;
     entity.allowedResources = domain.allowedResources;
+    entity.skipConsent = domain.skipConsent;
 
     if (domain.id) {
       entity.id = domain.id;
