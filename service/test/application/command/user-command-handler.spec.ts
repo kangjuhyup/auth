@@ -34,6 +34,8 @@ function createMockUserWriteRepo(): jest.Mocked<UserWriteRepositoryPort> {
     findByContact: jest.fn().mockResolvedValue(null),
     list: jest.fn().mockResolvedValue({ items: [], total: 0 }),
     save: jest.fn().mockResolvedValue(undefined),
+    findCredentialsByType: jest.fn().mockResolvedValue([]),
+    saveCredential: jest.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -159,6 +161,91 @@ describe('UserCommandHandler', () => {
       await expect(
         handler.removeRole('tenant-1', 'user-1', 'role-1'),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('createUser', () => {
+    it('username 중복 시 UsernameAlreadyExists를 던진다', async () => {
+      userWriteRepo.findByUsername.mockResolvedValue(makeUser());
+
+      await expect(
+        handler.createUser('tenant-1', { username: 'testuser', password: 'pw' } as any),
+      ).rejects.toThrow('UsernameAlreadyExists');
+
+      expect(userWriteRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('성공 시 hash → save 순서로 호출하고 { id }를 반환한다', async () => {
+      userWriteRepo.findByUsername.mockResolvedValue(undefined);
+
+      const result = await handler.createUser('tenant-1', {
+        username: 'newuser',
+        password: 'secure123',
+      } as any);
+
+      expect(passwordHash.hash).toHaveBeenCalledWith('secure123');
+      expect(userWriteRepo.save).toHaveBeenCalledTimes(1);
+      expect(result.id).toBeTruthy();
+    });
+  });
+
+  describe('updateUser', () => {
+    it('유저가 없으면 NotFoundException을 던진다', async () => {
+      userWriteRepo.findById.mockResolvedValue(undefined);
+
+      await expect(
+        handler.updateUser('tenant-1', 'user-1', {} as any),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('다른 tenant의 유저이면 NotFoundException을 던진다', async () => {
+      userWriteRepo.findById.mockResolvedValue(makeUser('user-1', 'other-tenant'));
+
+      await expect(
+        handler.updateUser('tenant-1', 'user-1', {} as any),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('성공 시 email/phone/status를 변경하고 save를 호출한다', async () => {
+      const user = makeUser();
+      userWriteRepo.findById.mockResolvedValue(user);
+
+      await handler.updateUser('tenant-1', 'user-1', {
+        email: 'updated@ex.com',
+        status: 'LOCKED',
+      } as any);
+
+      expect(user.email).toBe('updated@ex.com');
+      expect(user.status).toBe('LOCKED');
+      expect(userWriteRepo.save).toHaveBeenCalledWith(user);
+    });
+  });
+
+  describe('deleteUser', () => {
+    it('유저가 없으면 NotFoundException을 던진다', async () => {
+      userWriteRepo.findById.mockResolvedValue(undefined);
+
+      await expect(
+        handler.deleteUser('tenant-1', 'user-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('다른 tenant의 유저이면 NotFoundException을 던진다', async () => {
+      userWriteRepo.findById.mockResolvedValue(makeUser('user-1', 'other-tenant'));
+
+      await expect(
+        handler.deleteUser('tenant-1', 'user-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('성공 시 withdraw() 상태로 변경하고 save를 호출한다', async () => {
+      const user = makeUser();
+      userWriteRepo.findById.mockResolvedValue(user);
+
+      await handler.deleteUser('tenant-1', 'user-1');
+
+      expect(user.status).toBe('WITHDRAWN');
+      expect(userWriteRepo.save).toHaveBeenCalledWith(user);
     });
   });
 });

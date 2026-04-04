@@ -15,6 +15,7 @@ import type { ConfigService } from '@nestjs/config';
 import type { ConsentRepository } from '@domain/repositories/consent.repository';
 import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
+import { ConsentModel } from '@domain/models/consent';
 
 function makeActiveUser(
   overrides?: Partial<Parameters<typeof UserModel.of>[0]>,
@@ -46,6 +47,8 @@ function createMockUserWriteRepo(): jest.Mocked<UserWriteRepositoryPort> {
     findByContact: jest.fn().mockResolvedValue(makeActiveUser()),
     list: jest.fn().mockResolvedValue({ items: [], total: 0 }),
     save: jest.fn().mockResolvedValue(undefined),
+    findCredentialsByType: jest.fn().mockResolvedValue([]),
+    saveCredential: jest.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -349,6 +352,94 @@ describe('AuthCommandHandler', () => {
 
       expect(userWriteRepo.save).not.toHaveBeenCalled();
       expect(otpToken.consume).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('updateProfile', () => {
+    it('유저가 없으면 UserNotFound를 던진다', async () => {
+      userWriteRepo.findById.mockResolvedValue(undefined);
+
+      await expect(
+        handler.updateProfile('tenant-1', 'user-1', {} as any),
+      ).rejects.toThrow('UserNotFound');
+    });
+
+    it('tenant 불일치 시 TenantMismatch를 던진다', async () => {
+      userWriteRepo.findById.mockResolvedValue(makeActiveUser({ tenantId: 'other' }));
+
+      await expect(
+        handler.updateProfile('tenant-1', 'user-1', {} as any),
+      ).rejects.toThrow('TenantMismatch');
+    });
+
+    it('WITHDRAWN 유저는 UserAlreadyWithdrawn을 던진다', async () => {
+      userWriteRepo.findById.mockResolvedValue(makeActiveUser({ status: 'WITHDRAWN' }));
+
+      await expect(
+        handler.updateProfile('tenant-1', 'user-1', {} as any),
+      ).rejects.toThrow('UserAlreadyWithdrawn');
+    });
+
+    it('성공 시 email/phone을 변경하고 save를 호출한다', async () => {
+      const user = makeActiveUser({ email: null, phone: null });
+      userWriteRepo.findById.mockResolvedValue(user);
+
+      await handler.updateProfile('tenant-1', 'user-1', {
+        email: 'new@ex.com',
+        phone: '010-1234-5678',
+      } as any);
+
+      expect(user.email).toBe('new@ex.com');
+      expect(user.phone).toBe('010-1234-5678');
+      expect(userWriteRepo.save).toHaveBeenCalledWith(user);
+    });
+  });
+
+  describe('revokeConsent', () => {
+    it('consent가 없으면 ConsentNotFound를 던진다', async () => {
+      consentRepo.findByTenantUserClient.mockResolvedValue(null);
+
+      await expect(
+        handler.revokeConsent('tenant-1', 'user-1', 'client-1'),
+      ).rejects.toThrow('ConsentNotFound');
+    });
+
+    it('이미 revoke된 consent는 save를 호출하지 않는다', async () => {
+      const consent = new ConsentModel(
+        {
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          clientRefId: 'client-1',
+          grantedScopes: 'openid',
+          grantedAt: new Date(),
+          revokedAt: new Date(),
+        },
+        'consent-1',
+      );
+      consentRepo.findByTenantUserClient.mockResolvedValue(consent);
+
+      await handler.revokeConsent('tenant-1', 'user-1', 'client-1');
+
+      expect(consentRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('성공 시 consent.revoke() + save를 호출한다', async () => {
+      const consent = new ConsentModel(
+        {
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          clientRefId: 'client-1',
+          grantedScopes: 'openid',
+          grantedAt: new Date(),
+        },
+        'consent-1',
+      );
+      consentRepo.findByTenantUserClient.mockResolvedValue(consent);
+
+      await handler.revokeConsent('tenant-1', 'user-1', 'client-1');
+
+      expect(consent.isRevoked).toBe(true);
+      expect(consentRepo.save).toHaveBeenCalledWith(consent);
     });
   });
 });

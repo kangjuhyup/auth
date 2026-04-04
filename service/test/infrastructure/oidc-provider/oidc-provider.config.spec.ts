@@ -69,6 +69,8 @@ describe('buildOidcConfiguration', () => {
       clientRepository,
       tenantRepository,
       symmetricCrypto,
+      tenantAccessTokenTtlSec: 3600,
+      tenantRefreshTokenTtlSec: 86400,
     };
   };
 
@@ -253,5 +255,99 @@ describe('buildOidcConfiguration', () => {
     );
 
     expect(info.accessTokenFormat).toBe('jwt');
+  });
+
+  describe('TTL fallback: client TTL 미설정 시 tenant TTL 적용', () => {
+    const makeTtlCtx = (tenantId = 'tenant-1') =>
+      ({ req: { tenant: { id: tenantId } } }) as any;
+
+    const makeTtlClient = (clientId = 'client-1') =>
+      ({ clientId }) as any;
+
+    it('AccessToken: client에 TTL이 없으면 tenantAccessTokenTtlSec를 반환한다', async () => {
+      const deps = makeDeps();
+      (deps.clientRepository as any).findByClientId = jest
+        .fn()
+        .mockResolvedValue({ accessTokenTtlSec: null, refreshTokenTtlSec: null });
+
+      const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
+      const ttlFn = (cfg.ttl as any).AccessToken;
+
+      // 1차 호출: 캐시 미스 → tenantTTL 반환 + warm 트리거
+      const firstResult = ttlFn(makeTtlCtx(), {}, makeTtlClient());
+      expect(firstResult).toBe(deps.tenantAccessTokenTtlSec);
+
+      // warm 완료 대기
+      await Promise.resolve();
+
+      // 2차 호출: 캐시 히트, client.access === null → tenantTTL 반환
+      const secondResult = ttlFn(makeTtlCtx(), {}, makeTtlClient());
+      expect(secondResult).toBe(deps.tenantAccessTokenTtlSec);
+    });
+
+    it('RefreshToken: client에 TTL이 없으면 tenantRefreshTokenTtlSec를 반환한다', async () => {
+      const deps = makeDeps();
+      (deps.clientRepository as any).findByClientId = jest
+        .fn()
+        .mockResolvedValue({ accessTokenTtlSec: null, refreshTokenTtlSec: null });
+
+      const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
+      const ttlFn = (cfg.ttl as any).RefreshToken;
+
+      const firstResult = ttlFn(makeTtlCtx(), {}, makeTtlClient());
+      expect(firstResult).toBe(deps.tenantRefreshTokenTtlSec);
+
+      await Promise.resolve();
+
+      const secondResult = ttlFn(makeTtlCtx(), {}, makeTtlClient());
+      expect(secondResult).toBe(deps.tenantRefreshTokenTtlSec);
+    });
+
+    it('AccessToken: client에 TTL이 있으면 client TTL을 반환한다', async () => {
+      const clientAccessTtl = 1800;
+      const deps = makeDeps();
+      (deps.clientRepository as any).findByClientId = jest
+        .fn()
+        .mockResolvedValue({ accessTokenTtlSec: clientAccessTtl, refreshTokenTtlSec: null });
+
+      const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
+      const ttlFn = (cfg.ttl as any).AccessToken;
+
+      // 1차 호출: 캐시 미스 → tenantTTL 반환 + warm 트리거
+      ttlFn(makeTtlCtx(), {}, makeTtlClient());
+
+      // warm 완료 대기
+      await Promise.resolve();
+
+      // 2차 호출: 캐시 히트, client.access === 1800 → client TTL 반환
+      const result = ttlFn(makeTtlCtx(), {}, makeTtlClient());
+      expect(result).toBe(clientAccessTtl);
+    });
+
+    it('RefreshToken: client에 TTL이 있으면 client TTL을 반환한다', async () => {
+      const clientRefreshTtl = 43200;
+      const deps = makeDeps();
+      (deps.clientRepository as any).findByClientId = jest
+        .fn()
+        .mockResolvedValue({ accessTokenTtlSec: null, refreshTokenTtlSec: clientRefreshTtl });
+
+      const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
+      const ttlFn = (cfg.ttl as any).RefreshToken;
+
+      ttlFn(makeTtlCtx(), {}, makeTtlClient());
+      await Promise.resolve();
+
+      const result = ttlFn(makeTtlCtx(), {}, makeTtlClient());
+      expect(result).toBe(clientRefreshTtl);
+    });
+
+    it('tenant 정보가 없으면 tenantAccessTokenTtlSec를 반환한다', () => {
+      const deps = makeDeps();
+      const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
+      const ttlFn = (cfg.ttl as any).AccessToken;
+
+      const result = ttlFn({ req: { tenant: undefined } } as any, {}, makeTtlClient());
+      expect(result).toBe(deps.tenantAccessTokenTtlSec);
+    });
   });
 });
