@@ -88,5 +88,10 @@ export class OidcProviderModule implements NestModule {
       path: 't/:tenantCode/oidc',
       method: RequestMethod.ALL,
     });
+
+    consumer.apply(TenantMiddleware).forRoutes({
+      path: 't/:tenantCode/interaction',
+      method: RequestMethod.ALL,
+    });
   }
 }

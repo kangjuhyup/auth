@@ -12,6 +12,7 @@ import { AdminRoleController } from './controllers/admin/role.controller';
 import { AdminPermissionController } from './controllers/admin/permission.controller';
 import { AdminGroupController } from './controllers/admin/group.controller';
 import { AdminSessionController } from './controllers/admin/session.controller';
+import { InteractionController } from './controllers/interaction.controller';
 
 @Module({
   imports: [ApplicationModule],
@@ -28,6 +29,7 @@ import { AdminSessionController } from './controllers/admin/session.controller';
     AdminPermissionController,
     AdminGroupController,
     AdminSessionController,
+    InteractionController,
   ],
 })
 export class PresentationModule {}
