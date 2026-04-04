@@ -21,8 +21,15 @@ export function buildOidcConfiguration(params: {
   symmetricCrypto: SymmetricCryptoPort;
 }): Configuration {
   const {
-    em, redis, userQuery, clientQuery, configService,
-    tenantCode, clientRepository, tenantRepository, symmetricCrypto,
+    em,
+    redis,
+    userQuery,
+    clientQuery,
+    configService,
+    tenantCode,
+    clientRepository,
+    tenantRepository,
+    symmetricCrypto,
   } = params;
 
   const accessTokenFormat = configService.getOrThrow<string>(
@@ -30,6 +37,29 @@ export function buildOidcConfiguration(params: {
   ) as 'opaque' | 'jwt';
 
   return {
+    interactions: {
+      url(_ctx, interaction) {
+        return `/t/${tenantCode}/interaction/${interaction.uid}`;
+      },
+    },
+
+    async loadExistingGrant(ctx) {
+      const clientId = ctx.oidc.client?.clientId;
+      const accountId = ctx.oidc.session?.accountId;
+      if (!clientId || !accountId) return undefined;
+
+      const tenant = (ctx.req as any)?.tenant as { id: string } | undefined;
+      if (!tenant) return undefined;
+
+      const client = await clientRepository.findByClientId(tenant.id, clientId);
+      if (!client?.skipConsent) return undefined;
+
+      // 첫 번째 파티 클라이언트: 동의 없이 Grant 자동 생성
+      const grant = new ctx.oidc.provider.Grant({ clientId, accountId });
+      grant.addOIDCScope('openid profile email');
+      return grant;
+    },
+
     features: {
       devInteractions: { enabled: false },
 
@@ -50,7 +80,6 @@ export function buildOidcConfiguration(params: {
           const origin = normalizeResourceToOrigin(resource);
 
           // 2) client가 허용된 resource인지 조회해서 검증
-          //    (예: accountQuery 말고 ClientQueryPort 같은 걸 두는 게 자연스러움)
           const allowed = await clientQuery.getAllowedResources({
             tenantId,
             clientId: client.clientId,
@@ -94,9 +123,15 @@ export function buildOidcConfiguration(params: {
       driver: configService.getOrThrow<string>('OIDC_ADAPTER_DRIVER') as any,
       em,
       redis,
-      cacheTtlMarginSec: Number(configService.getOrThrow<string>('OIDC_CACHE_TTL_MARGIN_SEC')),
-      negativeTtlSec: Number(configService.getOrThrow<string>('OIDC_CACHE_NEGATIVE_TTL_SEC')),
-      backfillTtlSec: Number(configService.getOrThrow<string>('OIDC_CACHE_BACKFILL_TTL_SEC')),
+      cacheTtlMarginSec: Number(
+        configService.getOrThrow<string>('OIDC_CACHE_TTL_MARGIN_SEC'),
+      ),
+      negativeTtlSec: Number(
+        configService.getOrThrow<string>('OIDC_CACHE_NEGATIVE_TTL_SEC'),
+      ),
+      backfillTtlSec: Number(
+        configService.getOrThrow<string>('OIDC_CACHE_BACKFILL_TTL_SEC'),
+      ),
       tenantCode,
       clientRepository,
       tenantRepository,

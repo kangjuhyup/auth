@@ -80,6 +80,9 @@ export class ClientOrmEntity extends BaseEntity {
   @Property({ fieldName: 'allowed_resources', type: 'json', default: '[]' })
   allowedResources!: string[];
 
+  @Property({ fieldName: 'skip_consent', type: 'boolean', default: false })
+  skipConsent!: boolean;
+
   @OneToMany(() => UserRoleOrmEntity, (ur) => ur.client)
   userRoles = new Collection<UserRoleOrmEntity>(this);
 

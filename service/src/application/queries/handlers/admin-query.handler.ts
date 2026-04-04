@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { AdminQueryPort } from '../ports/admin-query.port';
 import {
   PaginationQuery,
@@ -12,6 +12,7 @@ import {
 } from '@application/dto';
 import { TenantRepository, GroupRepository, RoleRepository, PermissionRepository, RolePermissionRepository, RoleAssignmentRepository, ClientRepository } from '@domain/repositories';
 
+@Injectable()
 export class AdminQueryHandler implements AdminQueryPort {
   constructor(
     private readonly tenantRepo: TenantRepository,
@@ -94,6 +95,7 @@ export class AdminQueryHandler implements AdminQueryPort {
         backchannelLogoutUri: c.backchannelLogoutUri ?? null,
         frontchannelLogoutUri: c.frontchannelLogoutUri ?? null,
         allowedResources: c.allowedResources,
+        skipConsent: c.skipConsent,
         createdAt: c.createdAt,
         updatedAt: c.updatedAt,
       })),
@@ -124,6 +126,7 @@ export class AdminQueryHandler implements AdminQueryPort {
       backchannelLogoutUri: client.backchannelLogoutUri ?? null,
       frontchannelLogoutUri: client.frontchannelLogoutUri ?? null,
       allowedResources: client.allowedResources,
+      skipConsent: client.skipConsent,
       createdAt: client.createdAt,
       updatedAt: client.updatedAt,
     };
