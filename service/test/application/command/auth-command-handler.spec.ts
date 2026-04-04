@@ -6,13 +6,19 @@ import type {
   HashPolicy,
 } from '@application/ports/password-hash.port';
 import type { OtpHashPort } from '@application/ports/otp-hash.port';
-import type { OtpTokenPort, OtpTokenRecord } from '@application/ports/otp-token.port';
+import type {
+  OtpTokenPort,
+  OtpTokenRecord,
+} from '@application/ports/otp-token.port';
 import type { NotificationPort } from '@application/ports/notification.port';
 import type { ConfigService } from '@nestjs/config';
+import type { ConsentRepository } from '@domain/repositories/consent.repository';
 import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
 
-function makeActiveUser(overrides?: Partial<Parameters<typeof UserModel.of>[0]>): UserModel {
+function makeActiveUser(
+  overrides?: Partial<Parameters<typeof UserModel.of>[0]>,
+): UserModel {
   const credential = UserCredentialModel.password({
     secretHash: 'hashed-pw',
     hashAlg: 'argon2id',
@@ -38,7 +44,18 @@ function createMockUserWriteRepo(): jest.Mocked<UserWriteRepositoryPort> {
     findById: jest.fn().mockResolvedValue(makeActiveUser()),
     findByUsername: jest.fn().mockResolvedValue(makeActiveUser()),
     findByContact: jest.fn().mockResolvedValue(makeActiveUser()),
+    list: jest.fn().mockResolvedValue({ items: [], total: 0 }),
     save: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
+function createMockConsentRepo(): jest.Mocked<ConsentRepository> {
+  return {
+    findByTenantUserClient: jest.fn().mockResolvedValue(null),
+    listAllByUser: jest.fn().mockResolvedValue([]),
+    listByUser: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+    save: jest.fn().mockResolvedValue(null as any),
+    delete: jest.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -50,7 +67,13 @@ function createMockPasswordHash(): jest.Mocked<PasswordHashPort> {
     hash: 'hashed-password',
   };
   return {
-    defaultPolicy: jest.fn().mockReturnValue({ alg: 'argon2id', params: {}, version: 1 } as HashPolicy),
+    defaultPolicy: jest
+      .fn()
+      .mockReturnValue({
+        alg: 'argon2id',
+        params: {},
+        version: 1,
+      } as HashPolicy),
     hash: jest.fn().mockResolvedValue(result),
     verify: jest.fn().mockResolvedValue(true),
   };
@@ -94,6 +117,7 @@ describe('AuthCommandHandler', () => {
   let otpToken: jest.Mocked<OtpTokenPort>;
   let notification: jest.Mocked<NotificationPort>;
   let configService: jest.Mocked<ConfigService>;
+  let consentRepo: jest.Mocked<ConsentRepository>;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -102,6 +126,7 @@ describe('AuthCommandHandler', () => {
     otpHash = createMockOtpHash();
     otpToken = createMockOtpToken();
     notification = createMockNotification();
+    consentRepo = createMockConsentRepo();
     configService = {
       getOrThrow: jest.fn().mockReturnValue('600'),
     } as any;
@@ -113,6 +138,7 @@ describe('AuthCommandHandler', () => {
       otpToken,
       notification,
       configService,
+      consentRepo,
     );
   });
 
@@ -240,9 +266,9 @@ describe('AuthCommandHandler', () => {
       expect(otpHash.hash).toHaveBeenCalledTimes(1);
       expect(otpToken.create).toHaveBeenCalledTimes(1);
 
-      expect(userWriteRepo.findByContact.mock.invocationCallOrder[0]).toBeLessThan(
-        otpHash.generateToken.mock.invocationCallOrder[0],
-      );
+      expect(
+        userWriteRepo.findByContact.mock.invocationCallOrder[0],
+      ).toBeLessThan(otpHash.generateToken.mock.invocationCallOrder[0]);
       expect(otpHash.generateToken.mock.invocationCallOrder[0]).toBeLessThan(
         otpToken.create.mock.invocationCallOrder[0],
       );
@@ -251,7 +277,9 @@ describe('AuthCommandHandler', () => {
     it('유저가 없으면 otpToken.create/notify를 호출하지 않는다', async () => {
       userWriteRepo.findByContact.mockResolvedValue(undefined);
 
-      await handler.requestPasswordReset('tenant-1', { email: 'x@x.com' } as any);
+      await handler.requestPasswordReset('tenant-1', {
+        email: 'x@x.com',
+      } as any);
 
       expect(otpToken.create).not.toHaveBeenCalled();
       expect(notification.notify).not.toHaveBeenCalled();
@@ -281,9 +309,9 @@ describe('AuthCommandHandler', () => {
       expect(otpHash.hash.mock.invocationCallOrder[0]).toBeLessThan(
         otpToken.findValidByTokenHash.mock.invocationCallOrder[0],
       );
-      expect(otpToken.findValidByTokenHash.mock.invocationCallOrder[0]).toBeLessThan(
-        userWriteRepo.findById.mock.invocationCallOrder[0],
-      );
+      expect(
+        otpToken.findValidByTokenHash.mock.invocationCallOrder[0],
+      ).toBeLessThan(userWriteRepo.findById.mock.invocationCallOrder[0]);
       expect(userWriteRepo.findById.mock.invocationCallOrder[0]).toBeLessThan(
         passwordHash.hash.mock.invocationCallOrder[0],
       );

@@ -2,6 +2,7 @@ import { NotFoundException } from '@nestjs/common';
 import { UserCommandHandler } from '@application/commands/handlers/user-command.handler';
 import type { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
 import type { RoleRepository, RoleAssignmentRepository } from '@domain/repositories';
+import type { PasswordHashPort, HashResult, HashPolicy } from '@application/ports/password-hash.port';
 import { UserModel } from '@domain/models/user';
 import { RoleModel } from '@domain/models/role';
 
@@ -31,7 +32,17 @@ function createMockUserWriteRepo(): jest.Mocked<UserWriteRepositoryPort> {
     findById: jest.fn().mockResolvedValue(makeUser()),
     findByUsername: jest.fn().mockResolvedValue(null),
     findByContact: jest.fn().mockResolvedValue(null),
+    list: jest.fn().mockResolvedValue({ items: [], total: 0 }),
     save: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
+function createMockPasswordHash(): jest.Mocked<PasswordHashPort> {
+  const result: HashResult = { alg: 'argon2id', params: {}, version: 1, hash: 'hashed' };
+  return {
+    defaultPolicy: jest.fn().mockReturnValue({ alg: 'argon2id', params: {}, version: 1 } as HashPolicy),
+    hash: jest.fn().mockResolvedValue(result),
+    verify: jest.fn().mockResolvedValue(true),
   };
 }
 
@@ -61,13 +72,15 @@ describe('UserCommandHandler', () => {
   let userWriteRepo: jest.Mocked<UserWriteRepositoryPort>;
   let roleRepo: jest.Mocked<RoleRepository>;
   let roleAssignment: jest.Mocked<RoleAssignmentRepository>;
+  let passwordHash: jest.Mocked<PasswordHashPort>;
 
   beforeEach(() => {
     jest.clearAllMocks();
     userWriteRepo = createMockUserWriteRepo();
     roleRepo = createMockRoleRepo();
     roleAssignment = createMockRoleAssignment();
-    handler = new UserCommandHandler(userWriteRepo, roleRepo, roleAssignment);
+    passwordHash = createMockPasswordHash();
+    handler = new UserCommandHandler(userWriteRepo, roleRepo, roleAssignment, passwordHash);
   });
 
   describe('assignRole', () => {

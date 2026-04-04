@@ -8,7 +8,12 @@ import type {
   RolePermissionRepository,
   RoleAssignmentRepository,
   ClientRepository,
+  TenantConfigRepository,
+  JwksKeyRepository,
+  ClientAuthPolicyRepository,
+  EventRepository,
 } from '@domain/repositories';
+import type { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
 import { TenantModel } from '@domain/models/tenant';
 import { GroupModel } from '@domain/models/group';
 import { RoleModel } from '@domain/models/role';
@@ -130,6 +135,46 @@ function createMockClientRepo(): jest.Mocked<ClientRepository> {
   };
 }
 
+function createMockTenantConfigRepo(): jest.Mocked<TenantConfigRepository> {
+  return {
+    findByTenantId: jest.fn().mockResolvedValue(null),
+    save: jest.fn(),
+  };
+}
+
+function createMockJwksKeyRepo(): jest.Mocked<JwksKeyRepository> {
+  return {
+    findActiveByTenantId: jest.fn().mockResolvedValue([]),
+    save: jest.fn(),
+    saveMany: jest.fn(),
+  };
+}
+
+function createMockClientAuthPolicyRepo(): jest.Mocked<ClientAuthPolicyRepository> {
+  return {
+    findByClientRefId: jest.fn().mockResolvedValue(null),
+    save: jest.fn(),
+    deleteByClientRefId: jest.fn(),
+  };
+}
+
+function createMockEventRepo(): jest.Mocked<EventRepository> {
+  return {
+    list: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+    save: jest.fn(),
+  };
+}
+
+function createMockUserRepo(): jest.Mocked<UserWriteRepositoryPort> {
+  return {
+    findById: jest.fn().mockResolvedValue(undefined),
+    findByUsername: jest.fn().mockResolvedValue(undefined),
+    findByContact: jest.fn().mockResolvedValue(undefined),
+    list: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+    save: jest.fn(),
+  };
+}
+
 function createHandler() {
   const tenantRepo = createMockTenantRepo();
   const groupRepo = createMockGroupRepo();
@@ -138,6 +183,11 @@ function createHandler() {
   const rolePermissionRepo = createMockRolePermissionRepo();
   const roleAssignmentRepo = createMockRoleAssignmentRepo();
   const clientRepo = createMockClientRepo();
+  const tenantConfigRepo = createMockTenantConfigRepo();
+  const jwksKeyRepo = createMockJwksKeyRepo();
+  const clientAuthPolicyRepo = createMockClientAuthPolicyRepo();
+  const eventRepo = createMockEventRepo();
+  const userRepo = createMockUserRepo();
 
   const handler = new AdminQueryHandler(
     tenantRepo,
@@ -147,6 +197,11 @@ function createHandler() {
     rolePermissionRepo,
     roleAssignmentRepo,
     clientRepo,
+    tenantConfigRepo,
+    jwksKeyRepo,
+    clientAuthPolicyRepo,
+    eventRepo,
+    userRepo,
   );
 
   return {
@@ -158,6 +213,11 @@ function createHandler() {
     rolePermissionRepo,
     roleAssignmentRepo,
     clientRepo,
+    tenantConfigRepo,
+    jwksKeyRepo,
+    clientAuthPolicyRepo,
+    eventRepo,
+    userRepo,
   };
 }
 
