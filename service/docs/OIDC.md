@@ -19,6 +19,7 @@
 - [oidc-provider.config.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/oidc-provider.config.ts)
 - [oidc.middleware.ts](/Users/kangjuhyup/Documents/auth/service/src/presentation/http/oidc.middleware.ts)
 - [oidc-provider.registry.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/oidc-provider.registry.ts)
+- [interaction.controller.ts](/Users/kangjuhyup/Documents/auth/service/src/presentation/controllers/interaction.controller.ts)
 
 구성 흐름:
 
@@ -178,16 +179,32 @@ http://localhost:3000/t/acme/oidc
 
 이 프로젝트에서:
 
-- interaction 모델 자체는 provider/adapter 가 저장 가능
-- 하지만 `features.devInteractions` 는 `false`
-- 즉 기본 개발용 interaction UI 는 비활성화되어 있다.
+- `features.devInteractions` 는 `false` — 기본 개발용 UI 비활성화
+- 대신 커스텀 `InteractionController` 가 login/consent 화면과 처리 로직을 구현
 
-현재 상태:
+관련 코드:
 
-- interaction endpoint 경로 개념은 존재
-- 그러나 커스텀 login/consent 화면 및 처리 흐름은 아직 구현되어 있지 않다.
+- [interaction.controller.ts](/Users/kangjuhyup/Documents/auth/service/src/presentation/controllers/interaction.controller.ts)
+- [interaction-login.view.ts](/Users/kangjuhyup/Documents/auth/service/src/presentation/views/interaction-login.view.ts)
+- [interaction-consent.view.ts](/Users/kangjuhyup/Documents/auth/service/src/presentation/views/interaction-consent.view.ts)
 
-즉, authorization flow 를 완전하게 서비스하려면 별도 interaction UI/handler 구현이 추가로 필요하다.
+엔드포인트 구성:
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| GET | `/t/:tenantCode/interaction/:uid` | 인터랙션 진입점. prompt 에 따라 로그인 또는 동의 화면 렌더링 |
+| POST | `/t/:tenantCode/interaction/:uid/login` | 사용자명/비밀번호 제출. `UserQueryPort.authenticate()` 로 검증 |
+| POST | `/t/:tenantCode/interaction/:uid/consent` | 동의 승인. Grant 생성/갱신 후 provider 에 반환 |
+| GET | `/t/:tenantCode/interaction/:uid/abort` | 인터랙션 취소. `access_denied` 에러 반환 |
+
+흐름:
+
+1. provider 가 authorization 요청을 받으면 `interactions.url` 콜백으로 interaction 경로를 결정
+2. `InteractionController.showInteraction()` 이 prompt 종류를 확인
+3. `login` prompt → 서버 사이드 렌더링 로그인 폼 반환
+4. `consent` prompt → 요청 스코프를 표시하는 동의 화면 반환 (missingScopes 가 없으면 자동 승인)
+5. 로그인 성공 시 `provider.interactionFinished()` 로 accountId 전달
+6. 동의 승인 시 Grant 를 생성하고 grantId 를 provider 에 반환
 
 ---
 
@@ -207,6 +224,8 @@ http://localhost:3000/t/acme/oidc
 
 [oidc-provider.config.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/oidc-provider.config.ts) 에서 현재 다음을 설정한다.
 
+- `interactions.url` — tenant 별 interaction 경로 생성 (`/t/{tenantCode}/interaction/{uid}`)
+- `loadExistingGrant` — `skipConsent` 가 설정된 클라이언트에 대해 동의 없이 Grant 자동 생성
 - `pkce.required: () => true`
 - `scopes: ['openid', 'profile', 'email']`
 - `cookies.keys`
@@ -313,29 +332,40 @@ OIDC_CACHE_BACKFILL_TTL_SEC=60
 jwks: { keys: [] }
 ```
 
-즉, JWKS / signing key 연동은 아직 TODO 이다.
+JWKS signing key 를 provider 에 연동하는 부분은 아직 TODO 이다.
 
-관련 후보 구현:
+관련 구현(이미 존재):
 
-- `JwksKeyRepository`
-- `JwksKeyCryptoPort`
-- `KeyCommandHandler.rotateKeys`
+- `JwksKeyRepository` — 키 저장/조회
+- `JwksKeyCryptoPort` — 키 쌍 생성
+- `KeyCommandHandler.rotateKeys()` — 키 로테이션 로직
 
-## 8.2 Client Resource Policy
+남은 작업:
 
-[client-query.handler.ts](/Users/kangjuhyup/Documents/auth/service/src/application/queries/handlers/client-query.handler.ts) 의 `getAllowedResources()` 는 아직 구현되지 않았다.
+- `buildOidcConfiguration` 에서 `jwks.keys` 를 `JwksKeyRepository` 에서 조회한 실제 키로 채우는 연동
 
-따라서 resource indicator 기반 access token 발급 정책은 현재 완성 전 상태다.
+## ~~8.2 Client Resource Policy~~ (완료)
 
-## 8.3 Interaction UI
+`ClientQueryHandler.getAllowedResources()` 가 구현되었다. client 의 `allowedResources` 필드를 조회하여 resource indicator 검증에 사용한다.
 
-`devInteractions` 가 꺼져 있으므로, 실제 로그인/동의 화면을 사용하려면 별도 interaction UI 와 처리 흐름이 필요하다.
+## ~~8.3 Interaction UI~~ (완료)
 
-## 8.4 Consent / revoke 연계
+`InteractionController` 와 서버 사이드 렌더링 뷰(login/consent)가 구현되었다. 상세 내용은 섹션 4.6 참조.
 
-Auth command 쪽의 `revokeConsent()` 는 아직 구현되지 않았다.
+추가 개선 가능 사항:
 
-즉 OIDC 표준 revocation endpoint 와 비즈니스 consent 관리 사이의 연결은 추가 작업이 필요하다.
+- SPA 기반 interaction UI 로 전환
+- 소셜 로그인(IdP) 연동 화면 추가
+- MFA 인터랙션 단계 추가
+
+## ~~8.4 Consent / revoke 연계~~ (완료)
+
+`AuthCommandHandler.revokeConsent()` 가 구현되었다. `ConsentRepository` 를 통해 특정 유저/클라이언트의 동의를 조회하고 revoke 처리한다.
+
+남은 작업:
+
+- OIDC 표준 revocation endpoint 에서 consent 자동 정리 연계 (adapter 레벨)
+- `loadExistingGrant` 에서 revoke 된 consent 를 확인하여 Grant 재생성 차단
 
 ---
 
@@ -346,7 +376,10 @@ Auth command 쪽의 `revokeConsent()` 는 아직 구현되지 않았다.
 - tenant-aware issuer 및 path routing
 - storage adapter 선택(rdb/redis/hybrid)
 - application query port 기반 account lookup
-- resource indicator 검증
+- resource indicator 검증 (`ClientQueryHandler.getAllowedResources`)
 - 내부 API 용 access token 검증 adapter
+- 커스텀 interaction UI (로그인/동의 화면 및 처리)
+- `skipConsent` 클라이언트 대상 자동 Grant 생성
+- consent 관리 및 revoke 처리
 
-OIDC 표준 endpoint 자체는 provider 가 담당하고, 우리 코드는 멀티테넌시와 persistence, 정책, 클레임 조회를 연결하는 구조다.
+OIDC 표준 endpoint 자체는 provider 가 담당하고, 우리 코드는 멀티테넌시와 persistence, 정책, 클레임 조회, interaction 을 연결하는 구조다.

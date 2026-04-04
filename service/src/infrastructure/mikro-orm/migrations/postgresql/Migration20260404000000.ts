@@ -1,7 +1,7 @@
 import { Migration } from '@mikro-orm/migrations';
 
 export class Migration20260404000000 extends Migration {
-  override async up(): Promise<void> {
+  async up(): Promise<void> {
     // ------------------------------------------------------------------ tenant
     this.addSql(`
       CREATE TABLE "tenant" (
@@ -397,7 +397,7 @@ export class Migration20260404000000 extends Migration {
     this.addSql(`CREATE INDEX idx_oidc_model_kind_usercode ON "oidc_model" (kind, user_code);`);
   }
 
-  override async down(): Promise<void> {
+  async down(): Promise<void> {
     this.addSql(`DROP TABLE IF EXISTS "oidc_model"         CASCADE;`);
     this.addSql(`DROP TABLE IF EXISTS "otp_token"          CASCADE;`);
     this.addSql(`DROP TABLE IF EXISTS "event"              CASCADE;`);

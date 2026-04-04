@@ -11,7 +11,7 @@ import { ulid } from 'ulid';
  * 운영 환경에서는 배포 후 반드시 admin 비밀번호를 변경하세요.
  */
 export class Migration20260404000001 extends Migration {
-  override async up(): Promise<void> {
+  async up(): Promise<void> {
     const adminId = ulid();
     const passwordHash = await argon2.hash('Admin1234!');
 
@@ -65,7 +65,7 @@ export class Migration20260404000001 extends Migration {
     `);
   }
 
-  override async down(): Promise<void> {
+  async down(): Promise<void> {
     this.addSql(`
       DELETE FROM "user_role"
       WHERE user_id IN (
