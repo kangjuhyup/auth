@@ -10,17 +10,20 @@ function makeTenant(id = 'tenant-1', code = 'acme'): TenantModel {
   return t;
 }
 
-function makeClient(overrides: Partial<{
-  secretEnc: string | null;
-  enabled: boolean;
-  applicationType: 'web' | 'native';
-  backchannelLogoutUri: string | null;
-  frontchannelLogoutUri: string | null;
-}> = {}): ClientModel {
+function makeClient(
+  overrides: Partial<{
+    secretEnc: string | null;
+    enabled: boolean;
+    applicationType: 'web' | 'native';
+    backchannelLogoutUri: string | null;
+    frontchannelLogoutUri: string | null;
+  }> = {},
+): ClientModel {
   const c = new ClientModel({
     tenantId: 'tenant-1',
     clientId: 'my-app',
-    secretEnc: 'secretEnc' in overrides ? overrides.secretEnc : 'encrypted-secret',
+    secretEnc:
+      'secretEnc' in overrides ? overrides.secretEnc : 'encrypted-secret',
     name: 'My App',
     type: 'confidential',
     enabled: overrides.enabled ?? true,
@@ -31,9 +34,11 @@ function makeClient(overrides: Partial<{
     scope: 'openid profile',
     postLogoutRedirectUris: ['https://app.example.com/logout'],
     applicationType: overrides.applicationType ?? 'web',
-    backchannelLogoutUri: overrides.backchannelLogoutUri ?? 'https://app.example.com/bc',
+    backchannelLogoutUri:
+      overrides.backchannelLogoutUri ?? 'https://app.example.com/bc',
     frontchannelLogoutUri: overrides.frontchannelLogoutUri ?? null,
     allowedResources: ['https://api.example.com'],
+    skipConsent: false,
   });
   c.setPersistence('1', new Date(), new Date());
   return c;
@@ -87,22 +92,31 @@ describe('ClientOidcAdapter', () => {
       const result = await adapter.find('my-app');
 
       expect(tenantRepo.findByCode).toHaveBeenCalledWith('acme');
-      expect(clientRepo.findByClientId).toHaveBeenCalledWith('tenant-1', 'my-app');
+      expect(clientRepo.findByClientId).toHaveBeenCalledWith(
+        'tenant-1',
+        'my-app',
+      );
       expect(result).toBeDefined();
       expect(result!.client_id).toBe('my-app');
-      expect(result!.redirect_uris).toEqual(['https://app.example.com/callback']);
+      expect(result!.redirect_uris).toEqual([
+        'https://app.example.com/callback',
+      ]);
       expect(result!.grant_types).toEqual(['authorization_code']);
       expect(result!.response_types).toEqual(['code']);
       expect(result!.token_endpoint_auth_method).toBe('client_secret_basic');
       expect(result!.scope).toBe('openid profile');
-      expect(result!.post_logout_redirect_uris).toEqual(['https://app.example.com/logout']);
+      expect(result!.post_logout_redirect_uris).toEqual([
+        'https://app.example.com/logout',
+      ]);
       expect(result!.application_type).toBe('web');
       expect(result!.backchannel_logout_uri).toBe('https://app.example.com/bc');
       expect(result!.frontchannel_logout_uri).toBeUndefined();
     });
 
     it('secretEnc가 있으면 복호화하여 client_secret에 넣는다', async () => {
-      clientRepo.findByClientId.mockResolvedValue(makeClient({ secretEnc: 'enc-val' }));
+      clientRepo.findByClientId.mockResolvedValue(
+        makeClient({ secretEnc: 'enc-val' }),
+      );
 
       const result = await adapter.find('my-app');
 
@@ -111,7 +125,9 @@ describe('ClientOidcAdapter', () => {
     });
 
     it('secretEnc가 null이면 client_secret이 undefined다', async () => {
-      clientRepo.findByClientId.mockResolvedValue(makeClient({ secretEnc: null }));
+      clientRepo.findByClientId.mockResolvedValue(
+        makeClient({ secretEnc: null }),
+      );
 
       const result = await adapter.find('my-app');
 
@@ -128,7 +144,9 @@ describe('ClientOidcAdapter', () => {
     });
 
     it('비활성 클라이언트는 undefined를 반환한다', async () => {
-      clientRepo.findByClientId.mockResolvedValue(makeClient({ enabled: false }));
+      clientRepo.findByClientId.mockResolvedValue(
+        makeClient({ enabled: false }),
+      );
 
       const result = await adapter.find('my-app');
 
@@ -153,7 +171,9 @@ describe('ClientOidcAdapter', () => {
 
   describe('write methods (no-op)', () => {
     it('upsert는 아무것도 하지 않는다', async () => {
-      await expect(adapter.upsert('id', {} as any, 3600)).resolves.toBeUndefined();
+      await expect(
+        adapter.upsert('id', {} as any, 3600),
+      ).resolves.toBeUndefined();
     });
 
     it('consume은 아무것도 하지 않는다', async () => {

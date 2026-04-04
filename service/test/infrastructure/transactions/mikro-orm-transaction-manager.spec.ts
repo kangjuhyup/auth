@@ -1,4 +1,4 @@
-import { MikroOrmTransactionManager } from '@infrastructure/transactions/mikro-orm-transaction-manager';
+import { MikroOrmTransactionManager } from '@infrastructure/mikro-orm/transactions/mikro-orm-transaction-manager';
 
 describe('MikroOrmTransactionManager', () => {
   it('MikroORM transactional API에 위임한다', async () => {

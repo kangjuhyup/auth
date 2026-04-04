@@ -22,6 +22,7 @@ function makeClient(id = 'client-1', tenantId = 'tenant-1'): ClientModel {
     backchannelLogoutUri: null,
     frontchannelLogoutUri: null,
     allowedResources: [],
+    skipConsent: false,
   });
   c.setPersistence(id, new Date(), new Date());
   return c;
@@ -66,7 +67,10 @@ describe('ClientCommandHandler', () => {
         name: 'New App',
       });
 
-      expect(clientRepo.findByClientId).toHaveBeenCalledWith('tenant-1', 'new-app');
+      expect(clientRepo.findByClientId).toHaveBeenCalledWith(
+        'tenant-1',
+        'new-app',
+      );
       expect(clientRepo.save).toHaveBeenCalledTimes(1);
       expect(result.id).toBeDefined();
     });
@@ -130,8 +134,12 @@ describe('ClientCommandHandler', () => {
 
       const saved = clientRepo.save.mock.calls[0][0] as ClientModel;
       expect(saved.applicationType).toBe('native');
-      expect(saved.backchannelLogoutUri).toBe('https://app.example.com/bc-logout');
-      expect(saved.frontchannelLogoutUri).toBe('https://app.example.com/fc-logout');
+      expect(saved.backchannelLogoutUri).toBe(
+        'https://app.example.com/bc-logout',
+      );
+      expect(saved.frontchannelLogoutUri).toBe(
+        'https://app.example.com/fc-logout',
+      );
       expect(saved.allowedResources).toEqual(['https://api.example.com']);
     });
   });
@@ -153,7 +161,9 @@ describe('ClientCommandHandler', () => {
     });
 
     it('tenantId 불일치 시 NotFoundException을 던진다', async () => {
-      clientRepo.findById.mockResolvedValue(makeClient('client-1', 'other-tenant'));
+      clientRepo.findById.mockResolvedValue(
+        makeClient('client-1', 'other-tenant'),
+      );
 
       await expect(
         handler.updateClient('tenant-1', 'client-1', { name: 'X' }),
@@ -205,15 +215,17 @@ describe('ClientCommandHandler', () => {
     it('클라이언트가 없으면 NotFoundException을 던진다', async () => {
       clientRepo.findById.mockResolvedValue(null);
 
-      await expect(
-        handler.deleteClient('tenant-1', 'no-such'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(handler.deleteClient('tenant-1', 'no-such')).rejects.toThrow(
+        NotFoundException,
+      );
 
       expect(clientRepo.delete).not.toHaveBeenCalled();
     });
 
     it('tenantId 불일치 시 NotFoundException을 던진다', async () => {
-      clientRepo.findById.mockResolvedValue(makeClient('client-1', 'other-tenant'));
+      clientRepo.findById.mockResolvedValue(
+        makeClient('client-1', 'other-tenant'),
+      );
 
       await expect(
         handler.deleteClient('tenant-1', 'client-1'),

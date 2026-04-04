@@ -27,7 +27,12 @@ function makeGroup(id: string, tenantId: string): GroupModel {
 }
 
 function makeRole(id: string, tenantId: string): RoleModel {
-  const r = new RoleModel({ tenantId, code: 'admin', name: 'Admin', description: null });
+  const r = new RoleModel({
+    tenantId,
+    code: 'admin',
+    name: 'Admin',
+    description: null,
+  });
   r.setPersistence(id, new Date('2024-01-01'), new Date('2024-01-01'));
   return r;
 }
@@ -50,6 +55,7 @@ function makeClient(id: string, tenantId: string): ClientModel {
     backchannelLogoutUri: 'https://app.example.com/bc-logout',
     frontchannelLogoutUri: null,
     allowedResources: ['https://api.example.com'],
+    skipConsent: false,
   });
   c.setPersistence(id, new Date('2024-01-01'), new Date('2024-01-01'));
   return c;
@@ -248,9 +254,16 @@ describe('AdminQueryHandler - Group', () => {
         total: 2,
       });
 
-      const result = await handler.getGroups('tenant-1', { page: 1, limit: 10 });
+      const result = await handler.getGroups('tenant-1', {
+        page: 1,
+        limit: 10,
+      });
 
-      expect(groupRepo.list).toHaveBeenCalledWith({ tenantId: 'tenant-1', page: 1, limit: 10 });
+      expect(groupRepo.list).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        page: 1,
+        limit: 10,
+      });
       expect(result.items).toHaveLength(2);
       expect(result.total).toBe(2);
     });
@@ -260,7 +273,11 @@ describe('AdminQueryHandler - Group', () => {
 
       await handler.getGroups('tenant-1', {});
 
-      expect(groupRepo.list).toHaveBeenCalledWith({ tenantId: 'tenant-1', page: 1, limit: 20 });
+      expect(groupRepo.list).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        page: 1,
+        limit: 20,
+      });
     });
   });
 
@@ -312,7 +329,11 @@ describe('AdminQueryHandler - Role', () => {
 
       const result = await handler.getRoles('tenant-1', { page: 1, limit: 10 });
 
-      expect(roleRepo.list).toHaveBeenCalledWith({ tenantId: 'tenant-1', page: 1, limit: 10 });
+      expect(roleRepo.list).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        page: 1,
+        limit: 10,
+      });
       expect(result.items).toHaveLength(2);
       expect(result.total).toBe(2);
       expect(result.page).toBe(1);
@@ -324,11 +345,18 @@ describe('AdminQueryHandler - Role', () => {
 
       await handler.getRoles('tenant-1', {});
 
-      expect(roleRepo.list).toHaveBeenCalledWith({ tenantId: 'tenant-1', page: 1, limit: 20 });
+      expect(roleRepo.list).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        page: 1,
+        limit: 20,
+      });
     });
 
     it('반환 항목에 description이 포함된다', async () => {
-      roleRepo.list.mockResolvedValue({ items: [makeRole('r-1', 'tenant-1')], total: 1 });
+      roleRepo.list.mockResolvedValue({
+        items: [makeRole('r-1', 'tenant-1')],
+        total: 1,
+      });
 
       const result = await handler.getRoles('tenant-1', { page: 1, limit: 10 });
 
@@ -351,13 +379,17 @@ describe('AdminQueryHandler - Role', () => {
     it('역할이 없으면 NotFoundException을 던진다', async () => {
       roleRepo.findById.mockResolvedValue(null);
 
-      await expect(handler.getRole('tenant-1', 'no-such')).rejects.toThrow(NotFoundException);
+      await expect(handler.getRole('tenant-1', 'no-such')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('tenantId 불일치 시 NotFoundException을 던진다', async () => {
       roleRepo.findById.mockResolvedValue(makeRole('r-1', 'other-tenant'));
 
-      await expect(handler.getRole('tenant-1', 'r-1')).rejects.toThrow(NotFoundException);
+      await expect(handler.getRole('tenant-1', 'r-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });
@@ -380,9 +412,16 @@ describe('AdminQueryHandler - Client', () => {
         total: 2,
       });
 
-      const result = await handler.getClients('tenant-1', { page: 1, limit: 10 });
+      const result = await handler.getClients('tenant-1', {
+        page: 1,
+        limit: 10,
+      });
 
-      expect(clientRepo.list).toHaveBeenCalledWith({ tenantId: 'tenant-1', page: 1, limit: 10 });
+      expect(clientRepo.list).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        page: 1,
+        limit: 10,
+      });
       expect(result.items).toHaveLength(2);
       expect(result.total).toBe(2);
       expect(result.page).toBe(1);
@@ -394,7 +433,11 @@ describe('AdminQueryHandler - Client', () => {
 
       await handler.getClients('tenant-1', {});
 
-      expect(clientRepo.list).toHaveBeenCalledWith({ tenantId: 'tenant-1', page: 1, limit: 20 });
+      expect(clientRepo.list).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        page: 1,
+        limit: 20,
+      });
     });
 
     it('반환 항목에 신규 필드가 포함된다', async () => {
@@ -403,11 +446,16 @@ describe('AdminQueryHandler - Client', () => {
         total: 1,
       });
 
-      const result = await handler.getClients('tenant-1', { page: 1, limit: 10 });
+      const result = await handler.getClients('tenant-1', {
+        page: 1,
+        limit: 10,
+      });
       const item = result.items[0];
 
       expect(item.applicationType).toBe('web');
-      expect(item.backchannelLogoutUri).toBe('https://app.example.com/bc-logout');
+      expect(item.backchannelLogoutUri).toBe(
+        'https://app.example.com/bc-logout',
+      );
       expect(item.frontchannelLogoutUri).toBeNull();
       expect(item.allowedResources).toEqual(['https://api.example.com']);
     });
