@@ -10,6 +10,7 @@ import {
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useUiStore } from '@/stores/ui.store';
 import { useAuthStore } from '@/stores/auth.store';
+import { authApi } from '@/features/auth/api/authApi';
 import { TenantSelector } from './TenantSelector';
 
 const { Header, Sider, Content } = Layout;
@@ -49,7 +50,8 @@ export function AdminLayout() {
     },
   ];
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await authApi.logout().catch(() => {});
     clearAuth();
     navigate('/login');
   };

@@ -12,6 +12,6 @@ export const authApi = {
 
   logout: (): Promise<void> => {
     if (USE_MOCK) return mockApi.auth.logout();
-    return Promise.resolve();
+    return apiClient.delete<void>('/admin/session').catch(() => {});
   },
 };
