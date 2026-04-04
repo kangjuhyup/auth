@@ -8,6 +8,7 @@ export class IdentityProviderMapper {
       {
         tenantId: entity.tenant.id,
         provider: entity.provider as IdpProvider,
+        displayName: entity.displayName,
         clientId: entity.clientId,
         clientSecret: entity.clientSecret ?? null,
         redirectUri: entity.redirectUri,

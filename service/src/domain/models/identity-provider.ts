@@ -5,6 +5,7 @@ export type IdpProvider = 'kakao' | 'naver' | 'google' | 'apple';
 interface IdentityProviderModelProps {
   tenantId: string;
   provider: IdpProvider;
+  displayName: string;
   clientId: string;
   clientSecret: string | null;
   redirectUri: string;
@@ -24,6 +25,9 @@ export class IdentityProviderModel extends PersistenceModel<
   }
   get provider(): IdpProvider {
     return this.etc.provider;
+  }
+  get displayName(): string {
+    return this.etc.displayName;
   }
   get clientId(): string {
     return this.etc.clientId;

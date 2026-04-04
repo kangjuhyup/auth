@@ -81,7 +81,7 @@ export class InteractionController {
       const idps = await this.idpRepo.listEnabledByTenant(tenant.id);
       idpList = idps.map((idp) => ({
         provider: idp.provider,
-        name: idp.provider,
+        name: idp.displayName,
       }));
 
       const client = await this.clientRepo.findByClientId(tenant.id, clientId);

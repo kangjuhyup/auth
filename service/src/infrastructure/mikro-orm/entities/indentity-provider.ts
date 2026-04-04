@@ -16,6 +16,9 @@ export class IdentityProviderOrmEntity extends BaseEntity {
   @Property({ type: 'varchar', length: 20 })
   provider!: IdpProvider;
 
+  @Property({ fieldName: 'display_name', type: 'varchar', length: 50 })
+  displayName!: string;
+
   @Property({ fieldName: 'client_id', type: 'varchar', length: 191 })
   clientId!: string;
 
