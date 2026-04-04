@@ -18,10 +18,11 @@ export function TenantSelector() {
 
   const tenants = tenantsData?.items ?? [];
 
-  // Auto-select first tenant if none selected
+  // Auto-select 'master' tenant first, fall back to first in list
   useEffect(() => {
     if (!selectedTenant && tenants.length > 0) {
-      setTenant(tenants[0]);
+      const master = tenants.find((t) => t.code === 'master');
+      setTenant(master ?? tenants[0]);
     }
   }, [selectedTenant, tenants, setTenant]);
 

@@ -1,6 +1,5 @@
 import { ConfigProvider } from 'antd';
 import { BrowserRouter, Route, Routes, Navigate } from 'react-router-dom';
-import { HomePage } from '@/pages/Home';
 import { NotFoundPage } from '@/pages/NotFound';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { TenantsPage } from '@/features/tenants/TenantsPage';
@@ -16,7 +15,7 @@ export function App() {
     <ConfigProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<LoginPage />} />
 
           <Route
