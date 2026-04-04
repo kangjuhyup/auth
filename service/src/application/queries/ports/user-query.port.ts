@@ -23,6 +23,16 @@ export abstract class UserQueryPort {
     tenantId: string;
     username: string;
   }): Promise<UserProfileView | null>;
+
+  /**
+   * OIDC 인터랙션 로그인용 자격증명 검증
+   * - username + password 검증 후 userId 반환
+   */
+  abstract authenticate(params: {
+    tenantId: string;
+    username: string;
+    password: string;
+  }): Promise<{ userId: string } | null>;
 }
 
 /* ===============================
