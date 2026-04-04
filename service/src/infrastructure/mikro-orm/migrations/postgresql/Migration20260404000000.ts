@@ -22,6 +22,8 @@ export class Migration20260404000000 extends Migration {
         signup_policy         VARCHAR(10) NOT NULL DEFAULT 'open',
         require_phone_verify  BOOLEAN     NOT NULL DEFAULT false,
         brand_name            VARCHAR(128),
+        access_token_ttl_sec  INT          NOT NULL DEFAULT 3600,
+        refresh_token_ttl_sec INT          NOT NULL DEFAULT 1209600,
         extra                 JSON,
         CONSTRAINT fk_tc_tenant FOREIGN KEY (tenant_id)
           REFERENCES "tenant"(id) ON DELETE CASCADE
@@ -124,6 +126,8 @@ export class Migration20260404000000 extends Migration {
         application_type            VARCHAR(10)  NOT NULL DEFAULT 'web',
         backchannel_logout_uri      VARCHAR(512),
         frontchannel_logout_uri     VARCHAR(512),
+        access_token_ttl_sec        INT,
+        refresh_token_ttl_sec       INT,
         allowed_resources           JSON         NOT NULL DEFAULT '[]',
         skip_consent                BOOLEAN      NOT NULL DEFAULT false,
         created_at                  TIMESTAMP,
