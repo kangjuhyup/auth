@@ -3,6 +3,7 @@ import { TenantCommandPort } from '../ports/tenant-command.port';
 import { CreateTenantDto, UpdateTenantDto } from '@application/dto';
 import { TenantRepository } from '@domain/repositories';
 import { TenantModel } from '@domain/models/tenant';
+import { orThrow } from '@domain/utils';
 
 export class TenantCommandHandler implements TenantCommandPort {
   private readonly logger = new Logger(TenantCommandHandler.name);
@@ -24,8 +25,10 @@ export class TenantCommandHandler implements TenantCommandPort {
   async updateTenant(id: string, dto: UpdateTenantDto): Promise<void> {
     this.logger.log(`Updating tenant id=${id}`);
 
-    const tenant = await this.tenantRepo.findById(id);
-    if (!tenant) throw new NotFoundException('Tenant not found');
+    const tenant = orThrow(
+      await this.tenantRepo.findById(id),
+      new NotFoundException('Tenant not found'),
+    );
 
     if (dto.name) tenant.changeName(dto.name);
 
@@ -35,8 +38,10 @@ export class TenantCommandHandler implements TenantCommandPort {
   async deleteTenant(id: string): Promise<void> {
     this.logger.log(`Deleting tenant id=${id}`);
 
-    const tenant = await this.tenantRepo.findById(id);
-    if (!tenant) throw new NotFoundException('Tenant not found');
+    orThrow(
+      await this.tenantRepo.findById(id),
+      new NotFoundException('Tenant not found'),
+    );
 
     await this.tenantRepo.delete(id);
   }

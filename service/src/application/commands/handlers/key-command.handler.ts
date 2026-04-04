@@ -3,6 +3,7 @@ import { KeyCommandPort } from '../ports/key-command.port';
 import { TenantRepository, JwksKeyRepository } from '@domain/repositories';
 import { JwksKeyCryptoPort } from '@application/ports/jwks-key-crypto.port';
 import { JwksKeyModel } from '@domain/models/jwks-key';
+import { orThrow } from '@domain/utils';
 
 @Injectable()
 export class KeyCommandHandler implements KeyCommandPort {
@@ -15,8 +16,10 @@ export class KeyCommandHandler implements KeyCommandPort {
   ) {}
 
   async rotateKeys(tenantId: string): Promise<void> {
-    const tenant = await this.tenantRepo.findById(tenantId);
-    if (!tenant) throw new NotFoundException('Tenant not found');
+    orThrow(
+      await this.tenantRepo.findById(tenantId),
+      new NotFoundException('Tenant not found'),
+    );
 
     const now = new Date();
 

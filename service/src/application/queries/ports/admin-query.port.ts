@@ -1,5 +1,5 @@
 import { PaginationQuery, PaginatedResult } from '@application/dto';
-import { ClientResponse } from '@application/dto';
+import { ClientResponse, ClientAuthPolicyResponse } from '@application/dto';
 import { TenantResponse } from '@application/dto';
 import { UserResponse } from '@application/dto';
 import { RoleResponse } from '@application/dto';
@@ -10,6 +10,7 @@ export abstract class AdminQueryPort {
   // Client
   abstract getClients(tenantId: string, query: PaginationQuery): Promise<PaginatedResult<ClientResponse>>;
   abstract getClient(tenantId: string, id: string): Promise<ClientResponse>;
+  abstract getClientAuthPolicy(tenantId: string, clientId: string): Promise<ClientAuthPolicyResponse>;
 
   // Key
   abstract getKeys(tenantId: string): Promise<unknown[]>;

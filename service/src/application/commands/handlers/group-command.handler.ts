@@ -3,6 +3,7 @@ import { GroupCommandPort } from '../ports/group-command.port';
 import { CreateGroupDto, UpdateGroupDto } from '@application/dto';
 import { GroupRepository, RoleRepository, RoleAssignmentRepository } from '@domain/repositories';
 import { GroupModel } from '@domain/models/group';
+import { orThrow } from '@domain/utils';
 
 export class GroupCommandHandler implements GroupCommandPort {
   private readonly logger = new Logger(GroupCommandHandler.name);
@@ -40,9 +41,11 @@ export class GroupCommandHandler implements GroupCommandPort {
   ): Promise<void> {
     this.logger.log(`Updating group id=${id} in tenant=${tenantId}`);
 
-    const group = await this.groupRepo.findById(id);
-    if (!group) throw new NotFoundException('Group not found');
-    if (group.tenantId !== tenantId) throw new NotFoundException('Group not found');
+    const group = orThrow(
+      await this.groupRepo.findById(id),
+      new NotFoundException('Group not found'),
+      (g) => g.tenantId === tenantId,
+    );
 
     if (dto.name) group.changeName(dto.name);
     if (dto.parentId !== undefined) group.changeParent(dto.parentId);
@@ -53,9 +56,11 @@ export class GroupCommandHandler implements GroupCommandPort {
   async deleteGroup(tenantId: string, id: string): Promise<void> {
     this.logger.log(`Deleting group id=${id} in tenant=${tenantId}`);
 
-    const group = await this.groupRepo.findById(id);
-    if (!group) throw new NotFoundException('Group not found');
-    if (group.tenantId !== tenantId) throw new NotFoundException('Group not found');
+    orThrow(
+      await this.groupRepo.findById(id),
+      new NotFoundException('Group not found'),
+      (g) => g.tenantId === tenantId,
+    );
 
     await this.groupRepo.delete(id);
   }
@@ -63,13 +68,17 @@ export class GroupCommandHandler implements GroupCommandPort {
   async assignRole(tenantId: string, groupId: string, roleId: string): Promise<void> {
     this.logger.log(`Assigning role=${roleId} to group=${groupId} in tenant=${tenantId}`);
 
-    const group = await this.groupRepo.findById(groupId);
-    if (!group) throw new NotFoundException('Group not found');
-    if (group.tenantId !== tenantId) throw new NotFoundException('Group not found');
+    orThrow(
+      await this.groupRepo.findById(groupId),
+      new NotFoundException('Group not found'),
+      (g) => g.tenantId === tenantId,
+    );
 
-    const role = await this.roleRepo.findById(roleId);
-    if (!role) throw new NotFoundException('Role not found');
-    if (role.tenantId !== tenantId) throw new NotFoundException('Role not found');
+    orThrow(
+      await this.roleRepo.findById(roleId),
+      new NotFoundException('Role not found'),
+      (r) => r.tenantId === tenantId,
+    );
 
     await this.roleAssignment.assignToGroup({ groupId, roleId });
   }
@@ -77,9 +86,11 @@ export class GroupCommandHandler implements GroupCommandPort {
   async removeRole(tenantId: string, groupId: string, roleId: string): Promise<void> {
     this.logger.log(`Removing role=${roleId} from group=${groupId} in tenant=${tenantId}`);
 
-    const group = await this.groupRepo.findById(groupId);
-    if (!group) throw new NotFoundException('Group not found');
-    if (group.tenantId !== tenantId) throw new NotFoundException('Group not found');
+    orThrow(
+      await this.groupRepo.findById(groupId),
+      new NotFoundException('Group not found'),
+      (g) => g.tenantId === tenantId,
+    );
 
     await this.roleAssignment.removeFromGroup({ groupId, roleId });
   }

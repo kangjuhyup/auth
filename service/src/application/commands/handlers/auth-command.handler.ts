@@ -17,6 +17,8 @@ import { OtpHashPort } from '@application/ports/otp-hash.port';
 import { OtpTokenPort } from '@application/ports/otp-token.port';
 import { NotificationPort } from '@application/ports/notification.port';
 import { UserWriteRepositoryPort } from '../ports/user-write-repository.port';
+import { ConsentRepository } from '@domain/repositories/consent.repository';
+import { orThrow } from '@domain/utils';
 
 @Injectable()
 export class AuthCommandHandler implements AuthCommandPort {
@@ -29,6 +31,7 @@ export class AuthCommandHandler implements AuthCommandPort {
     private readonly otpToken: OtpTokenPort,
     private readonly notification: NotificationPort,
     private readonly configService: ConfigService,
+    private readonly consentRepo: ConsentRepository,
   ) {}
 
   async signup(tenantId: string, dto: SignupDto): Promise<{ userId: string }> {
@@ -65,8 +68,10 @@ export class AuthCommandHandler implements AuthCommandPort {
   ): Promise<void> {
     this.logger.log(`Withdrawing user=${userId} tenant=${tenantId}`);
 
-    const user = await this.userWriteRepo.findById(userId);
-    if (!user) throw new Error('UserNotFound');
+    const user = orThrow(
+      await this.userWriteRepo.findById(userId),
+      new Error('UserNotFound'),
+    );
     if (user.tenantId !== tenantId) throw new Error('TenantMismatch');
 
     const credential = user.getPasswordCredential();
@@ -88,8 +93,10 @@ export class AuthCommandHandler implements AuthCommandPort {
   ): Promise<void> {
     this.logger.log(`Changing password for user ${userId} in tenant ${tenantId}`);
 
-    const user = await this.userWriteRepo.findById(userId);
-    if (!user) throw new Error('UserNotFound');
+    const user = orThrow(
+      await this.userWriteRepo.findById(userId),
+      new Error('UserNotFound'),
+    );
     if (user.tenantId !== tenantId) throw new Error('TenantMismatch');
 
     const currentCred = user.getPasswordCredential();
@@ -179,20 +186,23 @@ export class AuthCommandHandler implements AuthCommandPort {
   ): Promise<void> {
     this.logger.log(`Resetting password for tenant ${tenantId}`);
 
-    const plain = dto.token?.trim();
-    if (!plain) throw new Error('InvalidToken');
+    const plain = orThrow(dto.token?.trim(), new Error('InvalidToken'));
 
     const tokenHash = this.otpHash.hash(plain);
 
-    const record = await this.otpToken.findValidByTokenHash({
-      tenantId,
-      purpose: 'PASSWORD_RESET',
-      tokenHash,
-    });
-    if (!record) throw new Error('InvalidToken');
+    const record = orThrow(
+      await this.otpToken.findValidByTokenHash({
+        tenantId,
+        purpose: 'PASSWORD_RESET',
+        tokenHash,
+      }),
+      new Error('InvalidToken'),
+    );
 
-    const user = await this.userWriteRepo.findById(userId);
-    if (!user) throw new Error('UserNotFound');
+    const user = orThrow(
+      await this.userWriteRepo.findById(userId),
+      new Error('UserNotFound'),
+    );
     if (user.tenantId !== tenantId) throw new Error('TenantMismatch');
 
     const hashResult = await this.passwordHash.hash(dto.newPassword);
@@ -214,16 +224,31 @@ export class AuthCommandHandler implements AuthCommandPort {
     });
   }
 
-  updateProfile(
+  async updateProfile(
     tenantId: string,
     userId: string,
     dto: UpdateProfileDto,
   ): Promise<void> {
     this.logger.log(`Updating profile for user ${userId} in tenant ${tenantId}`);
-    throw new Error('Method not implemented.');
+
+    const user = orThrow(
+      await this.userWriteRepo.findById(userId),
+      new Error('UserNotFound'),
+    );
+    if (user.tenantId !== tenantId) throw new Error('TenantMismatch');
+    if (user.status === 'WITHDRAWN') throw new Error('UserAlreadyWithdrawn');
+
+    if (dto.email !== undefined) {
+      user.changeEmail(dto.email ?? null);
+    }
+    if (dto.phone !== undefined) {
+      user.changePhone(dto.phone ?? null);
+    }
+
+    await this.userWriteRepo.save(user);
   }
 
-  revokeConsent(
+  async revokeConsent(
     tenantId: string,
     userId: string,
     clientId: string,
@@ -231,6 +256,18 @@ export class AuthCommandHandler implements AuthCommandPort {
     this.logger.log(
       `Revoking consent for user ${userId} in tenant ${tenantId} ${clientId}`,
     );
-    throw new Error('Method not implemented.');
+
+    const consent = orThrow(
+      await this.consentRepo.findByTenantUserClient(
+        tenantId,
+        userId,
+        clientId,
+      ),
+      new Error('ConsentNotFound'),
+    );
+    if (consent.isRevoked) return;
+
+    consent.revoke();
+    await this.consentRepo.save(consent);
   }
 }

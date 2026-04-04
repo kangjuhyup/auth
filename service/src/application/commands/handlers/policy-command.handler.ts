@@ -4,6 +4,7 @@ import { TransactionManagerPort } from '@application/ports/transaction-manager.p
 import { PolicyCommandPort } from '../ports/policy-command.port';
 import { TenantRepository, TenantConfigRepository } from '@domain/repositories';
 import { TenantConfigModel } from '@domain/models/tenant-config';
+import { orThrow } from '@domain/utils';
 
 @Injectable()
 export class PolicyCommandHandler implements PolicyCommandPort {
@@ -24,8 +25,10 @@ export class PolicyCommandHandler implements PolicyCommandPort {
       throw new BadRequestException('Invalid policies payload');
     }
 
-    const tenant = await this.tenantRepo.findById(tenantId);
-    if (!tenant) throw new NotFoundException('Tenant not found');
+    orThrow(
+      await this.tenantRepo.findById(tenantId),
+      new NotFoundException('Tenant not found'),
+    );
 
     let config = await this.tenantConfigRepo.findByTenantId(tenantId);
 

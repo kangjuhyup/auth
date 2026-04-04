@@ -4,6 +4,7 @@ import { CreateClientDto, UpdateClientDto } from '@application/dto';
 import { ClientRepository } from '@domain/repositories';
 import { ClientModel } from '@domain/models/client';
 import { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
+import { orThrow } from '@domain/utils';
 
 @Injectable()
 export class ClientCommandHandler implements ClientCommandPort {
@@ -58,9 +59,11 @@ export class ClientCommandHandler implements ClientCommandPort {
   ): Promise<void> {
     this.logger.log(`Updating client id=${id} in tenant=${tenantId}`);
 
-    const client = await this.clientRepo.findById(id);
-    if (!client) throw new NotFoundException('Client not found');
-    if (client.tenantId !== tenantId) throw new NotFoundException('Client not found');
+    const client = orThrow(
+      await this.clientRepo.findById(id),
+      new NotFoundException('Client not found'),
+      (c) => c.tenantId === tenantId,
+    );
 
     if (dto.secret !== undefined) {
       client.changeSecretEnc(
@@ -94,9 +97,11 @@ export class ClientCommandHandler implements ClientCommandPort {
   async deleteClient(tenantId: string, id: string): Promise<void> {
     this.logger.log(`Deleting client id=${id} in tenant=${tenantId}`);
 
-    const client = await this.clientRepo.findById(id);
-    if (!client) throw new NotFoundException('Client not found');
-    if (client.tenantId !== tenantId) throw new NotFoundException('Client not found');
+    orThrow(
+      await this.clientRepo.findById(id),
+      new NotFoundException('Client not found'),
+      (c) => c.tenantId === tenantId,
+    );
 
     await this.clientRepo.delete(id);
   }

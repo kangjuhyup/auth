@@ -3,6 +3,7 @@ import { PermissionCommandPort } from '../ports/permission-command.port';
 import { CreatePermissionDto, UpdatePermissionDto } from '@application/dto';
 import { PermissionRepository } from '@domain/repositories';
 import { PermissionModel } from '@domain/models/permission';
+import { orThrow } from '@domain/utils';
 
 export class PermissionCommandHandler implements PermissionCommandPort {
   private readonly logger = new Logger(PermissionCommandHandler.name);
@@ -37,9 +38,11 @@ export class PermissionCommandHandler implements PermissionCommandPort {
   ): Promise<void> {
     this.logger.log(`Updating permission id=${id} in tenant=${tenantId}`);
 
-    const permission = await this.permissionRepo.findById(id);
-    if (!permission) throw new NotFoundException('Permission not found');
-    if (permission.tenantId !== tenantId) throw new NotFoundException('Permission not found');
+    const permission = orThrow(
+      await this.permissionRepo.findById(id),
+      new NotFoundException('Permission not found'),
+      (p) => p.tenantId === tenantId,
+    );
 
     if (dto.resource !== undefined) permission.changeResource(dto.resource ?? null);
     if (dto.action !== undefined) permission.changeAction(dto.action ?? null);
@@ -51,9 +54,11 @@ export class PermissionCommandHandler implements PermissionCommandPort {
   async deletePermission(tenantId: string, id: string): Promise<void> {
     this.logger.log(`Deleting permission id=${id} in tenant=${tenantId}`);
 
-    const permission = await this.permissionRepo.findById(id);
-    if (!permission) throw new NotFoundException('Permission not found');
-    if (permission.tenantId !== tenantId) throw new NotFoundException('Permission not found');
+    orThrow(
+      await this.permissionRepo.findById(id),
+      new NotFoundException('Permission not found'),
+      (p) => p.tenantId === tenantId,
+    );
 
     await this.permissionRepo.delete(id);
   }

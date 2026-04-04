@@ -1,5 +1,11 @@
 import { UserModel } from '@domain/models/user';
 
+export interface UserListQuery {
+  tenantId: string;
+  page: number;
+  limit: number;
+}
+
 export abstract class UserWriteRepositoryPort {
   abstract findById(id: string): Promise<UserModel | undefined>;
   abstract findByUsername(
@@ -10,5 +16,8 @@ export abstract class UserWriteRepositoryPort {
     tenantId: string,
     params: { email?: string; phone?: string },
   ): Promise<UserModel | undefined>;
+  abstract list(
+    query: UserListQuery,
+  ): Promise<{ items: UserModel[]; total: number }>;
   abstract save(user: UserModel): Promise<void>;
 }

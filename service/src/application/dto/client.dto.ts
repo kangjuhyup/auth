@@ -53,3 +53,14 @@ export interface ClientResponse {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface ClientAuthPolicyResponse {
+  clientRefId: string;
+  allowedAuthMethods: string[];
+  defaultAcr: string;
+  mfaRequired: boolean;
+  allowedMfaMethods: string[];
+  maxSessionDurationSec: number | null;
+  consentRequired: boolean;
+  requireAuthTime: boolean;
+}
