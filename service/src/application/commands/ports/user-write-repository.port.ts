@@ -1,4 +1,6 @@
 import { UserModel } from '@domain/models/user';
+import { UserCredentialModel } from '@domain/models/user-credential';
+import type { CredentialType } from '@domain/models/user-credential';
 
 export interface UserListQuery {
   tenantId: string;
@@ -20,4 +22,11 @@ export abstract class UserWriteRepositoryPort {
     query: UserListQuery,
   ): Promise<{ items: UserModel[]; total: number }>;
   abstract save(user: UserModel): Promise<void>;
+
+  abstract findCredentialsByType(
+    userId: string,
+    types: CredentialType[],
+  ): Promise<UserCredentialModel[]>;
+
+  abstract saveCredential(credential: UserCredentialModel): Promise<void>;
 }
