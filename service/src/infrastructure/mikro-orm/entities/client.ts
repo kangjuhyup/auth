@@ -80,6 +80,12 @@ export class ClientOrmEntity extends BaseEntity {
   @Property({ fieldName: 'allowed_resources', type: 'json', default: '[]' })
   allowedResources!: string[];
 
+  @Property({ fieldName: 'access_token_ttl_sec', type: 'int', nullable: true })
+  accessTokenTtlSec?: number | null;
+
+  @Property({ fieldName: 'refresh_token_ttl_sec', type: 'int', nullable: true })
+  refreshTokenTtlSec?: number | null;
+
   @Property({ fieldName: 'skip_consent', type: 'boolean', default: false })
   skipConsent!: boolean;
 

@@ -19,6 +19,12 @@ export class TenantConfigOrmEntity {
   @Property({ fieldName: 'brand_name', type: 'varchar', length: 128, nullable: true })
   brandName?: string | null;
 
+  @Property({ fieldName: 'access_token_ttl_sec', type: 'int', default: 3600 })
+  accessTokenTtlSec!: number;
+
+  @Property({ fieldName: 'refresh_token_ttl_sec', type: 'int', default: 1209600 })
+  refreshTokenTtlSec!: number;
+
   @Property({ type: 'json', nullable: true })
   extra?: Record<string, unknown> | null;
 }

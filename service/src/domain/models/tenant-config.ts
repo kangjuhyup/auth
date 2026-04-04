@@ -5,6 +5,8 @@ interface TenantConfigModelProps {
   signupPolicy: SignupPolicy;
   requirePhoneVerify: boolean;
   brandName?: string | null;
+  accessTokenTtlSec: number;
+  refreshTokenTtlSec: number;
   extra?: Record<string, unknown> | null;
 }
 
@@ -29,6 +31,14 @@ export class TenantConfigModel {
 
   get brandName(): string | null | undefined {
     return this.props.brandName;
+  }
+
+  get accessTokenTtlSec(): number {
+    return this.props.accessTokenTtlSec;
+  }
+
+  get refreshTokenTtlSec(): number {
+    return this.props.refreshTokenTtlSec;
   }
 
   get extra(): Record<string, unknown> | null | undefined {

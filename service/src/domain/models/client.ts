@@ -19,6 +19,8 @@ interface ClientModelProps {
   applicationType: ApplicationType;
   backchannelLogoutUri?: string | null;
   frontchannelLogoutUri?: string | null;
+  accessTokenTtlSec?: number | null;
+  refreshTokenTtlSec?: number | null;
   allowedResources: string[];
   skipConsent: boolean;
 }
@@ -88,6 +90,14 @@ export class ClientModel extends PersistenceModel<string, ClientModelProps> {
     return this.etc.frontchannelLogoutUri;
   }
 
+  get accessTokenTtlSec(): number | null | undefined {
+    return this.etc.accessTokenTtlSec;
+  }
+
+  get refreshTokenTtlSec(): number | null | undefined {
+    return this.etc.refreshTokenTtlSec;
+  }
+
   get allowedResources(): string[] {
     return this.etc.allowedResources;
   }
@@ -150,5 +160,13 @@ export class ClientModel extends PersistenceModel<string, ClientModelProps> {
 
   changeAllowedResources(resources: string[]): void {
     this.etc.allowedResources = resources;
+  }
+
+  changeAccessTokenTtlSec(sec: number | null): void {
+    this.etc.accessTokenTtlSec = sec;
+  }
+
+  changeRefreshTokenTtlSec(sec: number | null): void {
+    this.etc.refreshTokenTtlSec = sec;
   }
 }
