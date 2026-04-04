@@ -1,98 +1,188 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Auth Platform
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+멀티테넌트 인증 플랫폼으로, **OAuth 2.0 / OpenID Connect(OIDC) 서버**와 **관리 UI**로 구성됩니다.  
+`node-oidc-provider`를 프로토콜 엔진으로 사용하며, 테넌트 단위 격리, 클라이언트 정책 관리, 사용자 인증을 제공합니다.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## 프로젝트 구조
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
-
-```bash
-$ yarn install
+```
+auth/
+├── service/          # NestJS 백엔드 (OIDC 서버 + 관리 API)
+├── ui/               # React 관리자 콘솔 (Vite + Ant Design)
+├── docker-compose.yml
+└── package.json      # Yarn Workspaces 루트
 ```
 
-## Compile and run the project
+### `service` — 백엔드
 
-```bash
-# development
-$ yarn run start
+클린 아키텍처(레이어드)로 구성되어 있습니다.
 
-# watch mode
-$ yarn run start:dev
-
-# production mode
-$ yarn run start:prod
+```
+service/src/
+├── domain/           # 도메인 모델, 레포지토리 인터페이스, 도메인 이벤트
+├── application/      # 커맨드/쿼리 핸들러, DTO, 포트(인터페이스)
+├── infrastructure/   # DB(MikroORM), Redis, OIDC Provider, 암호화 어댑터
+└── presentation/     # REST 컨트롤러, HTTP 미들웨어, 뷰 레이어
 ```
 
-## Run tests
+### `ui` — 관리자 콘솔
+
+테넌트·클라이언트·사용자·권한·역할·그룹을 관리하는 SPA입니다.
+
+---
+
+## 주요 기능
+
+| 영역 | 설명 |
+|------|------|
+| **멀티테넌시** | 테넌트별 독립 OIDC issuer(`/t/:tenantCode/oidc`) |
+| **OIDC/OAuth2** | Authorization Code + PKCE, Token, Userinfo, Revoke, Session End |
+| **클라이언트 관리** | confidential·public·service 타입, 리소스 인디케이터, 동의 생략(`skipConsent`) |
+| **클라이언트 인증 정책** | AuthMethod, MFA, 세션 유지 시간, 동의 요구 등 정책 분리 |
+| **사용자/권한** | 사용자, 역할, 권한, 그룹, 역할 상속 |
+| **Interaction** | 커스텀 로그인·동의 화면(`/t/:tenantCode/interaction/:uid`) |
+| **스토리지** | PostgreSQL / MySQL / MSSQL + Redis (rdb · redis · hybrid 드라이버 선택) |
+| **암호화** | Argon2id / PBKDF2 비밀번호 해시, 대칭 암호화, JWKS 키 관리 |
+
+---
+
+## 기술 스택
+
+| 구분 | 기술 |
+|------|------|
+| 런타임 | Node.js 22 |
+| 백엔드 프레임워크 | NestJS 11 |
+| ORM | MikroORM 6 |
+| OIDC 엔진 | node-oidc-provider 9 |
+| 데이터베이스 | PostgreSQL 16 (MySQL / MSSQL 지원) |
+| 캐시 | Redis 7 |
+| 프론트엔드 | React 18 + Vite + Ant Design |
+| 패키지 관리 | Yarn Berry (Workspaces + PnP) |
+
+---
+
+## 빠른 시작
+
+### 1. 인프라 실행
 
 ```bash
-# unit tests
-$ yarn run test
-
-# e2e tests
-$ yarn run test:e2e
-
-# test coverage
-$ yarn run test:cov
+docker-compose up -d
 ```
 
-## Deployment
+PostgreSQL(`:55432`)과 Redis(`:6379`)가 실행됩니다.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+### 2. 의존성 설치
 
 ```bash
-$ yarn install -g mau
-$ mau deploy
+yarn install
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### 3. 환경변수 설정
 
-## Resources
+`service/` 디렉토리에 `.env` 파일을 생성합니다.
 
-Check out a few resources that may come in handy when working with NestJS:
+```env
+# DB
+DB_DRIVER=postgresql
+DB_HOST=localhost
+DB_PORT=55432
+DB_NAME=auth
+DB_USER=postgres
+DB_PASSWORD=secret
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+# OIDC
+OIDC_ISSUER=http://localhost:3000
+OIDC_ADAPTER_DRIVER=hybrid
+OIDC_ACCESS_TOKEN_FORMAT=opaque
+OIDC_COOKIE_KEYS=dev1,dev2
+OIDC_CACHE_TTL_MARGIN_SEC=5
+OIDC_CACHE_NEGATIVE_TTL_SEC=3
+OIDC_CACHE_BACKFILL_TTL_SEC=60
 
-## Support
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+```
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+### 4. DB 마이그레이션
 
-## Stay in touch
+```bash
+yarn workspace @auth/service mikro-orm migration:up
+```
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+### 5. 개발 서버 실행
 
-## License
+```bash
+# service + ui 동시 실행
+yarn dev
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+# 개별 실행
+yarn service:dev   # http://localhost:3000
+yarn ui:dev        # http://localhost:5173
+```
+
+---
+
+## OIDC 엔드포인트
+
+테넌트별로 독립된 issuer를 사용합니다.
+
+```
+# Discovery
+GET /t/:tenantCode/oidc/.well-known/openid-configuration
+
+# 주요 엔드포인트
+GET  /t/:tenantCode/oidc/auth
+POST /t/:tenantCode/oidc/token
+GET  /t/:tenantCode/oidc/userinfo
+POST /t/:tenantCode/oidc/revoke
+GET  /t/:tenantCode/oidc/session/end
+
+# Interaction (로그인·동의 화면)
+GET  /t/:tenantCode/interaction/:uid
+```
+
+---
+
+## 관리 API
+
+인증된 관리자가 사용하는 REST API입니다.
+
+```
+POST   /admin/tenants
+GET    /admin/tenants
+
+POST   /admin/tenants/:tenantId/clients
+GET    /admin/tenants/:tenantId/clients
+PATCH  /admin/tenants/:tenantId/clients/:id
+
+POST   /admin/tenants/:tenantId/users
+GET    /admin/tenants/:tenantId/users
+
+POST   /admin/tenants/:tenantId/roles
+POST   /admin/tenants/:tenantId/groups
+POST   /admin/tenants/:tenantId/permissions
+```
+
+---
+
+## 테스트
+
+```bash
+# 전체 단위 테스트
+yarn service:test
+
+# 특정 파일
+yarn workspace @auth/service test --testPathPattern="client-mapper.spec.ts" --no-coverage
+```
+
+---
+
+## 문서
+
+| 문서 | 경로 |
+|------|------|
+| OIDC 아키텍처 상세 | [`service/docs/OIDC.md`](service/docs/OIDC.md) |
+| 데이터베이스 스키마 | [`service/DATABASE.md`](service/DATABASE.md) |
