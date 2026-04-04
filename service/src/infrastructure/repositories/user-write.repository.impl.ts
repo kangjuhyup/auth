@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { EntityManager } from '@mikro-orm/core';
 import { UserWriteRepositoryPort, UserListQuery } from '@application/commands/ports/user-write-repository.port';
 import { UserModel } from '@domain/models/user';
+import { UserCredentialModel } from '@domain/models/user-credential';
+import type { CredentialType } from '@domain/models/user-credential';
 import { UserOrmEntity } from '../mikro-orm/entities/user';
 import { UserCredentialOrmEntity } from '../mikro-orm/entities/user-credential';
 import { TenantOrmEntity } from '../mikro-orm/entities/tenant';
@@ -145,5 +147,44 @@ export class UserWriteRepositoryImpl implements UserWriteRepositoryPort {
 
       await em.flush();
     });
+  }
+
+  async findCredentialsByType(
+    userId: string,
+    types: CredentialType[],
+  ): Promise<UserCredentialModel[]> {
+    const entities = await this.em.find(UserCredentialOrmEntity, {
+      user: { id: userId },
+      type: { $in: types },
+      enabled: true,
+    });
+
+    return entities.map((e) => {
+      const model = UserCredentialModel.of(
+        {
+          type: e.type as CredentialType,
+          secretHash: e.secretHash,
+          hashAlg: e.hashAlg ?? '',
+          hashParams: e.hashParams ?? null,
+          hashVersion: e.hashVersion ?? null,
+          enabled: e.enabled,
+          expiresAt: e.expiresAt ?? null,
+        },
+        e.id,
+      );
+      model.setPersistence(e.id, e.createdAt!, e.updatedAt!);
+      return model;
+    });
+  }
+
+  async saveCredential(credential: UserCredentialModel): Promise<void> {
+    const entity = await this.em.findOneOrFail(UserCredentialOrmEntity, {
+      id: credential.id,
+    });
+
+    entity.enabled = credential.enabled;
+    entity.hashParams = credential.hashParams ?? undefined;
+
+    await this.em.flush();
   }
 }
