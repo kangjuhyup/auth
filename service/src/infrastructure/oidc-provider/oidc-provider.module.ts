@@ -20,7 +20,7 @@ import { UserQueryPort } from '@application/queries/ports/user-query.port';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
 import { REDIS, RedisModule } from '@infrastructure/redis/redis.module';
 import { ApplicationModule } from '@application/application.module';
-import { ClientRepository, TenantRepository } from '@domain/repositories';
+import { ClientRepository, TenantRepository, TenantConfigRepository } from '@domain/repositories';
 import { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
 
 @Module({
@@ -41,6 +41,7 @@ import { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
         configService: ConfigService,
         clientRepository: ClientRepository,
         tenantRepository: TenantRepository,
+        tenantConfigRepository: TenantConfigRepository,
         symmetricCrypto: SymmetricCryptoPort,
       ) => {
         const base = configService.getOrThrow<string>('OIDC_ISSUER');
@@ -58,6 +59,7 @@ import { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
             tenantCode,
             clientRepository,
             tenantRepository,
+            tenantConfigRepository,
             symmetricCrypto,
           });
         });
@@ -72,6 +74,7 @@ import { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
         ConfigService,
         ClientRepository,
         TenantRepository,
+        TenantConfigRepository,
         SymmetricCryptoPort,
       ],
     },

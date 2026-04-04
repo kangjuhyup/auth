@@ -19,6 +19,8 @@ export function buildOidcConfiguration(params: {
   clientRepository: ClientRepository;
   tenantRepository: TenantRepository;
   symmetricCrypto: SymmetricCryptoPort;
+  tenantAccessTokenTtlSec: number;
+  tenantRefreshTokenTtlSec: number;
 }): Configuration {
   const {
     em,
@@ -30,7 +32,25 @@ export function buildOidcConfiguration(params: {
     clientRepository,
     tenantRepository,
     symmetricCrypto,
+    tenantAccessTokenTtlSec,
+    tenantRefreshTokenTtlSec,
   } = params;
+
+  const clientTtlCache = new Map<string, { access: number | null; refresh: number | null }>();
+
+  function warmClientTtlCache(tenantId: string, clientId: string): void {
+    clientRepository
+      .findByClientId(tenantId, clientId)
+      .then((c) => {
+        if (c) {
+          clientTtlCache.set(clientId, {
+            access: c.accessTokenTtlSec ?? null,
+            refresh: c.refreshTokenTtlSec ?? null,
+          });
+        }
+      })
+      .catch(() => {});
+  }
 
   const accessTokenFormat = configService.getOrThrow<string>(
     'OIDC_ACCESS_TOKEN_FORMAT',
@@ -165,10 +185,26 @@ export function buildOidcConfiguration(params: {
     },
 
     ttl: {
-      AccessToken: 60 * 60,
+      AccessToken: (ctx, _token, client) => {
+        const tenantId = (ctx.req as any)?.tenant?.id;
+        if (tenantId && client?.clientId) {
+          const cached = clientTtlCache.get(client.clientId);
+          if (cached !== undefined) return cached.access ?? tenantAccessTokenTtlSec;
+          warmClientTtlCache(tenantId, client.clientId);
+        }
+        return tenantAccessTokenTtlSec;
+      },
       AuthorizationCode: 60,
       IdToken: 60 * 60,
-      RefreshToken: 14 * 24 * 60 * 60,
+      RefreshToken: (ctx, _token, client) => {
+        const tenantId = (ctx.req as any)?.tenant?.id;
+        if (tenantId && client?.clientId) {
+          const cached = clientTtlCache.get(client.clientId);
+          if (cached !== undefined) return cached.refresh ?? tenantRefreshTokenTtlSec;
+          warmClientTtlCache(tenantId, client.clientId);
+        }
+        return tenantRefreshTokenTtlSec;
+      },
       Interaction: 60 * 60,
       Session: 14 * 24 * 60 * 60,
       Grant: 14 * 24 * 60 * 60,
@@ -205,3 +241,4 @@ function normalizeResourceToOrigin(resource: string): string {
 
   return origin;
 }
+
