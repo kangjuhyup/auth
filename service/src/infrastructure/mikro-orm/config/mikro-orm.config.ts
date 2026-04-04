@@ -53,7 +53,8 @@ export function buildMikroOrmConfig(config: ConfigReader): Options {
     user: config.get('DB_USER') ?? 'postgres',
     password: config.get('DB_PASSWORD') ?? '',
     migrations: {
-      path: `./src/infrastructure/mikro-orm/migrations/${driverName}`,
+      path: `./dist/infrastructure/mikro-orm/migrations/${driverName}`,
+      pathTs: `./src/infrastructure/mikro-orm/migrations/${driverName}`,
     },
   };
 }

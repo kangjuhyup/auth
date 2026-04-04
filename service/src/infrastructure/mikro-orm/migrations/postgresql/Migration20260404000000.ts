@@ -13,7 +13,6 @@ export class Migration20260404000000 extends Migration {
       );
     `);
     this.addSql(`CREATE UNIQUE INDEX uk_tenant_code ON "tenant" (code);`);
-    this.addSql(`CREATE INDEX ON "tenant" (code);`);
 
     // ----------------------------------------------------------- tenant_config
     this.addSql(`

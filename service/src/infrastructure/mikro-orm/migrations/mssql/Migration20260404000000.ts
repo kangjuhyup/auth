@@ -14,10 +14,6 @@ export class Migration20260404000000 extends Migration {
         CONSTRAINT uk_tenant_code UNIQUE ([code])
       );
     `);
-    this.addSql(`
-      IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_tenant_code' AND object_id = OBJECT_ID('[tenant]'))
-        CREATE INDEX idx_tenant_code ON [tenant] ([code]);
-    `);
 
     // ----------------------------------------------------------- tenant_config
     this.addSql(`
@@ -224,9 +220,9 @@ export class Migration20260404000000 extends Migration {
         [created_at] DATETIME2,
         [updated_at] DATETIME2,
         CONSTRAINT uk_tc UNIQUE ([tenant_id], [client_id]),
-        CONSTRAINT fk_tc_tenant FOREIGN KEY ([tenant_id])
+        CONSTRAINT fk_tncl_tenant FOREIGN KEY ([tenant_id])
           REFERENCES [tenant]([id]) ON DELETE NO ACTION,
-        CONSTRAINT fk_tc_client FOREIGN KEY ([client_id])
+        CONSTRAINT fk_tncl_client FOREIGN KEY ([client_id])
           REFERENCES [client]([id]) ON DELETE NO ACTION
       );
     `);

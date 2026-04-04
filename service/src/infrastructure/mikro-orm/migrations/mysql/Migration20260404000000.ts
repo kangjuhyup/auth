@@ -13,7 +13,6 @@ export class Migration20260404000000 extends Migration {
         CONSTRAINT uk_tenant_code UNIQUE (\`code\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
-    this.addSql(`CREATE INDEX idx_tenant_code ON \`tenant\` (\`code\`);`);
 
     // ----------------------------------------------------------- tenant_config
     this.addSql(`
@@ -187,9 +186,9 @@ export class Migration20260404000000 extends Migration {
         \`created_at\` DATETIME,
         \`updated_at\` DATETIME,
         CONSTRAINT uk_tc UNIQUE (\`tenant_id\`, \`client_id\`),
-        CONSTRAINT fk_tc_tenant FOREIGN KEY (\`tenant_id\`)
+        CONSTRAINT fk_tncl_tenant FOREIGN KEY (\`tenant_id\`)
           REFERENCES \`tenant\`(\`id\`) ON DELETE CASCADE,
-        CONSTRAINT fk_tc_client FOREIGN KEY (\`client_id\`)
+        CONSTRAINT fk_tncl_client FOREIGN KEY (\`client_id\`)
           REFERENCES \`client\`(\`id\`) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
