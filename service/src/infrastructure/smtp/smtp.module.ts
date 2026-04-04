@@ -1,4 +1,8 @@
 import { Module } from '@nestjs/common';
+import { SmtpEmailChannel } from '../notification/channels/smtp-email.channel';
 
-@Module({})
+@Module({
+  providers: [SmtpEmailChannel],
+  exports: [SmtpEmailChannel],
+})
 export class SmtpModule {}

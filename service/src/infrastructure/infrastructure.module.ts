@@ -14,6 +14,9 @@ import {
   TenantConfigRepository,
   JwksKeyRepository,
   ClientAuthPolicyRepository,
+  ConsentRepository,
+  EventRepository,
+  RoleInheritRepository,
 } from '@domain/repositories';
 import { TenantRepositoryImpl } from './repositories/tenant.repository.impl';
 import { GroupRepositoryImpl } from './repositories/group.repository.impl';
@@ -25,6 +28,9 @@ import { ClientRepositoryImpl } from './repositories/client.repository.impl';
 import { TenantConfigRepositoryImpl } from './repositories/tenant-config.repository.impl';
 import { JwksKeyRepositoryImpl } from './repositories/jwks-key.repository.impl';
 import { ClientAuthPolicyRepositoryImpl } from './repositories/client-auth-policy.repository.impl';
+import { ConsentRepositoryImpl } from './repositories/consent.repository.impl';
+import { EventRepositoryImpl } from './repositories/event.repository.impl';
+import { RoleInheritRepositoryImpl } from './repositories/role-inherit.repository.impl';
 
 // Crypto Ports
 import { PasswordHashPort } from '@application/ports/password-hash.port';
@@ -90,6 +96,18 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
       provide: ClientAuthPolicyRepository,
       useClass: ClientAuthPolicyRepositoryImpl,
     },
+    {
+      provide: ConsentRepository,
+      useClass: ConsentRepositoryImpl,
+    },
+    {
+      provide: EventRepository,
+      useClass: EventRepositoryImpl,
+    },
+    {
+      provide: RoleInheritRepository,
+      useClass: RoleInheritRepositoryImpl,
+    },
     Argon2idHash,
     Pbkdf2Sha256Hash,
     {
@@ -152,6 +170,9 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     TenantConfigRepository,
     JwksKeyRepository,
     ClientAuthPolicyRepository,
+    ConsentRepository,
+    EventRepository,
+    RoleInheritRepository,
     PasswordHashPort,
     OtpHashPort,
     OtpTokenPort,

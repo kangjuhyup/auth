@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { EntityManager } from '@mikro-orm/core';
-import { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
+import { UserWriteRepositoryPort, UserListQuery } from '@application/commands/ports/user-write-repository.port';
 import { UserModel } from '@domain/models/user';
 import { UserOrmEntity } from '../mikro-orm/entities/user';
 import { UserCredentialOrmEntity } from '../mikro-orm/entities/user-credential';
@@ -73,6 +73,26 @@ export class UserWriteRepositoryImpl implements UserWriteRepositoryPort {
       .find((c) => c.type === 'password' && c.enabled);
 
     return UserMapper.toDomain(entity, activeCred);
+  }
+
+  async list(
+    query: UserListQuery,
+  ): Promise<{ items: UserModel[]; total: number }> {
+    const offset = (query.page - 1) * query.limit;
+    const [entities, total] = await this.em.findAndCount(
+      UserOrmEntity,
+      { tenant: query.tenantId as any },
+      { populate: ['tenant', 'credentials'], limit: query.limit, offset },
+    );
+
+    const items = entities.map((entity) => {
+      const activeCred = entity.credentials
+        .getItems()
+        .find((c) => c.type === 'password' && c.enabled);
+      return UserMapper.toDomain(entity, activeCred);
+    });
+
+    return { items, total };
   }
 
   async save(user: UserModel): Promise<void> {
