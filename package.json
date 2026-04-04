@@ -15,6 +15,7 @@
     "service:test": "yarn workspace @auth/service test",
     "ui:dev": "yarn workspace @auth/ui dev",
     "ui:build": "yarn workspace @auth/ui build",
+    "dev": "yarn service:dev & yarn ui:dev",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
