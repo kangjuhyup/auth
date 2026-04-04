@@ -9,3 +9,5 @@ export { TenantConfigModel } from './tenant-config';
 export type { SignupPolicy } from './tenant-config';
 export { JwksKeyModel } from './jwks-key';
 export type { KeyStatus, KeyAlgorithm } from './jwks-key';
+export { ClientAuthPolicyModel } from './client-auth-policy';
+export type { AuthMethod, MfaMethod } from './client-auth-policy';

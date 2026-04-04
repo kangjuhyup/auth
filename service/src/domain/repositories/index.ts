@@ -7,3 +7,4 @@ export { RoleAssignmentRepository } from './role-assignment.repository';
 export { ClientRepository, ClientListQuery } from './client.repository';
 export { TenantConfigRepository } from './tenant-config.repository';
 export { JwksKeyRepository } from './jwks-key.repository';
+export { ClientAuthPolicyRepository } from './client-auth-policy.repository';
