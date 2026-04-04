@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
+import { ServeStaticModule } from '@nestjs/serve-static';
 import { resolve } from 'node:path';
 import { ApplicationModule } from './application/application.module';
 import { InfrastructureModule } from './infrastructure/infrastructure.module';
@@ -22,6 +23,11 @@ import { buildMikroOrmConfig } from './infrastructure/mikro-orm/config/mikro-orm
         buildMikroOrmConfig({
           get: (key) => configService.getOrThrow<string>(key),
         }),
+    }),
+    ServeStaticModule.forRoot({
+      rootPath: resolve(__dirname, '../../interaction-ui/dist'),
+      serveRoot: '/interaction-assets',
+      serveStaticOptions: { index: false },
     }),
     ApplicationModule,
     InfrastructureModule,

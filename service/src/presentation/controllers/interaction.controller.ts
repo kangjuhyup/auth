@@ -1,4 +1,3 @@
-// service/src/presentation/controllers/interaction.controller.ts
 import {
   Body,
   Controller,
@@ -10,28 +9,60 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { resolve } from 'node:path';
+import { readFileSync, existsSync } from 'node:fs';
 import { OIDC_PROVIDER } from '@infrastructure/oidc-provider/oidc-provider.constants';
 import { OidcProviderRegistry } from '@infrastructure/oidc-provider/oidc-provider.registry';
 import { UserQueryPort } from '@application/queries/ports/user-query.port';
-import { renderLoginView } from '@presentation/views/interaction-login.view';
-import { renderConsentView } from '@presentation/views/interaction-consent.view';
+import { ClientAuthPolicyRepository, IdentityProviderRepository, UserIdentityRepository } from '@domain/repositories';
+import { ClientRepository } from '@domain/repositories';
+import { IdpPort } from '@application/ports/idp.port';
+import { UserIdentityModel } from '@domain/models/user-identity';
+import type { IdpProvider } from '@domain/models/identity-provider';
+import { randomBytes } from 'node:crypto';
+
+const SPA_INDEX_PATH = resolve(
+  __dirname,
+  '../../../interaction-ui/dist/index.html',
+);
 
 @Controller('t/:tenantCode/interaction')
 export class InteractionController {
+  private readonly mfaPendingSessions = new Map<
+    string,
+    { userId: string; tenantId: string }
+  >();
+
+  private cachedSpaHtml: string | null = null;
+
   constructor(
     @Inject(OIDC_PROVIDER)
     private readonly registry: OidcProviderRegistry,
     private readonly userQuery: UserQueryPort,
+    private readonly clientAuthPolicyRepo: ClientAuthPolicyRepository,
+    private readonly clientRepo: ClientRepository,
+    private readonly idpRepo: IdentityProviderRepository,
+    private readonly userIdentityRepo: UserIdentityRepository,
+    private readonly idpPort: IdpPort,
   ) {}
 
-  /**
-   * OIDC 인터랙션 진입점.
-   * - login prompt → 로그인 화면
-   * - consent prompt → 동의 화면
-   * - 세션이 이미 있고 login prompt 없는 경우 (select_account 등) → 에러
-   */
+  /* ─── SPA Entry Point ─── */
+
   @Get(':uid')
-  async showInteraction(
+  serveSpa(@Res() res: Response) {
+    if (!this.cachedSpaHtml) {
+      if (!existsSync(SPA_INDEX_PATH)) {
+        return res.status(404).json({ error: 'Interaction UI not built' });
+      }
+      this.cachedSpaHtml = readFileSync(SPA_INDEX_PATH, 'utf-8');
+    }
+    return res.type('html').send(this.cachedSpaHtml);
+  }
+
+  /* ─── JSON API Endpoints ─── */
+
+  @Get(':uid/api/details')
+  async getDetails(
     @Param('tenantCode') tenantCode: string,
     @Param('uid') uid: string,
     @Req() req: Request,
@@ -41,37 +72,44 @@ export class InteractionController {
     const details = await provider.interactionDetails(req as any, res as any);
     const { prompt, params } = details;
     const clientId = String(params.client_id ?? '');
-    const error = (req.query.error as string) ?? '';
+    const tenant = (req as any).tenant as { id: string } | undefined;
 
-    if (prompt.name === 'login') {
-      return res
-        .type('html')
-        .send(renderLoginView({ tenantCode, uid, clientId, error }));
-    }
+    let idpList: { provider: string; name: string }[] = [];
+    let mfaRequired = false;
 
-    if (prompt.name === 'consent') {
-      const missingScopes =
-        ((prompt.details as any).missingOIDCScope as string[] | undefined) ??
-        [];
+    if (tenant) {
+      const idps = await this.idpRepo.listEnabledByTenant(tenant.id);
+      idpList = idps.map((idp) => ({
+        provider: idp.provider,
+        name: idp.provider,
+      }));
 
-      // 동의할 스코프가 없으면 바로 자동 처리 (grant가 이미 있음)
-      if (missingScopes.length === 0) {
-        return this.autoGrantConsent(tenantCode, uid, details, provider, req, res);
+      const client = await this.clientRepo.findByClientId(tenant.id, clientId);
+      if (client) {
+        const policy = await this.clientAuthPolicyRepo.findByClientRefId(client.id);
+        if (policy) {
+          mfaRequired = policy.mfaRequired;
+        }
       }
-
-      return res
-        .type('html')
-        .send(renderConsentView({ tenantCode, uid, clientId, missingScopes }));
     }
 
-    // 알 수 없는 prompt (select_account 등) — provider에 에러 반환
-    return provider.interactionFinished(req as any, res as any, {
-      error: 'interaction_required',
-      error_description: `Unsupported prompt: ${prompt.name}`,
+    let missingScopes: string[] = [];
+    if (prompt.name === 'consent') {
+      missingScopes =
+        ((prompt.details as any).missingOIDCScope as string[] | undefined) ?? [];
+    }
+
+    return res.json({
+      uid,
+      prompt: prompt.name,
+      clientId,
+      missingScopes,
+      mfaRequired,
+      idpList,
     });
   }
 
-  @Post(':uid/login')
+  @Post(':uid/api/login')
   async submitLogin(
     @Param('tenantCode') tenantCode: string,
     @Param('uid') uid: string,
@@ -81,9 +119,7 @@ export class InteractionController {
   ) {
     const tenant = (req as any).tenant as { id: string } | undefined;
     if (!tenant) {
-      return res.redirect(
-        `/t/${tenantCode}/interaction/${uid}?error=tenant_not_found`,
-      );
+      return res.status(400).json({ error: 'tenant_not_found' });
     }
 
     const result = await this.userQuery.authenticate({
@@ -93,18 +129,95 @@ export class InteractionController {
     });
 
     if (!result) {
-      return res.redirect(
-        `/t/${tenantCode}/interaction/${uid}?error=invalid_credentials`,
-      );
+      return res.status(401).json({ error: 'invalid_credentials' });
     }
 
     const provider = await this.registry.get(tenantCode);
-    await provider.interactionFinished(req as any, res as any, {
-      login: { accountId: result.userId },
-    });
+    const details = await provider.interactionDetails(req as any, res as any);
+    const clientId = String(details.params.client_id ?? '');
+
+    const client = await this.clientRepo.findByClientId(tenant.id, clientId);
+    if (client) {
+      const policy = await this.clientAuthPolicyRepo.findByClientRefId(client.id);
+      if (policy?.mfaRequired) {
+        const methods = await this.userQuery.getMfaMethods(
+          tenant.id,
+          result.userId,
+        );
+
+        if (methods.length > 0) {
+          this.mfaPendingSessions.set(uid, {
+            userId: result.userId,
+            tenantId: tenant.id,
+          });
+
+          return res.json({
+            success: true,
+            mfaRequired: true,
+            methods,
+          });
+        }
+      }
+    }
+
+    const redirectTo = await provider.interactionResult(
+      req as any,
+      res as any,
+      { login: { accountId: result.userId } },
+    );
+
+    return res.json({ success: true, mfaRequired: false, redirectTo });
   }
 
-  @Post(':uid/consent')
+  @Post(':uid/api/mfa')
+  async submitMfa(
+    @Param('tenantCode') tenantCode: string,
+    @Param('uid') uid: string,
+    @Body()
+    body: {
+      method: 'totp' | 'webauthn' | 'recovery_code';
+      code?: string;
+      webauthnResponse?: Record<string, unknown>;
+    },
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const pending = this.mfaPendingSessions.get(uid);
+    if (!pending) {
+      return res.status(400).json({ error: 'no_pending_mfa' });
+    }
+
+    const host = req.get('host') ?? 'localhost';
+    const rpId = host.split(':')[0];
+    const origin = `${req.protocol}://${host}`;
+
+    const verified = await this.userQuery.verifyMfa({
+      tenantId: pending.tenantId,
+      userId: pending.userId,
+      method: body.method,
+      code: body.code,
+      webauthnResponse: body.webauthnResponse,
+      rpId,
+      expectedOrigin: origin,
+    });
+
+    if (!verified) {
+      return res.status(401).json({ error: 'mfa_failed' });
+    }
+
+    this.mfaPendingSessions.delete(uid);
+
+    const provider = await this.registry.get(tenantCode);
+    const redirectTo = await provider.interactionResult(
+      req as any,
+      res as any,
+      { login: { accountId: pending.userId } },
+    );
+
+    return res.json({ success: true, redirectTo });
+  }
+
+  @Post(':uid/api/consent')
   async submitConsent(
     @Param('tenantCode') tenantCode: string,
     @Param('uid') uid: string,
@@ -113,43 +226,12 @@ export class InteractionController {
   ) {
     const provider = await this.registry.get(tenantCode);
     const details = await provider.interactionDetails(req as any, res as any);
-    return this.autoGrantConsent(tenantCode, uid, details, provider, req, res);
-  }
-
-  @Get(':uid/abort')
-  async abortInteraction(
-    @Param('tenantCode') _tenantCode: string,
-    @Param('uid') _uid: string,
-    @Req() req: Request,
-    @Res() res: Response,
-  ) {
-    const provider = await this.registry.get(_tenantCode);
-    await provider.interactionFinished(req as any, res as any, {
-      error: 'access_denied',
-      error_description: 'End-User aborted interaction',
-    });
-  }
-
-  /* ─── Private helpers ─── */
-
-  private async autoGrantConsent(
-    _tenantCode: string,
-    _uid: string,
-    details: Awaited<
-      ReturnType<
-        Awaited<ReturnType<OidcProviderRegistry['get']>>['interactionDetails']
-      >
-    >,
-    provider: Awaited<ReturnType<OidcProviderRegistry['get']>>,
-    req: Request,
-    res: Response,
-  ) {
     const { prompt, params, session } = details;
+
     if (prompt.name !== 'consent' || !session) {
-      return provider.interactionFinished(req as any, res as any, {
-        error: 'invalid_request',
-        error_description: 'No active consent interaction',
-      });
+      return res
+        .status(400)
+        .json({ error: 'invalid_request', message: 'No active consent interaction' });
     }
 
     const accountId = session.accountId;
@@ -163,16 +245,171 @@ export class InteractionController {
       grant = new provider.Grant({ accountId, clientId });
     }
 
-    const missingScope = (
-      (prompt.details as any).missingOIDCScope as string[] | undefined
-    ) ?? [];
+    const missingScope =
+      ((prompt.details as any).missingOIDCScope as string[] | undefined) ?? [];
     if (missingScope.length) {
       grant.addOIDCScope(missingScope.join(' '));
     }
 
     const grantId = await grant.save();
-    await provider.interactionFinished(req as any, res as any, {
-      consent: { grantId },
+
+    const redirectTo = await provider.interactionResult(
+      req as any,
+      res as any,
+      { consent: { grantId } },
+    );
+
+    return res.json({ success: true, redirectTo });
+  }
+
+  @Get(':uid/api/abort')
+  async abortInteraction(
+    @Param('tenantCode') tenantCode: string,
+    @Param('uid') uid: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const provider = await this.registry.get(tenantCode);
+
+    const redirectTo = await provider.interactionResult(
+      req as any,
+      res as any,
+      {
+        error: 'access_denied',
+        error_description: 'End-User aborted interaction',
+      },
+    );
+
+    return res.json({ redirectTo });
+  }
+
+  /* ─── WebAuthn Options (pre-MFA) ─── */
+
+  @Get(':uid/api/mfa/webauthn-options')
+  async getWebAuthnOptions(
+    @Param('uid') uid: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const pending = this.mfaPendingSessions.get(uid);
+    if (!pending) {
+      return res.status(400).json({ error: 'no_pending_mfa' });
+    }
+
+    const host = req.get('host') ?? 'localhost';
+    const rpId = host.split(':')[0];
+
+    const options = await this.userQuery.verifyMfa({
+      tenantId: pending.tenantId,
+      userId: pending.userId,
+      method: 'webauthn',
+      rpId,
+      expectedOrigin: `${req.protocol}://${host}`,
     });
+
+    return res.json(options);
+  }
+
+  /* ─── IdP Endpoints ─── */
+
+  @Get(':uid/idp/:provider')
+  async redirectToIdp(
+    @Param('tenantCode') tenantCode: string,
+    @Param('uid') uid: string,
+    @Param('provider') providerName: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const tenant = (req as any).tenant as { id: string } | undefined;
+    if (!tenant) {
+      return res.status(400).json({ error: 'tenant_not_found' });
+    }
+
+    const idpConfig = await this.idpRepo.findByTenantAndProvider(
+      tenant.id,
+      providerName,
+    );
+    if (!idpConfig || !idpConfig.enabled) {
+      return res.status(404).json({ error: 'idp_not_found' });
+    }
+
+    const state = `${uid}:${randomBytes(16).toString('hex')}`;
+    const callbackUrl = `${req.protocol}://${req.get('host')}/t/${tenantCode}/interaction/${uid}/idp/${providerName}/callback`;
+
+    const authUrl = this.idpPort.getAuthorizationUrl(
+      providerName,
+      idpConfig.clientId,
+      callbackUrl,
+      state,
+    );
+
+    return res.redirect(authUrl);
+  }
+
+  @Get(':uid/idp/:provider/callback')
+  async idpCallback(
+    @Param('tenantCode') tenantCode: string,
+    @Param('uid') uid: string,
+    @Param('provider') providerName: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const tenant = (req as any).tenant as { id: string } | undefined;
+    if (!tenant) {
+      return res.redirect(
+        `/t/${tenantCode}/interaction/${uid}?error=tenant_not_found`,
+      );
+    }
+
+    const code = req.query.code as string | undefined;
+    if (!code) {
+      return res.redirect(
+        `/t/${tenantCode}/interaction/${uid}?error=idp_no_code`,
+      );
+    }
+
+    const idpConfig = await this.idpRepo.findByTenantAndProvider(
+      tenant.id,
+      providerName,
+    );
+    if (!idpConfig) {
+      return res.redirect(
+        `/t/${tenantCode}/interaction/${uid}?error=idp_not_found`,
+      );
+    }
+
+    try {
+      const callbackUrl = `${req.protocol}://${req.get('host')}/t/${tenantCode}/interaction/${uid}/idp/${providerName}/callback`;
+
+      const userInfo = await this.idpPort.exchangeCode(
+        providerName,
+        idpConfig.clientId,
+        idpConfig.clientSecret,
+        code,
+        callbackUrl,
+      );
+
+      let identity = await this.userIdentityRepo.findByProviderSub(
+        tenant.id,
+        providerName,
+        userInfo.sub,
+      );
+
+      if (!identity) {
+        // TODO: 신규 유저 생성 또는 기존 유저 연결 로직
+        return res.redirect(
+          `/t/${tenantCode}/interaction/${uid}?error=idp_user_not_linked`,
+        );
+      }
+
+      const provider = await this.registry.get(tenantCode);
+      await provider.interactionFinished(req as any, res as any, {
+        login: { accountId: identity.userId },
+      });
+    } catch {
+      return res.redirect(
+        `/t/${tenantCode}/interaction/${uid}?error=idp_exchange_failed`,
+      );
+    }
   }
 }
