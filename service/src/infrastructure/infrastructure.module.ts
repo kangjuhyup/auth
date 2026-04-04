@@ -1,8 +1,9 @@
 import { Module, Global } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { UserPersistenceModule } from './user/user-persistence.module';
 import { OidcProviderModule } from './oidc-provider/oidc-provider.module';
 import { NotificationModule } from './notification/notification.module';
+import { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
+import { UserWriteRepositoryImpl } from './repositories/user-write.repository.impl';
 import {
   TenantRepository,
   GroupRepository,
@@ -64,7 +65,7 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
 
 @Global()
 @Module({
-  imports: [UserPersistenceModule, OidcProviderModule, NotificationModule],
+  imports: [OidcProviderModule, NotificationModule],
   providers: [
     {
       provide: TenantRepository,
@@ -127,6 +128,10 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
       useClass: UserIdentityRepositoryImpl,
     },
     {
+      provide: UserWriteRepositoryPort,
+      useClass: UserWriteRepositoryImpl,
+    },
+    {
       provide: IdpPort,
       useClass: OAuth2IdpAdapter,
     },
@@ -183,9 +188,9 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     },
   ],
   exports: [
-    UserPersistenceModule,
     OidcProviderModule,
     NotificationModule,
+    UserWriteRepositoryPort,
     TenantRepository,
     GroupRepository,
     RoleRepository,
