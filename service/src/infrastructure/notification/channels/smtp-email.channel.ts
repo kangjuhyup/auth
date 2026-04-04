@@ -1,8 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createTransport, Transporter } from 'nodemailer';
-import type { NotificationMessage } from '@application/ports/notification.port';
-import type { NotificationChannelPort } from '@application/services/notification.service';
+import type { NotificationMessage, NotificationChannelPort } from '@application/ports/notification.port';
 
 @Injectable()
 export class SmtpEmailChannel implements NotificationChannelPort {

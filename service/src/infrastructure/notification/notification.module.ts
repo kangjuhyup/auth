@@ -2,9 +2,9 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   NotificationPort,
-  NotificationMessage,
+  type NotificationChannelPort,
 } from '@application/ports/notification.port';
-import { NotificationService, NotificationChannelPort } from '@application/services/notification.service';
+import { NotificationService } from './notification.service';
 import { SmsChannel } from './channels/sms.channel';
 import { SmtpEmailChannel } from './channels/smtp-email.channel';
 import { SmsProviderPort } from '@application/ports/sms.port';
@@ -21,7 +21,7 @@ import { ConsoleSmsProvider } from '../sms/console-sms.provider';
     },
 
     {
-      provide: NotificationService,
+      provide: NotificationPort,
       useFactory: (
         smsChannel: SmsChannel,
         emailChannel: SmtpEmailChannel,
@@ -37,14 +37,6 @@ import { ConsoleSmsProvider } from '../sms/console-sms.provider';
         return new NotificationService(channels);
       },
       inject: [SmsChannel, SmtpEmailChannel, ConfigService],
-    },
-
-    {
-      provide: NotificationPort,
-      useFactory: (svc: NotificationService) => ({
-        notify: (m: NotificationMessage) => svc.notify(m),
-      }),
-      inject: [NotificationService],
     },
   ],
   exports: [NotificationPort, SmsProviderPort],

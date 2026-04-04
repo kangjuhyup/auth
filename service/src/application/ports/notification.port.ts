@@ -13,8 +13,13 @@ export type NotificationMessage = Readonly<{
   template: string; // ex) 'auth.password_reset'
   data?: Record<string, unknown>;
 
-  channels: NotificationChannel[]; // 보낼 채널 목록
+  channels: NotificationChannel[];
 }>;
+
+export interface NotificationChannelPort {
+  readonly channel: NotificationChannel;
+  send(msg: NotificationMessage): Promise<void>;
+}
 
 export abstract class NotificationPort {
   abstract notify(msg: NotificationMessage): Promise<void>;

@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { NotificationMessage } from '@application/ports/notification.port';
-import type { NotificationChannelPort } from '@application/services/notification.service';
+import type { NotificationMessage, NotificationChannelPort } from '@application/ports/notification.port';
 import { SmsProviderPort } from '@application/ports/sms.port';
 
 @Injectable()
