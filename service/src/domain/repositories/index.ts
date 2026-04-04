@@ -8,3 +8,6 @@ export { ClientRepository, ClientListQuery } from './client.repository';
 export { TenantConfigRepository } from './tenant-config.repository';
 export { JwksKeyRepository } from './jwks-key.repository';
 export { ClientAuthPolicyRepository } from './client-auth-policy.repository';
+export { ConsentRepository, ConsentListQuery } from './consent.repository';
+export { EventRepository, EventListQuery } from './event.repository';
+export { RoleInheritRepository } from './role-inherit.repository';
