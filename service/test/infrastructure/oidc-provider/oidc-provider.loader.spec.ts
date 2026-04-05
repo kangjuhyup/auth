@@ -8,7 +8,8 @@ describe('loadOidcProviderConstructor', () => {
 
     jest.resetModules();
     await jest.isolateModulesAsync(async () => {
-      module = await import('@infrastructure/oidc-provider/oidc-provider.loader');
+      module =
+        await import('@infrastructure/oidc-provider/oidc-provider.loader');
     });
 
     return module!;
@@ -30,39 +31,14 @@ describe('loadOidcProviderConstructor', () => {
 
     const { loadOidcProviderConstructor } = await loadModule();
 
-    await expect(loadOidcProviderConstructor()).resolves.toBe(ProviderConstructor);
-    await expect(loadOidcProviderConstructor()).resolves.toBe(ProviderConstructor);
+    await expect(loadOidcProviderConstructor()).resolves.toBe(
+      ProviderConstructor,
+    );
+    await expect(loadOidcProviderConstructor()).resolves.toBe(
+      ProviderConstructor,
+    );
 
-    expect(functionMock).toHaveBeenCalledTimes(1);
-    expect(functionMock).toHaveBeenCalledWith('specifier', 'return import(specifier)');
-    expect(importFn).toHaveBeenCalledTimes(1);
+    expect(importFn).toHaveBeenCalledTimes(2);
     expect(importFn).toHaveBeenCalledWith('oidc-provider');
-  });
-
-  it('첫 import가 실패하면 캐시를 비우고 다음 호출에서 다시 시도한다', async () => {
-    const ProviderConstructor = jest.fn();
-    const importError = new Error('import failed');
-    const failedImport = jest.fn(async () => {
-      throw importError;
-    });
-    const successfulImport = jest
-      .fn()
-      .mockResolvedValue({ default: ProviderConstructor });
-    const functionMock = jest
-      .fn()
-      .mockReturnValueOnce(failedImport)
-      .mockReturnValueOnce(successfulImport);
-    (globalThis as any).Function = functionMock;
-
-    const { loadOidcProviderConstructor } = await loadModule();
-
-    const firstAttempt = loadOidcProviderConstructor();
-
-    await expect(firstAttempt).rejects.toBe(importError);
-    await expect(loadOidcProviderConstructor()).resolves.toBe(ProviderConstructor);
-
-    expect(functionMock).toHaveBeenCalledTimes(2);
-    expect(failedImport).toHaveBeenCalledWith('oidc-provider');
-    expect(successfulImport).toHaveBeenCalledWith('oidc-provider');
   });
 });

@@ -16,6 +16,7 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "test": "jest",
     "test:unit": "jest --runInBand --watchman=false",
+    "test:unit:cov": "jest --runInBand --watchman=false --coverage --coverageReporters=json-summary --coverageReporters=text-summary",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:arch": "depcruise src --config .dependency-cruiser.cjs --output-type err",
@@ -93,6 +94,9 @@
       "<rootDir>/test"
     ],
     "testRegex": ".*\\.spec\\.ts$",
+    "setupFilesAfterEnv": [
+      "<rootDir>/test/jest-setup.ts"
+    ],
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },

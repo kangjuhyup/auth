@@ -13,20 +13,20 @@ name: Release
 on:
   push:
     tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
+      - 'v[0-9]+.[0-9]+.[0-9]+'
   workflow_dispatch:
     inputs:
       git_ref:
-        description: "빌드할 Git ref (브랜치·태그·전체 SHA)"
+        description: '빌드할 Git ref (브랜치·태그·전체 SHA)'
         type: string
         required: true
         default: main
       version:
-        description: "릴리스·이미지 버전 (예: 1.2.3 또는 v1.2.3)"
+        description: '릴리스·이미지 버전 (예: 1.2.3 또는 v1.2.3)'
         type: string
         required: true
       create_github_release:
-        description: "GitHub Release 생성 (태그가 없으면 이 ref에 생성)"
+        description: 'GitHub Release 생성 (태그가 없으면 이 ref에 생성)'
         type: boolean
         required: false
         default: true
@@ -80,7 +80,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: '24'
           cache: yarn
 
       - name: Enable Yarn
@@ -95,6 +95,9 @@ jobs:
       - name: Module dependency rules (dependency-cruiser)
         working-directory: service
         run: yarn test:arch
+
+      - name: UI unit tests
+        run: yarn ui:test
 
       - name: Build service (호스트 검증 — Docker 빌드와 별도)
         run: yarn service:build
