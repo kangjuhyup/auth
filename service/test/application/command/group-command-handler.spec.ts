@@ -131,6 +131,19 @@ describe('GroupCommandHandler', () => {
         handler.updateGroup('tenant-1', 'group-1', { name: 'X' }),
       ).rejects.toThrow(NotFoundException);
     });
+
+    it('parentId를 null로 변경해 부모 그룹 연결을 해제할 수 있다', async () => {
+      const group = makeGroup();
+      group.changeParent('group-parent');
+      groupRepo.findById.mockResolvedValue(group);
+
+      await handler.updateGroup('tenant-1', 'group-1', {
+        parentId: null,
+      });
+
+      expect(group.parentId).toBeNull();
+      expect(groupRepo.save).toHaveBeenCalledWith(group);
+    });
   });
 
   describe('deleteGroup', () => {
@@ -211,6 +224,14 @@ describe('GroupCommandHandler', () => {
       await expect(
         handler.assignRole('tenant-1', 'group-1', 'role-1'),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('이미 할당된 role이면 assignToGroup을 다시 호출하지 않는다', async () => {
+      roleAssignment.existsForGroup.mockResolvedValue(true);
+
+      await handler.assignRole('tenant-1', 'group-1', 'role-1');
+
+      expect(roleAssignment.assignToGroup).not.toHaveBeenCalled();
     });
   });
 

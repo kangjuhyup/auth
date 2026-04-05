@@ -123,6 +123,19 @@ describe('RoleCommandHandler', () => {
 
       expect(roleRepo.save).toHaveBeenCalledTimes(1);
     });
+
+    it('description에 null을 주면 설명을 제거한다', async () => {
+      const role = makeRole();
+      role.changeDescription('temporary description');
+      roleRepo.findById.mockResolvedValue(role);
+
+      await handler.updateRole('tenant-1', 'role-1', {
+        description: null,
+      } as any);
+
+      expect(role.description).toBeNull();
+      expect(roleRepo.save).toHaveBeenCalledWith(role);
+    });
   });
 
   describe('deleteRole', () => {

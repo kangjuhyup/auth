@@ -204,6 +204,19 @@ describe('AuthCommandHandler', () => {
       expect(passwordHash.verify).not.toHaveBeenCalled();
       expect(userWriteRepo.save).not.toHaveBeenCalled();
     });
+
+    it('tenant가 다르면 TenantMismatch를 던지고 verify/save를 호출하지 않는다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({ tenantId: 'other-tenant' }),
+      );
+
+      await expect(
+        handler.withdraw('tenant-1', 'user-1', { password: 'pw' } as any),
+      ).rejects.toThrow('TenantMismatch');
+
+      expect(passwordHash.verify).not.toHaveBeenCalled();
+      expect(userWriteRepo.save).not.toHaveBeenCalled();
+    });
   });
 
   describe('changePassword', () => {
@@ -256,6 +269,23 @@ describe('AuthCommandHandler', () => {
       expect(passwordHash.hash).not.toHaveBeenCalled();
       expect(userWriteRepo.save).not.toHaveBeenCalled();
     });
+
+    it('tenant가 다르면 TenantMismatch를 던지고 verify/hash/save를 호출하지 않는다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({ tenantId: 'other-tenant' }),
+      );
+
+      await expect(
+        handler.changePassword('tenant-1', 'user-1', {
+          currentPassword: 'old',
+          newPassword: 'new',
+        } as any),
+      ).rejects.toThrow('TenantMismatch');
+
+      expect(passwordHash.verify).not.toHaveBeenCalled();
+      expect(passwordHash.hash).not.toHaveBeenCalled();
+      expect(userWriteRepo.save).not.toHaveBeenCalled();
+    });
   });
 
   describe('requestPasswordReset', () => {
@@ -292,6 +322,60 @@ describe('AuthCommandHandler', () => {
       await expect(
         handler.requestPasswordReset('tenant-1', {} as any),
       ).rejects.toThrow();
+    });
+
+    it('이메일만 있는 유저면 email 채널로 알림을 보낸다', async () => {
+      userWriteRepo.findByContact.mockResolvedValue(
+        makeActiveUser({ email: 'john@example.com', phone: null }),
+      );
+
+      await handler.requestPasswordReset('tenant-1', {
+        email: 'john@example.com',
+      } as any);
+
+      expect(notification.notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          channels: ['email'],
+          to: {
+            email: 'john@example.com',
+            phone: undefined,
+          },
+          template: 'auth.password_reset',
+          data: expect.objectContaining({
+            token: 'plain-token',
+            purpose: 'PASSWORD_RESET',
+          }),
+        }),
+      );
+    });
+
+    it('전화번호만 있는 유저면 sms 채널로 알림을 보낸다', async () => {
+      userWriteRepo.findByContact.mockResolvedValue(
+        makeActiveUser({ email: null, phone: '010-1234-5678' }),
+      );
+
+      await handler.requestPasswordReset('tenant-1', {
+        phone: '010-1234-5678',
+      } as any);
+
+      expect(notification.notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          channels: ['sms'],
+          to: {
+            email: undefined,
+            phone: '010-1234-5678',
+          },
+          template: 'auth.password_reset',
+          data: expect.objectContaining({
+            token: 'plain-token',
+            purpose: 'PASSWORD_RESET',
+          }),
+        }),
+      );
     });
   });
 
@@ -353,6 +437,22 @@ describe('AuthCommandHandler', () => {
       expect(userWriteRepo.save).not.toHaveBeenCalled();
       expect(otpToken.consume).not.toHaveBeenCalled();
     });
+
+    it('유저 tenant가 다르면 save/consume을 호출하지 않는다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({ tenantId: 'other-tenant' }),
+      );
+
+      await expect(
+        handler.resetPassword('tenant-1', 'user-1', {
+          token: 'plain-token',
+          newPassword: 'new-password',
+        } as any),
+      ).rejects.toThrow('TenantMismatch');
+
+      expect(userWriteRepo.save).not.toHaveBeenCalled();
+      expect(otpToken.consume).not.toHaveBeenCalled();
+    });
   });
 
   describe('updateProfile', () => {
@@ -391,6 +491,23 @@ describe('AuthCommandHandler', () => {
 
       expect(user.email).toBe('new@ex.com');
       expect(user.phone).toBe('010-1234-5678');
+      expect(userWriteRepo.save).toHaveBeenCalledWith(user);
+    });
+
+    it('email/phone에 null을 주면 프로필 연락처를 비운다', async () => {
+      const user = makeActiveUser({
+        email: 'before@example.com',
+        phone: '010-0000-0000',
+      });
+      userWriteRepo.findById.mockResolvedValue(user);
+
+      await handler.updateProfile('tenant-1', 'user-1', {
+        email: null,
+        phone: null,
+      } as any);
+
+      expect(user.email).toBeNull();
+      expect(user.phone).toBeNull();
       expect(userWriteRepo.save).toHaveBeenCalledWith(user);
     });
   });

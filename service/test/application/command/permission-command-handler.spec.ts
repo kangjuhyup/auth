@@ -62,6 +62,17 @@ describe('PermissionCommandHandler', () => {
 
       expect(permissionRepo.save).not.toHaveBeenCalled();
     });
+
+    it('resource/action/description이 없으면 null 기본값으로 저장한다', async () => {
+      await handler.createPermission('tenant-1', {
+        code: 'articles:manage',
+      });
+
+      const saved = permissionRepo.save.mock.calls[0][0] as PermissionModel;
+      expect(saved.resource).toBeNull();
+      expect(saved.action).toBeNull();
+      expect(saved.description).toBeNull();
+    });
   });
 
   describe('updatePermission', () => {
@@ -97,6 +108,22 @@ describe('PermissionCommandHandler', () => {
       ).rejects.toThrow(NotFoundException);
 
       expect(permissionRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('null을 전달하면 resource/action/description을 비운다', async () => {
+      const permission = makePermission();
+      permissionRepo.findById.mockResolvedValue(permission);
+
+      await handler.updatePermission('tenant-1', 'perm-1', {
+        resource: null,
+        action: null,
+        description: null,
+      } as any);
+
+      expect(permission.resource).toBeNull();
+      expect(permission.action).toBeNull();
+      expect(permission.description).toBeNull();
+      expect(permissionRepo.save).toHaveBeenCalledWith(permission);
     });
   });
 

@@ -134,6 +134,14 @@ describe('UserCommandHandler', () => {
         handler.assignRole('tenant-1', 'user-1', 'role-1'),
       ).rejects.toThrow(NotFoundException);
     });
+
+    it('이미 할당된 role이면 assignToUser를 다시 호출하지 않는다', async () => {
+      roleAssignment.existsForUser.mockResolvedValue(true);
+
+      await handler.assignRole('tenant-1', 'user-1', 'role-1');
+
+      expect(roleAssignment.assignToUser).not.toHaveBeenCalled();
+    });
   });
 
   describe('removeRole', () => {
@@ -189,6 +197,19 @@ describe('UserCommandHandler', () => {
       expect(userWriteRepo.save).toHaveBeenCalledTimes(1);
       expect(result.id).toBeTruthy();
     });
+
+    it('ACTIVE가 아닌 status를 주면 생성 직후 상태를 변경한다', async () => {
+      userWriteRepo.findByUsername.mockResolvedValue(undefined);
+
+      await handler.createUser('tenant-1', {
+        username: 'locked-user',
+        password: 'secure123',
+        status: 'LOCKED',
+      } as any);
+
+      const savedUser = userWriteRepo.save.mock.calls[0][0] as UserModel;
+      expect(savedUser.status).toBe('LOCKED');
+    });
   });
 
   describe('updateUser', () => {
@@ -219,6 +240,22 @@ describe('UserCommandHandler', () => {
 
       expect(user.email).toBe('updated@ex.com');
       expect(user.status).toBe('LOCKED');
+      expect(userWriteRepo.save).toHaveBeenCalledWith(user);
+    });
+
+    it('email/phone에 null을 주면 연락처를 제거한다', async () => {
+      const user = makeUser();
+      user.changeEmail('before@example.com');
+      user.changePhone('010-9999-9999');
+      userWriteRepo.findById.mockResolvedValue(user);
+
+      await handler.updateUser('tenant-1', 'user-1', {
+        email: null,
+        phone: null,
+      } as any);
+
+      expect(user.email).toBeNull();
+      expect(user.phone).toBeNull();
       expect(userWriteRepo.save).toHaveBeenCalledWith(user);
     });
   });

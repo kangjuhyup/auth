@@ -202,6 +202,49 @@ describe('ClientCommandHandler', () => {
       expect(saved.frontchannelLogoutUri).toBeNull();
       expect(saved.allowedResources).toEqual(['https://api2.example.com']);
     });
+
+    it('backchannelLogoutUri에 null을 주면 값을 제거한다', async () => {
+      const client = makeClient();
+      client.changeBackchannelLogoutUri('https://existing.example.com/bc');
+      clientRepo.findById.mockResolvedValue(client);
+
+      await handler.updateClient('tenant-1', 'client-1', {
+        backchannelLogoutUri: null,
+      });
+
+      const saved = clientRepo.save.mock.calls[0][0] as ClientModel;
+      expect(saved.backchannelLogoutUri).toBeNull();
+    });
+
+    it('보안 및 리다이렉트 관련 필드를 함께 업데이트할 수 있다', async () => {
+      await handler.updateClient('tenant-1', 'client-1', {
+        enabled: false,
+        redirectUris: ['https://updated.example.com/callback'],
+        grantTypes: ['authorization_code', 'refresh_token'],
+        responseTypes: ['code'],
+        tokenEndpointAuthMethod: 'client_secret_post',
+        scope: 'openid profile email',
+        postLogoutRedirectUris: ['https://updated.example.com/logout'],
+        skipConsent: true,
+      });
+
+      const saved = clientRepo.save.mock.calls[0][0] as ClientModel;
+      expect(saved.enabled).toBe(false);
+      expect(saved.redirectUris).toEqual([
+        'https://updated.example.com/callback',
+      ]);
+      expect(saved.grantTypes).toEqual([
+        'authorization_code',
+        'refresh_token',
+      ]);
+      expect(saved.responseTypes).toEqual(['code']);
+      expect(saved.tokenEndpointAuthMethod).toBe('client_secret_post');
+      expect(saved.scope).toBe('openid profile email');
+      expect(saved.postLogoutRedirectUris).toEqual([
+        'https://updated.example.com/logout',
+      ]);
+      expect(saved.skipConsent).toBe(true);
+    });
   });
 
   describe('deleteClient', () => {
