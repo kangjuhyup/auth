@@ -1,8 +1,8 @@
 import {
   Injectable,
   NestMiddleware,
-  NotFoundException,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { TenantRepository } from '@domain/repositories';
@@ -12,14 +12,11 @@ export class TenantMiddleware implements NestMiddleware {
   constructor(private readonly tenantRepository: TenantRepository) {}
 
   async use(req: Request, _res: Response, next: NextFunction): Promise<void> {
-    const tenantCode = req.params.tenantCode;
-
-    if (Array.isArray(tenantCode)) {
-      throw new BadRequestException('Tenant code is must be a string');
-    }
+    const raw = req.headers['x-tenant-code'];
+    const tenantCode = Array.isArray(raw) ? raw[0] : raw;
 
     if (!tenantCode) {
-      throw new NotFoundException('Tenant code is required');
+      throw new BadRequestException('X-Tenant-Code header is required');
     }
 
     const tenant = await this.tenantRepository.findByCode(tenantCode);

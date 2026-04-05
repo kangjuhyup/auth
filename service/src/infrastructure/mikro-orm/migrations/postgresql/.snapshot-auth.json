@@ -2940,16 +2940,6 @@
       "indexes": [
         {
           "columnNames": [
-            "code"
-          ],
-          "composite": false,
-          "constraint": false,
-          "keyName": "tenant_code_idx",
-          "unique": false,
-          "primary": false
-        },
-        {
-          "columnNames": [
             "id"
           ],
           "composite": false,
