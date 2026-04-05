@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/kangjuhyup/auth/compare/auth-interaction-ui-v0.1.0...auth-interaction-ui-v0.1.1) (2026-04-05)
+
+
+### Miscellaneous Chores
+
+* **auth-interaction-ui:** Synchronize auth versions
+
 ## [0.1.0](https://github.com/kangjuhyup/auth/compare/auth-interaction-ui-v0.0.1...auth-interaction-ui-v0.1.0) (2026-04-05)
 
 
