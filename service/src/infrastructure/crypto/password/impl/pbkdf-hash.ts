@@ -70,10 +70,7 @@ export class Pbkdf2Sha256Hash implements PasswordHash {
     );
     return (
       expected.length === actual.length &&
-      timingSafeEqual(
-        new Uint8Array(expected.buffer),
-        new Uint8Array(actual.buffer),
-      )
+      timingSafeEqual(Uint8Array.from(expected), Uint8Array.from(actual))
     );
   }
 }
