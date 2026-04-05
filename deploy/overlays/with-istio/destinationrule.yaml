@@ -1,0 +1,46 @@
+---
+# auth-service (STS): 세션 쿠키 기반 consistent hash → 동일 Pod 라우팅
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: auth-service
+  labels:
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/component: api
+spec:
+  host: auth-service.auth.svc.cluster.local
+  trafficPolicy:
+    loadBalancer:
+      consistentHash:
+        httpCookie:
+          name: _session # node-oidc-provider 기본 세션 쿠키
+          ttl: 0s # 브라우저 세션 쿠키 수명에 맞춤
+    connectionPool:
+      http:
+        h2UpgradePolicy: UPGRADE
+        idleTimeout: 90s
+    outlierDetection:
+      consecutive5xxErrors: 3
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+  # mTLS는 PeerAuthentication 이 네임스페이스 전체에 적용하므로 여기서 생략
+---
+# auth-ui (Deployment): 무상태 — 기본 round-robin
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: auth-ui
+  labels:
+    app.kubernetes.io/name: auth-ui
+    app.kubernetes.io/component: frontend
+spec:
+  host: auth-ui.auth.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      http:
+        idleTimeout: 60s
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 15s

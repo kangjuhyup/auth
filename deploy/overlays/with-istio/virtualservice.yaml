@@ -1,0 +1,45 @@
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: auth-service
+  labels:
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/component: api
+spec:
+  hosts:
+    - auth.example.com
+    - auth-service.auth.svc.cluster.local
+  gateways:
+    - auth-gateway
+    - mesh # 클러스터 내부 호출에도 DestinationRule 적용
+  http:
+    - route:
+        - destination:
+            host: auth-service # ClusterIP Service
+            port:
+              number: 80
+      timeout: 30s
+      retries:
+        attempts: 3
+        perTryTimeout: 10s
+        retryOn: gateway-error,connect-failure,retriable-4xx
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: auth-ui
+  labels:
+    app.kubernetes.io/name: auth-ui
+    app.kubernetes.io/component: frontend
+spec:
+  hosts:
+    - ui.auth.example.com
+  gateways:
+    - auth-gateway
+  http:
+    - route:
+        - destination:
+            host: auth-ui
+            port:
+              number: 80

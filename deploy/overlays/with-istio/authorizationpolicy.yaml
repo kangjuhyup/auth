@@ -1,0 +1,49 @@
+# 1. 기본 차단 — 명시적 허용 없으면 모두 거부
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all
+  labels:
+    app.kubernetes.io/part-of: auth-platform
+spec: {}
+---
+# 2. auth-service — 클러스터 내 모든 서비스 허용
+# mTLS STRICT 가 적용된 네임스페이스의 서비스만 유효한 SPIFFE ID 를 가지므로
+# principals: ["*"] 는 사실상 "사이드카가 주입된 모든 Pod" 를 의미합니다.
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-cluster-to-service
+  labels:
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/component: api
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: auth-service
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ['*'] # cluster.local 내 mTLS 인증된 모든 서비스
+---
+# 3. auth-ui — ingressgateway 만 허용 (UI 는 브라우저 전용)
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-ingress-to-ui
+  labels:
+    app.kubernetes.io/name: auth-ui
+    app.kubernetes.io/component: frontend
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: auth-ui
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces: ['istio-system']
+      to:
+        - operation:
+            ports: ['80']

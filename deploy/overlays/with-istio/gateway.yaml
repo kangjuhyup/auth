@@ -1,0 +1,35 @@
+# Istio Gateway
+# 전제: istiod + istio-ingressgateway 설치 완료
+# TLS 인증서는 cert-manager 로 생성한 Secret 을 사용합니다.
+#   kubectl -n istio-system create secret tls auth-tls-cert \
+#     --cert=tls.crt --key=tls.key
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: auth-gateway
+  labels:
+    app.kubernetes.io/name: auth-gateway
+    app.kubernetes.io/component: gateway
+spec:
+  selector:
+    istio: ingressgateway # istio-ingressgateway Pod 레이블
+  servers:
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      tls:
+        mode: SIMPLE
+        credentialName: auth-tls-cert # istio-system 네임스페이스의 Secret 이름
+      hosts:
+        - auth.example.com
+        - ui.auth.example.com
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      tls:
+        httpsRedirect: true
+      hosts:
+        - auth.example.com
+        - ui.auth.example.com

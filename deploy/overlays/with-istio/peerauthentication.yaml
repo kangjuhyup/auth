@@ -1,0 +1,11 @@
+# auth 네임스페이스 전체에 mTLS STRICT 적용
+# — 사이드카 없는 Pod 로부터의 평문 트래픽 차단
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: auth-mtls
+  labels:
+    app.kubernetes.io/part-of: auth-platform
+spec:
+  mtls:
+    mode: STRICT
