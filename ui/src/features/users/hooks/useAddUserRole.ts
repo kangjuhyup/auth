@@ -6,13 +6,13 @@ import { userApi } from '../api/userApi';
 
 export function useAddUserRole(userId: string) {
   const queryClient = useQueryClient();
-  const tenantId = useTenantStore((state) => state.selectedTenant?.id);
+  const tenantCode = useTenantStore((state) => state.selectedTenant?.code);
 
   return useMutation({
-    mutationFn: (roleId: string) => userApi.addRole(userId, roleId),
+    mutationFn: (roleId: string) => userApi.addRole(tenantCode!, userId, roleId),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: queryKeys.admin.users.roles(tenantId ?? '', userId),
+        queryKey: queryKeys.admin.users.roles(tenantCode ?? '', userId),
       });
       message.success('Role added to user successfully');
     },

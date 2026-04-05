@@ -6,13 +6,13 @@ import { userApi } from '../api/userApi';
 
 export function useRemoveUserRole(userId: string) {
   const queryClient = useQueryClient();
-  const tenantId = useTenantStore((state) => state.selectedTenant?.id);
+  const tenantCode = useTenantStore((state) => state.selectedTenant?.code);
 
   return useMutation({
-    mutationFn: (roleId: string) => userApi.removeRole(userId, roleId),
+    mutationFn: (roleId: string) => userApi.removeRole(tenantCode!, userId, roleId),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: queryKeys.admin.users.roles(tenantId ?? '', userId),
+        queryKey: queryKeys.admin.users.roles(tenantCode ?? '', userId),
       });
       message.success('Role removed from user successfully');
     },

@@ -11,16 +11,11 @@ async function request<T>(
 ): Promise<T> {
   const { body, headers: customHeaders, params, ...restOptions } = options;
 
-  // Get auth token and tenant context from stores
-  // Using dynamic imports to avoid circular dependencies and allow usage outside React components
   let token: string | null = null;
-  let tenantId: string | undefined = undefined;
 
   try {
     const { useAuthStore } = await import('@/stores/auth.store');
-    const { useTenantStore } = await import('@/stores/tenant.store');
     token = useAuthStore.getState().token;
-    tenantId = useTenantStore.getState().selectedTenant?.id;
   } catch {
     // Stores not yet initialized (e.g., during initial load)
   }
@@ -28,7 +23,6 @@ async function request<T>(
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...(token && { Authorization: `Bearer ${token}` }),
-    ...(tenantId && { 'X-Tenant-Id': tenantId }),
     ...customHeaders,
   };
 

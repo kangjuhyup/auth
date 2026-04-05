@@ -4,11 +4,11 @@ import { useTenantStore } from '@/stores/tenant.store';
 import { userApi } from '../api/userApi';
 
 export function useUserRoles(userId: string) {
-  const tenantId = useTenantStore((state) => state.selectedTenant?.id);
+  const tenantCode = useTenantStore((state) => state.selectedTenant?.code);
 
   return useQuery({
-    queryKey: queryKeys.admin.users.roles(tenantId ?? '', userId),
-    queryFn: () => userApi.getRoles(userId),
-    enabled: !!tenantId && !!userId,
+    queryKey: queryKeys.admin.users.roles(tenantCode ?? '', userId),
+    queryFn: () => userApi.getRoles(tenantCode!, userId),
+    enabled: !!tenantCode && !!userId,
   });
 }

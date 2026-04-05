@@ -4,11 +4,11 @@ import { useTenantStore } from '@/stores/tenant.store';
 import { groupApi } from '../api/groupApi';
 
 export function useGroupRoles(groupId: string) {
-  const tenantId = useTenantStore((state) => state.selectedTenant?.id);
+  const tenantCode = useTenantStore((state) => state.selectedTenant?.code);
 
   return useQuery({
-    queryKey: queryKeys.admin.groups.roles(tenantId ?? '', groupId),
-    queryFn: () => groupApi.getRoles(groupId),
-    enabled: !!tenantId && !!groupId,
+    queryKey: queryKeys.admin.groups.roles(tenantCode ?? '', groupId),
+    queryFn: () => groupApi.getRoles(tenantCode!, groupId),
+    enabled: !!tenantCode && !!groupId,
   });
 }

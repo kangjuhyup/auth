@@ -6,13 +6,13 @@ import { groupApi } from '../api/groupApi';
 
 export function useAddGroupRole(groupId: string) {
   const queryClient = useQueryClient();
-  const tenantId = useTenantStore((state) => state.selectedTenant?.id);
+  const tenantCode = useTenantStore((state) => state.selectedTenant?.code);
 
   return useMutation({
-    mutationFn: (roleId: string) => groupApi.addRole(groupId, roleId),
+    mutationFn: (roleId: string) => groupApi.addRole(tenantCode!, groupId, roleId),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: queryKeys.admin.groups.roles(tenantId ?? '', groupId),
+        queryKey: queryKeys.admin.groups.roles(tenantCode ?? '', groupId),
       });
       message.success('Role added to group successfully');
     },

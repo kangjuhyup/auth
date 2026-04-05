@@ -4,11 +4,11 @@ import { useTenantStore } from '@/stores/tenant.store';
 import { clientApi } from '../api/clientApi';
 
 export function useClients(params: { page?: number; limit?: number }) {
-  const tenantId = useTenantStore((state) => state.selectedTenant?.id);
+  const tenantCode = useTenantStore((state) => state.selectedTenant?.code);
 
   return useQuery({
-    queryKey: queryKeys.admin.clients.list(tenantId ?? '', params),
-    queryFn: () => clientApi.list(params),
-    enabled: !!tenantId,
+    queryKey: queryKeys.admin.clients.list(tenantCode ?? '', params),
+    queryFn: () => clientApi.list(tenantCode!, params),
+    enabled: !!tenantCode,
   });
 }

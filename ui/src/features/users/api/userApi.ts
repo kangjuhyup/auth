@@ -11,47 +11,46 @@ import type { RoleResponse } from '@/types/role.types';
 const USE_MOCK = import.meta.env.VITE_USE_MOCK_API === 'true';
 
 export const userApi = {
-  list: (params: {
-    page?: number;
-    limit?: number;
-  }): Promise<PaginatedResult<UserResponse>> => {
+  list: (
+    tenantCode: string,
+    params: { page?: number; limit?: number },
+  ): Promise<PaginatedResult<UserResponse>> => {
     if (USE_MOCK) return mockApi.users.list(params);
-    return apiClient.get('/admin/users', { params });
+    return apiClient.get(`/t/${tenantCode}/admin/users`, { params });
   },
 
-  get: (id: string): Promise<UserResponse> => {
+  get: (tenantCode: string, id: string): Promise<UserResponse> => {
     if (USE_MOCK) return mockApi.users.get(id);
-    return apiClient.get(`/admin/users/${id}`);
+    return apiClient.get(`/t/${tenantCode}/admin/users/${id}`);
   },
 
-  create: (dto: CreateUserDto): Promise<{ id: string }> => {
+  create: (tenantCode: string, dto: CreateUserDto): Promise<{ id: string }> => {
     if (USE_MOCK) return mockApi.users.create(dto);
-    return apiClient.post('/admin/users', dto);
+    return apiClient.post(`/t/${tenantCode}/admin/users`, dto);
   },
 
-  update: (id: string, dto: UpdateUserDto): Promise<void> => {
+  update: (tenantCode: string, id: string, dto: UpdateUserDto): Promise<void> => {
     if (USE_MOCK) return mockApi.users.update(id, dto);
-    return apiClient.put(`/admin/users/${id}`, dto);
+    return apiClient.put(`/t/${tenantCode}/admin/users/${id}`, dto);
   },
 
-  delete: (id: string): Promise<void> => {
+  delete: (tenantCode: string, id: string): Promise<void> => {
     if (USE_MOCK) return mockApi.users.delete(id);
-    return apiClient.delete(`/admin/users/${id}`);
+    return apiClient.delete(`/t/${tenantCode}/admin/users/${id}`);
   },
 
-  // Role assignment endpoints
-  getRoles: (userId: string): Promise<RoleResponse[]> => {
+  getRoles: (tenantCode: string, userId: string): Promise<RoleResponse[]> => {
     if (USE_MOCK) return mockApi.users.getRoles(userId);
-    return apiClient.get(`/admin/users/${userId}/roles`);
+    return apiClient.get(`/t/${tenantCode}/admin/users/${userId}/roles`);
   },
 
-  addRole: (userId: string, roleId: string): Promise<void> => {
+  addRole: (tenantCode: string, userId: string, roleId: string): Promise<void> => {
     if (USE_MOCK) return mockApi.users.addRole(userId, roleId);
-    return apiClient.post(`/admin/users/${userId}/roles/${roleId}`);
+    return apiClient.post(`/t/${tenantCode}/admin/users/${userId}/roles/${roleId}`);
   },
 
-  removeRole: (userId: string, roleId: string): Promise<void> => {
+  removeRole: (tenantCode: string, userId: string, roleId: string): Promise<void> => {
     if (USE_MOCK) return mockApi.users.removeRole(userId, roleId);
-    return apiClient.delete(`/admin/users/${userId}/roles/${roleId}`);
+    return apiClient.delete(`/t/${tenantCode}/admin/users/${userId}/roles/${roleId}`);
   },
 };

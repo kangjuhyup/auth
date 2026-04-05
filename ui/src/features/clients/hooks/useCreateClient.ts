@@ -7,14 +7,12 @@ import type { CreateClientDto } from '@/types/client.types';
 
 export function useCreateClient() {
   const queryClient = useQueryClient();
-  const tenantId = useTenantStore((state) => state.selectedTenant?.id);
+  const tenantCode = useTenantStore((state) => state.selectedTenant?.code);
 
   return useMutation({
-    mutationFn: (dto: CreateClientDto) => clientApi.create(dto),
+    mutationFn: (dto: CreateClientDto) => clientApi.create(tenantCode!, dto),
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.admin.clients.all,
-      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.clients.all });
       message.success('Client created successfully');
     },
     onError: (error: Error) => {
