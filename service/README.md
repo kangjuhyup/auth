@@ -13,7 +13,7 @@ OIDC 인가 서버. `node-oidc-provider` 기반으로 멀티테넌트 인증/인
 - CQRS (엄격 분리) + Event Sourcing (비즈니스 애그리거트)
 - Jest (TDD)
 
-DB 설정/마이그레이션은 `DATABASE.md` 참고.
+DB 설정/마이그레이션은 `docs/DATABASE.md` 참고.
 
 ---
 
@@ -109,7 +109,7 @@ src/
 - `es_events`: 도메인 이벤트 저장소 (write side)
 - `projection_checkpoint`: 프로젝션 멱등성/중복 방지 (read side)
 
-DB 상세는 `DATABASE.md` 참고.
+DB 상세는 `docs/DATABASE.md` 참고.
 
 ---
 

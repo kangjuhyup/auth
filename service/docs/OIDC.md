@@ -7,6 +7,7 @@
 - OAuth 2.0 / OIDC 프로토콜 처리 자체는 `node-oidc-provider`에 위임
 - 우리 코드는 `service/src/infrastructure/oidc-provider/*` 에서 provider 설정과 저장소 연결만 담당
 - 멀티테넌트는 path 기반 issuer 로 분리
+- Security correctness > Convenience
 
 ---
 
@@ -14,12 +15,12 @@
 
 관련 파일:
 
-- [oidc-provider.module.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/oidc-provider.module.ts)
-- [oidc-provider.factory.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/oidc-provider.factory.ts)
-- [oidc-provider.config.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/oidc-provider.config.ts)
-- [oidc.middleware.ts](/Users/kangjuhyup/Documents/auth/service/src/presentation/http/oidc.middleware.ts)
-- [oidc-provider.registry.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/oidc-provider.registry.ts)
-- [interaction.controller.ts](/Users/kangjuhyup/Documents/auth/service/src/presentation/controllers/interaction.controller.ts)
+- [oidc-provider.module.ts](../src/infrastructure/oidc-provider/oidc-provider.module.ts)
+- [oidc-provider.factory.ts](../src/infrastructure/oidc-provider/oidc-provider.factory.ts)
+- [oidc-provider.config.ts](../src/infrastructure/oidc-provider/oidc-provider.config.ts)
+- [oidc.middleware.ts](../src/presentation/http/oidc.middleware.ts)
+- [oidc-provider.registry.ts](../src/infrastructure/oidc-provider/oidc-provider.registry.ts)
+- [interaction.controller.ts](../src/presentation/controllers/interaction.controller.ts)
 
 구성 흐름:
 
@@ -49,6 +50,12 @@ http://localhost:3000/t/acme/oidc
 
 즉 `acme` 테넌트의 discovery 문서와 token endpoint 는 모두 이 issuer 기준으로 노출된다.
 
+Provider 인스턴스도 tenant 별로 분리 생성된다:
+
+```ts
+new Provider(`https://auth.example.com/t/${tenantCode}/oidc`, configuration)
+```
+
 ---
 
 # 3. Exposed OIDC Endpoints
@@ -70,7 +77,7 @@ http://localhost:3000/t/acme/oidc
 주의:
 
 - 실제 path 이름은 `node-oidc-provider` 기본 라우팅을 따른다.
-- 일반적으로 RP 가 직접 참조해야 하는 canonical 경로는 discovery 문서의 각 endpoint 값을 따르는 것이 안전하다.
+- RP 가 참조해야 하는 canonical 경로는 discovery 문서의 각 endpoint 값을 따르는 것이 안전하다.
 
 ---
 
@@ -104,7 +111,7 @@ http://localhost:3000/t/acme/oidc
 
 관련 코드:
 
-- [oidc-provider.config.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/oidc-provider.config.ts)
+- [oidc-provider.config.ts](../src/infrastructure/oidc-provider/oidc-provider.config.ts)
 
 특징:
 
@@ -147,9 +154,9 @@ http://localhost:3000/t/acme/oidc
 
 관련 코드:
 
-- [rdb-oidc.adapter.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/adapters/rdb-oidc.adapter.ts)
-- [redis-oidc.adapter.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/adapters/redis-oidc.adapter.ts)
-- [hybrid-oidc.adapter.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/adapters/hybrid-oidc.adapter.ts)
+- [rdb-oidc.adapter.ts](../src/infrastructure/oidc-provider/adapters/rdb-oidc.adapter.ts)
+- [redis-oidc.adapter.ts](../src/infrastructure/oidc-provider/adapters/redis-oidc.adapter.ts)
+- [hybrid-oidc.adapter.ts](../src/infrastructure/oidc-provider/adapters/hybrid-oidc.adapter.ts)
 
 의미:
 
@@ -184,9 +191,9 @@ http://localhost:3000/t/acme/oidc
 
 관련 코드:
 
-- [interaction.controller.ts](/Users/kangjuhyup/Documents/auth/service/src/presentation/controllers/interaction.controller.ts)
-- [interaction-login.view.ts](/Users/kangjuhyup/Documents/auth/service/src/presentation/views/interaction-login.view.ts)
-- [interaction-consent.view.ts](/Users/kangjuhyup/Documents/auth/service/src/presentation/views/interaction-consent.view.ts)
+- [interaction.controller.ts](../src/presentation/controllers/interaction.controller.ts)
+- [interaction-login.view.ts](../src/presentation/views/interaction-login.view.ts)
+- [interaction-consent.view.ts](../src/presentation/views/interaction-consent.view.ts)
 
 엔드포인트 구성:
 
@@ -212,7 +219,7 @@ http://localhost:3000/t/acme/oidc
 
 ## 5.1 Provider 생성
 
-[oidc-provider.factory.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/oidc-provider.factory.ts) 에서 provider 를 생성한다.
+[oidc-provider.factory.ts](../src/infrastructure/oidc-provider/oidc-provider.factory.ts) 에서 provider 를 생성한다.
 
 특징:
 
@@ -222,7 +229,7 @@ http://localhost:3000/t/acme/oidc
 
 ## 5.2 Provider 설정
 
-[oidc-provider.config.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/oidc-provider.config.ts) 에서 현재 다음을 설정한다.
+[oidc-provider.config.ts](../src/infrastructure/oidc-provider/oidc-provider.config.ts) 에서 현재 다음을 설정한다.
 
 - `interactions.url` — tenant 별 interaction 경로 생성 (`/t/{tenantCode}/interaction/{uid}`)
 - `loadExistingGrant` — `skipConsent` 가 설정된 클라이언트에 대해 동의 없이 Grant 자동 생성
@@ -236,13 +243,21 @@ http://localhost:3000/t/acme/oidc
 
 ## 5.3 Storage Adapter
 
-provider persistence 는 adapter factory 로 연결된다.
+provider persistence 는 adapter factory 로 연결된다. adapter 는 `oidc-provider` 표준 인터페이스를 구현한다:
 
-지원 드라이버:
+```ts
+interface Adapter {
+  upsert(id: string, payload: AdapterPayload, expiresIn: number): Promise<void>;
+  find(id: string): Promise<AdapterPayload | undefined>;
+  findByUid(uid: string): Promise<AdapterPayload | undefined>;
+  findByUserCode(userCode: string): Promise<AdapterPayload | undefined>;
+  consume(id: string): Promise<void>;
+  destroy(id: string): Promise<void>;
+  revokeByGrantId(grantId: string): Promise<void>;
+}
+```
 
-- `rdb`
-- `redis`
-- `hybrid`
+> `expiresIn` 은 반드시 `number` 타입이다.
 
 환경변수:
 
@@ -250,27 +265,94 @@ provider persistence 는 adapter factory 로 연결된다.
 OIDC_ADAPTER_DRIVER=rdb|redis|hybrid
 ```
 
-의도:
+### RDB Adapter
 
-- `rdb`: 권위 저장소 중심
-- `redis`: 인메모리 중심
-- `hybrid`: RDB + Redis 캐시
+- 모든 모델을 RDBMS에 저장
+- 완전 영속성 보장, 캐시 계층 없음
+- 장점: 구조 단순, 데이터 유실 없음
+- 단점: 고트래픽 시 DB 병목 가능
+- 권장 환경: 내부 시스템, 저/중간 트래픽
+
+### Redis Adapter
+
+- 모든 모델을 Redis에 저장, TTL 기반 자동 만료
+- 장점: 매우 빠른 조회, DB 부하 없음
+- 단점: Redis 장애 시 인증 불가, 재시작 시 세션 유실
+- 권장 환경: 완전 Stateless 구조, 세션 유실 허용 환경
+
+### Hybrid Adapter (권장)
+
+- RDB = 권위 저장소(Source of Truth), Redis = 캐시 계층
+
+**Write-through 전략:**
+
+```ts
+await rdb.upsert(...)   // RDB 먼저 기록
+await cache.upsert(...) // Redis는 best-effort (실패해도 전체 실패 아님)
+```
+
+**Cache-First Read:**
+
+```
+cache.find(id) → miss → rdb.find(id) → cache backfill
+```
+
+**Negative Cache (DB 폭격 방지):**
+
+존재하지 않는 토큰 반복 조회 시 짧은 TTL negative cache를 저장한다.
+
+```
+invalid token → RDB miss → negative cache (3초)
+```
+
+**TTL Margin 전략:**
+
+Redis TTL은 RDB TTL보다 약간 짧게 설정해 만료 경계 race condition을 방지한다.
+
+```
+cacheTtl = expiresIn - OIDC_CACHE_TTL_MARGIN_SEC
+```
+
+### Driver 비교
+
+| Driver  | 안전성     | 성능       | 운영 난이도 | 권장 환경 |
+|---------|-----------|-----------|------------|----------|
+| rdb     | ★★★★★ | ★★☆☆☆ | 낮음 | 개발/소규모 |
+| redis   | ★★☆☆☆ | ★★★★★ | 중간 | 특수 환경 |
+| hybrid  | ★★★★★ | ★★★★★ | 중간 | **운영 권장** |
 
 ## 5.4 Account Lookup
 
 `findAccount` 는 application query port 를 통해 사용자 claims 를 읽는다.
 
-흐름:
+```ts
+findAccount: async (ctx, sub) => {
+  const tenantId = ctx.req.tenant?.id;
 
-1. request 에서 tenant 추출
-2. `sub` 기반 조회
-3. 최소 claims 반환
+  const view = await accountQuery.findClaimsBySub({ tenantId, sub: String(sub) });
+
+  return {
+    accountId: String(sub),
+    claims: async () => ({
+      sub: view.sub,
+      email: view.email,
+      email_verified: view.email_verified,
+    }),
+  };
+}
+```
+
+중요:
+
+- Access Token이 JWT여도 DB 조회는 필요하다.
+- `sub` 는 반드시 tenant 와 바인딩되어야 한다.
+- 다른 tenant 의 sub 를 조회하면 안 된다.
 
 이 설계 덕분에 provider 내부는 protocol 처리에 집중하고, 실제 사용자 정보는 application 계층에서 가져온다.
 
 ## 5.5 Resource Indicators
 
-현재 access token 발급 정책은 resource indicator 기반이다.
+Access Token 발급 정책은 resource indicator 기반이다.
 
 흐름:
 
@@ -280,17 +362,64 @@ OIDC_ADAPTER_DRIVER=rdb|redis|hybrid
 4. 허용된 경우에만 access token 발급
 5. `OIDC_ACCESS_TOKEN_FORMAT` 에 따라 `jwt` 또는 `opaque` 결정
 
-보안상 제약:
+보안 제약:
 
 - `https:` 만 허용
 - `localhost`, `.local` 차단
 - tenant 없는 요청 차단
+- origin 단위 비교
 
 ---
 
-# 6. Token Verification Inside This Project
+# 6. Access Token Format
 
-외부 API 보호용 access token 검증은 provider callback 과 별도로 [access-verifier.adapter.ts](/Users/kangjuhyup/Documents/auth/service/src/infrastructure/oidc-provider/access-verifier.adapter.ts) 에서 처리한다.
+```env
+OIDC_ACCESS_TOKEN_FORMAT=opaque   # 기본
+OIDC_ACCESS_TOKEN_FORMAT=jwt
+```
+
+JWT Access Token 은 `resourceIndicators.getResourceServerInfo()` 에서 포맷을 반환한다:
+
+```ts
+features: {
+  resourceIndicators: {
+    enabled: true,
+    async getResourceServerInfo(ctx, resource, client) {
+      return {
+        accessTokenFormat: 'jwt', // 또는 'opaque'
+        audience: resource,
+        scope: 'openid profile email',
+      };
+    }
+  }
+}
+```
+
+> `node-oidc-provider@9.x` 에서는 `formats.AccessToken` 대신 `resourceIndicators.getResourceServerInfo()` 에서 포맷을 반환해야 한다.
+
+### Opaque vs JWT
+
+| 항목 | Opaque | JWT |
+|------|--------|-----|
+| 검증 방식 | 서버 DB 조회 | 서명 검증 |
+| 성능 | DB 의존 | Stateless |
+| 보안 통제 | 서버 통제 | 토큰 유출 시 위험 증가 |
+| 권장 사용 | 내부 API | 외부 API Gateway |
+
+### 환경별 권장
+
+| 환경 | 추천 |
+|------|------|
+| 내부 API | opaque |
+| 외부 공개 API | jwt |
+| 고트래픽 Gateway | jwt |
+| 고보안 환경 | opaque + introspection |
+
+---
+
+# 7. Token Verification Inside This Project
+
+외부 API 보호용 access token 검증은 provider callback 과 별도로 [access-verifier.adapter.ts](../src/infrastructure/oidc-provider/access-verifier.adapter.ts) 에서 처리한다.
 
 동작:
 
@@ -304,7 +433,49 @@ OIDC_ADAPTER_DRIVER=rdb|redis|hybrid
 
 ---
 
-# 7. Environment Variables
+# 8. Multi-tenant Security
+
+## 8.1 Tenant Binding
+
+모든 요청 처리 순서:
+
+1. `/t/:tenantCode/oidc`
+2. TenantMiddleware → tenant 검증
+3. OIDC Delegate Middleware
+4. Provider 실행
+
+Tenant 정보는 반드시 `req.tenant` 에 주입되어야 한다.
+
+## 8.2 Token Tenant Binding
+
+Access Token payload 에는 tenantId 를 포함하는 것을 권장한다:
+
+```json
+{
+  "sub": "user-123",
+  "tenantId": "tenant-1"
+}
+```
+
+검증 시 반드시 tenant 일치 여부 확인:
+
+```ts
+if (payload.tenantId !== currentTenantId) {
+  throw new Error('Unauthorized');
+}
+```
+
+## 8.3 Tenant Isolation 원칙
+
+- Issuer 를 tenant 단위로 분리
+- Client 는 tenant 단위로 관리
+- Resource 는 tenant 단위로 검증
+- Token 은 tenantId 를 반드시 포함
+- `findAccount` 는 tenant 바인딩 필수
+
+---
+
+# 9. Environment Variables
 
 OIDC 관련 주요 환경변수:
 
@@ -320,11 +491,9 @@ OIDC_CACHE_BACKFILL_TTL_SEC=60
 
 ---
 
-# 8. Current Limitations / TODO
+# 10. Current Limitations / TODO
 
-현재 코드 기준으로 아직 비어 있거나 보완이 필요한 부분:
-
-## 8.1 JWKS
+## 10.1 JWKS
 
 현재 설정:
 
@@ -344,13 +513,13 @@ JWKS signing key 를 provider 에 연동하는 부분은 아직 TODO 이다.
 
 - `buildOidcConfiguration` 에서 `jwks.keys` 를 `JwksKeyRepository` 에서 조회한 실제 키로 채우는 연동
 
-## ~~8.2 Client Resource Policy~~ (완료)
+## ~~10.2 Client Resource Policy~~ (완료)
 
-`ClientQueryHandler.getAllowedResources()` 가 구현되었다. client 의 `allowedResources` 필드를 조회하여 resource indicator 검증에 사용한다.
+`ClientQueryHandler.getAllowedResources()` 가 구현되었다.
 
-## ~~8.3 Interaction UI~~ (완료)
+## ~~10.3 Interaction UI~~ (완료)
 
-`InteractionController` 와 서버 사이드 렌더링 뷰(login/consent)가 구현되었다. 상세 내용은 섹션 4.6 참조.
+`InteractionController` 와 서버 사이드 렌더링 뷰(login/consent)가 구현되었다.
 
 추가 개선 가능 사항:
 
@@ -358,9 +527,9 @@ JWKS signing key 를 provider 에 연동하는 부분은 아직 TODO 이다.
 - 소셜 로그인(IdP) 연동 화면 추가
 - MFA 인터랙션 단계 추가
 
-## ~~8.4 Consent / revoke 연계~~ (완료)
+## ~~10.4 Consent / revoke 연계~~ (완료)
 
-`AuthCommandHandler.revokeConsent()` 가 구현되었다. `ConsentRepository` 를 통해 특정 유저/클라이언트의 동의를 조회하고 revoke 처리한다.
+`AuthCommandHandler.revokeConsent()` 가 구현되었다.
 
 남은 작업:
 
@@ -369,7 +538,42 @@ JWKS signing key 를 provider 에 연동하는 부분은 아직 TODO 이다.
 
 ---
 
-# 9. Summary
+# 11. Production Recommendations
+
+### 권장 구성 (Production SaaS)
+
+```env
+OIDC_ADAPTER_DRIVER=hybrid
+OIDC_ACCESS_TOKEN_FORMAT=jwt
+```
+
+- RDB = 정합성
+- Redis = 캐시
+- JWT = Gateway 확장성
+- Resource Indicator = 안전한 audience 바인딩
+- Tenant Path 기반 issuer = 완전 격리
+
+### 운영 환경별 Driver 선택
+
+| 환경 | 추천 Driver |
+|------|------------|
+| 로컬 개발 | rdb |
+| 단일 노드 | rdb |
+| 다중 노드 | hybrid |
+| 고트래픽 SaaS | hybrid |
+| 완전 캐시 기반 | redis |
+
+### 보안 체크리스트
+
+- Redis 는 반드시 인증 및 TLS 사용
+- RDB 에는 만료 토큰 정리 정책 필요
+- Hybrid 에서 Redis 는 권위 저장소가 아님
+- Negative cache TTL 은 1~5초 권장
+- 멀티테넌트 환경에서는 tenant 바인딩 검증 필수
+
+---
+
+# 12. Summary
 
 이 프로젝트는 `node-oidc-provider` 를 프로토콜 엔진으로 사용하고, 다음을 우리 코드에서 보완한다.
 
