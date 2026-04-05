@@ -69,7 +69,7 @@ export class JwksKeyCryptoAdapter implements JwksKeyCryptoPort {
     const iv = Uint8Array.from(randomBytes(12));
     const cipher = createCipheriv('aes-256-gcm', this.encryptionKey, iv);
 
-    // @types/node v22: Buffer → Uint8Array<ArrayBuffer> 변환으로 타입 호환
+    // @types/node: Buffer → Uint8Array 변환으로 타입 호환
     const part1 = Uint8Array.from(cipher.update(pem, 'utf8'));
     const part2 = Uint8Array.from(cipher.final());
     const authTag = Uint8Array.from(cipher.getAuthTag());

@@ -52,7 +52,7 @@ service/src/
 
 | 구분 | 기술 |
 |------|------|
-| 런타임 | Node.js 22 |
+| 런타임 | Node.js 24 |
 | 백엔드 프레임워크 | NestJS 11 |
 | ORM | MikroORM 6 |
 | OIDC 엔진 | node-oidc-provider 9 |
@@ -64,6 +64,8 @@ service/src/
 ---
 
 ## 빠른 시작
+
+**사전 요구:** Node.js **24** 이상 (루트 `package.json`의 `engines`, `.nvmrc`, `.node-version` 참고)
 
 ### 1. 인프라 실행
 

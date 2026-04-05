@@ -3,6 +3,9 @@
   "version": "0.0.1",
   "private": true,
   "license": "UNLICENSED",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "build": "nest build",
     "start": "nest start",
@@ -12,6 +15,7 @@
     "lint": "eslint \"{src,test}/**/*.ts\" --fix",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "test": "jest",
+    "test:unit": "jest --runInBand --watchman=false",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:e2e": "NODE_OPTIONS=--experimental-vm-modules yarn exec jest --config ./test/jest-e2e.json",
@@ -57,7 +61,7 @@
     "@swc/core": "^1.10.7",
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
-    "@types/node": "^22.10.7",
+    "@types/node": "^24.10.0",
     "@types/nodemailer": "^7.0.9",
     "@types/oidc-provider": "^9.5.0",
     "@types/pg": "^8",
@@ -95,6 +99,7 @@
       "src/**/*.(t|j)s"
     ],
     "coverageDirectory": "./coverage",
+    "verbose": true,
     "testEnvironment": "node",
     "moduleNameMapper": {
       "^@domain/(.*)$": "<rootDir>/src/domain/$1",
