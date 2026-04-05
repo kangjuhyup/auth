@@ -19,6 +19,7 @@ export function buildOidcConfiguration(params: {
   clientRepository: ClientRepository;
   tenantRepository: TenantRepository;
   symmetricCrypto: SymmetricCryptoPort;
+  jwksKeys: Record<string, unknown>[];
   tenantAccessTokenTtlSec: number;
   tenantRefreshTokenTtlSec: number;
 }): Configuration {
@@ -36,6 +37,7 @@ export function buildOidcConfiguration(params: {
     tenantRefreshTokenTtlSec,
   } = params;
 
+  const { jwksKeys } = params;
   const clientTtlCache = new Map<string, { access: number | null; refresh: number | null }>();
 
   function warmClientTtlCache(tenantId: string, clientId: string): void {
@@ -135,7 +137,7 @@ export function buildOidcConfiguration(params: {
 
     cookies: { keys: getSecretKeys(configService, 'OIDC_COOKIE_KEYS') },
 
-    jwks: { keys: [] }, // TODO: KeyRing/JWKS 연동
+    jwks: { keys: jwksKeys as any[] },
 
     // ✅ Adapter는 "opaque 토큰 저장"만을 위한 게 아님
     // (Session/Grant/Interaction 등 provider 모델 전반 저장에 필요)
@@ -186,7 +188,7 @@ export function buildOidcConfiguration(params: {
 
     ttl: {
       AccessToken: (ctx, _token, client) => {
-        const tenantId = (ctx.req as any)?.tenant?.id;
+        const tenantId = (ctx as any)?.req?.tenant?.id;
         if (tenantId && client?.clientId) {
           const cached = clientTtlCache.get(client.clientId);
           if (cached !== undefined) return cached.access ?? tenantAccessTokenTtlSec;
@@ -197,7 +199,7 @@ export function buildOidcConfiguration(params: {
       AuthorizationCode: 60,
       IdToken: 60 * 60,
       RefreshToken: (ctx, _token, client) => {
-        const tenantId = (ctx.req as any)?.tenant?.id;
+        const tenantId = (ctx as any)?.req?.tenant?.id;
         if (tenantId && client?.clientId) {
           const cached = clientTtlCache.get(client.clientId);
           if (cached !== undefined) return cached.refresh ?? tenantRefreshTokenTtlSec;

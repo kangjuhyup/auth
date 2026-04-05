@@ -20,8 +20,9 @@ import { UserQueryPort } from '@application/queries/ports/user-query.port';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
 import { REDIS, RedisModule } from '@infrastructure/redis/redis.module';
 import { ApplicationModule } from '@application/application.module';
-import { ClientRepository, TenantRepository, TenantConfigRepository } from '@domain/repositories';
+import { ClientRepository, JwksKeyRepository, TenantRepository, TenantConfigRepository } from '@domain/repositories';
 import { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
+import { JwksKeyCryptoPort } from '@application/ports/jwks-key-crypto.port';
 
 @Module({
   imports: [
@@ -42,6 +43,8 @@ import { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
         clientRepository: ClientRepository,
         tenantRepository: TenantRepository,
         tenantConfigRepository: TenantConfigRepository,
+        jwksKeyRepository: JwksKeyRepository,
+        jwksKeyCrypto: JwksKeyCryptoPort,
         symmetricCrypto: SymmetricCryptoPort,
       ) => {
         const base = configService.getOrThrow<string>('OIDC_ISSUER');
@@ -60,6 +63,8 @@ import { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
             clientRepository,
             tenantRepository,
             tenantConfigRepository,
+            jwksKeyRepository,
+            jwksKeyCrypto,
             symmetricCrypto,
           });
         });
@@ -75,6 +80,8 @@ import { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
         ClientRepository,
         TenantRepository,
         TenantConfigRepository,
+        JwksKeyRepository,
+        JwksKeyCryptoPort,
         SymmetricCryptoPort,
       ],
     },
