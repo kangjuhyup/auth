@@ -1,4 +1,5 @@
 import { Form, Input, Switch } from 'antd';
+import type { FormInstance } from 'antd';
 import type {
   CreateIdentityProviderDto,
   UpdateIdentityProviderDto,
@@ -7,15 +8,21 @@ import type {
 const PROVIDER_SLUG = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 
 interface IdpFormProps {
-  initialValues?: Partial<CreateIdentityProviderDto | UpdateIdentityProviderDto> & {
+  initialValues?: Partial<
+    CreateIdentityProviderDto | UpdateIdentityProviderDto
+  > & {
     provider?: string;
   };
-  onFinish: (values: CreateIdentityProviderDto | UpdateIdentityProviderDto) => void;
+  onFinish: (
+    values: CreateIdentityProviderDto | UpdateIdentityProviderDto,
+  ) => void;
   mode: 'create' | 'edit';
-  form: ReturnType<typeof Form.useForm>[0];
+  form: FormInstance<Record<string, unknown>>;
 }
 
-function parseOauthJson(raw: string | undefined): Record<string, unknown> | null {
+function parseOauthJson(
+  raw: string | undefined,
+): Record<string, unknown> | null {
   if (raw == null || raw.trim() === '') return null;
   try {
     return JSON.parse(raw) as Record<string, unknown>;
@@ -40,7 +47,9 @@ export function IdpForm({ initialValues, onFinish, mode, form }: IdpFormProps) {
       ]);
       return;
     }
-    onFinish({ ...values, oauthConfig } as CreateIdentityProviderDto);
+    onFinish({ ...values, oauthConfig } as
+      | CreateIdentityProviderDto
+      | UpdateIdentityProviderDto);
   };
 
   return (
@@ -94,20 +103,29 @@ export function IdpForm({ initialValues, onFinish, mode, form }: IdpFormProps) {
 
       <Form.Item
         name="clientSecret"
-        label={mode === 'edit' ? 'Client secret (leave empty to keep current)' : 'Client secret'}
+        label={
+          mode === 'edit'
+            ? 'Client secret (leave empty to keep current)'
+            : 'Client secret'
+        }
         rules={
           mode === 'create'
             ? [{ required: true, message: 'Client secret is required' }]
             : undefined
         }
       >
-        <Input.Password placeholder={mode === 'edit' ? 'Unchanged if empty' : undefined} />
+        <Input.Password
+          placeholder={mode === 'edit' ? 'Unchanged if empty' : undefined}
+        />
       </Form.Item>
 
       <Form.Item
         name="redirectUri"
         label="Redirect URI"
-        rules={[{ required: true, message: 'Redirect URI is required' }, { type: 'url' }]}
+        rules={[
+          { required: true, message: 'Redirect URI is required' },
+          { type: 'url' },
+        ]}
       >
         <Input placeholder="https://auth.example.com/t/{tenant}/interaction/..." />
       </Form.Item>
@@ -121,7 +139,10 @@ export function IdpForm({ initialValues, onFinish, mode, form }: IdpFormProps) {
         label="OAuth endpoints override (JSON, optional)"
         extra="Well-known defaults apply when empty. Custom IdP: set authorizationUrl, tokenUrl, userinfoUrl, scopes, etc."
       >
-        <Input.TextArea rows={6} placeholder='{"authorizationUrl":"...","tokenUrl":"..."}' />
+        <Input.TextArea
+          rows={6}
+          placeholder='{"authorizationUrl":"...","tokenUrl":"..."}'
+        />
       </Form.Item>
     </Form>
   );

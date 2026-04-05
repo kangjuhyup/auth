@@ -9,8 +9,8 @@ import { useAdminUiStore } from '@/stores/adminUi.store';
 import type { CreateClientDto, UpdateClientDto } from '@/types/client.types';
 
 export function ClientFormModal() {
-  const [createForm] = Form.useForm();
-  const [editForm] = Form.useForm();
+  const [createForm] = Form.useForm<CreateClientDto | UpdateClientDto>();
+  const [editForm] = Form.useForm<CreateClientDto | UpdateClientDto>();
 
   const {
     createModalOpen,
@@ -37,8 +37,8 @@ export function ClientFormModal() {
     }
   }, [editingClient, editForm]);
 
-  const handleCreate = (values: CreateClientDto) => {
-    createMutation.mutate(values, {
+  const handleCreate = (values: CreateClientDto | UpdateClientDto) => {
+    createMutation.mutate(values as CreateClientDto, {
       onSuccess: () => {
         closeCreateModal();
         createForm.resetFields();
@@ -46,8 +46,8 @@ export function ClientFormModal() {
     });
   };
 
-  const handleUpdate = (values: UpdateClientDto) => {
-    updateMutation.mutate(values, {
+  const handleUpdate = (values: CreateClientDto | UpdateClientDto) => {
+    updateMutation.mutate(values as UpdateClientDto, {
       onSuccess: () => {
         closeEditModal();
         editForm.resetFields();

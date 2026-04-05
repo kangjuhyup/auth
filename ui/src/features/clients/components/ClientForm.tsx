@@ -1,4 +1,5 @@
 import { Form, Input, Select, Switch, Space, Button } from 'antd';
+import type { FormInstance } from 'antd';
 import { PlusOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import type { CreateClientDto, UpdateClientDto } from '@/types/client.types';
 
@@ -6,7 +7,7 @@ interface ClientFormProps {
   initialValues?: Partial<CreateClientDto | UpdateClientDto>;
   onFinish: (values: CreateClientDto | UpdateClientDto) => void;
   mode: 'create' | 'edit';
-  form: ReturnType<typeof Form.useForm>[0];
+  form: FormInstance<CreateClientDto | UpdateClientDto>;
 }
 
 export function ClientForm({
@@ -30,7 +31,8 @@ export function ClientForm({
             { required: true, message: 'Client ID is required' },
             {
               pattern: /^[a-z0-9-_]+$/,
-              message: 'Client ID must be lowercase alphanumeric with hyphens/underscores',
+              message:
+                'Client ID must be lowercase alphanumeric with hyphens/underscores',
             },
           ]}
         >
@@ -49,7 +51,9 @@ export function ClientForm({
       <Form.Item name="type" label="Client Type">
         <Select placeholder="Select client type">
           <Select.Option value="public">Public (Web/Mobile Apps)</Select.Option>
-          <Select.Option value="confidential">Confidential (Server-side Apps)</Select.Option>
+          <Select.Option value="confidential">
+            Confidential (Server-side Apps)
+          </Select.Option>
           <Select.Option value="service">Service (M2M)</Select.Option>
         </Select>
       </Form.Item>
@@ -65,7 +69,10 @@ export function ClientForm({
           {(fields, { add, remove }) => (
             <>
               {fields.map((field) => (
-                <Space key={field.key} style={{ display: 'flex', marginBottom: 8 }}>
+                <Space
+                  key={field.key}
+                  style={{ display: 'flex', marginBottom: 8 }}
+                >
                   <Form.Item
                     {...field}
                     rules={[{ required: true, message: 'URI is required' }]}
@@ -76,7 +83,12 @@ export function ClientForm({
                   <MinusCircleOutlined onClick={() => remove(field.name)} />
                 </Space>
               ))}
-              <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+              <Button
+                type="dashed"
+                onClick={() => add()}
+                block
+                icon={<PlusOutlined />}
+              >
                 Add Redirect URI
               </Button>
             </>
@@ -89,17 +101,22 @@ export function ClientForm({
           {(fields, { add, remove }) => (
             <>
               {fields.map((field) => (
-                <Space key={field.key} style={{ display: 'flex', marginBottom: 8 }}>
-                  <Form.Item
-                    {...field}
-                    style={{ flex: 1, marginBottom: 0 }}
-                  >
+                <Space
+                  key={field.key}
+                  style={{ display: 'flex', marginBottom: 8 }}
+                >
+                  <Form.Item {...field} style={{ flex: 1, marginBottom: 0 }}>
                     <Input placeholder="https://example.com/logout" />
                   </Form.Item>
                   <MinusCircleOutlined onClick={() => remove(field.name)} />
                 </Space>
               ))}
-              <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+              <Button
+                type="dashed"
+                onClick={() => add()}
+                block
+                icon={<PlusOutlined />}
+              >
                 Add Post Logout URI
               </Button>
             </>
@@ -109,11 +126,17 @@ export function ClientForm({
 
       <Form.Item name="grantTypes" label="Grant Types">
         <Select mode="multiple" placeholder="Select grant types">
-          <Select.Option value="authorization_code">Authorization Code</Select.Option>
+          <Select.Option value="authorization_code">
+            Authorization Code
+          </Select.Option>
           <Select.Option value="implicit">Implicit</Select.Option>
           <Select.Option value="refresh_token">Refresh Token</Select.Option>
-          <Select.Option value="client_credentials">Client Credentials</Select.Option>
-          <Select.Option value="password">Password (not recommended)</Select.Option>
+          <Select.Option value="client_credentials">
+            Client Credentials
+          </Select.Option>
+          <Select.Option value="password">
+            Password (not recommended)
+          </Select.Option>
         </Select>
       </Form.Item>
 
@@ -129,11 +152,18 @@ export function ClientForm({
         <Input placeholder="e.g. openid profile email" />
       </Form.Item>
 
-      <Form.Item name="tokenEndpointAuthMethod" label="Token Endpoint Auth Method">
+      <Form.Item
+        name="tokenEndpointAuthMethod"
+        label="Token Endpoint Auth Method"
+      >
         <Select placeholder="Select auth method">
           <Select.Option value="none">None (Public Client)</Select.Option>
-          <Select.Option value="client_secret_post">Client Secret POST</Select.Option>
-          <Select.Option value="client_secret_basic">Client Secret Basic</Select.Option>
+          <Select.Option value="client_secret_post">
+            Client Secret POST
+          </Select.Option>
+          <Select.Option value="client_secret_basic">
+            Client Secret Basic
+          </Select.Option>
         </Select>
       </Form.Item>
     </Form>

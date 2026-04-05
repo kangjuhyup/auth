@@ -1,11 +1,16 @@
 import { Form, Input, Select } from 'antd';
-import type { CreateGroupDto, UpdateGroupDto, GroupResponse } from '@/types/group.types';
+import type { FormInstance } from 'antd';
+import type {
+  CreateGroupDto,
+  UpdateGroupDto,
+  GroupResponse,
+} from '@/types/group.types';
 
 interface GroupFormProps {
   initialValues?: Partial<CreateGroupDto | UpdateGroupDto>;
   onFinish: (values: CreateGroupDto | UpdateGroupDto) => void;
   mode: 'create' | 'edit';
-  form: ReturnType<typeof Form.useForm>[0];
+  form: FormInstance<CreateGroupDto | UpdateGroupDto>;
   availableGroups?: GroupResponse[];
 }
 
@@ -31,7 +36,8 @@ export function GroupForm({
             { required: true, message: 'Code is required' },
             {
               pattern: /^[a-z0-9-_]+$/,
-              message: 'Code must be lowercase alphanumeric with hyphens/underscores',
+              message:
+                'Code must be lowercase alphanumeric with hyphens/underscores',
             },
           ]}
         >

@@ -1,11 +1,12 @@
 import { Form, Input, Select, Switch } from 'antd';
+import type { FormInstance } from 'antd';
 import type { CreateTenantDto, UpdateTenantDto } from '@/types/tenant.types';
 
 interface TenantFormProps {
   initialValues?: Partial<CreateTenantDto | UpdateTenantDto>;
   onFinish: (values: CreateTenantDto | UpdateTenantDto) => void;
   mode: 'create' | 'edit';
-  form: ReturnType<typeof Form.useForm>[0];
+  form: FormInstance<CreateTenantDto | UpdateTenantDto>;
 }
 
 export function TenantForm({

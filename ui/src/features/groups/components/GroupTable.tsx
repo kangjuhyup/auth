@@ -39,7 +39,7 @@ export function GroupTable({
       title: 'Parent Group',
       dataIndex: 'parentId',
       key: 'parentId',
-      render: (parentId: string | null, record) => {
+      render: (parentId: string | null) => {
         if (!parentId) return '-';
         const parent = groups.find((g) => g.id === parentId);
         return parent?.name ?? '-';

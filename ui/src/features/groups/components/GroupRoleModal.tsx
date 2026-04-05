@@ -1,3 +1,4 @@
+import type { Key } from 'react';
 import { Modal, Transfer, Spin } from 'antd';
 import type { TransferDirection } from 'antd/es/transfer';
 import { useGroupRoles } from '../hooks/useGroupRoles';
@@ -23,18 +24,17 @@ export function GroupRoleModal() {
   const assignedRoleIds = assignedRoles?.map((r) => r.id) ?? [];
 
   const handleChange = (
-    targetKeys: string[],
+    _targetKeys: Key[],
     direction: TransferDirection,
-    moveKeys: string[],
+    moveKeys: Key[],
   ) => {
+    const ids = moveKeys.map(String);
     if (direction === 'right') {
-      // Adding roles
-      moveKeys.forEach((roleId) => {
+      ids.forEach((roleId) => {
         addRoleMutation.mutate(roleId);
       });
     } else {
-      // Removing roles
-      moveKeys.forEach((roleId) => {
+      ids.forEach((roleId) => {
         removeRoleMutation.mutate(roleId);
       });
     }
@@ -78,7 +78,8 @@ export function GroupRoleModal() {
           titles={['Available Roles', 'Assigned Roles']}
           showSearch
           filterOption={(inputValue, item) =>
-            item.title?.toLowerCase().includes(inputValue.toLowerCase()) ?? false
+            item.title?.toLowerCase().includes(inputValue.toLowerCase()) ??
+            false
           }
         />
       )}
