@@ -1,0 +1,43 @@
+# syntax=docker/dockerfile:1
+#
+# 빌드 컨텍스트: 저장소 루트 (.)
+#   docker build -f deploy/docker/Dockerfile -t auth-service:latest .
+
+FROM node:24-alpine AS build
+WORKDIR /repo
+RUN apk add --no-cache python3 make g++
+RUN corepack enable
+
+COPY package.json yarn.lock .yarnrc.yml ./
+COPY tsconfig.json ./
+COPY .yarn/releases .yarn/releases
+
+COPY service/package.json service/package.json
+COPY ui/package.json ui/package.json
+COPY service/interaction-ui/package.json service/interaction-ui/package.json
+
+ENV YARN_NODE_LINKER=node-modules
+RUN yarn install --immutable
+
+COPY service service
+COPY service/interaction-ui service/interaction-ui
+
+RUN yarn install --immutable
+RUN yarn workspace @auth/service build
+RUN yarn workspaces focus @auth/service --production
+
+FROM node:24-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=build /repo/node_modules ./node_modules
+COPY --from=build /repo/package.json ./
+COPY --from=build /repo/service/package.json ./service/
+COPY --from=build /repo/service/dist ./service/dist
+COPY --from=build /repo/service/mikro-orm.config.ts ./service/mikro-orm.config.ts
+COPY --from=build /repo/service/src/infrastructure/mikro-orm/migrations ./service/src/infrastructure/mikro-orm/migrations
+
+USER node
+WORKDIR /app/service
+EXPOSE 3000
+CMD ["node", "dist/main.js"]

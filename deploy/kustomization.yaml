@@ -1,0 +1,7 @@
+# kubectl apply -k deploy/
+# 사전: cp deploy/overlays/default/secrets.env.example deploy/overlays/default/secrets.env 후 값 수정
+# Ingress 필요 시: kubectl apply -k deploy/overlays/with-ingress
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - overlays/default

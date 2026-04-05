@@ -1,0 +1,16 @@
+# docker build -f deploy/docker/Dockerfile (컨텍스트: 저장소 루트)
+.git
+**/.git
+**/node_modules
+.yarn/cache
+.yarn/unplugged
+.yarn/install-state.gz
+dist
+**/dist
+coverage
+.turbo
+.idea
+.vscode
+# 워크스페이스용 package.json 만 필요
+ui/**
+!ui/package.json

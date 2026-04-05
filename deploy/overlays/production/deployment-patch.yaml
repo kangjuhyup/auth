@@ -1,0 +1,16 @@
+# 레플리카 수는 HPA(hpa-patch.yaml)가 관리합니다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+spec:
+  template:
+    spec:
+      containers:
+        - name: auth-service
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 1Gi

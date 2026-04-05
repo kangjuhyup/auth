@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: auth-service-config
+data:
+  OIDC_ISSUER: https://auth.example.com
+  DB_HOST: postgresql.auth.svc.cluster.local

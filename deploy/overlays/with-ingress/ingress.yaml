@@ -1,0 +1,23 @@
+# 호스트·ingressClassName·TLS 는 클러스터에 맞게 수정하세요.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: auth-service
+  labels:
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/component: api
+  annotations:
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: auth.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: auth-service
+                port:
+                  number: 80
