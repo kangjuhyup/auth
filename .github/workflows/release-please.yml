@@ -1,0 +1,21 @@
+# Conventional commits (feat:, fix:, chore:, etc.) 기준으로 Release PR을 열고,
+# 그 PR을 머지하면 버전·CHANGELOG·Git 태그(v*)가 생성됩니다. (main 전용)
+# 이미지·GHCR는 release.yml 이 태그 푸시(자동) 또는 Actions 수동 실행으로 빌드합니다.
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: google-github-actions/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

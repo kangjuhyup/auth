@@ -1,0 +1,28 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "plugins": [
+    {
+      "type": "linked-versions",
+      "groupName": "auth",
+      "components": ["auth", "auth-service", "auth-ui", "auth-interaction-ui"]
+    }
+  ],
+  "packages": {
+    ".": {
+      "component": "auth",
+      "release-type": "node"
+    },
+    "service": {
+      "component": "auth-service",
+      "release-type": "node"
+    },
+    "ui": {
+      "component": "auth-ui",
+      "release-type": "node"
+    },
+    "service/interaction-ui": {
+      "component": "auth-interaction-ui",
+      "release-type": "node"
+    }
+  }
+}
