@@ -43,6 +43,7 @@ export class PresentationModule implements NestModule {
       .apply(TenantMiddleware)
       .forRoutes(
         AuthController,
+        InteractionController,
         { path: 't/:tenantCode/admin/*path', method: RequestMethod.ALL },
       );
   }

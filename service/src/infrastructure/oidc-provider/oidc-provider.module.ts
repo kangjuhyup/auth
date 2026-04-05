@@ -105,15 +105,8 @@ export class OidcProviderModule implements NestModule {
       },
     );
 
-    consumer.apply(TenantMiddleware).forRoutes(
-      {
-        path: 't/:tenantCode/interaction',
-        method: RequestMethod.ALL,
-      },
-      {
-        path: 't/:tenantCode/interaction/*path',
-        method: RequestMethod.ALL,
-      },
-    );
+    // interaction/* 은 `.../interaction/:uid/api/details` 처럼 여러 세그먼트라
+    // path 와일드카드 한 개로는 TenantMiddleware 가 안 탈 수 있음.
+    // TenantMiddleware 는 PresentationModule 에서 InteractionController 전체에 적용한다.
   }
 }

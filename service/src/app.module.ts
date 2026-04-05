@@ -76,7 +76,8 @@ function readEnvValue(key: string): string | undefined {
       }),
     ),
     ServeStaticModule.forRoot({
-      rootPath: resolve(__dirname, '../../interaction-ui/dist'),
+      // __dirname은 빌드 시 service/dist — 한 단계 위가 service 루트
+      rootPath: resolve(__dirname, '../interaction-ui/dist'),
       serveRoot: '/interaction-assets',
       serveStaticOptions: { index: false },
     }),
