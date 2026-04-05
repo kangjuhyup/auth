@@ -188,32 +188,34 @@ new Provider(`https://auth.example.com/t/${tenantCode}/oidc`, configuration)
 
 이 프로젝트에서:
 
-- `features.devInteractions` 는 `false` — 기본 개발용 UI 비활성화
-- 대신 커스텀 `InteractionController` 가 login/consent 화면과 처리 로직을 구현
+- `features.devInteractions` 는 `false` — `node-oidc-provider` 기본 개발용 UI 비활성화
+- [InteractionController](../src/presentation/controllers/interaction.controller.ts) 가 **SPA(`service/interaction-ui`)** 진입 HTML 서빙, JSON API, MFA, 외부 IdP 리다이렉트/콜백을 담당한다.
+
+UI 커스터마이징·빌드·API 계약은 [INTERACTION_UI.md](./INTERACTION_UI.md) 를 참고한다.
 
 관련 코드:
 
 - [interaction.controller.ts](../src/presentation/controllers/interaction.controller.ts)
-- [interaction-login.view.ts](../src/presentation/views/interaction-login.view.ts)
-- [interaction-consent.view.ts](../src/presentation/views/interaction-consent.view.ts)
+- [service/interaction-ui/](../interaction-ui/) (Vite + React SPA)
 
-엔드포인트 구성:
+대표 엔드포인트(전체는 INTERACTION_UI.md 및 컨트롤러 참고):
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
-| GET | `/t/:tenantCode/interaction/:uid` | 인터랙션 진입점. prompt 에 따라 로그인 또는 동의 화면 렌더링 |
-| POST | `/t/:tenantCode/interaction/:uid/login` | 사용자명/비밀번호 제출. `UserQueryPort.authenticate()` 로 검증 |
-| POST | `/t/:tenantCode/interaction/:uid/consent` | 동의 승인. Grant 생성/갱신 후 provider 에 반환 |
-| GET | `/t/:tenantCode/interaction/:uid/abort` | 인터랙션 취소. `access_denied` 에러 반환 |
+| GET | `/t/:tenantCode/interaction/:uid` | SPA `index.html` (정적 에셋은 `/interaction-assets/*`) |
+| GET | `/t/:tenantCode/interaction/:uid/api/details` | prompt, clientId, idp 목록 등 |
+| POST | `/t/:tenantCode/interaction/:uid/api/login` | 비밀번호 로그인 |
+| POST | `/t/:tenantCode/interaction/:uid/api/mfa` | MFA |
+| POST | `/t/:tenantCode/interaction/:uid/api/consent` | 동의 |
+| GET | `/t/:tenantCode/interaction/:uid/api/abort` | 취소 |
+| GET | `/t/:tenantCode/interaction/:uid/idp/:provider` | 외부 IdP 시작 |
 
 흐름:
 
 1. provider 가 authorization 요청을 받으면 `interactions.url` 콜백으로 interaction 경로를 결정
-2. `InteractionController.showInteraction()` 이 prompt 종류를 확인
-3. `login` prompt → 서버 사이드 렌더링 로그인 폼 반환
-4. `consent` prompt → 요청 스코프를 표시하는 동의 화면 반환 (missingScopes 가 없으면 자동 승인)
-5. 로그인 성공 시 `provider.interactionFinished()` 로 accountId 전달
-6. 동의 승인 시 Grant 를 생성하고 grantId 를 provider 에 반환
+2. 브라우저가 `/t/{tenant}/interaction/{uid}` 에서 SPA 로드 후 `api/details` 로 상태 조회
+3. `login` prompt → 로그인(MFA·IdP 포함) 후 `interactionFinished` 로 accountId 전달
+4. `consent` prompt → 동의 화면 후 Grant 처리 및 provider 에 반환
 
 ---
 
@@ -521,13 +523,7 @@ JWKS signing key 를 provider 에 연동하는 부분은 아직 TODO 이다.
 
 ## ~~10.3 Interaction UI~~ (완료)
 
-`InteractionController` 와 서버 사이드 렌더링 뷰(login/consent)가 구현되었다.
-
-추가 개선 가능 사항:
-
-- SPA 기반 interaction UI 로 전환
-- 소셜 로그인(IdP) 연동 화면 추가
-- MFA 인터랙션 단계 추가
+`InteractionController` + `service/interaction-ui` SPA(로그인·동의·MFA·외부 IdP 버튼)로 구현되었다. UI 변경 절차는 [INTERACTION_UI.md](./INTERACTION_UI.md) 를 참고한다.
 
 ## ~~10.4 Consent / revoke 연계~~ (완료)
 
