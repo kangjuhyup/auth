@@ -1,8 +1,8 @@
-# PR 생성·업데이트 시 service unit(+커버리지)·모듈 의존성(dependency-cruiser) 테스트 후
+# PR 생성·업데이트 시 service unit(+커버리지)·모듈 의존성(dependency-cruiser)·UI unit 테스트 후
 # 같은 코멘트에 결과를 남깁니다.
 # (포크 PR은 기본 GITHUB_TOKEN 권한으로 코멘트가 막힐 수 있습니다.)
 
-name: PR service tests & comment
+name: PR tests & comment
 
 on:
   pull_request:
@@ -29,7 +29,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: '24'
           cache: yarn
 
       - name: Enable Yarn
@@ -38,14 +38,10 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      # yarn service:test:unit -- --coverage 는 Jest에 `--` 가 넘어가 커버리지 플래그가 테스트 패턴으로 해석됨
       - name: Run service unit tests (with coverage)
         id: unit
-        working-directory: service
-        run: |
-          yarn exec jest --runInBand --watchman=false \
-            --coverage \
-            --coverageReporters=json-summary \
-            --coverageReporters=text-summary
+        run: yarn service:test:unit:cov
 
       - name: Run module dependency rules (dependency-cruiser / Jest)
         id: arch
@@ -54,11 +50,17 @@ jobs:
         run: |
           yarn exec jest test/architecture/dependency-rules.spec.ts --runInBand --watchman=false
 
+      - name: Run UI unit tests
+        id: ui
+        if: always()
+        run: yarn ui:test
+
       - name: Compose PR comment
         if: always()
         env:
           TEST_OUTCOME: ${{ steps.unit.outcome }}
           ARCH_OUTCOME: ${{ steps.arch.outcome }}
+          UI_OUTCOME: ${{ steps.ui.outcome }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           SHA: ${{ github.event.pull_request.head.sha }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -78,6 +80,13 @@ jobs:
             failure) ARCH_RESULT="❌ 실패" ;;
             skipped) ARCH_RESULT="⏭️ 건너뜀" ;;
             *)       ARCH_RESULT="⏭️ 실행 안 됨" ;;
+          esac
+
+          case "$UI_OUTCOME" in
+            success) UI_RESULT="✅ 통과" ;;
+            failure) UI_RESULT="❌ 실패" ;;
+            skipped) UI_RESULT="⏭️ 건너뜀" ;;
+            *)       UI_RESULT="⏭️ 실행 안 됨" ;;
           esac
 
           {
@@ -183,6 +192,24 @@ jobs:
             fi
             if [ "$ARCH_OUTCOME" = "skipped" ] || [ -z "$ARCH_OUTCOME" ]; then
               echo "> 이전 단계(체크아웃/설치 등) 실패 시 아키텍처 테스트는 건너뛸 수 있습니다."
+            fi
+
+            echo ""
+            echo "## UI unit tests"
+            echo ""
+            echo "| 항목 | 값 |"
+            echo "|------|-----|"
+            echo "| 결과 | $UI_RESULT |"
+            echo "| 범위 | \`ui/test/\` (apiClient, queryKeys, stores, formRules) |"
+            echo "| 워크플로 | [실행 로그 보기]($RUN_URL) |"
+            echo "| 커밋 | \`$SHA\` |"
+            echo ""
+
+            if [ "$UI_OUTCOME" = "failure" ]; then
+              echo "> 로그에서 **Run UI unit tests** 단계를 확인하거나, 로컬에서 \`yarn ui:test\` 로 재현할 수 있습니다."
+            fi
+            if [ "$UI_OUTCOME" = "skipped" ] || [ -z "$UI_OUTCOME" ]; then
+              echo "> 이전 단계(체크아웃/설치 등) 실패 시 UI 테스트는 건너뛸 수 있습니다."
             fi
           } > "$OUT"
 
