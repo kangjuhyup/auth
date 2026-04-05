@@ -3,6 +3,8 @@ import {
   Controller,
   Get,
   Inject,
+  OnModuleDestroy,
+  OnModuleInit,
   Param,
   Post,
   Req,
@@ -14,10 +16,13 @@ import { readFileSync, existsSync } from 'node:fs';
 import { OIDC_PROVIDER } from '@infrastructure/oidc-provider/oidc-provider.constants';
 import { OidcProviderRegistry } from '@infrastructure/oidc-provider/oidc-provider.registry';
 import { UserQueryPort } from '@application/queries/ports/user-query.port';
-import { ClientAuthPolicyRepository, IdentityProviderRepository, UserIdentityRepository } from '@domain/repositories';
+import {
+  ClientAuthPolicyRepository,
+  IdentityProviderRepository,
+  UserIdentityRepository,
+} from '@domain/repositories';
 import { ClientRepository } from '@domain/repositories';
 import { IdpPort } from '@application/ports/idp.port';
-import { UserIdentityModel } from '@domain/models/user-identity';
 import { randomBytes } from 'node:crypto';
 
 const SPA_INDEX_PATH = resolve(
@@ -26,11 +31,15 @@ const SPA_INDEX_PATH = resolve(
 );
 
 @Controller('t/:tenantCode/interaction')
-export class InteractionController {
+export class InteractionController implements OnModuleInit, OnModuleDestroy {
+  private readonly MFA_SESSION_TTL_MS = 10 * 60 * 1000;
+  private readonly MFA_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+
   private readonly mfaPendingSessions = new Map<
     string,
-    { userId: string; tenantId: string }
+    { userId: string; tenantId: string; expiresAt: number }
   >();
+  private mfaCleanupTimer: NodeJS.Timeout | undefined;
 
   private cachedSpaHtml: string | null = null;
 
@@ -44,6 +53,24 @@ export class InteractionController {
     private readonly userIdentityRepo: UserIdentityRepository,
     private readonly idpPort: IdpPort,
   ) {}
+
+  onModuleInit() {
+    this.mfaCleanupTimer = setInterval(() => {
+      const now = Date.now();
+      for (const [uid, session] of this.mfaPendingSessions) {
+        if (session.expiresAt <= now) {
+          this.mfaPendingSessions.delete(uid);
+        }
+      }
+    }, this.MFA_CLEANUP_INTERVAL_MS);
+    this.mfaCleanupTimer.unref();
+  }
+
+  onModuleDestroy() {
+    if (this.mfaCleanupTimer) {
+      clearInterval(this.mfaCleanupTimer);
+    }
+  }
 
   /* ─── SPA Entry Point ─── */
 
@@ -85,7 +112,9 @@ export class InteractionController {
 
       const client = await this.clientRepo.findByClientId(tenant.id, clientId);
       if (client) {
-        const policy = await this.clientAuthPolicyRepo.findByClientRefId(client.id);
+        const policy = await this.clientAuthPolicyRepo.findByClientRefId(
+          client.id,
+        );
         if (policy) {
           mfaRequired = policy.mfaRequired;
         }
@@ -95,7 +124,8 @@ export class InteractionController {
     let missingScopes: string[] = [];
     if (prompt.name === 'consent') {
       missingScopes =
-        ((prompt.details as any).missingOIDCScope as string[] | undefined) ?? [];
+        ((prompt.details as any).missingOIDCScope as string[] | undefined) ??
+        [];
     }
 
     return res.json({
@@ -137,7 +167,9 @@ export class InteractionController {
 
     const client = await this.clientRepo.findByClientId(tenant.id, clientId);
     if (client) {
-      const policy = await this.clientAuthPolicyRepo.findByClientRefId(client.id);
+      const policy = await this.clientAuthPolicyRepo.findByClientRefId(
+        client.id,
+      );
       if (policy?.mfaRequired) {
         const methods = await this.userQuery.getMfaMethods(
           tenant.id,
@@ -148,6 +180,7 @@ export class InteractionController {
           this.mfaPendingSessions.set(uid, {
             userId: result.userId,
             tenantId: tenant.id,
+            expiresAt: Date.now() + this.MFA_SESSION_TTL_MS,
           });
 
           return res.json({
@@ -182,7 +215,8 @@ export class InteractionController {
     @Res() res: Response,
   ) {
     const pending = this.mfaPendingSessions.get(uid);
-    if (!pending) {
+    if (!pending || pending.expiresAt <= Date.now()) {
+      this.mfaPendingSessions.delete(uid);
       return res.status(400).json({ error: 'no_pending_mfa' });
     }
 
@@ -228,9 +262,10 @@ export class InteractionController {
     const { prompt, params, session } = details;
 
     if (prompt.name !== 'consent' || !session) {
-      return res
-        .status(400)
-        .json({ error: 'invalid_request', message: 'No active consent interaction' });
+      return res.status(400).json({
+        error: 'invalid_request',
+        message: 'No active consent interaction',
+      });
     }
 
     const accountId = session.accountId;
@@ -291,7 +326,8 @@ export class InteractionController {
     @Res() res: Response,
   ) {
     const pending = this.mfaPendingSessions.get(uid);
-    if (!pending) {
+    if (!pending || pending.expiresAt <= Date.now()) {
+      this.mfaPendingSessions.delete(uid);
       return res.status(400).json({ error: 'no_pending_mfa' });
     }
 
@@ -390,7 +426,7 @@ export class InteractionController {
         callbackUrl,
       );
 
-      let identity = await this.userIdentityRepo.findByProviderSub(
+      const identity = await this.userIdentityRepo.findByProviderSub(
         tenant.id,
         providerName,
         userInfo.sub,
