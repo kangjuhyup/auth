@@ -1,5 +1,6 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
 import { ApplicationModule } from '@application/application.module';
+import { TenantMiddleware } from './http/tenant.middleware';
 import { HealthController } from './controllers/health.controller';
 import { AuthController } from './controllers/auth.controller';
 import { AdminClientController } from './controllers/admin/client.controller';
@@ -13,9 +14,11 @@ import { AdminPermissionController } from './controllers/admin/permission.contro
 import { AdminGroupController } from './controllers/admin/group.controller';
 import { AdminSessionController } from './controllers/admin/session.controller';
 import { InteractionController } from './controllers/interaction.controller';
+import { AdminGuard } from './http/admin.guard';
 
 @Module({
   imports: [ApplicationModule],
+  providers: [AdminGuard],
   controllers: [
     HealthController,
     AuthController,
@@ -32,4 +35,10 @@ import { InteractionController } from './controllers/interaction.controller';
     InteractionController,
   ],
 })
-export class PresentationModule {}
+export class PresentationModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(TenantMiddleware)
+      .forRoutes({ path: 'admin/*path', method: RequestMethod.ALL });
+  }
+}

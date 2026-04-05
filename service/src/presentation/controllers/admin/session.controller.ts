@@ -1,10 +1,14 @@
 import {
   Body,
   Controller,
+  Delete,
+  HttpCode,
   Post,
   UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AdminGuard, signAdminToken } from '@presentation/http/admin.guard';
 
 interface AdminLoginDto {
   username: string;
@@ -24,6 +28,15 @@ export class AdminSessionController {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    return { token: `admin-session-${Date.now()}`, username: dto.username };
+    const secret = this.configService.getOrThrow<string>('ADMIN_JWT_SECRET');
+    const token = signAdminToken(dto.username, secret);
+    return { token, username: dto.username };
+  }
+
+  @Delete()
+  @UseGuards(AdminGuard)
+  @HttpCode(204)
+  logout(): void {
+    // Stateless token — nothing to invalidate server-side.
   }
 }

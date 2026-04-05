@@ -9,7 +9,9 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
+import { AdminGuard } from '@presentation/http/admin.guard';
 import { RoleCommandPort } from '@application/commands/ports/role-command.port';
 import { AdminQueryPort } from '@application/queries/ports';
 import {
@@ -23,6 +25,7 @@ import {
 import { TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 
+@UseGuards(AdminGuard)
 @Controller('admin/roles')
 export class AdminRoleController {
   constructor(

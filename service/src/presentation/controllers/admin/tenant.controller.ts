@@ -7,7 +7,9 @@ import {
   Body,
   Param,
   Query,
+  UseGuards,
 } from '@nestjs/common';
+import { AdminGuard } from '@presentation/http/admin.guard';
 import { TenantCommandPort } from '@application/commands/ports/tenant-command.port';
 import { AdminQueryPort } from '@application/queries/ports';
 import {
@@ -18,6 +20,7 @@ import {
   PaginatedResult,
 } from '@presentation/dto';
 
+@UseGuards(AdminGuard)
 @Controller('admin/tenants')
 export class AdminTenantController {
   constructor(

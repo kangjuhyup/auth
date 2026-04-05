@@ -1,9 +1,11 @@
-import { Controller, Get, Post } from '@nestjs/common';
+import { Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { AdminGuard } from '@presentation/http/admin.guard';
 import { KeyCommandPort } from '@application/commands/ports/key-command.port';
 import { AdminQueryPort } from '@application/queries/ports';
 import { TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 
+@UseGuards(AdminGuard)
 @Controller('admin/keys')
 export class AdminKeyController {
   constructor(

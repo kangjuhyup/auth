@@ -7,7 +7,9 @@ import {
   Body,
   Param,
   Query,
+  UseGuards,
 } from '@nestjs/common';
+import { AdminGuard } from '@presentation/http/admin.guard';
 import { PermissionCommandPort } from '@application/commands/ports/permission-command.port';
 import { AdminQueryPort } from '@application/queries/ports';
 import {
@@ -20,6 +22,7 @@ import {
 import { TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 
+@UseGuards(AdminGuard)
 @Controller('admin/permissions')
 export class AdminPermissionController {
   constructor(

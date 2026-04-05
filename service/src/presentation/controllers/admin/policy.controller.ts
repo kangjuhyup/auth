@@ -1,9 +1,11 @@
-import { Controller, Get, Put, Body } from '@nestjs/common';
+import { Controller, Get, Put, Body, UseGuards } from '@nestjs/common';
+import { AdminGuard } from '@presentation/http/admin.guard';
 import { PolicyCommandPort } from '@application/commands/ports/policy-command.port';
 import { AdminQueryPort } from '@application/queries/ports';
 import { TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 
+@UseGuards(AdminGuard)
 @Controller('admin/policies')
 export class AdminPolicyController {
   constructor(

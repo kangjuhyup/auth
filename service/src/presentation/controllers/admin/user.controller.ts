@@ -7,7 +7,9 @@ import {
   Body,
   Param,
   Query,
+  UseGuards,
 } from '@nestjs/common';
+import { AdminGuard } from '@presentation/http/admin.guard';
 import { UserCommandPort } from '@application/commands/ports/user-command.port';
 import { AdminQueryPort } from '@application/queries/ports';
 import {
@@ -21,6 +23,7 @@ import {
 import { TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 
+@UseGuards(AdminGuard)
 @Controller('admin/users')
 export class AdminUserController {
   constructor(
