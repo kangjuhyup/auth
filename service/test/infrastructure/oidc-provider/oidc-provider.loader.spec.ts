@@ -8,7 +8,8 @@ describe('loadOidcProviderConstructor', () => {
 
     jest.resetModules();
     await jest.isolateModulesAsync(async () => {
-      module = await import('@infrastructure/oidc-provider/oidc-provider.loader');
+      module =
+        await import('@infrastructure/oidc-provider/oidc-provider.loader');
     });
 
     return module!;
@@ -30,11 +31,18 @@ describe('loadOidcProviderConstructor', () => {
 
     const { loadOidcProviderConstructor } = await loadModule();
 
-    await expect(loadOidcProviderConstructor()).resolves.toBe(ProviderConstructor);
-    await expect(loadOidcProviderConstructor()).resolves.toBe(ProviderConstructor);
+    await expect(loadOidcProviderConstructor()).resolves.toBe(
+      ProviderConstructor,
+    );
+    await expect(loadOidcProviderConstructor()).resolves.toBe(
+      ProviderConstructor,
+    );
 
     expect(functionMock).toHaveBeenCalledTimes(1);
-    expect(functionMock).toHaveBeenCalledWith('specifier', 'return import(specifier)');
+    expect(functionMock).toHaveBeenCalledWith(
+      'specifier',
+      'return import(specifier)',
+    );
     expect(importFn).toHaveBeenCalledTimes(1);
     expect(importFn).toHaveBeenCalledWith('oidc-provider');
   });
@@ -56,10 +64,19 @@ describe('loadOidcProviderConstructor', () => {
 
     const { loadOidcProviderConstructor } = await loadModule();
 
-    const firstAttempt = loadOidcProviderConstructor();
+    // 병렬 Jest 워커에서 expect(promise).rejects만 쓰면 동적 import 거부가
+    // unhandledRejection으로 잡히는 경우가 있어 try/catch로 명시적으로 소비한다.
+    let firstError: unknown;
+    try {
+      await loadOidcProviderConstructor();
+    } catch (e) {
+      firstError = e;
+    }
+    expect(firstError).toBe(importError);
 
-    await expect(firstAttempt).rejects.toBe(importError);
-    await expect(loadOidcProviderConstructor()).resolves.toBe(ProviderConstructor);
+    await expect(loadOidcProviderConstructor()).resolves.toBe(
+      ProviderConstructor,
+    );
 
     expect(functionMock).toHaveBeenCalledTimes(2);
     expect(failedImport).toHaveBeenCalledWith('oidc-provider');
