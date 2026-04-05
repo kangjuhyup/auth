@@ -39,6 +39,9 @@ export class PresentationModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
       .apply(TenantMiddleware)
-      .forRoutes({ path: 't/:tenantCode/admin/*path', method: RequestMethod.ALL });
+      .forRoutes(
+        AuthController,
+        { path: 't/:tenantCode/admin/*path', method: RequestMethod.ALL },
+      );
   }
 }

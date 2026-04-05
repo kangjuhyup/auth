@@ -1,10 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type Provider from 'oidc-provider';
 import { OIDC_PROVIDER } from './oidc-provider.constants';
+import { OidcProviderRegistry } from './oidc-provider.registry';
 import {
   AccessVerifierPort,
   type AuthenticatedUser,
 } from '@application/ports/access-verifier.port';
+import { TenantRepository } from '@domain/repositories';
 
 type AccessTokenLike = {
   // 0.9 계열: accountId/clientId/scope 등이 없을 수 있음
@@ -21,14 +22,24 @@ type AccessTokenLike = {
 
 @Injectable()
 export class AccessVerifierAdapter implements AccessVerifierPort {
-  constructor(@Inject(OIDC_PROVIDER) private readonly provider: Provider) {}
+  constructor(
+    @Inject(OIDC_PROVIDER) private readonly registry: OidcProviderRegistry,
+    private readonly tenantRepository: TenantRepository,
+  ) {}
 
   async verify(
     tenantId: string,
     bearerToken: string,
   ): Promise<AuthenticatedUser> {
+    const tenant = await this.tenantRepository.findById(tenantId);
+    if (!tenant) {
+      throw new Error('Unauthorized');
+    }
+
+    const provider = await this.registry.get(tenant.code);
+
     // ✅ 0.9에서도 가능: Provider.AccessToken.find(token)
-    const at = (await (this.provider as any).AccessToken.find(bearerToken)) as
+    const at = (await (provider as any).AccessToken.find(bearerToken)) as
       | AccessTokenLike
       | undefined;
 

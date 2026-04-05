@@ -1,4 +1,4 @@
-import { Options } from '@mikro-orm/core';
+import type { Constructor, IDatabaseDriver, Options } from '@mikro-orm/core';
 
 export type SupportedDriver = 'postgresql' | 'mysql' | 'mssql';
 type ConfigReader = {
@@ -33,15 +33,23 @@ function getDriverNameFrom(config: ConfigReader): SupportedDriver {
   return raw as SupportedDriver;
 }
 
-function buildDriverClass(driverName: SupportedDriver) {
+function buildDriverClass(
+  driverName: SupportedDriver,
+): Constructor<IDatabaseDriver> {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const driverModule = require(DRIVER_MAP[driverName]);
   return driverModule[DRIVER_CLASS_NAME[driverName]];
 }
 
+export function resolveMikroOrmDriver(
+  config: ConfigReader,
+): Constructor<IDatabaseDriver> {
+  return buildDriverClass(getDriverNameFrom(config));
+}
+
 export function buildMikroOrmConfig(config: ConfigReader): Options {
   const driverName = getDriverNameFrom(config);
-  const DriverClass = buildDriverClass(driverName);
+  const DriverClass = resolveMikroOrmDriver(config);
 
   return {
     driver: DriverClass,

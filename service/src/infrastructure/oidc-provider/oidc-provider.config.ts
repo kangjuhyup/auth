@@ -70,6 +70,14 @@ export function buildOidcConfiguration(params: {
       const accountId = ctx.oidc.session?.accountId;
       if (!clientId || !accountId) return undefined;
 
+      const existingGrantId =
+        ctx.oidc.result?.consent?.grantId ??
+        ctx.oidc.session?.grantIdFor(clientId);
+
+      if (existingGrantId) {
+        return ctx.oidc.provider.Grant.find(existingGrantId);
+      }
+
       const tenant = (ctx.req as any)?.tenant as { id: string } | undefined;
       if (!tenant) return undefined;
 
@@ -79,6 +87,7 @@ export function buildOidcConfiguration(params: {
       // 첫 번째 파티 클라이언트: 동의 없이 Grant 자동 생성
       const grant = new ctx.oidc.provider.Grant({ clientId, accountId });
       grant.addOIDCScope('openid profile email');
+      await grant.save();
       return grant;
     },
 
@@ -138,6 +147,45 @@ export function buildOidcConfiguration(params: {
     cookies: { keys: getSecretKeys(configService, 'OIDC_COOKIE_KEYS') },
 
     jwks: { keys: jwksKeys as any[] },
+
+    renderError(ctx, out) {
+      const acceptsJson = ctx.accepts('json', 'html') === 'json';
+      if (acceptsJson) {
+        ctx.type = 'application/json';
+        ctx.body = out;
+        return;
+      }
+
+      const details = Object.entries(out)
+        .map(
+          ([key, value]) =>
+            `<li><strong>${escapeHtml(key)}</strong>: ${escapeHtml(String(value))}</li>`,
+        )
+        .join('');
+
+      ctx.type = 'html';
+      ctx.body = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OIDC Error</title>
+    <style>
+      body { font-family: sans-serif; margin: 2rem; color: #111827; }
+      main { max-width: 42rem; margin: 0 auto; }
+      h1 { font-size: 1.5rem; margin-bottom: 1rem; }
+      ul { padding-left: 1.25rem; }
+      li { margin-bottom: 0.5rem; word-break: break-word; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>OIDC Request Failed</h1>
+      <ul>${details}</ul>
+    </main>
+  </body>
+</html>`;
+    },
 
     // ✅ Adapter는 "opaque 토큰 저장"만을 위한 게 아님
     // (Session/Grant/Interaction 등 provider 모델 전반 저장에 필요)
@@ -214,6 +262,15 @@ export function buildOidcConfiguration(params: {
   };
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
 function getSecretKeys(configService: ConfigService, envKey: string): string[] {
   const raw = configService.getOrThrow<string>(envKey);
   return raw.split(',').map((k) => k.trim());
@@ -243,4 +300,3 @@ function normalizeResourceToOrigin(resource: string): string {
 
   return origin;
 }
-

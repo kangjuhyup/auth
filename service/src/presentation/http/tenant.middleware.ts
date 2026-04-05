@@ -7,16 +7,29 @@ import {
 import { Request, Response, NextFunction } from 'express';
 import { TenantRepository } from '@domain/repositories';
 
+function pickFirst(value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    return typeof value[0] === 'string' ? value[0] : undefined;
+  }
+
+  return typeof value === 'string' ? value : undefined;
+}
+
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
   constructor(private readonly tenantRepository: TenantRepository) {}
 
   async use(req: Request, _res: Response, next: NextFunction): Promise<void> {
-    const raw = req.params['tenantCode'];
-    const tenantCode = Array.isArray(raw) ? raw[0] : raw;
+    const tenantCode =
+      pickFirst(req.params['tenantCode']) ??
+      pickFirst(req.query['tenantCode']) ??
+      pickFirst(req.query['tenant_code']) ??
+      pickFirst((req.body as Record<string, unknown> | undefined)?.['tenantCode']) ??
+      pickFirst((req.body as Record<string, unknown> | undefined)?.['tenant_code']) ??
+      pickFirst(req.headers['x-tenant-code']);
 
     if (!tenantCode) {
-      throw new BadRequestException('tenantCode path parameter is required');
+      throw new BadRequestException('tenantCode is required');
     }
 
     const tenant = await this.tenantRepository.findByCode(tenantCode);

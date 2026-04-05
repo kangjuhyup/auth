@@ -94,14 +94,26 @@ import { JwksKeyCryptoPort } from '@application/ports/jwks-key-crypto.port';
 })
 export class OidcProviderModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(TenantMiddleware, OidcDelegateMiddleware).forRoutes({
-      path: 't/:tenantCode/oidc',
-      method: RequestMethod.ALL,
-    });
+    consumer.apply(TenantMiddleware, OidcDelegateMiddleware).forRoutes(
+      {
+        path: 't/:tenantCode/oidc',
+        method: RequestMethod.ALL,
+      },
+      {
+        path: 't/:tenantCode/oidc/*path',
+        method: RequestMethod.ALL,
+      },
+    );
 
-    consumer.apply(TenantMiddleware).forRoutes({
-      path: 't/:tenantCode/interaction',
-      method: RequestMethod.ALL,
-    });
+    consumer.apply(TenantMiddleware).forRoutes(
+      {
+        path: 't/:tenantCode/interaction',
+        method: RequestMethod.ALL,
+      },
+      {
+        path: 't/:tenantCode/interaction/*path',
+        method: RequestMethod.ALL,
+      },
+    );
   }
 }
