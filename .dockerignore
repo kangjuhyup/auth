@@ -1,4 +1,4 @@
-# docker build -f deploy/docker/Dockerfile (컨텍스트: 저장소 루트)
+# 컨텍스트: 저장소 루트 — deploy/docker/Dockerfile.service | Dockerfile.ui
 .git
 **/.git
 **/node_modules
@@ -11,6 +11,3 @@ coverage
 .turbo
 .idea
 .vscode
-# 워크스페이스용 package.json 만 필요
-ui/**
-!ui/package.json
