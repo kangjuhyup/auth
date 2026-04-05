@@ -1,11 +1,12 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: auth-service
   labels:
     app.kubernetes.io/name: auth-service
     app.kubernetes.io/component: api
 spec:
+  serviceName: auth-service-headless
   replicas: 1
   selector:
     matchLabels:

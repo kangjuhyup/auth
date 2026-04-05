@@ -6,9 +6,11 @@ namespace: auth
 resources:
   - namespace.yaml
   - configmap.yaml
-  - deployment.yaml
+  - statefulset.yaml
   - service.yaml
   - hpa.yaml
+  - deployment-ui.yaml
+  - service-ui.yaml
 
 commonLabels:
   app.kubernetes.io/managed-by: kustomize
@@ -17,4 +19,7 @@ commonLabels:
 images:
   - name: auth-service
     newName: auth-service
+    newTag: latest
+  - name: auth-ui
+    newName: auth-ui
     newTag: latest
