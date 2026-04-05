@@ -1,0 +1,160 @@
+# PR 생성·업데이트 시 unit 테스트(+커버리지) 실행 후, 같은 스레드에 결과·커버리지 표 코멘트를 남깁니다.
+# (포크 PR은 기본 GITHUB_TOKEN 권한으로 코멘트가 막힐 수 있습니다.)
+
+name: PR unit tests & comment
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: pr-tests-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: yarn
+
+      - name: Enable Yarn
+        run: corepack enable && corepack prepare yarn@4.12.0 --activate
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Run service unit tests (with coverage)
+        id: unit
+        working-directory: service
+        run: |
+          yarn exec jest --runInBand --watchman=false \
+            --coverage \
+            --coverageReporters=json-summary \
+            --coverageReporters=text-summary
+
+      - name: Compose PR comment
+        if: always()
+        env:
+          TEST_OUTCOME: ${{ steps.unit.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set +e
+          SUMMARY="service/coverage/coverage-summary.json"
+          OUT="pr-comment.md"
+
+          case "$TEST_OUTCOME" in
+            success) RESULT="✅ 통과" ;;
+            failure) RESULT="❌ 실패" ;;
+            *)       RESULT="⏭️ 실행 안 됨 (이전 단계 실패)" ;;
+          esac
+
+          {
+            echo "## Service unit tests"
+            echo ""
+            echo "| 항목 | 값 |"
+            echo "|------|-----|"
+            echo "| 결과 | $RESULT |"
+            echo "| 워크플로 | [실행 로그 보기]($RUN_URL) |"
+            echo "| 커밋 | \`$SHA\` |"
+            echo ""
+
+            if [ "$TEST_OUTCOME" != "success" ]; then
+              echo "> 테스트가 실패했거나 건너뛰어진 경우, 커버리지가 없거나 불완전할 수 있습니다."
+              echo ""
+            fi
+
+            if [ -f "$SUMMARY" ]; then
+              echo "### 전체 커버리지 (src 기준)"
+              echo ""
+              echo "| 구분 | 커버리지 |"
+              echo "|------|-----------|"
+              for key in statements branches functions lines; do
+                label=""
+                case "$key" in
+                  statements) label="Statements (구문)" ;;
+                  branches)   label="Branches (분기)" ;;
+                  functions)  label="Functions (함수)" ;;
+                  lines)      label="Lines (라인)" ;;
+                esac
+                pct=$(jq -r ".total[\"$key\"].pct // empty" "$SUMMARY")
+                if [ -z "$pct" ] || [ "$pct" = "null" ]; then
+                  cell="—"
+                else
+                  cell="${pct}%"
+                fi
+                echo "| $label | $cell |"
+              done
+              echo ""
+
+              echo "### 이 PR에서 변경된 service/src 파일 (Lines %)"
+              echo ""
+              CHANGED=$(git diff --name-only "$BASE_SHA" "$SHA" -- 'service/src/' | grep -E '\.(ts|js)$' || true)
+              if [ -z "$CHANGED" ]; then
+                echo "_이 PR diff 기준으로 \`service/src\` 내 변경된 .ts/.js 파일이 없습니다._"
+                echo ""
+              else
+                mapfile -t FILELIST <<< "$CHANGED"
+                total=${#FILELIST[@]}
+                echo "| 파일 | Lines % |"
+                echo "|------|---------|"
+                max_rows=40
+                n=0
+                for filepath in "${FILELIST[@]}"; do
+                  [ -z "$filepath" ] && continue
+                  n=$((n + 1))
+                  [ "$n" -gt "$max_rows" ] && continue
+                  rel="${filepath#service/}"
+                  pct=$(jq -r --arg suf "$rel" '
+                    ([ to_entries[]
+                      | select(.key != "total" and (.key | endswith($suf)))
+                      | .value.lines.pct
+                    ] | .[0]) // empty
+                  ' "$SUMMARY")
+                  if [ -z "$pct" ] || [ "$pct" = "null" ]; then
+                    cell="—"
+                  else
+                    cell="${pct}%"
+                  fi
+                  echo "| \`$rel\` | $cell |"
+                done
+                if [ "$total" -gt "$max_rows" ]; then
+                  rest=$((total - max_rows))
+                  echo ""
+                  echo "_… 외 $rest 개 파일 (표는 상위 ${max_rows}개만 표시)_"
+                fi
+                echo ""
+              fi
+            else
+              echo "### 커버리지"
+              echo ""
+              echo "_\`coverage-summary.json\`이 없습니다. 테스트 단계 로그를 확인해 주세요._"
+              echo ""
+            fi
+
+            if [ "$TEST_OUTCOME" = "failure" ]; then
+              echo "> 실패한 스펙은 Actions 로그의 **Run service unit tests (with coverage)** 단계에서 확인할 수 있습니다."
+            fi
+          } > "$OUT"
+
+      - name: Comment PR
+        if: always()
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: pr-service-unit-tests
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          path: pr-comment.md
