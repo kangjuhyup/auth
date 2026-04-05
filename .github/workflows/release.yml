@@ -1,4 +1,5 @@
 # 자동: Semantic Version 태그 푸시 (예: release-please 머지 후 생성된 v1.2.3)
+#   ※ release-please 가 GITHUB_TOKEN 만 쓰면 태그 푸시가 다른 워크플로를 트리거하지 않을 수 있음 → Secret RELEASE_PLEASE_TOKEN(PAT) 권장
 # 수동: Actions → Release → Run workflow (git_ref·version 지정, GitHub Release 생략 가능)
 #
 # 프로덕션: Oracle Cloud Infrastructure Ampere A1(ARM64). 이미지는 linux/arm64만 빌드합니다.

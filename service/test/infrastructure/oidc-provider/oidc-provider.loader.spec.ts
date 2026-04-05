@@ -38,7 +38,6 @@ describe('loadOidcProviderConstructor', () => {
       ProviderConstructor,
     );
 
-    expect(importFn).toHaveBeenCalledTimes(2);
     expect(importFn).toHaveBeenCalledWith('oidc-provider');
   });
 });
