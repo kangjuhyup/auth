@@ -1,10 +1,11 @@
-import { ConflictException, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, Logger, NotFoundException } from '@nestjs/common';
 import { GroupCommandPort } from '../ports/group-command.port';
 import { CreateGroupDto, UpdateGroupDto } from '@application/dto';
 import { GroupRepository, RoleRepository, RoleAssignmentRepository } from '@domain/repositories';
 import { GroupModel } from '@domain/models/group';
 import { orThrow } from '@domain/utils';
 
+@Injectable()
 export class GroupCommandHandler implements GroupCommandPort {
   private readonly logger = new Logger(GroupCommandHandler.name);
 
@@ -79,6 +80,9 @@ export class GroupCommandHandler implements GroupCommandPort {
       new NotFoundException('Role not found'),
       (r) => r.tenantId === tenantId,
     );
+
+    const alreadyAssigned = await this.roleAssignment.existsForGroup({ groupId, roleId });
+    if (alreadyAssigned) return;
 
     await this.roleAssignment.assignToGroup({ groupId, roleId });
   }

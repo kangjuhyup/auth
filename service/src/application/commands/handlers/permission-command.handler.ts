@@ -1,10 +1,11 @@
-import { ConflictException, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, Logger, NotFoundException } from '@nestjs/common';
 import { PermissionCommandPort } from '../ports/permission-command.port';
 import { CreatePermissionDto, UpdatePermissionDto } from '@application/dto';
 import { PermissionRepository } from '@domain/repositories';
 import { PermissionModel } from '@domain/models/permission';
 import { orThrow } from '@domain/utils';
 
+@Injectable()
 export class PermissionCommandHandler implements PermissionCommandPort {
   private readonly logger = new Logger(PermissionCommandHandler.name);
 

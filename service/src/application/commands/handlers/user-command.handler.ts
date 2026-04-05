@@ -1,4 +1,4 @@
-import { Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { UserCommandPort } from '../ports/user-command.port';
 import { CreateUserDto, UpdateUserDto } from '@application/dto';
 import { UserWriteRepositoryPort } from '../ports/user-write-repository.port';
@@ -9,6 +9,7 @@ import { UserCredentialModel } from '@domain/models/user-credential';
 import { orThrow } from '@domain/utils';
 import { ulid } from 'ulid';
 
+@Injectable()
 export class UserCommandHandler implements UserCommandPort {
   private readonly logger = new Logger(UserCommandHandler.name);
 
@@ -100,6 +101,9 @@ export class UserCommandHandler implements UserCommandPort {
       new NotFoundException('Role not found'),
       (r) => r.tenantId === tenantId,
     );
+
+    const alreadyAssigned = await this.roleAssignment.existsForUser({ userId, roleId });
+    if (alreadyAssigned) return;
 
     await this.roleAssignment.assignToUser({ userId, roleId });
   }

@@ -1,10 +1,11 @@
-import { ConflictException, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, Logger, NotFoundException } from '@nestjs/common';
 import { RoleCommandPort } from '../ports/role-command.port';
 import { CreateRoleDto, UpdateRoleDto } from '@application/dto';
 import { RoleRepository, PermissionRepository, RolePermissionRepository } from '@domain/repositories';
 import { RoleModel } from '@domain/models/role';
 import { orThrow } from '@domain/utils';
 
+@Injectable()
 export class RoleCommandHandler implements RoleCommandPort {
   private readonly logger = new Logger(RoleCommandHandler.name);
 

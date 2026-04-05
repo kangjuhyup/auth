@@ -1,9 +1,11 @@
+import { Injectable } from '@nestjs/common';
 import type { ConsentResponse, ProfileResponse } from '@application/dto';
-import type { AuthQueryPort } from '@application/queries/ports/auth-query.port';
-import type { UserQueryPort } from '@application/queries/ports/user-query.port';
+import { AuthQueryPort } from '@application/queries/ports/auth-query.port';
+import { UserQueryPort } from '@application/queries/ports/user-query.port';
 import { ConsentRepository } from '@domain/repositories/consent.repository';
 import { orThrow } from '@domain/utils';
 
+@Injectable()
 export class AuthQueryHandler implements AuthQueryPort {
   constructor(
     private readonly userQuery: UserQueryPort,

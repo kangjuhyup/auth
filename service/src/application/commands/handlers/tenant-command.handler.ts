@@ -1,10 +1,11 @@
-import { ConflictException, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, Logger, NotFoundException } from '@nestjs/common';
 import { TenantCommandPort } from '../ports/tenant-command.port';
 import { CreateTenantDto, UpdateTenantDto } from '@application/dto';
 import { TenantRepository } from '@domain/repositories';
 import { TenantModel } from '@domain/models/tenant';
 import { orThrow } from '@domain/utils';
 
+@Injectable()
 export class TenantCommandHandler implements TenantCommandPort {
   private readonly logger = new Logger(TenantCommandHandler.name);
 

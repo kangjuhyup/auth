@@ -55,6 +55,22 @@ export class RoleAssignmentRepositoryImpl implements RoleAssignmentRepository {
     await this.em.remove(entity).flush();
   }
 
+  async existsForUser(params: { userId: string; roleId: string }): Promise<boolean> {
+    const count = await this.em.count(UserRoleOrmEntity, {
+      user: { id: params.userId },
+      role: { id: params.roleId },
+    });
+    return count > 0;
+  }
+
+  async existsForGroup(params: { groupId: string; roleId: string }): Promise<boolean> {
+    const count = await this.em.count(GroupRoleOrmEntity, {
+      group: { id: params.groupId },
+      role: { id: params.roleId },
+    });
+    return count > 0;
+  }
+
   async listForUser(userId: string): Promise<RoleModel[]> {
     const entries = await this.em.find(
       UserRoleOrmEntity,
