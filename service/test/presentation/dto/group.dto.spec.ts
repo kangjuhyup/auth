@@ -34,17 +34,14 @@ describe('CreateGroupDto', () => {
     expect(errors.some((e) => e.property === 'name')).toBe(true);
   });
 
-  it('유효한 UUID parentId이면 에러 없음', async () => {
+  it('유효한 bigint parentId이면 에러 없음', async () => {
     expect(
-      await getErrors(CreateGroupDto, {
-        ...valid,
-        parentId: '550e8400-e29b-41d4-a716-446655440000',
-      }),
+      await getErrors(CreateGroupDto, { ...valid, parentId: '42' }),
     ).toHaveLength(0);
   });
 
-  it('UUID 형식이 아닌 parentId이면 에러', async () => {
-    const errors = await getErrors(CreateGroupDto, { ...valid, parentId: 'not-a-uuid' });
+  it('숫자가 아닌 parentId이면 에러', async () => {
+    const errors = await getErrors(CreateGroupDto, { ...valid, parentId: 'not-a-number' });
     expect(errors.some((e) => e.property === 'parentId')).toBe(true);
   });
 });
@@ -63,7 +60,11 @@ describe('UpdateGroupDto', () => {
     expect(await getErrors(UpdateGroupDto, { parentId: null })).toHaveLength(0);
   });
 
-  it('parentId가 UUID 형식이 아니면 에러', async () => {
+  it('유효한 bigint parentId이면 에러 없음', async () => {
+    expect(await getErrors(UpdateGroupDto, { parentId: '42' })).toHaveLength(0);
+  });
+
+  it('parentId가 숫자가 아니면 에러', async () => {
     const errors = await getErrors(UpdateGroupDto, { parentId: 'bad-id' });
     expect(errors.some((e) => e.property === 'parentId')).toBe(true);
   });

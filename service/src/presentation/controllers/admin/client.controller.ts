@@ -23,7 +23,7 @@ import { TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 
 @UseGuards(AdminGuard)
-@Controller('admin/clients')
+@Controller('t/:tenantCode/admin/clients')
 export class AdminClientController {
   constructor(
     private readonly commandPort: ClientCommandPort,

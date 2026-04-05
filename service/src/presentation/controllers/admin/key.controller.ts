@@ -6,7 +6,7 @@ import { TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 
 @UseGuards(AdminGuard)
-@Controller('admin/keys')
+@Controller('t/:tenantCode/admin/keys')
 export class AdminKeyController {
   constructor(
     private readonly commandPort: KeyCommandPort,

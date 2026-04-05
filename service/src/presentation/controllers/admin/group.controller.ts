@@ -24,7 +24,7 @@ import { TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 
 @UseGuards(AdminGuard)
-@Controller('admin/groups')
+@Controller('t/:tenantCode/admin/groups')
 export class AdminGroupController {
   constructor(
     private readonly commandPort: GroupCommandPort,

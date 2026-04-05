@@ -1,53 +1,48 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/common';
 import type { Request } from 'express';
+import { OIDC_PROVIDER } from '@infrastructure/oidc-provider/oidc-provider.constants';
+import { OidcProviderRegistry } from '@infrastructure/oidc-provider/oidc-provider.registry';
+import { TenantRepository } from '@domain/repositories';
+import { AdminQueryPort } from '@application/queries/ports';
 
-export interface AdminPayload {
-  username: string;
-  exp: number;
-}
-
-export function signAdminToken(username: string, secret: string, ttlMs = 86_400_000): string {
-  const payload: AdminPayload = { username, exp: Date.now() + ttlMs };
-  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  const sig = createHmac('sha256', secret).update(payloadB64).digest('base64url');
-  return `${payloadB64}.${sig}`;
-}
+const MASTER_TENANT_CODE = 'master';
+const ADMIN_ROLE_CODE = 'SUPER_ADMIN';
 
 @Injectable()
 export class AdminGuard implements CanActivate {
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    @Inject(OIDC_PROVIDER) private readonly registry: OidcProviderRegistry,
+    private readonly tenantRepo: TenantRepository,
+    private readonly adminQuery: AdminQueryPort,
+  ) {}
 
-  canActivate(ctx: ExecutionContext): boolean {
+  async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest<Request>();
     const auth = req.headers['authorization'];
     if (!auth?.startsWith('Bearer ')) return false;
-    return this.verify(auth.slice(7).trim());
-  }
 
-  private verify(token: string): boolean {
+    const token = auth.slice(7).trim();
+    if (!token) return false;
+
     try {
-      const secret = this.config.getOrThrow<string>('ADMIN_JWT_SECRET');
-      const dot = token.indexOf('.');
-      if (dot < 0) return false;
+      const tenant = await this.tenantRepo.findByCode(MASTER_TENANT_CODE);
+      if (!tenant) return false;
 
-      const payloadB64 = token.slice(0, dot);
-      const sigB64 = token.slice(dot + 1);
+      const provider = await this.registry.get(MASTER_TENANT_CODE);
+      const at = await (provider as any).AccessToken.find(token);
+      if (!at) return false;
 
-      const expectedSig = createHmac('sha256', secret).update(payloadB64).digest('base64url');
-
-      if (
-        sigB64.length !== expectedSig.length ||
-        !timingSafeEqual(Buffer.from(sigB64), Buffer.from(expectedSig))
-      ) {
+      const exp: number | undefined =
+        at.exp ?? at.payload?.exp ?? at.toJSON?.()?.payload?.exp;
+      if (typeof exp === 'number' && Math.floor(Date.now() / 1000) >= exp) {
         return false;
       }
 
-      const payload: AdminPayload = JSON.parse(
-        Buffer.from(payloadB64, 'base64url').toString(),
-      );
-      return Date.now() < payload.exp;
+      const userId: string | undefined = at.accountId ?? at.payload?.sub;
+      if (!userId) return false;
+
+      const roles = await this.adminQuery.getUserRoles(tenant.id, userId);
+      return roles.some((r) => r.code === ADMIN_ROLE_CODE);
     } catch {
       return false;
     }

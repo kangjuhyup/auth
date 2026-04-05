@@ -24,7 +24,7 @@ import { TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 
 @UseGuards(AdminGuard)
-@Controller('admin/users')
+@Controller('t/:tenantCode/admin/users')
 export class AdminUserController {
   constructor(
     private readonly commandPort: UserCommandPort,

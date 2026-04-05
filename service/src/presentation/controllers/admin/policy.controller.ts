@@ -6,7 +6,7 @@ import { TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 
 @UseGuards(AdminGuard)
-@Controller('admin/policies')
+@Controller('t/:tenantCode/admin/policies')
 export class AdminPolicyController {
   constructor(
     private readonly commandPort: PolicyCommandPort,

@@ -2,12 +2,14 @@ import {
   IsString,
   IsNotEmpty,
   IsOptional,
-  IsUUID,
   MaxLength,
   Matches,
   ValidateIf,
 } from 'class-validator';
 import { Expose, Transform } from 'class-transformer';
+
+const BIGINT_REGEX = /^\d+$/;
+const BIGINT_MESSAGE = '양의 정수여야 합니다';
 
 export class CreateGroupDto {
   @IsString()
@@ -22,7 +24,7 @@ export class CreateGroupDto {
   name!: string;
 
   @IsOptional()
-  @IsUUID()
+  @Matches(BIGINT_REGEX, { message: BIGINT_MESSAGE })
   parentId?: string;
 }
 
@@ -35,7 +37,7 @@ export class UpdateGroupDto {
 
   @IsOptional()
   @ValidateIf((o) => o.parentId !== null)
-  @IsUUID()
+  @Matches(BIGINT_REGEX, { message: BIGINT_MESSAGE })
   parentId?: string | null;
 }
 

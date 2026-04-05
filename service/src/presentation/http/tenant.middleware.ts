@@ -12,11 +12,11 @@ export class TenantMiddleware implements NestMiddleware {
   constructor(private readonly tenantRepository: TenantRepository) {}
 
   async use(req: Request, _res: Response, next: NextFunction): Promise<void> {
-    const raw = req.headers['x-tenant-code'];
+    const raw = req.params['tenantCode'];
     const tenantCode = Array.isArray(raw) ? raw[0] : raw;
 
     if (!tenantCode) {
-      throw new BadRequestException('X-Tenant-Code header is required');
+      throw new BadRequestException('tenantCode path parameter is required');
     }
 
     const tenant = await this.tenantRepository.findByCode(tenantCode);

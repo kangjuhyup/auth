@@ -6,7 +6,7 @@ import { TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 
 @UseGuards(AdminGuard)
-@Controller('admin/audit-logs')
+@Controller('t/:tenantCode/admin/audit-logs')
 export class AdminAuditLogController {
   constructor(private readonly queryPort: AdminQueryPort) {}
 
