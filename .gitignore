@@ -47,6 +47,7 @@ lerna-debug.log*
 
 # dotenv environment variable files
 .env
+.env.e2e.local
 .env.development.local
 .env.test.local
 .env.production.local
@@ -64,3 +65,6 @@ pids
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# MikroORM migration snapshots
+/service/src/infrastructure/mikro-orm/migrations/**/.snapshot-*.json

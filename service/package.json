@@ -14,7 +14,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
-    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "test:e2e": "NODE_OPTIONS=--experimental-vm-modules yarn exec jest --config ./test/jest-e2e.json",
     "migration:up": "mikro-orm migration:up",
     "migration:down": "mikro-orm migration:rollback",
     "migration:create": "mikro-orm migration:create",
@@ -89,7 +89,7 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "transformIgnorePatterns": [
-      "node_modules/(?!(oidc-provider)/)"
+      "node_modules/"
     ],
     "collectCoverageFrom": [
       "src/**/*.(t|j)s"
