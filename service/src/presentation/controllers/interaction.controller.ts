@@ -18,7 +18,6 @@ import { ClientAuthPolicyRepository, IdentityProviderRepository, UserIdentityRep
 import { ClientRepository } from '@domain/repositories';
 import { IdpPort } from '@application/ports/idp.port';
 import { UserIdentityModel } from '@domain/models/user-identity';
-import type { IdpProvider } from '@domain/models/identity-provider';
 import { randomBytes } from 'node:crypto';
 
 const SPA_INDEX_PATH = resolve(
@@ -337,7 +336,8 @@ export class InteractionController {
     const callbackUrl = `${req.protocol}://${req.get('host')}/t/${tenantCode}/interaction/${uid}/idp/${providerName}/callback`;
 
     const authUrl = this.idpPort.getAuthorizationUrl(
-      providerName,
+      idpConfig.provider,
+      idpConfig.oauthConfig,
       idpConfig.clientId,
       callbackUrl,
       state,
@@ -382,7 +382,8 @@ export class InteractionController {
       const callbackUrl = `${req.protocol}://${req.get('host')}/t/${tenantCode}/interaction/${uid}/idp/${providerName}/callback`;
 
       const userInfo = await this.idpPort.exchangeCode(
-        providerName,
+        idpConfig.provider,
+        idpConfig.oauthConfig,
         idpConfig.clientId,
         idpConfig.clientSecret,
         code,

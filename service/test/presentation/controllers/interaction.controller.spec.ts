@@ -79,6 +79,7 @@ function makeIdp(
     clientSecret: `${provider}-secret`,
     redirectUri: `https://auth.example.com/${provider}/callback`,
     enabled,
+    oauthConfig: null,
   });
 
   idp.setPersistence(`idp-${provider}`, new Date(), new Date());
@@ -603,6 +604,21 @@ describe('InteractionController', () => {
       expect(res.json).toHaveBeenCalledWith({ error: 'tenant_not_found' });
     });
 
+    it('DB에 해당 provider 행이 없으면 404(idp_not_found)를 반환한다', async () => {
+      const req = createMockRequest({ tenant: makeTenantContext() }) as any;
+      const res = createMockResponse();
+      idpRepo.findByTenantAndProvider.mockResolvedValue(null);
+
+      await controller.redirectToIdp('acme', 'uid-1', 'unknown-idp', req, res);
+
+      expect(idpRepo.findByTenantAndProvider).toHaveBeenCalledWith(
+        'tenant-1',
+        'unknown-idp',
+      );
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ error: 'idp_not_found' });
+    });
+
     it('IdP 설정이 없거나 비활성이면 404 응답을 반환한다', async () => {
       const req = createMockRequest({ tenant: makeTenantContext() }) as any;
       const res = createMockResponse();
@@ -631,6 +647,7 @@ describe('InteractionController', () => {
 
       expect(idpPort.getAuthorizationUrl).toHaveBeenCalledWith(
         'google',
+        null,
         'google-client',
         'https://auth.example.com/t/acme/interaction/uid-1/idp/google/callback',
         'uid-1:00112233445566778899aabbccddeeff',
@@ -650,6 +667,25 @@ describe('InteractionController', () => {
 
       expect(res.redirect).toHaveBeenCalledWith(
         '/t/acme/interaction/uid-1?error=tenant_not_found',
+      );
+    });
+
+    it('DB에 해당 provider 행이 없으면 idp_not_found 로 redirect한다', async () => {
+      const req = createMockRequest({
+        tenant: makeTenantContext(),
+        query: { code: 'auth-code' },
+      }) as any;
+      const res = createMockResponse();
+      idpRepo.findByTenantAndProvider.mockResolvedValue(null);
+
+      await controller.idpCallback('acme', 'uid-1', 'unknown-idp', req, res);
+
+      expect(idpRepo.findByTenantAndProvider).toHaveBeenCalledWith(
+        'tenant-1',
+        'unknown-idp',
+      );
+      expect(res.redirect).toHaveBeenCalledWith(
+        '/t/acme/interaction/uid-1?error=idp_not_found',
       );
     });
 
@@ -746,6 +782,7 @@ describe('InteractionController', () => {
 
       expect(idpPort.exchangeCode).toHaveBeenCalledWith(
         'google',
+        null,
         'google-client',
         'google-secret',
         'auth-code',

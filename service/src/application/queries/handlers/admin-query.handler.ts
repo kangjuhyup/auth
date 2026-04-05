@@ -11,6 +11,7 @@ import {
   RoleResponse,
   PermissionResponse,
   GroupResponse,
+  IdentityProviderResponse,
 } from '@application/dto';
 import {
   TenantRepository,
@@ -24,8 +25,10 @@ import {
   JwksKeyRepository,
   ClientAuthPolicyRepository,
   EventRepository,
+  IdentityProviderRepository,
 } from '@domain/repositories';
 import { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
+import { IdentityProviderModel } from '@domain/models/identity-provider';
 
 @Injectable()
 export class AdminQueryHandler implements AdminQueryPort {
@@ -42,6 +45,7 @@ export class AdminQueryHandler implements AdminQueryPort {
     private readonly clientAuthPolicyRepo: ClientAuthPolicyRepository,
     private readonly eventRepo: EventRepository,
     private readonly userRepo: UserWriteRepositoryPort,
+    private readonly identityProviderRepo: IdentityProviderRepository,
   ) {}
 
   // ── Tenant ──────────────────────────────────────────────────────────────
@@ -472,5 +476,52 @@ export class AdminQueryHandler implements AdminQueryPort {
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
     }));
+  }
+
+  private toIdentityProviderResponse(m: IdentityProviderModel): IdentityProviderResponse {
+    return {
+      id: m.id,
+      provider: m.provider,
+      displayName: m.displayName,
+      clientId: m.clientId,
+      clientSecretSet: m.clientSecret != null && m.clientSecret.length > 0,
+      redirectUri: m.redirectUri,
+      enabled: m.enabled,
+      oauthConfig: m.oauthConfig,
+      createdAt: m.createdAt,
+      updatedAt: m.updatedAt,
+    };
+  }
+
+  async getIdentityProviders(
+    tenantId: string,
+    query: PaginationQuery,
+  ): Promise<PaginatedResult<IdentityProviderResponse>> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+
+    const { items, total } = await this.identityProviderRepo.listByTenant({
+      tenantId,
+      page,
+      limit,
+    });
+
+    return {
+      items: items.map((m) => this.toIdentityProviderResponse(m)),
+      total,
+      page,
+      limit,
+    };
+  }
+
+  async getIdentityProvider(
+    tenantId: string,
+    id: string,
+  ): Promise<IdentityProviderResponse> {
+    const model = orThrow(
+      await this.identityProviderRepo.findByIdForTenant(tenantId, id),
+      new NotFoundException('Identity provider not found'),
+    );
+    return this.toIdentityProviderResponse(model);
   }
 }

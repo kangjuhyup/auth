@@ -20,4 +20,12 @@ export { EventModel } from './event';
 export type { EventCategory, EventSeverity, EventAction } from './event';
 export { IdentityProviderModel } from './identity-provider';
 export type { IdpProvider } from './identity-provider';
+export type {
+  IdpOauthEndpointsConfig,
+  IdpOauthResolvedEndpoints,
+} from './idp-oauth-endpoints';
+export {
+  WELL_KNOWN_IDP_OAUTH_ENDPOINTS,
+  resolveIdpOauthEndpoints,
+} from './idp-oauth-endpoints';
 export { UserIdentityModel } from './user-identity';

@@ -16,6 +16,7 @@ describe('OAuth2IdpAdapter', () => {
     it('provider 기본 scope를 사용해 authorization url을 생성한다', () => {
       const rawUrl = adapter.getAuthorizationUrl(
         'google',
+        null,
         'google-client',
         'https://app.example.com/callback',
         'state-123',
@@ -32,11 +33,13 @@ describe('OAuth2IdpAdapter', () => {
       );
       expect(url.searchParams.get('state')).toBe('state-123');
       expect(url.searchParams.get('scope')).toBe('openid email profile');
+      expect(url.searchParams.get('prompt')).toBe('select_account');
     });
 
     it('scopes가 주어지면 provider 기본 scope 대신 사용한다', () => {
       const rawUrl = adapter.getAuthorizationUrl(
         'google',
+        null,
         'google-client',
         'https://app.example.com/callback',
         'state-123',
@@ -47,15 +50,36 @@ describe('OAuth2IdpAdapter', () => {
       expect(url.searchParams.get('scope')).toBe('openid custom.read');
     });
 
-    it('지원하지 않는 provider면 예외를 던진다', () => {
+    it('well-known에 없고 oauth_config도 없으면 예외를 던진다', () => {
       expect(() =>
         adapter.getAuthorizationUrl(
           'unknown',
+          null,
           'client',
           'https://app.example.com/callback',
           'state-123',
         ),
-      ).toThrow('Unsupported IdP provider: unknown');
+      ).toThrow(/oauth_config/);
+    });
+
+    it('well-known에 없어도 oauth_config가 있으면 authorization url을 만든다', () => {
+      const rawUrl = adapter.getAuthorizationUrl(
+        'custom-idp',
+        {
+          authorizationUrl: 'https://idp.example.com/oauth/authorize',
+          tokenUrl: 'https://idp.example.com/oauth/token',
+          userinfoUrl: 'https://idp.example.com/userinfo',
+          scopes: ['openid'],
+          subField: 'sub',
+        },
+        'cid',
+        'https://app.example.com/cb',
+        'st',
+      );
+      const url = new URL(rawUrl);
+      expect(`${url.origin}${url.pathname}`).toBe(
+        'https://idp.example.com/oauth/authorize',
+      );
     });
   });
 
@@ -75,6 +99,7 @@ describe('OAuth2IdpAdapter', () => {
 
       const result = await adapter.exchangeCode(
         'google',
+        null,
         'google-client',
         'google-secret',
         'auth-code',
@@ -123,6 +148,7 @@ describe('OAuth2IdpAdapter', () => {
 
       const result = await adapter.exchangeCode(
         'naver',
+        null,
         'naver-client',
         null,
         'auth-code',
@@ -171,6 +197,7 @@ describe('OAuth2IdpAdapter', () => {
 
       const result = await adapter.exchangeCode(
         'apple',
+        null,
         'apple-client',
         'apple-secret',
         'auth-code',
@@ -190,16 +217,17 @@ describe('OAuth2IdpAdapter', () => {
       });
     });
 
-    it('지원하지 않는 provider면 예외를 던진다', async () => {
+    it('well-known에 없고 oauth_config도 없으면 예외를 던진다', async () => {
       await expect(
         adapter.exchangeCode(
           'unknown',
+          null,
           'client',
           null,
           'auth-code',
           'https://app.example.com/callback',
         ),
-      ).rejects.toThrow('Unsupported IdP provider: unknown');
+      ).rejects.toThrow(/oauth_config/);
     });
   });
 });

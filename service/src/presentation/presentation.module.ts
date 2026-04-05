@@ -13,6 +13,7 @@ import { AdminRoleController } from './controllers/admin/role.controller';
 import { AdminPermissionController } from './controllers/admin/permission.controller';
 import { AdminGroupController } from './controllers/admin/group.controller';
 import { AdminSessionController } from './controllers/admin/session.controller';
+import { AdminIdentityProviderController } from './controllers/admin/identity-provider.controller';
 import { InteractionController } from './controllers/interaction.controller';
 import { AdminGuard } from './http/admin.guard';
 
@@ -32,6 +33,7 @@ import { AdminGuard } from './http/admin.guard';
     AdminPermissionController,
     AdminGroupController,
     AdminSessionController,
+    AdminIdentityProviderController,
     InteractionController,
   ],
 })

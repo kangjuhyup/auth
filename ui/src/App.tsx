@@ -7,6 +7,7 @@ import { ClientsPage } from '@/features/clients/ClientsPage';
 import { RolesPage } from '@/features/roles/RolesPage';
 import { GroupsPage } from '@/features/groups/GroupsPage';
 import { UsersPage } from '@/features/users/UsersPage';
+import { IdentityProvidersPage } from '@/features/identity-providers/IdentityProvidersPage';
 import { AdminLayout } from '@/components/AdminLayout';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 
@@ -29,6 +30,7 @@ export function App() {
             <Route index element={<Navigate to="/admin/tenants" replace />} />
             <Route path="tenants" element={<TenantsPage />} />
             <Route path="clients" element={<ClientsPage />} />
+            <Route path="identity-providers" element={<IdentityProvidersPage />} />
             <Route path="roles" element={<RolesPage />} />
             <Route path="groups" element={<GroupsPage />} />
             <Route path="users" element={<UsersPage />} />

@@ -6,3 +6,4 @@ export * from './user.dto';
 export * from './role.dto';
 export * from './permission.dto';
 export * from './group.dto';
+export * from './identity-provider.dto';

@@ -1,5 +1,9 @@
 import { PaginationQuery, PaginatedResult } from '@application/dto';
-import { ClientResponse, ClientAuthPolicyResponse } from '@application/dto';
+import {
+  ClientResponse,
+  ClientAuthPolicyResponse,
+  IdentityProviderResponse,
+} from '@application/dto';
 import { TenantResponse } from '@application/dto';
 import { UserResponse } from '@application/dto';
 import { RoleResponse } from '@application/dto';
@@ -55,4 +59,14 @@ export abstract class AdminQueryPort {
 
   // User roles
   abstract getUserRoles(tenantId: string, userId: string): Promise<RoleResponse[]>;
+
+  // Identity providers (social / OIDC IdP)
+  abstract getIdentityProviders(
+    tenantId: string,
+    query: PaginationQuery,
+  ): Promise<PaginatedResult<IdentityProviderResponse>>;
+  abstract getIdentityProvider(
+    tenantId: string,
+    id: string,
+  ): Promise<IdentityProviderResponse>;
 }

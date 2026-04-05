@@ -34,6 +34,8 @@ import { KeyCommandPort } from './commands/ports/key-command.port';
 import { KeyCommandHandler } from './commands/handlers/key-command.handler';
 import { PolicyCommandPort } from './commands/ports/policy-command.port';
 import { PolicyCommandHandler } from './commands/handlers/policy-command.handler';
+import { IdentityProviderCommandPort } from './commands/ports/identity-provider-command.port';
+import { IdentityProviderCommandHandler } from './commands/handlers/identity-provider-command.handler';
 
 // MFA Strategies
 import {
@@ -80,6 +82,10 @@ const commands = [
   {
     provide: PolicyCommandPort,
     useClass: PolicyCommandHandler,
+  },
+  {
+    provide: IdentityProviderCommandPort,
+    useClass: IdentityProviderCommandHandler,
   },
 ];
 

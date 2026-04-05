@@ -11,5 +11,8 @@ export { ClientAuthPolicyRepository } from './client-auth-policy.repository';
 export { ConsentRepository, ConsentListQuery } from './consent.repository';
 export { EventRepository, EventListQuery } from './event.repository';
 export { RoleInheritRepository } from './role-inherit.repository';
-export { IdentityProviderRepository } from './identity-provider.repository';
+export {
+  IdentityProviderRepository,
+  IdentityProviderListQuery,
+} from './identity-provider.repository';
 export { UserIdentityRepository } from './user-identity.repository';

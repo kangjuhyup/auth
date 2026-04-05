@@ -1,64 +1,26 @@
 import { Injectable } from '@nestjs/common';
 import { IdpPort } from '@application/ports/idp.port';
 import type { IdpUserInfo } from '@application/ports/idp.port';
+import type {
+  IdpOauthEndpointsConfig,
+  IdpOauthResolvedEndpoints,
+} from '@domain/models';
+import { resolveIdpOauthEndpoints } from '@domain/models';
 import { request as httpsRequest } from 'node:https';
 import { request as httpRequest } from 'node:http';
 import { URL } from 'node:url';
-
-interface ProviderEndpoints {
-  authorization: string;
-  token: string;
-  userinfo: string;
-  scopes: string[];
-  subField: string;
-  emailField?: string;
-}
-
-const WELL_KNOWN_ENDPOINTS: Record<string, ProviderEndpoints> = {
-  google: {
-    authorization: 'https://accounts.google.com/o/oauth2/v2/auth',
-    token: 'https://oauth2.googleapis.com/token',
-    userinfo: 'https://openidconnect.googleapis.com/v1/userinfo',
-    scopes: ['openid', 'email', 'profile'],
-    subField: 'sub',
-    emailField: 'email',
-  },
-  kakao: {
-    authorization: 'https://kauth.kakao.com/oauth/authorize',
-    token: 'https://kauth.kakao.com/oauth/token',
-    userinfo: 'https://kapi.kakao.com/v2/user/me',
-    scopes: ['openid', 'account_email', 'profile_nickname'],
-    subField: 'id',
-    emailField: 'kakao_account.email',
-  },
-  naver: {
-    authorization: 'https://nid.naver.com/oauth2.0/authorize',
-    token: 'https://nid.naver.com/oauth2.0/token',
-    userinfo: 'https://openapi.naver.com/v1/nid/me',
-    scopes: [],
-    subField: 'response.id',
-    emailField: 'response.email',
-  },
-  apple: {
-    authorization: 'https://appleid.apple.com/auth/authorize',
-    token: 'https://appleid.apple.com/auth/token',
-    userinfo: '',
-    scopes: ['name', 'email'],
-    subField: 'sub',
-    emailField: 'email',
-  },
-};
 
 @Injectable()
 export class OAuth2IdpAdapter implements IdpPort {
   getAuthorizationUrl(
     provider: string,
+    oauthConfig: IdpOauthEndpointsConfig | null,
     clientId: string,
     redirectUri: string,
     state: string,
     scopes?: string[],
   ): string {
-    const endpoints = this.getEndpoints(provider);
+    const endpoints = resolveIdpOauthEndpoints(provider, oauthConfig);
     const finalScopes = scopes ?? endpoints.scopes;
 
     const params = new URLSearchParams({
@@ -68,18 +30,24 @@ export class OAuth2IdpAdapter implements IdpPort {
       state,
       scope: finalScopes.join(' '),
     });
+    if (endpoints.extraAuthParams) {
+      for (const [k, v] of Object.entries(endpoints.extraAuthParams)) {
+        params.set(k, v);
+      }
+    }
 
     return `${endpoints.authorization}?${params.toString()}`;
   }
 
   async exchangeCode(
     provider: string,
+    oauthConfig: IdpOauthEndpointsConfig | null,
     clientId: string,
     clientSecret: string | null,
     code: string,
     redirectUri: string,
   ): Promise<IdpUserInfo> {
-    const endpoints = this.getEndpoints(provider);
+    const endpoints = resolveIdpOauthEndpoints(provider, oauthConfig);
 
     const tokenBody: Record<string, string> = {
       grant_type: 'authorization_code',
@@ -117,14 +85,6 @@ export class OAuth2IdpAdapter implements IdpPort {
     };
   }
 
-  private getEndpoints(provider: string): ProviderEndpoints {
-    const endpoints = WELL_KNOWN_ENDPOINTS[provider];
-    if (!endpoints) {
-      throw new Error(`Unsupported IdP provider: ${provider}`);
-    }
-    return endpoints;
-  }
-
   private getNestedField(
     obj: Record<string, unknown>,
     path: string,
@@ -140,7 +100,7 @@ export class OAuth2IdpAdapter implements IdpPort {
 
   private parseIdToken(
     idToken: string,
-    endpoints: ProviderEndpoints,
+    endpoints: IdpOauthResolvedEndpoints,
   ): IdpUserInfo {
     const payload = JSON.parse(
       Buffer.from(idToken.split('.')[1], 'base64url').toString(),

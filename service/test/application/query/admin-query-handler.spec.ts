@@ -12,6 +12,7 @@ import type {
   JwksKeyRepository,
   ClientAuthPolicyRepository,
   EventRepository,
+  IdentityProviderRepository,
 } from '@domain/repositories';
 import type { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
 import { TenantModel } from '@domain/models/tenant';
@@ -183,6 +184,17 @@ function createMockUserRepo(): jest.Mocked<UserWriteRepositoryPort> {
   };
 }
 
+function createMockIdentityProviderRepo(): jest.Mocked<IdentityProviderRepository> {
+  return {
+    findByTenantAndProvider: jest.fn().mockResolvedValue(null),
+    listEnabledByTenant: jest.fn().mockResolvedValue([]),
+    listByTenant: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+    findByIdForTenant: jest.fn().mockResolvedValue(null),
+    save: jest.fn(),
+    delete: jest.fn(),
+  };
+}
+
 function createHandler() {
   const tenantRepo = createMockTenantRepo();
   const groupRepo = createMockGroupRepo();
@@ -196,6 +208,7 @@ function createHandler() {
   const clientAuthPolicyRepo = createMockClientAuthPolicyRepo();
   const eventRepo = createMockEventRepo();
   const userRepo = createMockUserRepo();
+  const identityProviderRepo = createMockIdentityProviderRepo();
 
   const handler = new AdminQueryHandler(
     tenantRepo,
@@ -210,6 +223,7 @@ function createHandler() {
     clientAuthPolicyRepo,
     eventRepo,
     userRepo,
+    identityProviderRepo,
   );
 
   return {
@@ -226,6 +240,7 @@ function createHandler() {
     clientAuthPolicyRepo,
     eventRepo,
     userRepo,
+    identityProviderRepo,
   };
 }
 

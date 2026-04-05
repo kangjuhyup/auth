@@ -275,6 +275,7 @@ export function createIdentityProviderEntity(
       clientSecret: 'secret',
       redirectUri: 'https://auth.example.com/callback',
       enabled: true,
+      oauthConfig: null,
     }),
     overrides,
   );
@@ -586,6 +587,7 @@ export function createIdentityProviderModel(
       clientSecret: 'secret',
       redirectUri: 'https://auth.example.com/callback',
       enabled: true,
+      oauthConfig: null,
       ...overrides,
     },
     id,

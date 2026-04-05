@@ -113,6 +113,16 @@ input:focus {
   background: #fafafa;
 }
 
+.btn-idp-google {
+  border-color: #dadce0;
+  font-weight: 500;
+}
+
+.btn-idp-google:hover {
+  background: #f8f9fa;
+  border-color: #4285f4;
+}
+
 .error-msg {
   color: #ff4d4f;
   font-size: 0.875rem;

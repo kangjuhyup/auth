@@ -1562,6 +1562,22 @@
           "enumItems": [],
           "mappedType": "string"
         },
+        "display_name": {
+          "name": "display_name",
+          "type": "varchar(50)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": 50,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
         "client_id": {
           "name": "client_id",
           "type": "varchar(191)",
@@ -1625,6 +1641,22 @@
           "comment": null,
           "enumItems": [],
           "mappedType": "boolean"
+        },
+        "oauth_config": {
+          "name": "oauth_config",
+          "type": "json",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "json"
         },
         "created_at": {
           "name": "created_at",

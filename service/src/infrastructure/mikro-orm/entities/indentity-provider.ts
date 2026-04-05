@@ -1,4 +1,5 @@
 import { Entity, PrimaryKey, Property, ManyToOne, Unique, Ref } from '@mikro-orm/core';
+import type { IdpOauthEndpointsConfig } from '@domain/models/identity-provider';
 import { BaseEntity } from '../base';
 import { TenantOrmEntity } from './tenant';
 
@@ -30,4 +31,7 @@ export class IdentityProviderOrmEntity extends BaseEntity {
 
   @Property({ type: 'boolean', default: true })
   enabled!: boolean;
+
+  @Property({ fieldName: 'oauth_config', type: 'json', nullable: true })
+  oauthConfig?: IdpOauthEndpointsConfig | null;
 }

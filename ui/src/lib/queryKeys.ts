@@ -32,6 +32,13 @@ export const queryKeys = {
       roles: (tenantId: string, groupId: string) =>
         [...queryKeys.admin.groups.all, tenantId, 'roles', groupId] as const,
     },
+    identityProviders: {
+      all: ['admin', 'identity-providers'] as const,
+      list: (tenantId: string, filters: { page?: number; limit?: number }) =>
+        [...queryKeys.admin.identityProviders.all, tenantId, 'list', filters] as const,
+      detail: (tenantId: string, id: string) =>
+        [...queryKeys.admin.identityProviders.all, tenantId, 'detail', id] as const,
+    },
     users: {
       all: ['admin', 'users'] as const,
       list: (tenantId: string, filters: { page?: number; limit?: number }) =>

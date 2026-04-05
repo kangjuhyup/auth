@@ -12,6 +12,7 @@ describe('IdentityProviderMapper', () => {
       clientSecret: 'secret',
       redirectUri: 'https://app.example.com/callback',
       enabled: true,
+      oauthConfig: null,
       createdAt: new Date('2025-01-01'),
       updatedAt: new Date('2025-01-02'),
     });
@@ -26,6 +27,7 @@ describe('IdentityProviderMapper', () => {
     expect(domain.clientSecret).toBe('secret');
     expect(domain.redirectUri).toBe('https://app.example.com/callback');
     expect(domain.enabled).toBe(true);
+    expect(domain.oauthConfig).toBeNull();
     expect(domain.createdAt).toEqual(new Date('2025-01-01'));
     expect(domain.updatedAt).toEqual(new Date('2025-01-02'));
   });
@@ -48,5 +50,30 @@ describe('IdentityProviderMapper', () => {
 
     expect(domain.clientSecret).toBeNull();
     expect(domain.enabled).toBe(false);
+  });
+
+  it('oauth_config JSON을 도메인 oauthConfig로 매핑한다', () => {
+    const oauth = {
+      authorizationUrl: 'https://idp.example.com/auth',
+      tokenUrl: 'https://idp.example.com/token',
+      subField: 'sub',
+    };
+    const entity = Object.assign(new IdentityProviderOrmEntity(), {
+      id: 'idp-3',
+      tenant: { id: 'tenant-1' },
+      provider: 'google',
+      displayName: 'Google',
+      clientId: 'c',
+      clientSecret: 's',
+      redirectUri: 'https://app.example.com/cb',
+      enabled: true,
+      oauthConfig: oauth,
+      createdAt: new Date('2025-01-01'),
+      updatedAt: new Date('2025-01-02'),
+    });
+
+    const domain = IdentityProviderMapper.toDomain(entity);
+
+    expect(domain.oauthConfig).toEqual(oauth);
   });
 });

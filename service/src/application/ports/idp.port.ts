@@ -1,3 +1,5 @@
+import type { IdpOauthEndpointsConfig } from '@domain/models/identity-provider';
+
 export interface IdpUserInfo {
   sub: string;
   email?: string;
@@ -7,6 +9,7 @@ export interface IdpUserInfo {
 export abstract class IdpPort {
   abstract getAuthorizationUrl(
     provider: string,
+    oauthConfig: IdpOauthEndpointsConfig | null,
     clientId: string,
     redirectUri: string,
     state: string,
@@ -15,6 +18,7 @@ export abstract class IdpPort {
 
   abstract exchangeCode(
     provider: string,
+    oauthConfig: IdpOauthEndpointsConfig | null,
     clientId: string,
     clientSecret: string | null,
     code: string,

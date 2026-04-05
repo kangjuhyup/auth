@@ -11,6 +11,7 @@ describe('IdentityProviderModel', () => {
         clientSecret: 'client-secret',
         redirectUri: 'https://app.example.com/callback',
         enabled: true,
+        oauthConfig: null,
       },
       'idp-1',
     );
@@ -23,6 +24,7 @@ describe('IdentityProviderModel', () => {
     expect(model.clientSecret).toBe('client-secret');
     expect(model.redirectUri).toBe('https://app.example.com/callback');
     expect(model.enabled).toBe(true);
+    expect(model.oauthConfig).toBeNull();
   });
 
   it('setPersistence로 영속성 메타데이터를 설정할 수 있다', () => {
@@ -34,6 +36,7 @@ describe('IdentityProviderModel', () => {
       clientSecret: null,
       redirectUri: 'https://app.example.com/kakao/callback',
       enabled: false,
+      oauthConfig: null,
     });
 
     const createdAt = new Date('2025-01-01T00:00:00.000Z');
