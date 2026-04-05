@@ -22,6 +22,8 @@
 - [oidc-provider.registry.ts](../src/infrastructure/oidc-provider/oidc-provider.registry.ts)
 - [interaction.controller.ts](../src/presentation/controllers/interaction.controller.ts)
 
+커스텀 Grant(`grant_type` 확장 또는 `Grant` 동의 모델) 절차는 [OIDC_CUSTOM_GRANT.md](./OIDC_CUSTOM_GRANT.md) 를 참고한다.
+
 구성 흐름:
 
 1. `OidcProviderModule` 이 `OIDC_PROVIDER` registry 를 생성한다.
