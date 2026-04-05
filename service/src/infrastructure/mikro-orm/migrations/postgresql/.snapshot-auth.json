@@ -2734,7 +2734,7 @@
       "checks": [
         {
           "name": "chk_ri_diff",
-          "columnName": "parent_role_id",
+          "columnName": "child_role_id",
           "definition": "CHECK ((parent_role_id <> child_role_id))",
           "expression": "parent_role_id <> child_role_id"
         }

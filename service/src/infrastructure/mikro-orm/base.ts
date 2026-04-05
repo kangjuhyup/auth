@@ -11,6 +11,7 @@ export abstract class BaseEntity {
   @Property({
     fieldName: 'updated_at',
     type: 'datetime',
+    onCreate: () => new Date(),
     onUpdate: () => new Date(),
   })
   updatedAt?: Date;

@@ -19,7 +19,7 @@
     "migration:down": "mikro-orm migration:rollback",
     "migration:create": "mikro-orm migration:create",
     "migration:status": "mikro-orm migration:check",
-    "schema:fresh": "mikro-orm schema:drop --run && mikro-orm migration:up"
+    "schema:fresh": "mikro-orm schema:drop --run --drop-migrations-table && mikro-orm migration:up"
   },
   "dependencies": {
     "@mikro-orm/cli": "6.6.12",

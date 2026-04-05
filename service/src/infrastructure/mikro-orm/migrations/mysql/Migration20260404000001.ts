@@ -5,15 +5,23 @@ import { ulid } from 'ulid';
 /**
  * 기본 시드 데이터
  *  - master 테넌트
- *  - admin 계정 (초기 비밀번호: Admin1234!)
+ *  - admin 계정 (ADMIN_USERNAME / ADMIN_PASSWORD env 값 사용)
  *  - SUPER_ADMIN 역할 생성 및 admin에게 부여
- *
- * 운영 환경에서는 배포 후 반드시 admin 비밀번호를 변경하세요.
  */
 export class Migration20260404000001 extends Migration {
   async up(): Promise<void> {
+    const username = process.env.ADMIN_USERNAME;
+    const password = process.env.ADMIN_PASSWORD;
+
+    if (!username || !password) {
+      throw new Error(
+        'Migration requires ADMIN_USERNAME and ADMIN_PASSWORD environment variables',
+      );
+    }
+
+    const adminUiUrl = process.env.ADMIN_UI_URL ?? 'http://localhost:5173';
     const adminId = ulid();
-    const passwordHash = await argon2.hash('Admin1234!');
+    const passwordHash = await argon2.hash(password);
 
     // 1. master 테넌트
     this.addSql(`
@@ -34,7 +42,7 @@ export class Migration20260404000001 extends Migration {
       INSERT INTO \`user\`
         (id, tenant_id, username, email, email_verified, phone_verified, status, created_at, updated_at)
       SELECT
-        '${adminId}', id, 'admin', 'admin@localhost', 1, 0, 'ACTIVE', NOW(), NOW()
+        '${adminId}', id, '${username}', 'admin@localhost', 1, 0, 'ACTIVE', NOW(), NOW()
       FROM \`tenant\`
       WHERE code = 'master';
     `);
@@ -63,6 +71,24 @@ export class Migration20260404000001 extends Migration {
       JOIN \`tenant\` t ON r.tenant_id = t.id
       WHERE t.code = 'master' AND r.code = 'SUPER_ADMIN';
     `);
+
+    // 7. admin portal 시스템 클라이언트
+    this.addSql(`
+      INSERT INTO \`client\`
+        (tenant_id, client_id, name, type, enabled,
+         redirect_uris, grant_types, response_types,
+         token_endpoint_auth_method, scope,
+         post_logout_redirect_uris, application_type,
+         skip_consent, created_at, updated_at)
+      SELECT
+        id, '__admin-portal__', 'Admin Portal', 'confidential', 1,
+        '["${adminUiUrl}/admin/tenants"]', '["authorization_code"]', '["code"]',
+        'none', 'openid profile',
+        '["${adminUiUrl}/login"]', 'web',
+        1, NOW(), NOW()
+      FROM \`tenant\`
+      WHERE code = 'master';
+    `);
   }
 
   async down(): Promise<void> {
@@ -71,18 +97,18 @@ export class Migration20260404000001 extends Migration {
       DELETE ur FROM \`user_role\` ur
       JOIN \`user\` u ON ur.user_id = u.id
       JOIN \`tenant\` t ON u.tenant_id = t.id
-      WHERE t.code = 'master' AND u.username = 'admin';
+      WHERE t.code = 'master' AND u.username = '${process.env.ADMIN_USERNAME ?? 'admin'}';
     `);
     this.addSql(`
       DELETE uc FROM \`user_credential\` uc
       JOIN \`user\` u ON uc.user_id = u.id
       JOIN \`tenant\` t ON u.tenant_id = t.id
-      WHERE t.code = 'master' AND u.username = 'admin';
+      WHERE t.code = 'master' AND u.username = '${process.env.ADMIN_USERNAME ?? 'admin'}';
     `);
     this.addSql(`
       DELETE u FROM \`user\` u
       JOIN \`tenant\` t ON u.tenant_id = t.id
-      WHERE t.code = 'master' AND u.username = 'admin';
+      WHERE t.code = 'master' AND u.username = '${process.env.ADMIN_USERNAME ?? 'admin'}';
     `);
     this.addSql(`
       DELETE r FROM \`role\` r
@@ -93,6 +119,11 @@ export class Migration20260404000001 extends Migration {
       DELETE tc FROM \`tenant_config\` tc
       JOIN \`tenant\` t ON tc.tenant_id = t.id
       WHERE t.code = 'master';
+    `);
+    this.addSql(`
+      DELETE c FROM \`client\` c
+      JOIN \`tenant\` t ON c.tenant_id = t.id
+      WHERE c.client_id = '__admin-portal__' AND t.code = 'master';
     `);
     this.addSql(`DELETE FROM \`tenant\` WHERE code = 'master';`);
     this.addSql(`SET FOREIGN_KEY_CHECKS = 1;`);
