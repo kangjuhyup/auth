@@ -64,6 +64,8 @@ function createMockRoleAssignment(): jest.Mocked<RoleAssignmentRepository> {
     removeFromUser: jest.fn().mockResolvedValue(undefined),
     assignToGroup: jest.fn().mockResolvedValue(undefined),
     removeFromGroup: jest.fn().mockResolvedValue(undefined),
+    existsForUser: jest.fn().mockResolvedValue(false),
+    existsForGroup: jest.fn().mockResolvedValue(false),
     listForUser: jest.fn().mockResolvedValue([]),
     listForGroup: jest.fn().mockResolvedValue([]),
   };

@@ -69,6 +69,7 @@ describe('buildOidcConfiguration', () => {
       clientRepository,
       tenantRepository,
       symmetricCrypto,
+      jwksKeys: [],
       tenantAccessTokenTtlSec: 3600,
       tenantRefreshTokenTtlSec: 86400,
     };

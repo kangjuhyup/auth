@@ -13,9 +13,17 @@ function createMockRepository(): jest.Mocked<TenantRepository> {
   };
 }
 
-function createMockRequest(tenantCode?: string | string[]) {
+function createMockRequest(options?: {
+  tenantCode?: string | string[];
+  query?: Record<string, unknown>;
+  body?: Record<string, unknown>;
+  headers?: Record<string, unknown>;
+}) {
   return {
-    params: { tenantCode },
+    params: { tenantCode: options?.tenantCode },
+    query: options?.query ?? {},
+    body: options?.body ?? {},
+    headers: options?.headers ?? {},
   } as any;
 }
 
@@ -37,7 +45,7 @@ describe('TenantMiddleware', () => {
   it('tenantCode로 테넌트를 조회하여 req.tenant에 설정한다', async () => {
     const tenant = new TenantModel({ code: 'acme', name: 'Acme' }, 'tenant-1');
     repository.findByCode.mockResolvedValue(tenant);
-    const req = createMockRequest('acme');
+    const req = createMockRequest({ tenantCode: 'acme' });
 
     await middleware.use(req, createMockResponse(), next);
 
@@ -47,7 +55,7 @@ describe('TenantMiddleware', () => {
   });
 
   it('tenantCode가 없으면 BadRequestException을 던진다', async () => {
-    const req = createMockRequest(undefined);
+    const req = createMockRequest();
 
     await expect(
       middleware.use(req, createMockResponse(), next),
@@ -58,7 +66,7 @@ describe('TenantMiddleware', () => {
   it('tenantCode가 배열이면 첫 번째 요소로 테넌트를 조회한다', async () => {
     const tenant = new TenantModel({ code: 'acme', name: 'Acme' }, 'tenant-1');
     repository.findByCode.mockResolvedValue(tenant);
-    const req = createMockRequest(['acme', 'beta']);
+    const req = createMockRequest({ tenantCode: ['acme', 'beta'] });
 
     await middleware.use(req, createMockResponse(), next);
 
@@ -69,7 +77,7 @@ describe('TenantMiddleware', () => {
 
   it('테넌트가 존재하지 않으면 NotFoundException을 던진다', async () => {
     repository.findByCode.mockResolvedValue(null);
-    const req = createMockRequest('unknown');
+    const req = createMockRequest({ tenantCode: 'unknown' });
 
     await expect(
       middleware.use(req, createMockResponse(), next),
@@ -79,10 +87,43 @@ describe('TenantMiddleware', () => {
 
   it('테넌트가 존재하지 않을 때 에러 메시지에 tenantCode를 포함한다', async () => {
     repository.findByCode.mockResolvedValue(null);
-    const req = createMockRequest('unknown-tenant');
+    const req = createMockRequest({ tenantCode: 'unknown-tenant' });
 
     await expect(
       middleware.use(req, createMockResponse(), next),
     ).rejects.toThrow('unknown-tenant');
+  });
+
+  it('query.tenantCode로도 테넌트를 조회할 수 있다', async () => {
+    const tenant = new TenantModel({ code: 'acme', name: 'Acme' }, 'tenant-1');
+    repository.findByCode.mockResolvedValue(tenant);
+    const req = createMockRequest({ query: { tenantCode: 'acme' } });
+
+    await middleware.use(req, createMockResponse(), next);
+
+    expect(repository.findByCode).toHaveBeenCalledWith('acme');
+    expect(req.tenant).toBe(tenant);
+  });
+
+  it('body.tenant_code로도 테넌트를 조회할 수 있다', async () => {
+    const tenant = new TenantModel({ code: 'acme', name: 'Acme' }, 'tenant-1');
+    repository.findByCode.mockResolvedValue(tenant);
+    const req = createMockRequest({ body: { tenant_code: 'acme' } });
+
+    await middleware.use(req, createMockResponse(), next);
+
+    expect(repository.findByCode).toHaveBeenCalledWith('acme');
+    expect(req.tenant).toBe(tenant);
+  });
+
+  it('x-tenant-code 헤더로도 테넌트를 조회할 수 있다', async () => {
+    const tenant = new TenantModel({ code: 'acme', name: 'Acme' }, 'tenant-1');
+    repository.findByCode.mockResolvedValue(tenant);
+    const req = createMockRequest({ headers: { 'x-tenant-code': 'acme' } });
+
+    await middleware.use(req, createMockResponse(), next);
+
+    expect(repository.findByCode).toHaveBeenCalledWith('acme');
+    expect(req.tenant).toBe(tenant);
   });
 });
