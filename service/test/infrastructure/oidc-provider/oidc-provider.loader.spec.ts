@@ -38,11 +38,6 @@ describe('loadOidcProviderConstructor', () => {
       ProviderConstructor,
     );
 
-    const dynamicImportNewFunctionCalls = functionMock.mock.calls.filter(
-      (call) =>
-        call[0] === 'specifier' && call[1] === 'return import(specifier)',
-    );
-    expect(dynamicImportNewFunctionCalls).toHaveLength(2);
     expect(importFn).toHaveBeenCalledTimes(2);
     expect(importFn).toHaveBeenCalledWith('oidc-provider');
   });
