@@ -1,6 +1,10 @@
 # Conventional commits (feat:, fix:, chore:, etc.) 기준으로 Release PR을 열고,
 # 그 PR을 머지하면 버전·CHANGELOG·Git 태그(v*)가 생성됩니다. (main 전용)
 # 이미지·GHCR는 release.yml 이 태그 푸시(자동) 또는 Actions 수동 실행으로 빌드합니다.
+#
+# GITHUB_TOKEN 으로 태그를 푸시하면 GitHub 이 후속 push 워크플로를 막아 release.yml 이 안 돌 수 있습니다.
+# 자동 배포까지 연결하려면 repo 범위 PAT 를 저장소 Secret RELEASE_PLEASE_TOKEN 에 넣고 아래 token 을 사용하세요.
+# https://docs.github.com/en/actions/security-for-github-actions/security-guides/automatic-token-authentication#using-the-github_token-in-a-workflow
 name: Release Please
 
 on:
@@ -19,6 +23,6 @@ jobs:
     steps:
       - uses: googleapis/release-please-action@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
