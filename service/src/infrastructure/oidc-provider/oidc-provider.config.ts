@@ -38,7 +38,11 @@ export function buildOidcConfiguration(params: {
   } = params;
 
   const { jwksKeys } = params;
-  const clientTtlCache = new Map<string, { access: number | null; refresh: number | null }>();
+  const CLIENT_TTL_CACHE_TTL_MS = 5 * 60 * 1000;
+  const clientTtlCache = new Map<
+    string,
+    { access: number | null; refresh: number | null; cachedAt: number }
+  >();
 
   function warmClientTtlCache(tenantId: string, clientId: string): void {
     clientRepository
@@ -48,10 +52,21 @@ export function buildOidcConfiguration(params: {
           clientTtlCache.set(clientId, {
             access: c.accessTokenTtlSec ?? null,
             refresh: c.refreshTokenTtlSec ?? null,
+            cachedAt: Date.now(),
           });
         }
       })
       .catch(() => {});
+  }
+
+  function getClientTtlCache(clientId: string) {
+    const entry = clientTtlCache.get(clientId);
+    if (!entry) return undefined;
+    if (Date.now() - entry.cachedAt > CLIENT_TTL_CACHE_TTL_MS) {
+      clientTtlCache.delete(clientId);
+      return undefined;
+    }
+    return entry;
   }
 
   const accessTokenFormat = configService.getOrThrow<string>(
@@ -238,8 +253,9 @@ export function buildOidcConfiguration(params: {
       AccessToken: (ctx, _token, client) => {
         const tenantId = (ctx as any)?.req?.tenant?.id;
         if (tenantId && client?.clientId) {
-          const cached = clientTtlCache.get(client.clientId);
-          if (cached !== undefined) return cached.access ?? tenantAccessTokenTtlSec;
+          const cached = getClientTtlCache(client.clientId);
+          if (cached !== undefined)
+            return cached.access ?? tenantAccessTokenTtlSec;
           warmClientTtlCache(tenantId, client.clientId);
         }
         return tenantAccessTokenTtlSec;
@@ -249,8 +265,9 @@ export function buildOidcConfiguration(params: {
       RefreshToken: (ctx, _token, client) => {
         const tenantId = (ctx as any)?.req?.tenant?.id;
         if (tenantId && client?.clientId) {
-          const cached = clientTtlCache.get(client.clientId);
-          if (cached !== undefined) return cached.refresh ?? tenantRefreshTokenTtlSec;
+          const cached = getClientTtlCache(client.clientId);
+          if (cached !== undefined)
+            return cached.refresh ?? tenantRefreshTokenTtlSec;
           warmClientTtlCache(tenantId, client.clientId);
         }
         return tenantRefreshTokenTtlSec;
