@@ -1644,7 +1644,7 @@
         },
         "oauth_config": {
           "name": "oauth_config",
-          "type": "json",
+          "type": "jsonb",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,

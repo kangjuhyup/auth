@@ -16,6 +16,7 @@ jest.setTimeout(180_000);
  *    - 특정 테넌트에 OIDC 클라이언트를 생성/조회/수정/삭제한다.
  *    - 특정 테넌트에 권한/롤/그룹을 생성/조회/수정/삭제한다.
  *    - 롤-권한, 그룹-롤 연결과 해제를 검증한다.
+ *    - 테넌트 범위 Identity Provider(OIDC 소셜 설정)를 생성·목록·단건·수정·삭제한다.
  *    - 인증 실패, 입력 검증 실패, 중복 생성, 잘못된 관계 요청의 실패 응답을 검증한다.
  *
  * 3. 일반 유저 셀프서비스
@@ -904,6 +905,160 @@ describe('API E2E', () => {
         .get('/t/acme/admin/groups/99999999')
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
+    });
+
+    it('테넌트 범위에서 Identity Provider를 생성·목록·단건 조회·수정·삭제할 수 있다', async () => {
+      const adminToken = await loginAsAdmin();
+      await createTenant(adminToken, 'acme', 'Acme Corp');
+
+      const createResponse = await request(fixture.app.getHttpServer())
+        .post('/t/acme/admin/identity-providers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          provider: 'kakao',
+          displayName: 'Kakao Login',
+          clientId: 'kakao-e2e-client',
+          clientSecret: 'kakao-secret',
+          redirectUri: 'https://acme.example.test/callback/kakao',
+          enabled: true,
+        })
+        .expect(201);
+
+      const idpId = createResponse.body.id as string;
+      expect(idpId).toEqual(expect.any(String));
+
+      const listResponse = await request(fixture.app.getHttpServer())
+        .get('/t/acme/admin/identity-providers?page=1&limit=20')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(listResponse.body.items).toHaveLength(1);
+      expect(listResponse.body.total).toBe(1);
+      expect(listResponse.body.items[0]).toMatchObject({
+        id: idpId,
+        provider: 'kakao',
+        displayName: 'Kakao Login',
+        clientId: 'kakao-e2e-client',
+        clientSecretSet: true,
+        redirectUri: 'https://acme.example.test/callback/kakao',
+        enabled: true,
+      });
+      expect(listResponse.body.items[0].oauthConfig).toBeNull();
+
+      const getResponse = await request(fixture.app.getHttpServer())
+        .get(`/t/acme/admin/identity-providers/${idpId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(getResponse.body).toMatchObject({
+        id: idpId,
+        provider: 'kakao',
+        displayName: 'Kakao Login',
+      });
+
+      await request(fixture.app.getHttpServer())
+        .put(`/t/acme/admin/identity-providers/${idpId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          displayName: 'Kakao Updated',
+          enabled: false,
+          oauthConfig: {
+            tokenUrl: 'https://kauth.kakao.com/oauth/token',
+            subField: 'id',
+          },
+        })
+        .expect(200);
+
+      const afterUpdate = await request(fixture.app.getHttpServer())
+        .get(`/t/acme/admin/identity-providers/${idpId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(afterUpdate.body).toMatchObject({
+        displayName: 'Kakao Updated',
+        enabled: false,
+      });
+      expect(afterUpdate.body.oauthConfig).toMatchObject({
+        tokenUrl: 'https://kauth.kakao.com/oauth/token',
+        subField: 'id',
+      });
+
+      await request(fixture.app.getHttpServer())
+        .delete(`/t/acme/admin/identity-providers/${idpId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      await request(fixture.app.getHttpServer())
+        .get(`/t/acme/admin/identity-providers/${idpId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(404);
+
+      const emptyList = await request(fixture.app.getHttpServer())
+        .get('/t/acme/admin/identity-providers?page=1&limit=20')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(emptyList.body.items).toHaveLength(0);
+    });
+
+    it('Identity Provider는 동일 provider 중복 생성 시 409를 반환한다', async () => {
+      const adminToken = await loginAsAdmin();
+      await createTenant(adminToken, 'acme', 'Acme Corp');
+
+      const payload = {
+        provider: 'naver',
+        displayName: 'Naver',
+        clientId: 'naver-e2e',
+        clientSecret: 'secret',
+        redirectUri: 'https://acme.example.test/callback/naver',
+      };
+
+      await request(fixture.app.getHttpServer())
+        .post('/t/acme/admin/identity-providers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send(payload)
+        .expect(201);
+
+      await request(fixture.app.getHttpServer())
+        .post('/t/acme/admin/identity-providers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          ...payload,
+          displayName: 'Naver Duplicate',
+        })
+        .expect(409);
+    });
+
+    it('Identity Provider는 없는 id 404, 미인증 403, 허용되지 않은 provider 400을 반환한다', async () => {
+      const adminToken = await loginAsAdmin();
+      await createTenant(adminToken, 'acme', 'Acme Corp');
+
+      // id는 PostgreSQL bigint 범위 안이어야 한다(초과 시 DB/ORM에서 500).
+      await request(fixture.app.getHttpServer())
+        .get('/t/acme/admin/identity-providers/99999999')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(404);
+
+      await request(fixture.app.getHttpServer())
+        .post('/t/acme/admin/identity-providers')
+        .send({
+          provider: 'apple',
+          displayName: 'Apple',
+          clientId: 'apple-e2e',
+          redirectUri: 'https://acme.example.test/callback/apple',
+        })
+        .expect(403);
+
+      await request(fixture.app.getHttpServer())
+        .post('/t/acme/admin/identity-providers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          provider: 'github',
+          displayName: 'GitHub',
+          clientId: 'gh-e2e',
+          redirectUri: 'https://acme.example.test/callback/gh',
+        })
+        .expect(400);
     });
   });
 
