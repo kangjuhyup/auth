@@ -1,12 +1,15 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
 import { ServeStaticModule } from '@nestjs/serve-static';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ApplicationModule } from './application/application.module';
 import { InfrastructureModule } from './infrastructure/infrastructure.module';
 import { PresentationModule } from './presentation/presentation.module';
+import { AppThrottlerGuard } from './presentation/http/app-throttler.guard';
 import { buildMikroOrmConfig } from './infrastructure/mikro-orm/config/mikro-orm.config';
 
 const ENV_FILE_PATHS = [
@@ -54,6 +57,19 @@ function readEnvValue(key: string): string | undefined {
       isGlobal: true,
       envFilePath: ENV_FILE_PATHS,
     }),
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const disabled = config.get<string>('HTTP_THROTTLE_ENABLED', 'true') === 'false';
+        const ttl = Number(config.get('HTTP_THROTTLE_TTL_MS', '60000'));
+        const limit = Number(config.get('HTTP_THROTTLE_LIMIT', '120'));
+        if (disabled) {
+          return [{ name: 'default', ttl: 60_000, limit: 999_999_999 }];
+        }
+        return [{ name: 'default', ttl, limit }];
+      },
+    }),
     MikroOrmModule.forRoot(
       buildMikroOrmConfig({
         get: readEnvValue,
@@ -68,5 +84,6 @@ function readEnvValue(key: string): string | undefined {
     InfrastructureModule,
     PresentationModule,
   ],
+  providers: [{ provide: APP_GUARD, useClass: AppThrottlerGuard }],
 })
 export class AppModule {}
