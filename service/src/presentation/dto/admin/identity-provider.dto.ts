@@ -3,17 +3,18 @@ import {
   IsNotEmpty,
   IsOptional,
   IsBoolean,
-  IsIn,
   IsUrl,
   MaxLength,
   MinLength,
   IsObject,
   ValidateNested,
   IsArray,
+  Matches,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-const IDP_PROVIDERS = ['kakao', 'naver', 'google', 'apple'] as const;
+/** 1–64자: 영숫자로 시작, 이후 영숫자·`_`·`-` (임의 OAuth/OIDC IdP 확장용) */
+const IDP_PROVIDER_SLUG = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 
 const URL_OPTIONS = { require_tld: false } as const;
 
@@ -49,8 +50,14 @@ class IdpOauthConfigDto {
 }
 
 export class CreateIdentityProviderDto {
-  @IsIn(IDP_PROVIDERS)
-  provider!: (typeof IDP_PROVIDERS)[number];
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(64)
+  @Matches(IDP_PROVIDER_SLUG, {
+    message:
+      'provider must be 1–64 chars, start with alphanumeric, then alphanumeric, underscore, or hyphen',
+  })
+  provider!: string;
 
   @IsString()
   @IsNotEmpty()

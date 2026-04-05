@@ -7,7 +7,7 @@ import { ClientAuthPolicyRepositoryImpl } from '@infrastructure/repositories/cli
 import { TenantConfigRepositoryImpl } from '@infrastructure/repositories/tenant-config.repository.impl';
 import { JwksKeyRepositoryImpl } from '@infrastructure/repositories/jwks-key.repository.impl';
 import { EventRepositoryImpl } from '@infrastructure/repositories/event.repository.impl';
-import { IdentityProviderOrmEntity } from '@infrastructure/mikro-orm/entities/indentity-provider';
+import { IdentityProviderOrmEntity } from '@infrastructure/mikro-orm/entities/identity-provider';
 import { UserIdentityOrmEntity } from '@infrastructure/mikro-orm/entities/user-identity';
 import { ConsentOrmEntity } from '@infrastructure/mikro-orm/entities/consent';
 import { ClientAuthPolicyOrmEntity } from '@infrastructure/mikro-orm/entities/client-auth-policy';
@@ -227,7 +227,10 @@ describe('Identity And Config Repository Implementations', () => {
       expect(saved.grantedScopes).toBe('openid profile email');
       expect(em.getReference).toHaveBeenCalledWith(TenantOrmEntity, 'tenant-1');
       expect(em.getReference).toHaveBeenCalledWith(UserOrmEntity, 'user-1');
-      expect(em.getReference).toHaveBeenCalledWith(ClientOrmEntity, 'client-ref-1');
+      expect(em.getReference).toHaveBeenCalledWith(
+        ClientOrmEntity,
+        'client-ref-1',
+      );
     });
 
     it('기존 동의를 갱신하고 삭제한다', async () => {
@@ -260,13 +263,13 @@ describe('Identity And Config Repository Implementations', () => {
       const entity = createClientAuthPolicyEntity();
       em.findOne.mockResolvedValue(entity);
 
-      await expect(repository.findByClientRefId('client-ref-1')).resolves.toMatchObject(
-        {
-          id: 'client-auth-policy-1',
-          tenantId: 'tenant-1',
-          clientRefId: 'client-ref-1',
-        },
-      );
+      await expect(
+        repository.findByClientRefId('client-ref-1'),
+      ).resolves.toMatchObject({
+        id: 'client-auth-policy-1',
+        tenantId: 'tenant-1',
+        clientRefId: 'client-ref-1',
+      });
     });
 
     it('신규 정책을 저장하고 기존 정책을 갱신한다', async () => {
@@ -283,7 +286,10 @@ describe('Identity And Config Repository Implementations', () => {
       expect(created.id).toBe('client-auth-policy-2');
       expect(created.mfaRequired).toBe(true);
       expect(em.getReference).toHaveBeenCalledWith(TenantOrmEntity, 'tenant-1');
-      expect(em.getReference).toHaveBeenCalledWith(ClientOrmEntity, 'client-ref-1');
+      expect(em.getReference).toHaveBeenCalledWith(
+        ClientOrmEntity,
+        'client-ref-1',
+      );
 
       const existing = createClientAuthPolicyEntity();
       em.findOneOrFail.mockResolvedValue(existing);
@@ -322,7 +328,9 @@ describe('Identity And Config Repository Implementations', () => {
       const entity = createTenantConfigEntity();
       em.findOne.mockResolvedValue(entity);
 
-      await expect(repository.findByTenantId('tenant-1')).resolves.toMatchObject({
+      await expect(
+        repository.findByTenantId('tenant-1'),
+      ).resolves.toMatchObject({
         tenantId: 'tenant-1',
         signupPolicy: 'open',
         accessTokenTtlSec: 3600,
@@ -407,9 +415,7 @@ describe('Identity And Config Repository Implementations', () => {
     it('여러 키를 한 번에 upsert한다', async () => {
       const repository = new JwksKeyRepositoryImpl(em as any);
       const existing = createJwksKeyEntity({ kid: 'kid-1' });
-      em.findOne
-        .mockResolvedValueOnce(existing)
-        .mockResolvedValueOnce(null);
+      em.findOne.mockResolvedValueOnce(existing).mockResolvedValueOnce(null);
 
       await repository.saveMany([
         createJwksKeyModel({ kid: 'kid-1', status: 'revoked' }),
@@ -449,7 +455,10 @@ describe('Identity And Config Repository Implementations', () => {
       });
 
       expect(result.total).toBe(2);
-      expect(result.items.map((item) => item.id)).toEqual(['event-1', 'event-2']);
+      expect(result.items.map((item) => item.id)).toEqual([
+        'event-1',
+        'event-2',
+      ]);
       expect(em.findAndCount).toHaveBeenCalledWith(
         EventOrmEntity,
         {
@@ -480,7 +489,10 @@ describe('Identity And Config Repository Implementations', () => {
 
       expect(em.getReference).toHaveBeenCalledWith(TenantOrmEntity, 'tenant-1');
       expect(em.getReference).toHaveBeenCalledWith(UserOrmEntity, 'user-1');
-      expect(em.getReference).toHaveBeenCalledWith(ClientOrmEntity, 'client-ref-1');
+      expect(em.getReference).toHaveBeenCalledWith(
+        ClientOrmEntity,
+        'client-ref-1',
+      );
       expect(em.persist).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'UPDATE',

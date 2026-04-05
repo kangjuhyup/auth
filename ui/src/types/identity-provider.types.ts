@@ -1,4 +1,5 @@
-export type IdpProvider = 'kakao' | 'naver' | 'google' | 'apple';
+/** 내장 키(google, kakao, …) 또는 임의 slug — 후자는 OAuth 엔드포인트 JSON 필수 */
+export type IdpProvider = string;
 
 export interface IdpOauthConfig {
   authorizationUrl?: string;

@@ -145,7 +145,7 @@ export class Migration20260404000000 extends Migration {
       CREATE TABLE \`identity_provider\` (
         \`id\`            BIGINT       NOT NULL AUTO_INCREMENT PRIMARY KEY,
         \`tenant_id\`     BIGINT       NOT NULL,
-        \`provider\`      VARCHAR(20)  NOT NULL,
+        \`provider\`      VARCHAR(64)  NOT NULL,
         \`display_name\`  VARCHAR(50)  NOT NULL,
         \`client_id\`     VARCHAR(191) NOT NULL,
         \`client_secret\` VARCHAR(255),
@@ -269,7 +269,7 @@ export class Migration20260404000000 extends Migration {
         \`id\`           BIGINT       NOT NULL AUTO_INCREMENT PRIMARY KEY,
         \`tenant_id\`    BIGINT       NOT NULL,
         \`user_id\`      CHAR(26)     NOT NULL,
-        \`provider\`     VARCHAR(20)  NOT NULL,
+        \`provider\`     VARCHAR(64)  NOT NULL,
         \`provider_sub\` VARCHAR(191) NOT NULL,
         \`email\`        VARCHAR(191),
         \`profile_json\` JSON,

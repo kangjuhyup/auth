@@ -8,7 +8,7 @@ import { PermissionOrmEntity } from '@infrastructure/mikro-orm/entities/permissi
 import { UserOrmEntity } from '@infrastructure/mikro-orm/entities/user';
 import { UserCredentialOrmEntity } from '@infrastructure/mikro-orm/entities/user-credential';
 import { UserIdentityOrmEntity } from '@infrastructure/mikro-orm/entities/user-identity';
-import { IdentityProviderOrmEntity } from '@infrastructure/mikro-orm/entities/indentity-provider';
+import { IdentityProviderOrmEntity } from '@infrastructure/mikro-orm/entities/identity-provider';
 import { ConsentOrmEntity } from '@infrastructure/mikro-orm/entities/consent';
 import { ClientAuthPolicyOrmEntity } from '@infrastructure/mikro-orm/entities/client-auth-policy';
 import { TenantConfigOrmEntity } from '@infrastructure/mikro-orm/entities/tenant-config';
@@ -73,7 +73,10 @@ function withTimestamps<T extends { createdAt?: Date; updatedAt?: Date }>(
   });
 }
 
-function createEntity<T extends object>(EntityClass: Constructor<T>, data: any): T {
+function createEntity<T extends object>(
+  EntityClass: Constructor<T>,
+  data: any,
+): T {
   return Object.assign(new EntityClass(), data) as T;
 }
 
@@ -90,7 +93,9 @@ export function createEntityManagerMock(): EntityManagerMock {
     transactional: jest.fn(),
     getReference: jest.fn(
       <T extends object>(EntityClass: Constructor<T>, id: string): T =>
-        asLoadedRef(createEntity(EntityClass, { id }) as T & { id: string }) as T,
+        asLoadedRef(
+          createEntity(EntityClass, { id }) as T & { id: string },
+        ) as T,
     ),
     create: jest.fn(
       <T extends object>(EntityClass: Constructor<T>, data: Partial<T>): T =>
@@ -123,9 +128,7 @@ export function createTransactionalEntityManagers(): {
   return { em, txEm };
 }
 
-export function createTenantEntity(
-  overrides: any = {},
-): TenantOrmEntity {
+export function createTenantEntity(overrides: any = {}): TenantOrmEntity {
   return withTimestamps(
     createEntity(TenantOrmEntity, {
       id: 'tenant-1',
@@ -136,9 +139,7 @@ export function createTenantEntity(
   );
 }
 
-export function createClientEntity(
-  overrides: any = {},
-): ClientOrmEntity {
+export function createClientEntity(overrides: any = {}): ClientOrmEntity {
   const tenant = overrides.tenant ?? asLoadedRef(createTenantEntity());
 
   return withTimestamps(
@@ -168,9 +169,7 @@ export function createClientEntity(
   );
 }
 
-export function createGroupEntity(
-  overrides: any = {},
-): GroupOrmEntity {
+export function createGroupEntity(overrides: any = {}): GroupOrmEntity {
   return withTimestamps(
     createEntity(GroupOrmEntity, {
       id: 'group-1',
@@ -183,9 +182,7 @@ export function createGroupEntity(
   );
 }
 
-export function createRoleEntity(
-  overrides: any = {},
-): RoleOrmEntity {
+export function createRoleEntity(overrides: any = {}): RoleOrmEntity {
   return withTimestamps(
     createEntity(RoleOrmEntity, {
       id: 'role-1',
@@ -233,9 +230,7 @@ export function createUserCredentialEntity(
   );
 }
 
-export function createUserEntity(
-  overrides: any = {},
-): UserOrmEntity {
+export function createUserEntity(overrides: any = {}): UserOrmEntity {
   const entity = withTimestamps(
     createEntity(UserOrmEntity, {
       id: 'user-1',
@@ -299,9 +294,7 @@ export function createUserIdentityEntity(
   );
 }
 
-export function createConsentEntity(
-  overrides: any = {},
-): ConsentOrmEntity {
+export function createConsentEntity(overrides: any = {}): ConsentOrmEntity {
   const client = overrides.client ?? asLoadedRef(createClientEntity());
 
   return createEntity(ConsentOrmEntity, {
@@ -351,9 +344,7 @@ export function createTenantConfigEntity(
   });
 }
 
-export function createJwksKeyEntity(
-  overrides: any = {},
-): JwksKeyOrmEntity {
+export function createJwksKeyEntity(overrides: any = {}): JwksKeyOrmEntity {
   return createEntity(JwksKeyOrmEntity, {
     kid: 'kid-1',
     tenant: overrides.tenant ?? asLoadedRef(createTenantEntity()),
@@ -368,9 +359,7 @@ export function createJwksKeyEntity(
   });
 }
 
-export function createEventEntity(
-  overrides: any = {},
-): EventOrmEntity {
+export function createEventEntity(overrides: any = {}): EventOrmEntity {
   return createEntity(EventOrmEntity, {
     id: 'event-1',
     tenant: overrides.tenant ?? createTenantEntity(),
@@ -391,9 +380,7 @@ export function createEventEntity(
   });
 }
 
-export function createUserRoleEntity(
-  overrides: any = {},
-): UserRoleOrmEntity {
+export function createUserRoleEntity(overrides: any = {}): UserRoleOrmEntity {
   return createEntity(UserRoleOrmEntity, {
     user: overrides.user ?? asLoadedRef(createUserEntity()),
     role: overrides.role ?? asLoadedRef(createRoleEntity()),
@@ -402,9 +389,7 @@ export function createUserRoleEntity(
   });
 }
 
-export function createGroupRoleEntity(
-  overrides: any = {},
-): GroupRoleOrmEntity {
+export function createGroupRoleEntity(overrides: any = {}): GroupRoleOrmEntity {
   return createEntity(GroupRoleOrmEntity, {
     group: overrides.group ?? asLoadedRef(createGroupEntity()),
     role: overrides.role ?? asLoadedRef(createRoleEntity()),
@@ -418,8 +403,7 @@ export function createRolePermissionEntity(
 ): RolePermissionOrmEntity {
   return createEntity(RolePermissionOrmEntity, {
     role: overrides.role ?? asLoadedRef(createRoleEntity()),
-    permission:
-      overrides.permission ?? asLoadedRef(createPermissionEntity()),
+    permission: overrides.permission ?? asLoadedRef(createPermissionEntity()),
     ...overrides,
   });
 }
@@ -428,8 +412,10 @@ export function createRoleInheritEntity(
   overrides: any = {},
 ): RoleInheritOrmEntity {
   return createEntity(RoleInheritOrmEntity, {
-    parent: overrides.parent ?? asLoadedRef(createRoleEntity({ id: 'role-parent' })),
-    child: overrides.child ?? asLoadedRef(createRoleEntity({ id: 'role-child' })),
+    parent:
+      overrides.parent ?? asLoadedRef(createRoleEntity({ id: 'role-parent' })),
+    child:
+      overrides.child ?? asLoadedRef(createRoleEntity({ id: 'role-child' })),
     ...overrides,
   });
 }
@@ -575,7 +561,9 @@ export function createUserModel(
 }
 
 export function createIdentityProviderModel(
-  overrides: Partial<ConstructorParameters<typeof IdentityProviderModel>[0]> = {},
+  overrides: Partial<
+    ConstructorParameters<typeof IdentityProviderModel>[0]
+  > = {},
   id?: string,
 ): IdentityProviderModel {
   return new IdentityProviderModel(
@@ -634,7 +622,9 @@ export function createConsentModel(
 }
 
 export function createClientAuthPolicyModel(
-  overrides: Partial<ConstructorParameters<typeof ClientAuthPolicyModel>[0]> = {},
+  overrides: Partial<
+    ConstructorParameters<typeof ClientAuthPolicyModel>[0]
+  > = {},
   id?: string,
 ): ClientAuthPolicyModel {
   return new ClientAuthPolicyModel(

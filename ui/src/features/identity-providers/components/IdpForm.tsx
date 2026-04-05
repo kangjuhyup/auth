@@ -1,15 +1,10 @@
-import { Form, Input, Select, Switch } from 'antd';
+import { Form, Input, Switch } from 'antd';
 import type {
   CreateIdentityProviderDto,
   UpdateIdentityProviderDto,
 } from '@/types/identity-provider.types';
 
-const PROVIDERS = [
-  { value: 'kakao', label: 'Kakao' },
-  { value: 'naver', label: 'Naver' },
-  { value: 'google', label: 'Google' },
-  { value: 'apple', label: 'Apple' },
-] as const;
+const PROVIDER_SLUG = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 
 interface IdpFormProps {
   initialValues?: Partial<CreateIdentityProviderDto | UpdateIdentityProviderDto> & {
@@ -65,10 +60,19 @@ export function IdpForm({ initialValues, onFinish, mode, form }: IdpFormProps) {
       {mode === 'create' && (
         <Form.Item
           name="provider"
-          label="Provider"
-          rules={[{ required: true, message: 'Select a provider' }]}
+          label="Provider key"
+          extra="Built-ins: google, kakao, naver, apple. Any other key needs OAuth endpoints JSON below."
+          rules={[
+            { required: true, message: 'Provider key is required' },
+            { max: 64, message: 'At most 64 characters' },
+            {
+              pattern: PROVIDER_SLUG,
+              message:
+                'Use letters/digits starting with alphanumeric; then _, - allowed (e.g. okta_workforce)',
+            },
+          ]}
         >
-          <Select placeholder="Provider" options={[...PROVIDERS]} />
+          <Input placeholder="e.g. google or my_oidc" maxLength={64} />
         </Form.Item>
       )}
 

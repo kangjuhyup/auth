@@ -1,9 +1,10 @@
 import { Entity, PrimaryKey, Property, ManyToOne, Unique, Ref } from '@mikro-orm/core';
-import type { IdpOauthEndpointsConfig } from '@domain/models/identity-provider';
+import type {
+  IdpOauthEndpointsConfig,
+  IdpProvider,
+} from '@domain/models/identity-provider';
 import { BaseEntity } from '../base';
 import { TenantOrmEntity } from './tenant';
-
-export type IdpProvider = 'kakao' | 'naver' | 'google' | 'apple';
 
 @Entity({ tableName: 'identity_provider' })
 @Unique({ properties: ['tenant', 'provider'], name: 'uk_idp' })
@@ -14,7 +15,7 @@ export class IdentityProviderOrmEntity extends BaseEntity {
   @ManyToOne(() => TenantOrmEntity, { fieldName: 'tenant_id', deleteRule: 'restrict', ref: true })
   tenant!: Ref<TenantOrmEntity>;
 
-  @Property({ type: 'varchar', length: 20 })
+  @Property({ type: 'varchar', length: 64 })
   provider!: IdpProvider;
 
   @Property({ fieldName: 'display_name', type: 'varchar', length: 50 })

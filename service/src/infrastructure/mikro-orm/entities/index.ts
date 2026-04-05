@@ -3,7 +3,7 @@ export * from './consent';
 export * from './event';
 export * from './group';
 export * from './group-role';
-export * from './indentity-provider';
+export * from './identity-provider';
 export * from './jwks-key';
 export * from './otp-token';
 export * from './permission';

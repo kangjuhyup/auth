@@ -12,7 +12,7 @@ import { UserOrmEntity } from './user';
 import { GroupOrmEntity } from './group';
 import { RoleOrmEntity } from './role';
 import { PermissionOrmEntity } from './permission';
-import { IdentityProviderOrmEntity } from './indentity-provider';
+import { IdentityProviderOrmEntity } from './identity-provider';
 import { UserIdentityOrmEntity } from './user-identity';
 import { TenantClientOrmEntity } from './tenant-client';
 

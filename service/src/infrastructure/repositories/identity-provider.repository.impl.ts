@@ -5,14 +5,12 @@ import {
   IdentityProviderRepository,
 } from '@domain/repositories';
 import { IdentityProviderModel } from '@domain/models/identity-provider';
-import { IdentityProviderOrmEntity } from '../mikro-orm/entities/indentity-provider';
+import { IdentityProviderOrmEntity } from '../mikro-orm/entities/identity-provider';
 import { TenantOrmEntity } from '../mikro-orm/entities/tenant';
 import { IdentityProviderMapper } from './mapper/identity-provider.mapper';
 
 @Injectable()
-export class IdentityProviderRepositoryImpl
-  implements IdentityProviderRepository
-{
+export class IdentityProviderRepositoryImpl implements IdentityProviderRepository {
   constructor(private readonly em: EntityManager) {}
 
   async findByTenantAndProvider(
@@ -79,9 +77,7 @@ export class IdentityProviderRepositoryImpl
       return IdentityProviderMapper.toDomain(existing);
     }
     const entity = IdentityProviderMapper.toOrm(model);
-    entity.tenant = ref(
-      this.em.getReference(TenantOrmEntity, model.tenantId),
-    );
+    entity.tenant = ref(this.em.getReference(TenantOrmEntity, model.tenantId));
     await this.em.persist(entity).flush();
     return IdentityProviderMapper.toDomain(entity);
   }

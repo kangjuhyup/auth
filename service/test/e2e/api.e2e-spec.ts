@@ -1029,7 +1029,7 @@ describe('API E2E', () => {
         .expect(409);
     });
 
-    it('Identity Provider는 없는 id 404, 미인증 403, 허용되지 않은 provider 400을 반환한다', async () => {
+    it('Identity Provider는 없는 id 404, 미인증 403, 잘못된 provider slug 400을 반환한다', async () => {
       const adminToken = await loginAsAdmin();
       await createTenant(adminToken, 'acme', 'Acme Corp');
 
@@ -1053,12 +1053,40 @@ describe('API E2E', () => {
         .post('/t/acme/admin/identity-providers')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          provider: 'github',
-          displayName: 'GitHub',
-          clientId: 'gh-e2e',
-          redirectUri: 'https://acme.example.test/callback/gh',
+          provider: '-bad-slug',
+          displayName: 'Bad',
+          clientId: 'x',
+          clientSecret: 's',
+          redirectUri: 'https://acme.example.test/callback/x',
         })
         .expect(400);
+    });
+
+    it('임의 provider slug와 oauth_config로 Identity Provider를 생성할 수 있다', async () => {
+      const adminToken = await loginAsAdmin();
+      await createTenant(adminToken, 'slugco', 'Slug Co');
+
+      const res = await request(fixture.app.getHttpServer())
+        .post('/t/slugco/admin/identity-providers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          provider: 'custom_oidc',
+          displayName: 'Custom OIDC',
+          clientId: 'custom-cid',
+          clientSecret: 'custom-secret',
+          redirectUri: 'https://slugco.example.test/callback',
+          oauthConfig: {
+            authorizationUrl: 'https://idp.example.test/oauth/authorize',
+            tokenUrl: 'https://idp.example.test/oauth/token',
+            userinfoUrl: 'https://idp.example.test/userinfo',
+            scopes: ['openid', 'email'],
+            subField: 'sub',
+            emailField: 'email',
+          },
+        })
+        .expect(201);
+
+      expect(res.body.id).toEqual(expect.any(String));
     });
   });
 

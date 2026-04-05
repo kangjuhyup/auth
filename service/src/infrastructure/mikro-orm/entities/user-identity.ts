@@ -1,8 +1,8 @@
 import { Entity, PrimaryKey, Property, ManyToOne, Unique, Ref } from '@mikro-orm/core';
+import type { IdpProvider } from '@domain/models/identity-provider';
 import { BaseEntity } from '../base';
 import { TenantOrmEntity } from './tenant';
 import { UserOrmEntity } from './user';
-import { IdpProvider } from './indentity-provider';
 
 @Entity({ tableName: 'user_identity' })
 @Unique({ properties: ['tenant', 'provider', 'providerSub'], name: 'uk_user_identity' })
@@ -16,7 +16,7 @@ export class UserIdentityOrmEntity extends BaseEntity {
   @ManyToOne(() => UserOrmEntity, { fieldName: 'user_id', deleteRule: 'cascade', ref: true })
   user!: Ref<UserOrmEntity>;
 
-  @Property({ type: 'varchar', length: 20 })
+  @Property({ type: 'varchar', length: 64 })
   provider!: IdpProvider;
 
   @Property({ fieldName: 'provider_sub', type: 'varchar', length: 191, index: true })

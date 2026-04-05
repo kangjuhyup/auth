@@ -1,5 +1,4 @@
 import { UserIdentityModel } from '@domain/models/user-identity';
-import type { IdpProvider } from '@domain/models/identity-provider';
 import { UserIdentityOrmEntity } from '../../mikro-orm/entities/user-identity';
 
 export class UserIdentityMapper {
@@ -8,7 +7,7 @@ export class UserIdentityMapper {
       {
         tenantId: entity.tenant.id,
         userId: entity.user.id,
-        provider: entity.provider as IdpProvider,
+        provider: entity.provider,
         providerSub: entity.providerSub,
         email: entity.email ?? null,
         profileJson: entity.profileJson ?? null,

@@ -3,7 +3,11 @@ import type { IdpOauthEndpointsConfig } from './idp-oauth-endpoints';
 
 export type { IdpOauthEndpointsConfig } from './idp-oauth-endpoints';
 
-export type IdpProvider = 'kakao' | 'naver' | 'google' | 'apple';
+/**
+ * IdP 식별자(slug). 내장 키(`google`, `kakao`, `naver`, `apple`)는 기본 OAuth 엔드포인트가 있고,
+ * 그 외 값은 `oauthConfig`로 authorization/token/userinfo 등을 채워야 한다.
+ */
+export type IdpProvider = string;
 
 interface IdentityProviderModelProps {
   tenantId: string;
