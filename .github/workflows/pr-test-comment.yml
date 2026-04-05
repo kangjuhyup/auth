@@ -1,7 +1,8 @@
-# PR 생성·업데이트 시 unit 테스트(+커버리지) 실행 후, 같은 스레드에 결과·커버리지 표 코멘트를 남깁니다.
+# PR 생성·업데이트 시 service unit(+커버리지)·모듈 의존성(dependency-cruiser) 테스트 후
+# 같은 코멘트에 결과를 남깁니다.
 # (포크 PR은 기본 GITHUB_TOKEN 권한으로 코멘트가 막힐 수 있습니다.)
 
-name: PR unit tests & comment
+name: PR service tests & comment
 
 on:
   pull_request:
@@ -16,6 +17,7 @@ permissions:
   pull-requests: write
 
 jobs:
+  # 브랜치 보호 규칙에 잡혀 있을 수 있어 job id 는 유지합니다.
   unit-tests:
     runs-on: ubuntu-latest
     steps:
@@ -45,10 +47,18 @@ jobs:
             --coverageReporters=json-summary \
             --coverageReporters=text-summary
 
+      - name: Run module dependency rules (dependency-cruiser / Jest)
+        id: arch
+        if: always()
+        working-directory: service
+        run: |
+          yarn exec jest test/architecture/dependency-rules.spec.ts --runInBand --watchman=false
+
       - name: Compose PR comment
         if: always()
         env:
           TEST_OUTCOME: ${{ steps.unit.outcome }}
+          ARCH_OUTCOME: ${{ steps.arch.outcome }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           SHA: ${{ github.event.pull_request.head.sha }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -61,6 +71,13 @@ jobs:
             success) RESULT="✅ 통과" ;;
             failure) RESULT="❌ 실패" ;;
             *)       RESULT="⏭️ 실행 안 됨 (이전 단계 실패)" ;;
+          esac
+
+          case "$ARCH_OUTCOME" in
+            success) ARCH_RESULT="✅ 통과" ;;
+            failure) ARCH_RESULT="❌ 실패" ;;
+            skipped) ARCH_RESULT="⏭️ 건너뜀" ;;
+            *)       ARCH_RESULT="⏭️ 실행 안 됨" ;;
           esac
 
           {
@@ -148,6 +165,24 @@ jobs:
 
             if [ "$TEST_OUTCOME" = "failure" ]; then
               echo "> 실패한 스펙은 Actions 로그의 **Run service unit tests (with coverage)** 단계에서 확인할 수 있습니다."
+            fi
+
+            echo ""
+            echo "## Module dependency rules (dependency-cruiser)"
+            echo ""
+            echo "| 항목 | 값 |"
+            echo "|------|-----|"
+            echo "| 결과 | $ARCH_RESULT |"
+            echo "| 범위 | \`test/architecture/dependency-rules.spec.ts\` (레이어·CQRS·DTO 규칙 + JSON 규칙별 검증) |"
+            echo "| 워크플로 | [실행 로그 보기]($RUN_URL) |"
+            echo "| 커밋 | \`$SHA\` |"
+            echo ""
+
+            if [ "$ARCH_OUTCOME" = "failure" ]; then
+              echo "> 로그에서 **Run module dependency rules** 단계를 확인하거나, 로컬에서 \`cd service && yarn test:arch\` 로 재현할 수 있습니다."
+            fi
+            if [ "$ARCH_OUTCOME" = "skipped" ] || [ -z "$ARCH_OUTCOME" ]; then
+              echo "> 이전 단계(체크아웃/설치 등) 실패 시 아키텍처 테스트는 건너뛸 수 있습니다."
             fi
           } > "$OUT"
 
