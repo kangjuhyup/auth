@@ -1,5 +1,5 @@
 import { Modal, Form } from 'antd';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { RoleForm } from './RoleForm';
 import { useCreateRole } from '../hooks/useCreateRole';
 import { useUpdateRole } from '../hooks/useUpdateRole';
@@ -9,8 +9,8 @@ import { useAdminUiStore } from '@/stores/adminUi.store';
 import type { CreateRoleDto, UpdateRoleDto } from '@/types/role.types';
 
 export function RoleFormModal() {
-  const [createForm] = Form.useForm();
-  const [editForm] = Form.useForm();
+  const [createForm] = Form.useForm<CreateRoleDto | UpdateRoleDto>();
+  const [editForm] = Form.useForm<CreateRoleDto | UpdateRoleDto>();
 
   const {
     createModalOpen,
@@ -30,14 +30,25 @@ export function RoleFormModal() {
   const { data: rolesData } = useRoles({ page: 1, limit: 100 });
   const editingRole = rolesData?.items.find((r) => r.id === editingId) ?? null;
 
-  useEffect(() => {
-    if (editingRole) {
-      editForm.setFieldsValue(editingRole);
-    }
-  }, [editingRole, editForm]);
+  const roleEditInitialValues = useMemo(():
+    | Partial<CreateRoleDto | UpdateRoleDto>
+    | undefined => {
+    if (!editingRole) return undefined;
+    return {
+      code: editingRole.code,
+      name: editingRole.name,
+      description: editingRole.description ?? undefined,
+    };
+  }, [editingRole]);
 
-  const handleCreate = (values: CreateRoleDto) => {
-    createMutation.mutate(values, {
+  useEffect(() => {
+    if (roleEditInitialValues) {
+      editForm.setFieldsValue(roleEditInitialValues);
+    }
+  }, [roleEditInitialValues, editForm]);
+
+  const handleCreate = (values: CreateRoleDto | UpdateRoleDto) => {
+    createMutation.mutate(values as CreateRoleDto, {
       onSuccess: () => {
         closeCreateModal();
         createForm.resetFields();
@@ -45,8 +56,8 @@ export function RoleFormModal() {
     });
   };
 
-  const handleUpdate = (values: UpdateRoleDto) => {
-    updateMutation.mutate(values, {
+  const handleUpdate = (values: CreateRoleDto | UpdateRoleDto) => {
+    updateMutation.mutate(values as UpdateRoleDto, {
       onSuccess: () => {
         closeEditModal();
         editForm.resetFields();
@@ -92,7 +103,7 @@ export function RoleFormModal() {
         <RoleForm
           mode="edit"
           form={editForm}
-          initialValues={editingRole ?? undefined}
+          initialValues={roleEditInitialValues}
           onFinish={handleUpdate}
         />
       </Modal>

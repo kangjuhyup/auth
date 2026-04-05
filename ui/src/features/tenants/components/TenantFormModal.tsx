@@ -1,16 +1,34 @@
 import { Modal, Form } from 'antd';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { TenantForm } from './TenantForm';
 import { useCreateTenant } from '../hooks/useCreateTenant';
 import { useUpdateTenant } from '../hooks/useUpdateTenant';
 import { useDeleteTenant } from '../hooks/useDeleteTenant';
 import { useTenants } from '../hooks/useTenants';
 import { useAdminUiStore } from '@/stores/adminUi.store';
-import type { CreateTenantDto, UpdateTenantDto } from '@/types/tenant.types';
+import type {
+  TenantResponse,
+  CreateTenantDto,
+  UpdateTenantDto,
+} from '@/types/tenant.types';
+
+function tenantResponseToFormValues(
+  t: TenantResponse,
+): Partial<CreateTenantDto | UpdateTenantDto> {
+  const policy = t.signupPolicy;
+  const signupPolicy: CreateTenantDto['signupPolicy'] =
+    policy === 'invite' || policy === 'open' ? policy : 'invite';
+  return {
+    name: t.name,
+    brandName: t.brandName ?? undefined,
+    signupPolicy,
+    requirePhoneVerify: t.requirePhoneVerify,
+  };
+}
 
 export function TenantFormModal() {
-  const [createForm] = Form.useForm();
-  const [editForm] = Form.useForm();
+  const [createForm] = Form.useForm<CreateTenantDto | UpdateTenantDto>();
+  const [editForm] = Form.useForm<CreateTenantDto | UpdateTenantDto>();
 
   const {
     createModalOpen,
@@ -32,15 +50,22 @@ export function TenantFormModal() {
   const editingTenant =
     tenantsData?.items.find((t) => t.id === editingId) ?? null;
 
+  const tenantEditInitialValues = useMemo(():
+    | Partial<CreateTenantDto | UpdateTenantDto>
+    | undefined => {
+    if (!editingTenant) return undefined;
+    return tenantResponseToFormValues(editingTenant);
+  }, [editingTenant]);
+
   // Populate form when editing
   useEffect(() => {
     if (editingTenant) {
-      editForm.setFieldsValue(editingTenant);
+      editForm.setFieldsValue(tenantResponseToFormValues(editingTenant));
     }
   }, [editingTenant, editForm]);
 
-  const handleCreate = (values: CreateTenantDto) => {
-    createMutation.mutate(values, {
+  const handleCreate = (values: CreateTenantDto | UpdateTenantDto) => {
+    createMutation.mutate(values as CreateTenantDto, {
       onSuccess: () => {
         closeCreateModal();
         createForm.resetFields();
@@ -48,8 +73,8 @@ export function TenantFormModal() {
     });
   };
 
-  const handleUpdate = (values: UpdateTenantDto) => {
-    updateMutation.mutate(values, {
+  const handleUpdate = (values: CreateTenantDto | UpdateTenantDto) => {
+    updateMutation.mutate(values as UpdateTenantDto, {
       onSuccess: () => {
         closeEditModal();
         editForm.resetFields();
@@ -80,11 +105,7 @@ export function TenantFormModal() {
         onOk={() => createForm.submit()}
         confirmLoading={createMutation.isPending}
       >
-        <TenantForm
-          mode="create"
-          form={createForm}
-          onFinish={handleCreate}
-        />
+        <TenantForm mode="create" form={createForm} onFinish={handleCreate} />
       </Modal>
 
       {/* Edit Modal */}
@@ -101,7 +122,7 @@ export function TenantFormModal() {
         <TenantForm
           mode="edit"
           form={editForm}
-          initialValues={editingTenant ?? undefined}
+          initialValues={tenantEditInitialValues}
           onFinish={handleUpdate}
         />
       </Modal>

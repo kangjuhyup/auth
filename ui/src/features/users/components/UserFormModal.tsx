@@ -1,16 +1,30 @@
 import { Modal, Form } from 'antd';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { UserForm } from './UserForm';
 import { useCreateUser } from '../hooks/useCreateUser';
 import { useUpdateUser } from '../hooks/useUpdateUser';
 import { useDeleteUser } from '../hooks/useDeleteUser';
 import { useUsers } from '../hooks/useUsers';
 import { useAdminUiStore } from '@/stores/adminUi.store';
-import type { CreateUserDto, UpdateUserDto } from '@/types/user.types';
+import type {
+  UserResponse,
+  CreateUserDto,
+  UpdateUserDto,
+} from '@/types/user.types';
+
+function userResponseToFormValues(
+  u: UserResponse,
+): Partial<CreateUserDto | UpdateUserDto> {
+  return {
+    email: u.email ?? undefined,
+    phone: u.phone ?? undefined,
+    status: u.status as UpdateUserDto['status'],
+  };
+}
 
 export function UserFormModal() {
-  const [createForm] = Form.useForm();
-  const [editForm] = Form.useForm();
+  const [createForm] = Form.useForm<CreateUserDto | UpdateUserDto>();
+  const [editForm] = Form.useForm<CreateUserDto | UpdateUserDto>();
 
   const {
     createModalOpen,
@@ -30,14 +44,21 @@ export function UserFormModal() {
   const { data: usersData } = useUsers({ page: 1, limit: 100 });
   const editingUser = usersData?.items.find((u) => u.id === editingId) ?? null;
 
+  const userEditInitialValues = useMemo(():
+    | Partial<CreateUserDto | UpdateUserDto>
+    | undefined => {
+    if (!editingUser) return undefined;
+    return userResponseToFormValues(editingUser);
+  }, [editingUser]);
+
   useEffect(() => {
     if (editingUser) {
-      editForm.setFieldsValue(editingUser);
+      editForm.setFieldsValue(userResponseToFormValues(editingUser));
     }
   }, [editingUser, editForm]);
 
-  const handleCreate = (values: CreateUserDto) => {
-    createMutation.mutate(values, {
+  const handleCreate = (values: CreateUserDto | UpdateUserDto) => {
+    createMutation.mutate(values as CreateUserDto, {
       onSuccess: () => {
         closeCreateModal();
         createForm.resetFields();
@@ -45,8 +66,8 @@ export function UserFormModal() {
     });
   };
 
-  const handleUpdate = (values: UpdateUserDto) => {
-    updateMutation.mutate(values, {
+  const handleUpdate = (values: CreateUserDto | UpdateUserDto) => {
+    updateMutation.mutate(values as UpdateUserDto, {
       onSuccess: () => {
         closeEditModal();
         editForm.resetFields();
@@ -92,7 +113,7 @@ export function UserFormModal() {
         <UserForm
           mode="edit"
           form={editForm}
-          initialValues={editingUser ?? undefined}
+          initialValues={userEditInitialValues}
           onFinish={handleUpdate}
         />
       </Modal>

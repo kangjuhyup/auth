@@ -1,11 +1,12 @@
 import { Form, Input } from 'antd';
+import type { FormInstance } from 'antd';
 import type { CreateRoleDto, UpdateRoleDto } from '@/types/role.types';
 
 interface RoleFormProps {
   initialValues?: Partial<CreateRoleDto | UpdateRoleDto>;
   onFinish: (values: CreateRoleDto | UpdateRoleDto) => void;
   mode: 'create' | 'edit';
-  form: ReturnType<typeof Form.useForm>[0];
+  form: FormInstance<CreateRoleDto | UpdateRoleDto>;
 }
 
 export function RoleForm({
@@ -29,7 +30,8 @@ export function RoleForm({
             { required: true, message: 'Code is required' },
             {
               pattern: /^[a-z0-9-_]+$/,
-              message: 'Code must be lowercase alphanumeric with hyphens/underscores',
+              message:
+                'Code must be lowercase alphanumeric with hyphens/underscores',
             },
           ]}
         >

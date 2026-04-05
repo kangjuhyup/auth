@@ -30,8 +30,8 @@ export function IdpFormModal({
   onConfirmDelete,
   deleteLoading,
 }: IdpFormModalProps) {
-  const [createForm] = Form.useForm();
-  const [editForm] = Form.useForm();
+  const [createForm] = Form.useForm<Record<string, unknown>>();
+  const [editForm] = Form.useForm<Record<string, unknown>>();
 
   const createMutation = useCreateIdentityProvider();
   const updateMutation = useUpdateIdentityProvider(editId ?? '');
@@ -47,13 +47,17 @@ export function IdpFormModal({
         redirectUri: editing.redirectUri,
         enabled: editing.enabled,
         oauthConfigJson:
-          editing.oauthConfig != null ? JSON.stringify(editing.oauthConfig, null, 2) : '',
+          editing.oauthConfig != null
+            ? JSON.stringify(editing.oauthConfig, null, 2)
+            : '',
       });
     }
   }, [editing, editForm]);
 
-  const handleCreate = (values: CreateIdentityProviderDto) => {
-    const { clientSecret, ...rest } = values;
+  const handleCreate = (
+    values: CreateIdentityProviderDto | UpdateIdentityProviderDto,
+  ) => {
+    const { clientSecret, ...rest } = values as CreateIdentityProviderDto;
     const payload: CreateIdentityProviderDto = {
       ...rest,
       clientSecret: clientSecret === '' ? null : clientSecret,
@@ -66,8 +70,12 @@ export function IdpFormModal({
     });
   };
 
-  const handleUpdate = (values: UpdateIdentityProviderDto) => {
-    const dto: UpdateIdentityProviderDto = { ...values };
+  const handleUpdate = (
+    values: CreateIdentityProviderDto | UpdateIdentityProviderDto,
+  ) => {
+    const dto: UpdateIdentityProviderDto = {
+      ...(values as UpdateIdentityProviderDto),
+    };
     if (dto.clientSecret === '' || dto.clientSecret === undefined) {
       delete dto.clientSecret;
     }
@@ -120,7 +128,10 @@ export function IdpFormModal({
         okText="Delete"
         okButtonProps={{ danger: true }}
       >
-        <p>Remove this IdP configuration? Linked user identities may stop working for this provider.</p>
+        <p>
+          Remove this IdP configuration? Linked user identities may stop working
+          for this provider.
+        </p>
       </Modal>
     </>
   );

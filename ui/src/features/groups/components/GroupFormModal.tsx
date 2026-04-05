@@ -9,8 +9,8 @@ import { useAdminUiStore } from '@/stores/adminUi.store';
 import type { CreateGroupDto, UpdateGroupDto } from '@/types/group.types';
 
 export function GroupFormModal() {
-  const [createForm] = Form.useForm();
-  const [editForm] = Form.useForm();
+  const [createForm] = Form.useForm<CreateGroupDto | UpdateGroupDto>();
+  const [editForm] = Form.useForm<CreateGroupDto | UpdateGroupDto>();
 
   const {
     createModalOpen,
@@ -37,8 +37,8 @@ export function GroupFormModal() {
     }
   }, [editingGroup, editForm]);
 
-  const handleCreate = (values: CreateGroupDto) => {
-    createMutation.mutate(values, {
+  const handleCreate = (values: CreateGroupDto | UpdateGroupDto) => {
+    createMutation.mutate(values as CreateGroupDto, {
       onSuccess: () => {
         closeCreateModal();
         createForm.resetFields();
@@ -46,8 +46,8 @@ export function GroupFormModal() {
     });
   };
 
-  const handleUpdate = (values: UpdateGroupDto) => {
-    updateMutation.mutate(values, {
+  const handleUpdate = (values: CreateGroupDto | UpdateGroupDto) => {
+    updateMutation.mutate(values as UpdateGroupDto, {
       onSuccess: () => {
         closeEditModal();
         editForm.resetFields();
@@ -100,7 +100,9 @@ export function GroupFormModal() {
           form={editForm}
           initialValues={editingGroup ?? undefined}
           onFinish={handleUpdate}
-          availableGroups={groupsData?.items.filter((g) => g.id !== editingId) ?? []}
+          availableGroups={
+            groupsData?.items.filter((g) => g.id !== editingId) ?? []
+          }
         />
       </Modal>
 

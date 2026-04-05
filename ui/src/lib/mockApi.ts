@@ -336,11 +336,13 @@ export const mockTenantApi = {
     await delay(400);
     const index = mockTenants.findIndex((t) => t.id === id);
     if (index === -1) throw new Error('Tenant not found');
+    const prev = mockTenants[index]!;
     mockTenants[index] = {
-      ...mockTenants[index],
+      ...prev,
       ...dto,
+      id: prev.id,
       updatedAt: new Date(),
-    };
+    } as TenantResponse;
   },
 
   delete: async (id: string): Promise<void> => {
@@ -405,11 +407,13 @@ export const mockClientApi = {
     await delay(400);
     const index = mockClients.findIndex((c) => c.id === id);
     if (index === -1) throw new Error('Client not found');
+    const prev = mockClients[index]!;
     mockClients[index] = {
-      ...mockClients[index],
+      ...prev,
       ...dto,
+      id: prev.id,
       updatedAt: new Date(),
-    };
+    } as ClientResponse;
   },
 
   delete: async (id: string): Promise<void> => {
@@ -467,11 +471,13 @@ export const mockRoleApi = {
     await delay(400);
     const index = mockRoles.findIndex((r) => r.id === id);
     if (index === -1) throw new Error('Role not found');
+    const prev = mockRoles[index]!;
     mockRoles[index] = {
-      ...mockRoles[index],
+      ...prev,
       ...dto,
+      id: prev.id,
       updatedAt: new Date(),
-    };
+    } as RoleResponse;
   },
 
   delete: async (id: string): Promise<void> => {
@@ -529,11 +535,13 @@ export const mockGroupApi = {
     await delay(400);
     const index = mockGroups.findIndex((g) => g.id === id);
     if (index === -1) throw new Error('Group not found');
+    const prev = mockGroups[index]!;
     mockGroups[index] = {
-      ...mockGroups[index],
+      ...prev,
       ...dto,
+      id: prev.id,
       updatedAt: new Date(),
-    };
+    } as GroupResponse;
   },
 
   delete: async (id: string): Promise<void> => {
@@ -619,11 +627,13 @@ export const mockUserApi = {
     await delay(400);
     const index = mockUsers.findIndex((u) => u.id === id);
     if (index === -1) throw new Error('User not found');
+    const prev = mockUsers[index]!;
     mockUsers[index] = {
-      ...mockUsers[index],
+      ...prev,
       ...dto,
+      id: prev.id,
       updatedAt: new Date(),
-    };
+    } as UserResponse;
   },
 
   delete: async (id: string): Promise<void> => {

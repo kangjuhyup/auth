@@ -22,7 +22,10 @@ export function TenantSelector() {
   useEffect(() => {
     if (!selectedTenant && tenants.length > 0) {
       const master = tenants.find((t) => t.code === 'master');
-      setTenant(master ?? tenants[0]);
+      const fallback = tenants[0];
+      if (fallback) {
+        setTenant(master ?? fallback);
+      }
     }
   }, [selectedTenant, tenants, setTenant]);
 

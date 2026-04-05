@@ -1,11 +1,12 @@
 import { Form, Input, Select } from 'antd';
+import type { FormInstance } from 'antd';
 import type { CreateUserDto, UpdateUserDto } from '@/types/user.types';
 
 interface UserFormProps {
   initialValues?: Partial<CreateUserDto | UpdateUserDto>;
   onFinish: (values: CreateUserDto | UpdateUserDto) => void;
   mode: 'create' | 'edit';
-  form: ReturnType<typeof Form.useForm>[0];
+  form: FormInstance<CreateUserDto | UpdateUserDto>;
 }
 
 export function UserForm({
@@ -30,7 +31,8 @@ export function UserForm({
               { required: true, message: 'Username is required' },
               {
                 pattern: /^[a-z0-9._-]+$/,
-                message: 'Username must be lowercase alphanumeric with dots, hyphens, underscores',
+                message:
+                  'Username must be lowercase alphanumeric with dots, hyphens, underscores',
               },
             ]}
           >

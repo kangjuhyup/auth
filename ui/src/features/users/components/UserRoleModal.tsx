@@ -1,3 +1,4 @@
+import type { Key } from 'react';
 import { Modal, Transfer, Spin } from 'antd';
 import type { TransferDirection } from 'antd/es/transfer';
 import { useUserRoles } from '../hooks/useUserRoles';
@@ -13,8 +14,9 @@ export function UserRoleModal() {
     page: 1,
     limit: 100,
   });
-  const { data: assignedRoles, isLoading: assignedRolesLoading } =
-    useUserRoles(managingRolesId ?? '');
+  const { data: assignedRoles, isLoading: assignedRolesLoading } = useUserRoles(
+    managingRolesId ?? '',
+  );
 
   const addRoleMutation = useAddUserRole(managingRolesId ?? '');
   const removeRoleMutation = useRemoveUserRole(managingRolesId ?? '');
@@ -23,18 +25,17 @@ export function UserRoleModal() {
   const assignedRoleIds = assignedRoles?.map((r) => r.id) ?? [];
 
   const handleChange = (
-    targetKeys: string[],
+    _targetKeys: Key[],
     direction: TransferDirection,
-    moveKeys: string[],
+    moveKeys: Key[],
   ) => {
+    const ids = moveKeys.map(String);
     if (direction === 'right') {
-      // Adding roles
-      moveKeys.forEach((roleId) => {
+      ids.forEach((roleId) => {
         addRoleMutation.mutate(roleId);
       });
     } else {
-      // Removing roles
-      moveKeys.forEach((roleId) => {
+      ids.forEach((roleId) => {
         removeRoleMutation.mutate(roleId);
       });
     }
@@ -78,7 +79,8 @@ export function UserRoleModal() {
           titles={['Available Roles', 'Assigned Roles']}
           showSearch
           filterOption={(inputValue, item) =>
-            item.title?.toLowerCase().includes(inputValue.toLowerCase()) ?? false
+            item.title?.toLowerCase().includes(inputValue.toLowerCase()) ??
+            false
           }
         />
       )}
