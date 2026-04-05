@@ -16,17 +16,20 @@ patches:
   - path: deployment-patch.yaml
   - path: configmap-patch.yaml
   - path: hpa-patch.yaml
-  # HPA가 replicas 를 조정하므로 Deployment 매니페스트에서 제거 (기본 1 → HPA가 min 으로 상향)
+  # HPA가 replicas 를 조정하므로 StatefulSet 매니페스트에서 제거 (기본 1 → HPA가 min 으로 상향)
   - patch: |-
       - op: remove
         path: /spec/replicas
     target:
       group: apps
       version: v1
-      kind: Deployment
+      kind: StatefulSet
       name: auth-service
 
 images:
   - name: auth-service
     newName: ghcr.io/REPLACE_ORG/auth-service
+    newTag: latest
+  - name: auth-ui
+    newName: ghcr.io/REPLACE_ORG/auth-ui
     newTag: latest

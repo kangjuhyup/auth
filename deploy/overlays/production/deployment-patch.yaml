@@ -1,6 +1,6 @@
 # 레플리카 수는 HPA(hpa-patch.yaml)가 관리합니다.
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: auth-service
 spec:

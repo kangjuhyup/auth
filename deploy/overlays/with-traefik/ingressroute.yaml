@@ -1,0 +1,68 @@
+# Traefik IngressRoute CRD (traefik.io/v1alpha1)
+# 전제: Traefik v2/v3 + cert-manager 또는 certResolver 설정 완료
+#
+# 호스트·certResolver·middlewares 는 클러스터에 맞게 수정하세요.
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: auth-service
+  labels:
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/component: api
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`auth.example.com`)
+      kind: Rule
+      services:
+        - name: auth-service
+          port: 80
+  tls:
+    certResolver: letsencrypt # 또는 secretName 으로 cert-manager 인증서 지정
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: auth-ui
+  labels:
+    app.kubernetes.io/name: auth-ui
+    app.kubernetes.io/component: frontend
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`ui.auth.example.com`)
+      kind: Rule
+      services:
+        - name: auth-ui
+          port: 80
+  tls:
+    certResolver: letsencrypt
+---
+# HTTP → HTTPS 리다이렉트
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: auth-redirect
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`auth.example.com`) || Host(`ui.auth.example.com`)
+      kind: Rule
+      middlewares:
+        - name: redirect-to-https
+      services:
+        - name: auth-service
+          port: 80
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: redirect-to-https
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true

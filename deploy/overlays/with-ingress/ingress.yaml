@@ -1,4 +1,6 @@
-# 호스트·ingressClassName·TLS 는 클러스터에 맞게 수정하세요.
+# 표준 Kubernetes Ingress (nginx ingress controller)
+# 호스트·ingressClassName·TLS secretName 은 클러스터에 맞게 수정하세요.
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -7,9 +9,13 @@ metadata:
     app.kubernetes.io/name: auth-service
     app.kubernetes.io/component: api
   annotations:
-    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: 'true'
 spec:
   ingressClassName: nginx
+  tls:
+    - hosts:
+        - auth.example.com
+      secretName: auth-service-tls
   rules:
     - host: auth.example.com
       http:
@@ -19,5 +25,32 @@ spec:
             backend:
               service:
                 name: auth-service
+                port:
+                  number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: auth-ui
+  labels:
+    app.kubernetes.io/name: auth-ui
+    app.kubernetes.io/component: frontend
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: 'true'
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - ui.auth.example.com
+      secretName: auth-ui-tls
+  rules:
+    - host: ui.auth.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: auth-ui
                 port:
                   number: 80
