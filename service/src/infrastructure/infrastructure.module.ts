@@ -5,7 +5,7 @@ import { NotificationModule } from './notification/notification.module';
 import { RedisModule } from './redis/redis.module';
 import { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
 import { UserWriteRepositoryImpl } from './repositories/user-write.repository.impl';
-import { AdminSessionPort } from '@application/ports/admin-session.port';
+import { AdminSessionTokenPort } from '@application/ports/admin-session-token.port';
 import { OidcInteractionPort } from '@application/ports/oidc-interaction.port';
 import { TenantContextPort } from '@application/ports/tenant-context.port';
 import {
@@ -65,7 +65,7 @@ import { OAuth2IdpAdapter } from './idp/oauth2-idp.adapter';
 import { SamlSpAdapter } from './idp/saml-sp.adapter';
 import { MfaVerificationAdapter } from './mfa/mfa-verification.adapter';
 import { TenantContextAdapter } from './adapters/tenant-context.adapter';
-import { AdminSessionAdapter } from './oidc-provider/admin-session.adapter';
+import { AdminSessionTokenAdapter } from './oidc-provider/admin-session-token.adapter';
 import { OidcInteractionAdapter } from './oidc-provider/oidc-interaction.adapter';
 
 // Password Hash Implementations
@@ -145,8 +145,8 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
       useClass: TenantContextAdapter,
     },
     {
-      provide: AdminSessionPort,
-      useClass: AdminSessionAdapter,
+      provide: AdminSessionTokenPort,
+      useClass: AdminSessionTokenAdapter,
     },
     {
       provide: OidcInteractionPort,
@@ -217,7 +217,7 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     NotificationModule,
     UserWriteRepositoryPort,
     TenantContextPort,
-    AdminSessionPort,
+    AdminSessionTokenPort,
     OidcInteractionPort,
     TenantRepository,
     GroupRepository,

@@ -1,19 +1,8 @@
-import {
-  Body,
-  Controller,
-  Get,
-  OnModuleDestroy,
-  OnModuleInit,
-  Param,
-  Post,
-  Req,
-  Res,
-} from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { resolve } from 'node:path';
 import { readFileSync, existsSync } from 'node:fs';
-import { UserQueryPort } from '@application/queries/ports/user-query.port';
-import { OidcInteractionPort } from '@application/ports/oidc-interaction.port';
+import { InteractionCommandPort } from '@application/ports/interaction-command.port';
 import type { TenantContext } from '@application/dto';
 
 const SPA_INDEX_PATH = resolve(
@@ -22,40 +11,10 @@ const SPA_INDEX_PATH = resolve(
 );
 
 @Controller('t/:tenantCode/interaction')
-export class InteractionController implements OnModuleInit, OnModuleDestroy {
-  private readonly MFA_SESSION_TTL_MS = 10 * 60 * 1000;
-  private readonly MFA_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
-
-  private readonly mfaPendingSessions = new Map<
-    string,
-    { userId: string; tenantId: string; expiresAt: number }
-  >();
-  private mfaCleanupTimer: NodeJS.Timeout | undefined;
-
+export class InteractionController {
   private cachedSpaHtml: string | null = null;
 
-  constructor(
-    private readonly userQuery: UserQueryPort,
-    private readonly oidcInteraction: OidcInteractionPort,
-  ) {}
-
-  onModuleInit() {
-    this.mfaCleanupTimer = setInterval(() => {
-      const now = Date.now();
-      for (const [uid, session] of this.mfaPendingSessions) {
-        if (session.expiresAt <= now) {
-          this.mfaPendingSessions.delete(uid);
-        }
-      }
-    }, this.MFA_CLEANUP_INTERVAL_MS);
-    this.mfaCleanupTimer.unref();
-  }
-
-  onModuleDestroy() {
-    if (this.mfaCleanupTimer) {
-      clearInterval(this.mfaCleanupTimer);
-    }
-  }
+  constructor(private readonly interactionCommand: InteractionCommandPort) {}
 
   @Get(':uid')
   serveSpa(@Res() res: Response) {
@@ -75,7 +34,7 @@ export class InteractionController implements OnModuleInit, OnModuleDestroy {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const details = await this.oidcInteraction.getDetails({
+    const details = await this.interactionCommand.getDetails({
       tenantCode,
       uid,
       req,
@@ -94,57 +53,16 @@ export class InteractionController implements OnModuleInit, OnModuleDestroy {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const tenant = this.getTenant(req);
-    if (!tenant) {
-      return res.status(400).json({ error: 'tenant_not_found' });
-    }
-
-    const result = await this.userQuery.authenticate({
-      tenantId: tenant.id,
-      username: body.username ?? '',
-      password: body.password ?? '',
-    });
-
-    if (!result) {
-      return res.status(401).json({ error: 'invalid_credentials' });
-    }
-
-    const details = await this.oidcInteraction.getDetails({
+    const result = await this.interactionCommand.submitLogin({
       tenantCode,
       uid,
+      username: body.username ?? '',
+      password: body.password ?? '',
       req,
       res,
-      tenant,
+      tenant: this.getTenant(req),
     });
-
-    if (details.mfaRequired) {
-      const methods = await this.userQuery.getMfaMethods(
-        tenant.id,
-        result.userId,
-      );
-      if (methods.length > 0) {
-        this.mfaPendingSessions.set(uid, {
-          userId: result.userId,
-          tenantId: tenant.id,
-          expiresAt: Date.now() + this.MFA_SESSION_TTL_MS,
-        });
-
-        return res.json({
-          success: true,
-          mfaRequired: true,
-          methods,
-        });
-      }
-    }
-
-    const { redirectTo } = await this.oidcInteraction.completeLogin({
-      tenantCode,
-      req,
-      res,
-      userId: result.userId,
-    });
-
-    return res.json({ success: true, mfaRequired: false, redirectTo });
+    return res.status(result.status ?? 200).json(result.body);
   }
 
   @Post(':uid/api/mfa')
@@ -160,37 +78,19 @@ export class InteractionController implements OnModuleInit, OnModuleDestroy {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const pending = this.mfaPendingSessions.get(uid);
-    if (!pending || pending.expiresAt <= Date.now()) {
-      this.mfaPendingSessions.delete(uid);
-      return res.status(400).json({ error: 'no_pending_mfa' });
-    }
-
     const host = req.get('host') ?? 'localhost';
-    const verified = await this.userQuery.verifyMfa({
-      tenantId: pending.tenantId,
-      userId: pending.userId,
+    const result = await this.interactionCommand.submitMfa({
+      tenantCode,
+      uid,
       method: body.method,
       code: body.code,
       webauthnResponse: body.webauthnResponse,
+      req,
+      res,
       rpId: host.split(':')[0],
       expectedOrigin: `${req.protocol}://${host}`,
     });
-
-    if (!verified) {
-      return res.status(401).json({ error: 'mfa_failed' });
-    }
-
-    this.mfaPendingSessions.delete(uid);
-
-    const { redirectTo } = await this.oidcInteraction.completeLogin({
-      tenantCode,
-      req,
-      res,
-      userId: pending.userId,
-    });
-
-    return res.json({ success: true, redirectTo });
+    return res.status(result.status ?? 200).json(result.body);
   }
 
   @Post(':uid/api/consent')
@@ -200,7 +100,7 @@ export class InteractionController implements OnModuleInit, OnModuleDestroy {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const result = await this.oidcInteraction.completeConsent({
+    const result = await this.interactionCommand.submitConsent({
       tenantCode,
       req,
       res,
@@ -219,7 +119,7 @@ export class InteractionController implements OnModuleInit, OnModuleDestroy {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const { redirectTo } = await this.oidcInteraction.abort({
+    const { redirectTo } = await this.interactionCommand.abort({
       tenantCode,
       req,
       res,
@@ -234,22 +134,13 @@ export class InteractionController implements OnModuleInit, OnModuleDestroy {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const pending = this.mfaPendingSessions.get(uid);
-    if (!pending || pending.expiresAt <= Date.now()) {
-      this.mfaPendingSessions.delete(uid);
-      return res.status(400).json({ error: 'no_pending_mfa' });
-    }
-
     const host = req.get('host') ?? 'localhost';
-    const options = await this.userQuery.verifyMfa({
-      tenantId: pending.tenantId,
-      userId: pending.userId,
-      method: 'webauthn',
+    const result = await this.interactionCommand.getWebAuthnOptions({
+      uid,
       rpId: host.split(':')[0],
       expectedOrigin: `${req.protocol}://${host}`,
     });
-
-    return res.json(options);
+    return res.status(result.status ?? 200).json(result.body);
   }
 
   @Get(':uid/idp/:provider')
@@ -260,7 +151,7 @@ export class InteractionController implements OnModuleInit, OnModuleDestroy {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const result = await this.oidcInteraction.getIdpRedirect({
+    const result = await this.interactionCommand.getIdpRedirect({
       tenantCode,
       uid,
       providerName,
@@ -282,7 +173,7 @@ export class InteractionController implements OnModuleInit, OnModuleDestroy {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const result = await this.oidcInteraction.handleIdpCallback({
+    const result = await this.interactionCommand.handleIdpCallback({
       tenantCode,
       uid,
       providerName,
@@ -302,7 +193,7 @@ export class InteractionController implements OnModuleInit, OnModuleDestroy {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const result = await this.oidcInteraction.getSamlMetadata({
+    const result = await this.interactionCommand.getSamlMetadata({
       tenantCode,
       providerName,
       req,
@@ -323,7 +214,7 @@ export class InteractionController implements OnModuleInit, OnModuleDestroy {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const result = await this.oidcInteraction.handleSamlCallback({
+    const result = await this.interactionCommand.handleSamlCallback({
       tenantCode,
       providerName,
       relayState: body.RelayState,
