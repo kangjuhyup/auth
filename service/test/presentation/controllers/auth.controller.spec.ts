@@ -13,6 +13,10 @@ function createMockCommandPort(): jest.Mocked<AuthCommandPort> {
     changePassword: jest.fn(),
     requestPasswordReset: jest.fn(),
     resetPassword: jest.fn(),
+    requestEmailVerification: jest.fn(),
+    verifyEmail: jest.fn(),
+    requestPhoneVerification: jest.fn(),
+    verifyPhone: jest.fn(),
     updateProfile: jest.fn(),
     revokeConsent: jest.fn(),
   } as any;
@@ -53,7 +57,9 @@ describe('AuthController', () => {
     const dto = { password: 'secret123' } as any;
     commandPort.withdraw.mockResolvedValue(undefined);
 
-    await expect(controller.withdraw(tenant, authUser, dto)).resolves.toBeUndefined();
+    await expect(
+      controller.withdraw(tenant, authUser, dto),
+    ).resolves.toBeUndefined();
     expect(commandPort.withdraw).toHaveBeenCalledWith(
       tenant.id,
       authUser.userId,
@@ -92,8 +98,62 @@ describe('AuthController', () => {
     const dto = { token: 'otp-token', newPassword: 'new' } as any;
     commandPort.resetPassword.mockResolvedValue(undefined);
 
-    await expect(controller.resetPassword(tenant, authUser, dto)).resolves.toBeUndefined();
+    await expect(
+      controller.resetPassword(tenant, authUser, dto),
+    ).resolves.toBeUndefined();
     expect(commandPort.resetPassword).toHaveBeenCalledWith(
+      tenant.id,
+      authUser.userId,
+      dto,
+    );
+  });
+
+  it('requestEmailVerification은 tenant.id와 authUser.userId를 commandPort에 전달한다', async () => {
+    commandPort.requestEmailVerification.mockResolvedValue(undefined);
+
+    await expect(
+      controller.requestEmailVerification(tenant, authUser),
+    ).resolves.toBeUndefined();
+    expect(commandPort.requestEmailVerification).toHaveBeenCalledWith(
+      tenant.id,
+      authUser.userId,
+    );
+  });
+
+  it('verifyEmail은 tenant.id와 authUser.userId, dto를 commandPort에 전달한다', async () => {
+    const dto = { token: 'otp-token' } as any;
+    commandPort.verifyEmail.mockResolvedValue(undefined);
+
+    await expect(
+      controller.verifyEmail(tenant, authUser, dto),
+    ).resolves.toBeUndefined();
+    expect(commandPort.verifyEmail).toHaveBeenCalledWith(
+      tenant.id,
+      authUser.userId,
+      dto,
+    );
+  });
+
+  it('requestPhoneVerification은 tenant.id와 authUser.userId를 commandPort에 전달한다', async () => {
+    commandPort.requestPhoneVerification.mockResolvedValue(undefined);
+
+    await expect(
+      controller.requestPhoneVerification(tenant, authUser),
+    ).resolves.toBeUndefined();
+    expect(commandPort.requestPhoneVerification).toHaveBeenCalledWith(
+      tenant.id,
+      authUser.userId,
+    );
+  });
+
+  it('verifyPhone은 tenant.id와 authUser.userId, dto를 commandPort에 전달한다', async () => {
+    const dto = { token: 'otp-token' } as any;
+    commandPort.verifyPhone.mockResolvedValue(undefined);
+
+    await expect(
+      controller.verifyPhone(tenant, authUser, dto),
+    ).resolves.toBeUndefined();
+    expect(commandPort.verifyPhone).toHaveBeenCalledWith(
       tenant.id,
       authUser.userId,
       dto,
@@ -104,7 +164,9 @@ describe('AuthController', () => {
     const profile = { userId: 'user-1', username: 'john' } as any;
     queryPort.getProfile.mockResolvedValue(profile);
 
-    await expect(controller.getProfile(tenant, authUser)).resolves.toBe(profile);
+    await expect(controller.getProfile(tenant, authUser)).resolves.toBe(
+      profile,
+    );
     expect(queryPort.getProfile).toHaveBeenCalledWith(
       tenant.id,
       authUser.userId,
@@ -115,7 +177,9 @@ describe('AuthController', () => {
     const dto = { email: 'new@example.com' } as any;
     commandPort.updateProfile.mockResolvedValue(undefined);
 
-    await expect(controller.updateProfile(tenant, authUser, dto)).resolves.toBeUndefined();
+    await expect(
+      controller.updateProfile(tenant, authUser, dto),
+    ).resolves.toBeUndefined();
     expect(commandPort.updateProfile).toHaveBeenCalledWith(
       tenant.id,
       authUser.userId,
@@ -124,10 +188,14 @@ describe('AuthController', () => {
   });
 
   it('getConsents는 tenant.id와 authUser.userId를 queryPort에 전달한다', async () => {
-    const consents = [{ clientId: 'client-1', grantedScopes: ['openid'] }] as any;
+    const consents = [
+      { clientId: 'client-1', grantedScopes: ['openid'] },
+    ] as any;
     queryPort.getConsents.mockResolvedValue(consents);
 
-    await expect(controller.getConsents(tenant, authUser)).resolves.toBe(consents);
+    await expect(controller.getConsents(tenant, authUser)).resolves.toBe(
+      consents,
+    );
     expect(queryPort.getConsents).toHaveBeenCalledWith(
       tenant.id,
       authUser.userId,

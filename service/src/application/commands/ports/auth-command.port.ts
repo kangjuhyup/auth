@@ -4,6 +4,7 @@ import {
   ChangePasswordDto,
   PasswordResetRequestDto,
   PasswordResetDto,
+  VerificationTokenDto,
   UpdateProfileDto,
 } from '@application/dto';
 
@@ -12,13 +13,20 @@ export abstract class AuthCommandPort {
    * Sign up a new user
    * @description 신규 유저 회원가입
    */
-  abstract signup(tenantId: string, dto: SignupDto): Promise<{ userId: string }>;
+  abstract signup(
+    tenantId: string,
+    dto: SignupDto,
+  ): Promise<{ userId: string }>;
 
   /**
    * Withdraw a user
    * @description 유저 탈퇴
    */
-  abstract withdraw(tenantId: string, userId: string, dto: WithdrawDto): Promise<void>;
+  abstract withdraw(
+    tenantId: string,
+    userId: string,
+    dto: WithdrawDto,
+  ): Promise<void>;
 
   /**
    * Change the password of a user
@@ -47,6 +55,44 @@ export abstract class AuthCommandPort {
     tenantId: string,
     userId: string,
     dto: PasswordResetDto,
+  ): Promise<void>;
+
+  /**
+   * Request email verification for the authenticated user
+   * @description 현재 사용자 이메일 인증 요청
+   */
+  abstract requestEmailVerification(
+    tenantId: string,
+    userId: string,
+  ): Promise<void>;
+
+  /**
+   * Verify email with token
+   * @description 토큰 기반 이메일 인증 완료
+   */
+  abstract verifyEmail(
+    tenantId: string,
+    userId: string,
+    dto: VerificationTokenDto,
+  ): Promise<void>;
+
+  /**
+   * Request phone verification for the authenticated user
+   * @description 현재 사용자 전화번호 인증 요청
+   */
+  abstract requestPhoneVerification(
+    tenantId: string,
+    userId: string,
+  ): Promise<void>;
+
+  /**
+   * Verify phone with token
+   * @description 토큰 기반 전화번호 인증 완료
+   */
+  abstract verifyPhone(
+    tenantId: string,
+    userId: string,
+    dto: VerificationTokenDto,
   ): Promise<void>;
 
   /**

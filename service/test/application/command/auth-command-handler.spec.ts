@@ -70,13 +70,11 @@ function createMockPasswordHash(): jest.Mocked<PasswordHashPort> {
     hash: 'hashed-password',
   };
   return {
-    defaultPolicy: jest
-      .fn()
-      .mockReturnValue({
-        alg: 'argon2id',
-        params: {},
-        version: 1,
-      } as HashPolicy),
+    defaultPolicy: jest.fn().mockReturnValue({
+      alg: 'argon2id',
+      params: {},
+      version: 1,
+    } as HashPolicy),
     hash: jest.fn().mockResolvedValue(result),
     verify: jest.fn().mockResolvedValue(true),
   };
@@ -106,6 +104,19 @@ function createMockOtpToken(): jest.Mocked<OtpTokenPort> {
   };
 }
 
+function makeOtpRecord(overrides?: Partial<OtpTokenRecord>): OtpTokenRecord {
+  return {
+    id: 'token-1',
+    tenantId: 'tenant-1',
+    userId: 'user-1',
+    purpose: 'PASSWORD_RESET',
+    requestId: 'request-1',
+    expiresAt: new Date(Date.now() + 60_000),
+    consumedAt: null,
+    ...overrides,
+  };
+}
+
 function createMockNotification(): jest.Mocked<NotificationPort> {
   return {
     notify: jest.fn().mockResolvedValue(undefined),
@@ -131,6 +142,7 @@ describe('AuthCommandHandler', () => {
     notification = createMockNotification();
     consentRepo = createMockConsentRepo();
     configService = {
+      get: jest.fn().mockReturnValue(undefined),
       getOrThrow: jest.fn().mockReturnValue('600'),
     } as any;
 
@@ -455,6 +467,272 @@ describe('AuthCommandHandler', () => {
     });
   });
 
+  describe('email verification', () => {
+    it('requestEmailVerification은 EMAIL_VERIFICATION 토큰을 만들고 email 알림을 보낸다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({
+          email: 'john@example.com',
+          emailVerified: false,
+        }),
+      );
+
+      await handler.requestEmailVerification('tenant-1', 'user-1');
+
+      expect(otpHash.generateToken).toHaveBeenCalledTimes(1);
+      expect(otpHash.hash).toHaveBeenCalledWith('john@example.com:plain-token');
+      expect(otpToken.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          purpose: 'EMAIL_VERIFICATION',
+          tokenHash: 'hashed-token',
+        }),
+      );
+      expect(notification.notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          channels: ['email'],
+          to: {
+            email: 'john@example.com',
+            phone: undefined,
+          },
+          template: 'auth.email_verification',
+          data: expect.objectContaining({
+            token: 'plain-token',
+            purpose: 'EMAIL_VERIFICATION',
+          }),
+        }),
+      );
+    });
+
+    it('이미 email 인증이 끝났으면 토큰과 알림을 만들지 않는다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({
+          email: 'john@example.com',
+          emailVerified: true,
+        }),
+      );
+
+      await handler.requestEmailVerification('tenant-1', 'user-1');
+
+      expect(otpToken.create).not.toHaveBeenCalled();
+      expect(notification.notify).not.toHaveBeenCalled();
+    });
+
+    it('email이 없으면 BadRequestException을 던지고 토큰을 만들지 않는다', async () => {
+      userWriteRepo.findById.mockResolvedValue(makeActiveUser({ email: null }));
+
+      await expect(
+        handler.requestEmailVerification('tenant-1', 'user-1'),
+      ).rejects.toThrow('email is required');
+
+      expect(otpToken.create).not.toHaveBeenCalled();
+      expect(notification.notify).not.toHaveBeenCalled();
+    });
+
+    it('verifyEmail은 contact-bound token을 검증하고 user를 저장한 뒤 토큰을 consume한다', async () => {
+      const user = makeActiveUser({
+        email: 'john@example.com',
+        emailVerified: false,
+      });
+      userWriteRepo.findById.mockResolvedValue(user);
+      otpToken.findValidByTokenHash.mockResolvedValue(
+        makeOtpRecord({ purpose: 'EMAIL_VERIFICATION' }),
+      );
+
+      await handler.verifyEmail('tenant-1', 'user-1', {
+        token: 'plain-token',
+      });
+
+      expect(otpHash.hash).toHaveBeenCalledWith('john@example.com:plain-token');
+      expect(otpToken.findValidByTokenHash).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        purpose: 'EMAIL_VERIFICATION',
+        tokenHash: 'hashed-token',
+      });
+      expect(user.emailVerified).toBe(true);
+      expect(userWriteRepo.save).toHaveBeenCalledWith(user);
+      expect(otpToken.consume).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          purpose: 'EMAIL_VERIFICATION',
+          otpTokenId: 'token-1',
+        }),
+      );
+    });
+
+    it('verifyEmail에서 유효한 토큰이 없으면 저장/consume하지 않는다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({ email: 'john@example.com' }),
+      );
+      otpToken.findValidByTokenHash.mockResolvedValue(undefined);
+
+      await expect(
+        handler.verifyEmail('tenant-1', 'user-1', {
+          token: 'bad-token',
+        }),
+      ).rejects.toThrow('InvalidToken');
+
+      expect(userWriteRepo.save).not.toHaveBeenCalled();
+      expect(otpToken.consume).not.toHaveBeenCalled();
+    });
+
+    it('verifyEmail에서 토큰 user가 다르면 저장/consume하지 않는다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({ email: 'john@example.com' }),
+      );
+      otpToken.findValidByTokenHash.mockResolvedValue(
+        makeOtpRecord({
+          purpose: 'EMAIL_VERIFICATION',
+          userId: 'other-user',
+        }),
+      );
+
+      await expect(
+        handler.verifyEmail('tenant-1', 'user-1', {
+          token: 'plain-token',
+        }),
+      ).rejects.toThrow('InvalidToken');
+
+      expect(userWriteRepo.save).not.toHaveBeenCalled();
+      expect(otpToken.consume).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('phone verification', () => {
+    it('requestPhoneVerification은 PHONE_VERIFICATION 토큰을 만들고 sms 알림을 보낸다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({
+          phone: '+821012345678',
+          phoneVerified: false,
+        }),
+      );
+
+      await handler.requestPhoneVerification('tenant-1', 'user-1');
+
+      expect(otpHash.generateToken).toHaveBeenCalledTimes(1);
+      expect(otpHash.hash).toHaveBeenCalledWith('+821012345678:plain-token');
+      expect(otpToken.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          purpose: 'PHONE_VERIFICATION',
+          tokenHash: 'hashed-token',
+        }),
+      );
+      expect(notification.notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          channels: ['sms'],
+          to: {
+            email: undefined,
+            phone: '+821012345678',
+          },
+          template: 'auth.phone_verification',
+          data: expect.objectContaining({
+            token: 'plain-token',
+            purpose: 'PHONE_VERIFICATION',
+          }),
+        }),
+      );
+    });
+
+    it('이미 phone 인증이 끝났으면 토큰과 알림을 만들지 않는다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({
+          phone: '+821012345678',
+          phoneVerified: true,
+        }),
+      );
+
+      await handler.requestPhoneVerification('tenant-1', 'user-1');
+
+      expect(otpToken.create).not.toHaveBeenCalled();
+      expect(notification.notify).not.toHaveBeenCalled();
+    });
+
+    it('phone이 없으면 BadRequestException을 던지고 토큰을 만들지 않는다', async () => {
+      userWriteRepo.findById.mockResolvedValue(makeActiveUser({ phone: null }));
+
+      await expect(
+        handler.requestPhoneVerification('tenant-1', 'user-1'),
+      ).rejects.toThrow('phone is required');
+
+      expect(otpToken.create).not.toHaveBeenCalled();
+      expect(notification.notify).not.toHaveBeenCalled();
+    });
+
+    it('verifyPhone은 contact-bound token을 검증하고 user를 저장한 뒤 토큰을 consume한다', async () => {
+      const user = makeActiveUser({
+        phone: '+821012345678',
+        phoneVerified: false,
+      });
+      userWriteRepo.findById.mockResolvedValue(user);
+      otpToken.findValidByTokenHash.mockResolvedValue(
+        makeOtpRecord({ purpose: 'PHONE_VERIFICATION' }),
+      );
+
+      await handler.verifyPhone('tenant-1', 'user-1', {
+        token: 'plain-token',
+      });
+
+      expect(otpHash.hash).toHaveBeenCalledWith('+821012345678:plain-token');
+      expect(otpToken.findValidByTokenHash).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        purpose: 'PHONE_VERIFICATION',
+        tokenHash: 'hashed-token',
+      });
+      expect(user.phoneVerified).toBe(true);
+      expect(userWriteRepo.save).toHaveBeenCalledWith(user);
+      expect(otpToken.consume).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          purpose: 'PHONE_VERIFICATION',
+          otpTokenId: 'token-1',
+        }),
+      );
+    });
+
+    it('verifyPhone에서 유효한 토큰이 없으면 저장/consume하지 않는다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({ phone: '+821012345678' }),
+      );
+      otpToken.findValidByTokenHash.mockResolvedValue(undefined);
+
+      await expect(
+        handler.verifyPhone('tenant-1', 'user-1', {
+          token: 'bad-token',
+        }),
+      ).rejects.toThrow('InvalidToken');
+
+      expect(userWriteRepo.save).not.toHaveBeenCalled();
+      expect(otpToken.consume).not.toHaveBeenCalled();
+    });
+
+    it('verifyPhone에서 토큰 user가 다르면 저장/consume하지 않는다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({ phone: '+821012345678' }),
+      );
+      otpToken.findValidByTokenHash.mockResolvedValue(
+        makeOtpRecord({
+          purpose: 'PHONE_VERIFICATION',
+          userId: 'other-user',
+        }),
+      );
+
+      await expect(
+        handler.verifyPhone('tenant-1', 'user-1', {
+          token: 'plain-token',
+        }),
+      ).rejects.toThrow('InvalidToken');
+
+      expect(userWriteRepo.save).not.toHaveBeenCalled();
+      expect(otpToken.consume).not.toHaveBeenCalled();
+    });
+  });
+
   describe('updateProfile', () => {
     it('유저가 없으면 UserNotFound를 던진다', async () => {
       userWriteRepo.findById.mockResolvedValue(undefined);
@@ -465,7 +743,9 @@ describe('AuthCommandHandler', () => {
     });
 
     it('tenant 불일치 시 TenantMismatch를 던진다', async () => {
-      userWriteRepo.findById.mockResolvedValue(makeActiveUser({ tenantId: 'other' }));
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({ tenantId: 'other' }),
+      );
 
       await expect(
         handler.updateProfile('tenant-1', 'user-1', {} as any),
@@ -473,7 +753,9 @@ describe('AuthCommandHandler', () => {
     });
 
     it('WITHDRAWN 유저는 UserAlreadyWithdrawn을 던진다', async () => {
-      userWriteRepo.findById.mockResolvedValue(makeActiveUser({ status: 'WITHDRAWN' }));
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({ status: 'WITHDRAWN' }),
+      );
 
       await expect(
         handler.updateProfile('tenant-1', 'user-1', {} as any),

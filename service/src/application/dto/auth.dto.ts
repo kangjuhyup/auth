@@ -24,6 +24,10 @@ export interface PasswordResetDto {
   newPassword: string;
 }
 
+export interface VerificationTokenDto {
+  token: string;
+}
+
 export interface UpdateProfileDto {
   email?: string;
   phone?: string;

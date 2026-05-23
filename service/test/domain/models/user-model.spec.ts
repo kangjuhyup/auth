@@ -10,7 +10,9 @@ describe('UserModel', () => {
       hashVersion: 1,
     });
 
-  function makeActiveUser(overrides?: Partial<Parameters<typeof UserModel.of>[0]>): UserModel {
+  function makeActiveUser(
+    overrides?: Partial<Parameters<typeof UserModel.of>[0]>,
+  ): UserModel {
     return UserModel.of({
       id: 'user-1',
       tenantId: 'tenant-1',
@@ -148,6 +150,62 @@ describe('UserModel', () => {
       });
 
       expect(() => user.changePassword(newCred)).toThrow();
+    });
+  });
+
+  describe('verifyEmail', () => {
+    it('email 인증 상태를 true로 변경한다', () => {
+      const user = makeActiveUser({
+        email: 'john@example.com',
+        emailVerified: false,
+      });
+
+      user.verifyEmail();
+
+      expect(user.emailVerified).toBe(true);
+    });
+
+    it('email이 없으면 EmailNotSet을 던진다', () => {
+      const user = makeActiveUser({ email: null });
+
+      expect(() => user.verifyEmail()).toThrow('EmailNotSet');
+    });
+
+    it('WITHDRAWN 상태면 UserAlreadyWithdrawn을 던진다', () => {
+      const user = makeActiveUser({
+        email: 'john@example.com',
+        status: 'WITHDRAWN',
+      });
+
+      expect(() => user.verifyEmail()).toThrow('UserAlreadyWithdrawn');
+    });
+  });
+
+  describe('verifyPhone', () => {
+    it('phone 인증 상태를 true로 변경한다', () => {
+      const user = makeActiveUser({
+        phone: '+821012345678',
+        phoneVerified: false,
+      });
+
+      user.verifyPhone();
+
+      expect(user.phoneVerified).toBe(true);
+    });
+
+    it('phone이 없으면 PhoneNotSet을 던진다', () => {
+      const user = makeActiveUser({ phone: null });
+
+      expect(() => user.verifyPhone()).toThrow('PhoneNotSet');
+    });
+
+    it('WITHDRAWN 상태면 UserAlreadyWithdrawn을 던진다', () => {
+      const user = makeActiveUser({
+        phone: '+821012345678',
+        status: 'WITHDRAWN',
+      });
+
+      expect(() => user.verifyPhone()).toThrow('UserAlreadyWithdrawn');
     });
   });
 });

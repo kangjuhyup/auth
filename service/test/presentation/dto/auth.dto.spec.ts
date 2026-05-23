@@ -6,6 +6,7 @@ import {
   ChangePasswordDto,
   PasswordResetRequestDto,
   PasswordResetDto,
+  VerificationTokenDto,
   UpdateProfileDto,
 } from '@presentation/dto/auth/auth.dto';
 
@@ -22,7 +23,10 @@ describe('SignupDto', () => {
   });
 
   it('username 누락 시 에러', async () => {
-    const errors = await getErrors(SignupDto, { ...valid, username: undefined });
+    const errors = await getErrors(SignupDto, {
+      ...valid,
+      username: undefined,
+    });
     expect(errors.some((e) => e.property === 'username')).toBe(true);
   });
 
@@ -32,7 +36,10 @@ describe('SignupDto', () => {
   });
 
   it('username 65자 초과면 에러 (maxLength=64)', async () => {
-    const errors = await getErrors(SignupDto, { ...valid, username: 'a'.repeat(65) });
+    const errors = await getErrors(SignupDto, {
+      ...valid,
+      username: 'a'.repeat(65),
+    });
     expect(errors.some((e) => e.property === 'username')).toBe(true);
   });
 
@@ -42,27 +49,42 @@ describe('SignupDto', () => {
   });
 
   it('password 누락 시 에러', async () => {
-    const errors = await getErrors(SignupDto, { ...valid, password: undefined });
+    const errors = await getErrors(SignupDto, {
+      ...valid,
+      password: undefined,
+    });
     expect(errors.some((e) => e.property === 'password')).toBe(true);
   });
 
   it('password 7자 이하면 에러 (minLength=8)', async () => {
-    const errors = await getErrors(SignupDto, { ...valid, password: 'short1!' });
+    const errors = await getErrors(SignupDto, {
+      ...valid,
+      password: 'short1!',
+    });
     expect(errors.some((e) => e.property === 'password')).toBe(true);
   });
 
   it('유효한 email 허용', async () => {
-    const errors = await getErrors(SignupDto, { ...valid, email: 'user@example.com' });
+    const errors = await getErrors(SignupDto, {
+      ...valid,
+      email: 'user@example.com',
+    });
     expect(errors).toHaveLength(0);
   });
 
   it('잘못된 email 형식이면 에러', async () => {
-    const errors = await getErrors(SignupDto, { ...valid, email: 'not-an-email' });
+    const errors = await getErrors(SignupDto, {
+      ...valid,
+      email: 'not-an-email',
+    });
     expect(errors.some((e) => e.property === 'email')).toBe(true);
   });
 
   it('유효한 phone 허용', async () => {
-    const errors = await getErrors(SignupDto, { ...valid, phone: '+821012345678' });
+    const errors = await getErrors(SignupDto, {
+      ...valid,
+      phone: '+821012345678',
+    });
     expect(errors).toHaveLength(0);
   });
 
@@ -80,7 +102,9 @@ describe('SignupDto', () => {
 
 describe('WithdrawDto', () => {
   it('유효한 값이면 에러 없음', async () => {
-    expect(await getErrors(WithdrawDto, { password: 'Passw0rd!' })).toHaveLength(0);
+    expect(
+      await getErrors(WithdrawDto, { password: 'Passw0rd!' }),
+    ).toHaveLength(0);
   });
 
   it('password 누락 시 에러', async () => {
@@ -102,17 +126,26 @@ describe('ChangePasswordDto', () => {
   });
 
   it('currentPassword 누락 시 에러', async () => {
-    const errors = await getErrors(ChangePasswordDto, { ...valid, currentPassword: undefined });
+    const errors = await getErrors(ChangePasswordDto, {
+      ...valid,
+      currentPassword: undefined,
+    });
     expect(errors.some((e) => e.property === 'currentPassword')).toBe(true);
   });
 
   it('newPassword 누락 시 에러', async () => {
-    const errors = await getErrors(ChangePasswordDto, { ...valid, newPassword: undefined });
+    const errors = await getErrors(ChangePasswordDto, {
+      ...valid,
+      newPassword: undefined,
+    });
     expect(errors.some((e) => e.property === 'newPassword')).toBe(true);
   });
 
   it('newPassword 7자 이하면 에러', async () => {
-    const errors = await getErrors(ChangePasswordDto, { ...valid, newPassword: 'short1!' });
+    const errors = await getErrors(ChangePasswordDto, {
+      ...valid,
+      newPassword: 'short1!',
+    });
     expect(errors.some((e) => e.property === 'newPassword')).toBe(true);
   });
 });
@@ -123,20 +156,28 @@ describe('PasswordResetRequestDto', () => {
   });
 
   it('유효한 email이면 에러 없음', async () => {
-    expect(await getErrors(PasswordResetRequestDto, { email: 'user@example.com' })).toHaveLength(0);
+    expect(
+      await getErrors(PasswordResetRequestDto, { email: 'user@example.com' }),
+    ).toHaveLength(0);
   });
 
   it('잘못된 email 형식이면 에러', async () => {
-    const errors = await getErrors(PasswordResetRequestDto, { email: 'bad-email' });
+    const errors = await getErrors(PasswordResetRequestDto, {
+      email: 'bad-email',
+    });
     expect(errors.some((e) => e.property === 'email')).toBe(true);
   });
 
   it('유효한 phone이면 에러 없음', async () => {
-    expect(await getErrors(PasswordResetRequestDto, { phone: '+821012345678' })).toHaveLength(0);
+    expect(
+      await getErrors(PasswordResetRequestDto, { phone: '+821012345678' }),
+    ).toHaveLength(0);
   });
 
   it('잘못된 phone이면 에러', async () => {
-    const errors = await getErrors(PasswordResetRequestDto, { phone: 'invalid' });
+    const errors = await getErrors(PasswordResetRequestDto, {
+      phone: 'invalid',
+    });
     expect(errors.some((e) => e.property === 'phone')).toBe(true);
   });
 });
@@ -149,13 +190,39 @@ describe('PasswordResetDto', () => {
   });
 
   it('token 누락 시 에러', async () => {
-    const errors = await getErrors(PasswordResetDto, { ...valid, token: undefined });
+    const errors = await getErrors(PasswordResetDto, {
+      ...valid,
+      token: undefined,
+    });
     expect(errors.some((e) => e.property === 'token')).toBe(true);
   });
 
   it('newPassword 7자 이하면 에러', async () => {
-    const errors = await getErrors(PasswordResetDto, { ...valid, newPassword: 'short1!' });
+    const errors = await getErrors(PasswordResetDto, {
+      ...valid,
+      newPassword: 'short1!',
+    });
     expect(errors.some((e) => e.property === 'newPassword')).toBe(true);
+  });
+});
+
+describe('VerificationTokenDto', () => {
+  it('유효한 token이면 에러 없음', async () => {
+    expect(
+      await getErrors(VerificationTokenDto, { token: '123456' }),
+    ).toHaveLength(0);
+  });
+
+  it('token 누락 시 에러', async () => {
+    const errors = await getErrors(VerificationTokenDto, {});
+    expect(errors.some((e) => e.property === 'token')).toBe(true);
+  });
+
+  it('token이 512자 초과면 에러', async () => {
+    const errors = await getErrors(VerificationTokenDto, {
+      token: 'a'.repeat(513),
+    });
+    expect(errors.some((e) => e.property === 'token')).toBe(true);
   });
 });
 
@@ -165,7 +232,9 @@ describe('UpdateProfileDto', () => {
   });
 
   it('유효한 email이면 에러 없음', async () => {
-    expect(await getErrors(UpdateProfileDto, { email: 'new@example.com' })).toHaveLength(0);
+    expect(
+      await getErrors(UpdateProfileDto, { email: 'new@example.com' }),
+    ).toHaveLength(0);
   });
 
   it('잘못된 email이면 에러', async () => {
@@ -174,7 +243,9 @@ describe('UpdateProfileDto', () => {
   });
 
   it('유효한 phone이면 에러 없음', async () => {
-    expect(await getErrors(UpdateProfileDto, { phone: '01012345678' })).toHaveLength(0);
+    expect(
+      await getErrors(UpdateProfileDto, { phone: '01012345678' }),
+    ).toHaveLength(0);
   });
 
   it('잘못된 phone이면 에러', async () => {

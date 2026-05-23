@@ -16,6 +16,7 @@ import {
   ChangePasswordDto,
   PasswordResetRequestDto,
   PasswordResetDto,
+  VerificationTokenDto,
   UpdateProfileDto,
   ProfileResponse,
   ConsentResponse,
@@ -83,6 +84,48 @@ export class AuthController {
     @Body() dto: PasswordResetDto,
   ): Promise<void> {
     return this.commandPort.resetPassword(tenant.id, user.userId, dto);
+  }
+
+  @Post('email/verification-request')
+  @UseGuards(AccessGuard)
+  @ApiBearerAuth('access-token')
+  requestEmailVerification(
+    @Tenant() tenant: TenantContext,
+    @AuthUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    return this.commandPort.requestEmailVerification(tenant.id, user.userId);
+  }
+
+  @Post('email/verify')
+  @UseGuards(AccessGuard)
+  @ApiBearerAuth('access-token')
+  verifyEmail(
+    @Tenant() tenant: TenantContext,
+    @AuthUser() user: AuthenticatedUser,
+    @Body() dto: VerificationTokenDto,
+  ): Promise<void> {
+    return this.commandPort.verifyEmail(tenant.id, user.userId, dto);
+  }
+
+  @Post('phone/verification-request')
+  @UseGuards(AccessGuard)
+  @ApiBearerAuth('access-token')
+  requestPhoneVerification(
+    @Tenant() tenant: TenantContext,
+    @AuthUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    return this.commandPort.requestPhoneVerification(tenant.id, user.userId);
+  }
+
+  @Post('phone/verify')
+  @UseGuards(AccessGuard)
+  @ApiBearerAuth('access-token')
+  verifyPhone(
+    @Tenant() tenant: TenantContext,
+    @AuthUser() user: AuthenticatedUser,
+    @Body() dto: VerificationTokenDto,
+  ): Promise<void> {
+    return this.commandPort.verifyPhone(tenant.id, user.userId, dto);
   }
 
   @Get('profile')

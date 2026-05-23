@@ -5,9 +5,6 @@ import {
   MinLength,
   MaxLength,
   Matches,
-  IsBoolean,
-  IsDateString,
-  IsIn,
   IsNotEmpty,
 } from 'class-validator';
 import { Transform, Expose } from 'class-transformer';
@@ -17,7 +14,9 @@ export class SignupDto {
   @IsNotEmpty()
   @MinLength(3)
   @MaxLength(64)
-  @Matches(/^[a-zA-Z0-9_.-]+$/, { message: 'username은 영문자, 숫자, _, ., - 만 허용됩니다' })
+  @Matches(/^[a-zA-Z0-9_.-]+$/, {
+    message: 'username은 영문자, 숫자, _, ., - 만 허용됩니다',
+  })
   username!: string;
 
   @IsString()
@@ -84,6 +83,13 @@ export class PasswordResetDto {
   newPassword!: string;
 }
 
+export class VerificationTokenDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(512)
+  token!: string;
+}
+
 export class UpdateProfileDto {
   @IsOptional()
   @IsEmail()
@@ -119,11 +125,15 @@ export class ProfileResponse {
   status!: string;
 
   @Expose()
-  @Transform(({ value }) => (value instanceof Date ? value.toISOString() : value))
+  @Transform(({ value }) =>
+    value instanceof Date ? value.toISOString() : value,
+  )
   createdAt?: Date;
 
   @Expose()
-  @Transform(({ value }) => (value instanceof Date ? value.toISOString() : value))
+  @Transform(({ value }) =>
+    value instanceof Date ? value.toISOString() : value,
+  )
   updatedAt?: Date;
 }
 
@@ -138,6 +148,8 @@ export class ConsentResponse {
   grantedScopes!: string;
 
   @Expose()
-  @Transform(({ value }) => (value instanceof Date ? value.toISOString() : value))
+  @Transform(({ value }) =>
+    value instanceof Date ? value.toISOString() : value,
+  )
   grantedAt!: Date;
 }

@@ -3,6 +3,7 @@ import {
   ChangePasswordDto,
   PasswordResetRequestDto,
   PasswordResetDto,
+  VerificationTokenDto,
   UpdateProfileDto,
   SignupDto,
 } from '@application/dto';
@@ -91,7 +92,9 @@ export class AuthCommandHandler implements AuthCommandPort {
     userId: string,
     dto: ChangePasswordDto,
   ): Promise<void> {
-    this.logger.log(`Changing password for user ${userId} in tenant ${tenantId}`);
+    this.logger.log(
+      `Changing password for user ${userId} in tenant ${tenantId}`,
+    );
 
     const user = orThrow(
       await this.userWriteRepo.findById(userId),
@@ -140,7 +143,9 @@ export class AuthCommandHandler implements AuthCommandPort {
     const rawToken = this.otpHash.generateToken(32);
     const tokenHash = this.otpHash.hash(rawToken);
 
-    const ttlSec = Number(this.configService.getOrThrow<string>('OTP_PASSWORD_RESET_TTL_SEC'));
+    const ttlSec = Number(
+      this.configService.getOrThrow<string>('OTP_PASSWORD_RESET_TTL_SEC'),
+    );
     const issuedAt = new Date();
     const expiresAt = new Date(issuedAt.getTime() + ttlSec * 1000);
 
@@ -224,12 +229,154 @@ export class AuthCommandHandler implements AuthCommandPort {
     });
   }
 
+  async requestEmailVerification(
+    tenantId: string,
+    userId: string,
+  ): Promise<void> {
+    this.logger.log(`Requesting email verification for user=${userId}`);
+
+    const user = this.assertActiveTenantUser(
+      await this.userWriteRepo.findById(userId),
+      tenantId,
+    );
+    if (!user.email) throw new BadRequestException('email is required');
+    if (user.emailVerified) return;
+
+    const rawToken = await this.createVerificationToken({
+      tenantId,
+      userId,
+      purpose: 'EMAIL_VERIFICATION',
+      contact: user.email,
+      ttlSec: this.getTtlSec('OTP_EMAIL_VERIFICATION_TTL_SEC', 900),
+    });
+
+    await this.notification.notify({
+      correlationId: ulid(),
+      tenantId,
+      userId: user.id,
+      to: { email: user.email },
+      template: 'auth.email_verification',
+      data: {
+        token: rawToken,
+        purpose: 'EMAIL_VERIFICATION',
+      },
+      channels: ['email'],
+    });
+  }
+
+  async verifyEmail(
+    tenantId: string,
+    userId: string,
+    dto: VerificationTokenDto,
+  ): Promise<void> {
+    const user = this.assertActiveTenantUser(
+      await this.userWriteRepo.findById(userId),
+      tenantId,
+    );
+    if (!user.email) throw new BadRequestException('email is required');
+
+    const tokenHash = this.hashVerificationToken({
+      token: dto.token,
+      contact: user.email,
+    });
+    const record = orThrow(
+      await this.otpToken.findValidByTokenHash({
+        tenantId,
+        purpose: 'EMAIL_VERIFICATION',
+        tokenHash,
+      }),
+      new Error('InvalidToken'),
+    );
+    if (record.userId !== userId) throw new Error('InvalidToken');
+
+    user.verifyEmail();
+    await this.userWriteRepo.save(user);
+    await this.otpToken.consume({
+      tenantId,
+      purpose: 'EMAIL_VERIFICATION',
+      otpTokenId: record.id,
+      consumedAt: new Date(),
+    });
+  }
+
+  async requestPhoneVerification(
+    tenantId: string,
+    userId: string,
+  ): Promise<void> {
+    this.logger.log(`Requesting phone verification for user=${userId}`);
+
+    const user = this.assertActiveTenantUser(
+      await this.userWriteRepo.findById(userId),
+      tenantId,
+    );
+    if (!user.phone) throw new BadRequestException('phone is required');
+    if (user.phoneVerified) return;
+
+    const rawToken = await this.createVerificationToken({
+      tenantId,
+      userId,
+      purpose: 'PHONE_VERIFICATION',
+      contact: user.phone,
+      ttlSec: this.getTtlSec('OTP_PHONE_VERIFICATION_TTL_SEC', 300),
+    });
+
+    await this.notification.notify({
+      correlationId: ulid(),
+      tenantId,
+      userId: user.id,
+      to: { phone: user.phone },
+      template: 'auth.phone_verification',
+      data: {
+        token: rawToken,
+        purpose: 'PHONE_VERIFICATION',
+      },
+      channels: ['sms'],
+    });
+  }
+
+  async verifyPhone(
+    tenantId: string,
+    userId: string,
+    dto: VerificationTokenDto,
+  ): Promise<void> {
+    const user = this.assertActiveTenantUser(
+      await this.userWriteRepo.findById(userId),
+      tenantId,
+    );
+    if (!user.phone) throw new BadRequestException('phone is required');
+
+    const tokenHash = this.hashVerificationToken({
+      token: dto.token,
+      contact: user.phone,
+    });
+    const record = orThrow(
+      await this.otpToken.findValidByTokenHash({
+        tenantId,
+        purpose: 'PHONE_VERIFICATION',
+        tokenHash,
+      }),
+      new Error('InvalidToken'),
+    );
+    if (record.userId !== userId) throw new Error('InvalidToken');
+
+    user.verifyPhone();
+    await this.userWriteRepo.save(user);
+    await this.otpToken.consume({
+      tenantId,
+      purpose: 'PHONE_VERIFICATION',
+      otpTokenId: record.id,
+      consumedAt: new Date(),
+    });
+  }
+
   async updateProfile(
     tenantId: string,
     userId: string,
     dto: UpdateProfileDto,
   ): Promise<void> {
-    this.logger.log(`Updating profile for user ${userId} in tenant ${tenantId}`);
+    this.logger.log(
+      `Updating profile for user ${userId} in tenant ${tenantId}`,
+    );
 
     const user = orThrow(
       await this.userWriteRepo.findById(userId),
@@ -248,6 +395,58 @@ export class AuthCommandHandler implements AuthCommandPort {
     await this.userWriteRepo.save(user);
   }
 
+  private async createVerificationToken(params: {
+    tenantId: string;
+    userId: string;
+    purpose: 'EMAIL_VERIFICATION' | 'PHONE_VERIFICATION';
+    contact: string;
+    ttlSec: number;
+  }): Promise<string> {
+    const requestId = ulid();
+    const rawToken = this.otpHash.generateToken(32);
+    const tokenHash = this.hashVerificationToken({
+      token: rawToken,
+      contact: params.contact,
+    });
+    const issuedAt = new Date();
+    const expiresAt = new Date(issuedAt.getTime() + params.ttlSec * 1000);
+
+    await this.otpToken.create({
+      tenantId: params.tenantId,
+      userId: params.userId,
+      purpose: params.purpose,
+      requestId,
+      tokenHash,
+      issuedAt,
+      expiresAt,
+    });
+
+    return rawToken;
+  }
+
+  private hashVerificationToken(params: {
+    token: string;
+    contact: string;
+  }): string {
+    return this.otpHash.hash(`${params.contact.trim()}:${params.token.trim()}`);
+  }
+
+  private getTtlSec(key: string, fallback: number): number {
+    const raw = this.configService.get<string>(key);
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  }
+
+  private assertActiveTenantUser(
+    user: UserModel | undefined,
+    tenantId: string,
+  ): UserModel {
+    const found = orThrow(user, new Error('UserNotFound'));
+    if (found.tenantId !== tenantId) throw new Error('TenantMismatch');
+    if (found.status === 'WITHDRAWN') throw new Error('UserAlreadyWithdrawn');
+    return found;
+  }
+
   async revokeConsent(
     tenantId: string,
     userId: string,
@@ -258,11 +457,7 @@ export class AuthCommandHandler implements AuthCommandPort {
     );
 
     const consent = orThrow(
-      await this.consentRepo.findByTenantUserClient(
-        tenantId,
-        userId,
-        clientId,
-      ),
+      await this.consentRepo.findByTenantUserClient(tenantId, userId, clientId),
       new Error('ConsentNotFound'),
     );
     if (consent.isRevoked) return;

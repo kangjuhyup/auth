@@ -99,10 +99,22 @@ export class UserModel extends PersistenceModel<string, UserProps> {
     this.etc.emailVerified = false;
   }
 
+  verifyEmail(): void {
+    if (this.status === 'WITHDRAWN') throw new Error('UserAlreadyWithdrawn');
+    if (!this.email) throw new Error('EmailNotSet');
+    this.etc.emailVerified = true;
+  }
+
   changePhone(phone: string | null): void {
     if (this.status === 'WITHDRAWN') throw new Error('UserAlreadyWithdrawn');
     this.etc.phone = phone;
     this.etc.phoneVerified = false;
+  }
+
+  verifyPhone(): void {
+    if (this.status === 'WITHDRAWN') throw new Error('UserAlreadyWithdrawn');
+    if (!this.phone) throw new Error('PhoneNotSet');
+    this.etc.phoneVerified = true;
   }
 
   changeStatus(status: UserStatus): void {
