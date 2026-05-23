@@ -325,12 +325,16 @@ export const mockAuthApi = {
     // Mock credentials: admin/admin
     if (dto.username === 'admin' && dto.password === 'admin') {
       return {
-        token: 'mock-jwt-token-' + Date.now(),
         username: dto.username,
       };
     }
 
     throw new Error('Invalid credentials');
+  },
+
+  getSession: async (): Promise<LoginResponse> => {
+    await delay(100);
+    return { username: 'admin' };
   },
 
   logout: async (): Promise<void> => {

@@ -1,4 +1,5 @@
 import { AdminGuard } from '@presentation/http/admin.guard';
+import { ADMIN_SESSION_COOKIE_NAME } from '@presentation/http/admin-session-cookie';
 import type { ExecutionContext } from '@nestjs/common';
 
 function makeContext(req: any): ExecutionContext {
@@ -55,6 +56,20 @@ describe('AdminGuard', () => {
     );
 
     expect(adminSession.verifyAdminToken).toHaveBeenCalledWith('valid-token');
+    expect(result).toBe(true);
+  });
+
+  it('admin session cookie가 있으면 cookie token으로 검증한다', async () => {
+    const adminSession = makeAdminSession(true);
+    const guard = new AdminGuard(adminSession as any);
+
+    const result = await guard.canActivate(
+      makeContext({
+        headers: { cookie: `${ADMIN_SESSION_COOKIE_NAME}=cookie-token` },
+      }),
+    );
+
+    expect(adminSession.verifyAdminToken).toHaveBeenCalledWith('cookie-token');
     expect(result).toBe(true);
   });
 

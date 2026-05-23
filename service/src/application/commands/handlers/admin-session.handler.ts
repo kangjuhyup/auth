@@ -54,9 +54,25 @@ export class AdminSessionHandler extends AdminSessionPort {
   }
 
   async verifyAdminToken(token: string): Promise<boolean> {
+    const session = await this.getVerifiedSession(token);
+    return session !== null;
+  }
+
+  async getAdminSession(token: string): Promise<{ username: string } | null> {
+    const session = await this.getVerifiedSession(token);
+    if (!session) {
+      return null;
+    }
+
+    return { username: session.username };
+  }
+
+  private async getVerifiedSession(
+    token: string,
+  ): Promise<{ username: string } | null> {
     const tenant = await this.tenantRepo.findByCode(MASTER_TENANT);
     if (!tenant) {
-      return false;
+      return null;
     }
 
     const verified = await this.tokenPort.verify({
@@ -64,13 +80,25 @@ export class AdminSessionHandler extends AdminSessionPort {
       token,
     });
     if (!verified) {
-      return false;
+      return null;
     }
 
     const roles = await this.adminQuery.getUserRoles(
       tenant.id,
       verified.userId,
     );
-    return roles.some((role) => role.code === ADMIN_ROLE);
+    if (!roles.some((role) => role.code === ADMIN_ROLE)) {
+      return null;
+    }
+
+    const profile = await this.userQuery.findProfile({
+      tenantId: tenant.id,
+      userId: verified.userId,
+    });
+    if (!profile) {
+      return null;
+    }
+
+    return { username: profile.username };
   }
 }

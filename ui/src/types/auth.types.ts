@@ -1,6 +1,5 @@
 export interface AuthSession {
   isAuthenticated: boolean;
-  token: string | null;
   username: string | null;
 }
 
@@ -10,7 +9,6 @@ export interface LoginDto {
 }
 
 export interface LoginResponse {
-  token: string;
   username: string;
 }
 

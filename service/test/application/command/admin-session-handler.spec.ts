@@ -13,6 +13,10 @@ describe('AdminSessionHandler', () => {
     };
     userQuery = {
       authenticate: jest.fn().mockResolvedValue({ userId: 'user-1' }),
+      findProfile: jest.fn().mockResolvedValue({
+        userId: 'user-1',
+        username: 'admin',
+      }),
     };
     adminQuery = {
       getUserRoles: jest.fn().mockResolvedValue([{ code: 'SUPER_ADMIN' }]),
@@ -71,6 +75,17 @@ describe('AdminSessionHandler', () => {
       token: 'valid-token',
     });
     expect(adminQuery.getUserRoles).toHaveBeenCalledWith('tenant-1', 'user-1');
+  });
+
+  it('관리자 세션 조회 시 사용자명을 반환한다', async () => {
+    await expect(handler.getAdminSession('valid-token')).resolves.toEqual({
+      username: 'admin',
+    });
+
+    expect(userQuery.findProfile).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+    });
   });
 
   it('토큰 검증 실패 시 false를 반환한다', async () => {

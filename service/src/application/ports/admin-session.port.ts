@@ -5,4 +5,6 @@ export abstract class AdminSessionPort {
   }): Promise<{ token: string; username: string } | null>;
 
   abstract verifyAdminToken(token: string): Promise<boolean>;
+
+  abstract getAdminSession(token: string): Promise<{ username: string } | null>;
 }

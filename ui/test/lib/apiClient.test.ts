@@ -29,7 +29,6 @@ describe('apiClient', () => {
     vi.stubGlobal('location', { href: '' });
 
     vi.mocked(useAuthStore.getState).mockReturnValue({
-      token: null,
       clearAuth: clearAuthMock,
       isAuthenticated: false,
       username: null,
@@ -41,26 +40,17 @@ describe('apiClient', () => {
     vi.unstubAllGlobals();
   });
 
-  describe('Authorization 헤더', () => {
-    it('token 이 있으면 Bearer 헤더를 주입한다', async () => {
-      vi.mocked(useAuthStore.getState).mockReturnValue({
-        token: 'my-token',
-        clearAuth: clearAuthMock,
-        isAuthenticated: true,
-        username: 'user',
-        login: vi.fn(),
-      });
+  describe('Cookie credentials', () => {
+    it('기본 요청은 HttpOnly cookie 전송을 위해 credentials: include를 사용한다', async () => {
       fetchMock.mockResolvedValue(makeResponse({ data: 'ok' }));
 
       await apiClient.get('/test');
 
       const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-      expect((init.headers as Record<string, string>)['Authorization']).toBe(
-        'Bearer my-token',
-      );
+      expect(init.credentials).toBe('include');
     });
 
-    it('token 이 null 이면 Authorization 헤더를 포함하지 않는다', async () => {
+    it('Authorization 헤더를 자동으로 포함하지 않는다', async () => {
       fetchMock.mockResolvedValue(makeResponse({ data: 'ok' }));
 
       await apiClient.get('/test');

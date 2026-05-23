@@ -11,18 +11,8 @@ async function request<T>(
 ): Promise<T> {
   const { body, headers: customHeaders, params, ...restOptions } = options;
 
-  let token: string | null = null;
-
-  try {
-    const { useAuthStore } = await import('@/stores/auth.store');
-    token = useAuthStore.getState().token;
-  } catch {
-    // Stores not yet initialized (e.g., during initial load)
-  }
-
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
-    ...(token && { Authorization: `Bearer ${token}` }),
     ...customHeaders,
   };
 
@@ -43,6 +33,7 @@ async function request<T>(
 
   const response = await fetch(url, {
     ...restOptions,
+    credentials: restOptions.credentials ?? 'include',
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });

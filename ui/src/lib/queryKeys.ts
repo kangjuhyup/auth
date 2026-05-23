@@ -60,6 +60,7 @@ export const queryKeys = {
     },
   },
   auth: {
+    adminSession: ['auth', 'admin-session'] as const,
     profile: (tenantCode: string) => ['auth', tenantCode, 'profile'] as const,
     identityLinks: (tenantCode: string) =>
       ['auth', tenantCode, 'identity-links'] as const,

@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import type { Request } from 'express';
 import { AdminSessionPort } from '@application/ports/admin-session.port';
+import { resolveAdminSessionToken } from './admin-session-cookie';
 
 @Injectable()
 export class AdminGuard implements CanActivate {
@@ -8,10 +9,7 @@ export class AdminGuard implements CanActivate {
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest<Request>();
-    const auth = req.headers['authorization'];
-    if (!auth?.startsWith('Bearer ')) return false;
-
-    const token = auth.slice(7).trim();
+    const token = resolveAdminSessionToken(req);
     if (!token) return false;
 
     try {

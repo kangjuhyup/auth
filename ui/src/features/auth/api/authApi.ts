@@ -21,6 +21,11 @@ export const authApi = {
     return apiClient.post<LoginResponse>('/admin/session', dto);
   },
 
+  getSession: (): Promise<LoginResponse> => {
+    if (USE_MOCK) return mockApi.auth.getSession();
+    return apiClient.get<LoginResponse>('/admin/session');
+  },
+
   logout: (): Promise<void> => {
     if (USE_MOCK) return mockApi.auth.logout();
     return apiClient.delete<void>('/admin/session').catch(() => {});

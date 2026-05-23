@@ -12,7 +12,7 @@ export function useLogin() {
   return useMutation({
     mutationFn: (dto: LoginDto) => authApi.login(dto),
     onSuccess: (data) => {
-      login(data.username, data.token);
+      login(data.username);
       message.success('Login successful');
       navigate('/admin/tenants');
     },
