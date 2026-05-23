@@ -11,7 +11,6 @@ import { IdentityProviderOrmEntity } from '@infrastructure/mikro-orm/entities/id
 import { UserIdentityOrmEntity } from '@infrastructure/mikro-orm/entities/user-identity';
 import { ConsentOrmEntity } from '@infrastructure/mikro-orm/entities/consent';
 import { ClientAuthPolicyOrmEntity } from '@infrastructure/mikro-orm/entities/client-auth-policy';
-import { TenantConfigOrmEntity } from '@infrastructure/mikro-orm/entities/tenant-config';
 import { JwksKeyOrmEntity } from '@infrastructure/mikro-orm/entities/jwks-key';
 import { EventOrmEntity } from '@infrastructure/mikro-orm/entities/event';
 import { TenantOrmEntity } from '@infrastructure/mikro-orm/entities/tenant';
@@ -19,10 +18,8 @@ import { ClientOrmEntity } from '@infrastructure/mikro-orm/entities/client';
 import { UserOrmEntity } from '@infrastructure/mikro-orm/entities/user';
 import {
   EntityManagerMock,
-  asLoadedRef,
   createClientAuthPolicyEntity,
   createClientAuthPolicyModel,
-  createClientEntity,
   createConsentEntity,
   createConsentModel,
   createEntityManagerMock,
@@ -34,7 +31,6 @@ import {
   createTenantConfigEntity,
   createTenantConfigModel,
   createTenantEntity,
-  createUserEntity,
   createUserIdentityEntity,
   createUserIdentityModel,
 } from './support/repository-test-helpers';
@@ -114,6 +110,53 @@ describe('Identity And Config Repository Implementations', () => {
       );
     });
 
+    it('현재 사용자 identity id로 식별자를 조회한다', async () => {
+      const repository = new UserIdentityRepositoryImpl(em as any);
+      const entity = createUserIdentityEntity();
+      em.findOne.mockResolvedValue(entity);
+
+      await expect(
+        repository.findByIdForUser('tenant-1', 'user-1', 'user-identity-1'),
+      ).resolves.toMatchObject({
+        id: 'user-identity-1',
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+      });
+      expect(em.findOne).toHaveBeenCalledWith(
+        UserIdentityOrmEntity,
+        {
+          id: 'user-identity-1',
+          tenant: { id: 'tenant-1' },
+          user: { id: 'user-1' },
+        },
+        { populate: ['tenant', 'user'] },
+      );
+    });
+
+    it('현재 사용자의 식별자 목록을 반환한다', async () => {
+      const repository = new UserIdentityRepositoryImpl(em as any);
+      em.find.mockResolvedValue([
+        createUserIdentityEntity(),
+        createUserIdentityEntity({
+          id: 'user-identity-2',
+          provider: 'github',
+          providerSub: 'provider-sub-2',
+        }),
+      ]);
+
+      const result = await repository.listByUser('tenant-1', 'user-1');
+
+      expect(result.map((item) => item.provider)).toEqual(['google', 'github']);
+      expect(em.find).toHaveBeenCalledWith(
+        UserIdentityOrmEntity,
+        {
+          tenant: { id: 'tenant-1' },
+          user: { id: 'user-1' },
+        },
+        { populate: ['tenant', 'user'], orderBy: { linkedAt: 'DESC' } },
+      );
+    });
+
     it('신규 사용자 식별자를 저장한다', async () => {
       const repository = new UserIdentityRepositoryImpl(em as any);
       em.persist.mockImplementation((entity: any) => {
@@ -152,6 +195,16 @@ describe('Identity And Config Repository Implementations', () => {
       expect(saved.email).toBe('updated@example.com');
       expect(existing.profileJson).toEqual({ locale: 'en-US' });
       expect(em.flush).toHaveBeenCalled();
+    });
+
+    it('사용자 식별자를 삭제한다', async () => {
+      const repository = new UserIdentityRepositoryImpl(em as any);
+
+      await repository.delete('user-identity-1');
+
+      expect(em.nativeDelete).toHaveBeenCalledWith(UserIdentityOrmEntity, {
+        id: 'user-identity-1',
+      });
     });
   });
 

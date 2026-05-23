@@ -14,9 +14,11 @@ import type { NotificationPort } from '@application/ports/notification.port';
 import type { MfaVerificationPort } from '@application/ports/mfa-verification.port';
 import type { ConfigService } from '@nestjs/config';
 import type { ConsentRepository } from '@domain/repositories/consent.repository';
+import type { UserIdentityRepository } from '@domain/repositories/user-identity.repository';
 import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
 import { ConsentModel } from '@domain/models/consent';
+import { UserIdentityModel } from '@domain/models/user-identity';
 
 function makeActiveUser(
   overrides?: Partial<Parameters<typeof UserModel.of>[0]>,
@@ -60,6 +62,36 @@ function createMockConsentRepo(): jest.Mocked<ConsentRepository> {
     listAllByUser: jest.fn().mockResolvedValue([]),
     listByUser: jest.fn().mockResolvedValue({ items: [], total: 0 }),
     save: jest.fn().mockResolvedValue(null as any),
+    delete: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
+function makeIdentity(
+  overrides?: Partial<ConstructorParameters<typeof UserIdentityModel>[0]>,
+  id = 'identity-1',
+): UserIdentityModel {
+  return new UserIdentityModel(
+    {
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      provider: 'google',
+      providerSub: 'google-sub-1',
+      email: 'john@example.com',
+      profileJson: null,
+      linkedAt: new Date('2025-01-01T00:00:00.000Z'),
+      ...overrides,
+    },
+    id,
+  );
+}
+
+function createMockUserIdentityRepo(): jest.Mocked<UserIdentityRepository> {
+  const identity = makeIdentity();
+  return {
+    findByProviderSub: jest.fn().mockResolvedValue(null),
+    findByIdForUser: jest.fn().mockResolvedValue(identity),
+    listByUser: jest.fn().mockResolvedValue([identity]),
+    save: jest.fn().mockResolvedValue(identity),
     delete: jest.fn().mockResolvedValue(undefined),
   };
 }
@@ -149,6 +181,7 @@ describe('AuthCommandHandler', () => {
   let mfaVerification: jest.Mocked<MfaVerificationPort>;
   let configService: jest.Mocked<ConfigService>;
   let consentRepo: jest.Mocked<ConsentRepository>;
+  let userIdentityRepo: jest.Mocked<UserIdentityRepository>;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -159,6 +192,7 @@ describe('AuthCommandHandler', () => {
     notification = createMockNotification();
     mfaVerification = createMockMfaVerification();
     consentRepo = createMockConsentRepo();
+    userIdentityRepo = createMockUserIdentityRepo();
     configService = {
       get: jest.fn().mockReturnValue(undefined),
       getOrThrow: jest.fn().mockReturnValue('600'),
@@ -173,6 +207,7 @@ describe('AuthCommandHandler', () => {
       mfaVerification,
       configService,
       consentRepo,
+      userIdentityRepo,
     );
   });
 
@@ -941,6 +976,78 @@ describe('AuthCommandHandler', () => {
       expect(recoveryCode.enabled).toBe(false);
       expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(totp);
       expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(recoveryCode);
+    });
+  });
+
+  describe('unlinkIdentity', () => {
+    it('identity가 현재 사용자에 속하면 연결을 해제한다', async () => {
+      const identity = makeIdentity({}, 'identity-1');
+      userIdentityRepo.findByIdForUser.mockResolvedValue(identity);
+      userIdentityRepo.listByUser.mockResolvedValue([identity]);
+
+      await handler.unlinkIdentity('tenant-1', 'user-1', 'identity-1');
+
+      expect(userIdentityRepo.findByIdForUser).toHaveBeenCalledWith(
+        'tenant-1',
+        'user-1',
+        'identity-1',
+      );
+      expect(userIdentityRepo.delete).toHaveBeenCalledWith('identity-1');
+    });
+
+    it('identity가 없으면 delete를 호출하지 않는다', async () => {
+      userIdentityRepo.findByIdForUser.mockResolvedValue(null);
+
+      await expect(
+        handler.unlinkIdentity('tenant-1', 'user-1', 'missing'),
+      ).rejects.toThrow('IdentityLinkNotFound');
+
+      expect(userIdentityRepo.delete).not.toHaveBeenCalled();
+    });
+
+    it('tenant가 다르면 identity 조회 없이 실패한다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({ tenantId: 'other-tenant' }),
+      );
+
+      await expect(
+        handler.unlinkIdentity('tenant-1', 'user-1', 'identity-1'),
+      ).rejects.toThrow('TenantMismatch');
+
+      expect(userIdentityRepo.findByIdForUser).not.toHaveBeenCalled();
+      expect(userIdentityRepo.delete).not.toHaveBeenCalled();
+    });
+
+    it('마지막 로그인 수단이면 연결을 해제하지 않는다', async () => {
+      const identity = makeIdentity({}, 'identity-1');
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({ passwordCredential: undefined }),
+      );
+      userIdentityRepo.findByIdForUser.mockResolvedValue(identity);
+      userIdentityRepo.listByUser.mockResolvedValue([identity]);
+
+      await expect(
+        handler.unlinkIdentity('tenant-1', 'user-1', 'identity-1'),
+      ).rejects.toThrow('LastLoginMethodCannotBeUnlinked');
+
+      expect(userIdentityRepo.delete).not.toHaveBeenCalled();
+    });
+
+    it('비밀번호가 없어도 다른 IdP 연결이 남아 있으면 해제할 수 있다', async () => {
+      const identity = makeIdentity({}, 'identity-1');
+      const otherIdentity = makeIdentity(
+        { provider: 'github', providerSub: 'github-sub-1' },
+        'identity-2',
+      );
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({ passwordCredential: undefined }),
+      );
+      userIdentityRepo.findByIdForUser.mockResolvedValue(identity);
+      userIdentityRepo.listByUser.mockResolvedValue([identity, otherIdentity]);
+
+      await handler.unlinkIdentity('tenant-1', 'user-1', 'identity-1');
+
+      expect(userIdentityRepo.delete).toHaveBeenCalledWith('identity-1');
     });
   });
 

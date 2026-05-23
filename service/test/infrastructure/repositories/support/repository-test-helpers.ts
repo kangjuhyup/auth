@@ -50,6 +50,7 @@ export type EntityManagerMock = {
   flush: jest.Mock;
   count: jest.Mock;
   nativeUpdate: jest.Mock;
+  nativeDelete: jest.Mock;
   transactional: jest.Mock;
   getReference: jest.Mock;
   create: jest.Mock;
@@ -90,6 +91,7 @@ export function createEntityManagerMock(): EntityManagerMock {
     flush,
     count: jest.fn().mockResolvedValue(0),
     nativeUpdate: jest.fn().mockResolvedValue(0),
+    nativeDelete: jest.fn().mockResolvedValue(1),
     transactional: jest.fn(),
     getReference: jest.fn(
       <T extends object>(EntityClass: Constructor<T>, id: string): T =>

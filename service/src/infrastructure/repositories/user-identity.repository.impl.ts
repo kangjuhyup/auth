@@ -28,6 +28,38 @@ export class UserIdentityRepositoryImpl implements UserIdentityRepository {
     return entity ? UserIdentityMapper.toDomain(entity) : null;
   }
 
+  async findByIdForUser(
+    tenantId: string,
+    userId: string,
+    id: string,
+  ): Promise<UserIdentityModel | null> {
+    const entity = await this.em.findOne(
+      UserIdentityOrmEntity,
+      {
+        id,
+        tenant: { id: tenantId },
+        user: { id: userId },
+      },
+      { populate: ['tenant', 'user'] },
+    );
+    return entity ? UserIdentityMapper.toDomain(entity) : null;
+  }
+
+  async listByUser(
+    tenantId: string,
+    userId: string,
+  ): Promise<UserIdentityModel[]> {
+    const entities = await this.em.find(
+      UserIdentityOrmEntity,
+      {
+        tenant: { id: tenantId },
+        user: { id: userId },
+      },
+      { populate: ['tenant', 'user'], orderBy: { linkedAt: 'DESC' } },
+    );
+    return entities.map((entity) => UserIdentityMapper.toDomain(entity));
+  }
+
   async save(model: UserIdentityModel): Promise<UserIdentityModel> {
     if (model.id) {
       const existing = await this.em.findOneOrFail(UserIdentityOrmEntity, {
@@ -40,9 +72,7 @@ export class UserIdentityRepositoryImpl implements UserIdentityRepository {
     }
 
     const entity = new UserIdentityOrmEntity();
-    entity.tenant = ref(
-      this.em.getReference(TenantOrmEntity, model.tenantId),
-    );
+    entity.tenant = ref(this.em.getReference(TenantOrmEntity, model.tenantId));
     entity.user = ref(this.em.getReference(UserOrmEntity, model.userId));
     entity.provider = model.provider;
     entity.providerSub = model.providerSub;
@@ -52,5 +82,9 @@ export class UserIdentityRepositoryImpl implements UserIdentityRepository {
 
     await this.em.persist(entity).flush();
     return UserIdentityMapper.toDomain(entity);
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.em.nativeDelete(UserIdentityOrmEntity, { id });
   }
 }

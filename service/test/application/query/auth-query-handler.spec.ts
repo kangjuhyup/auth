@@ -1,7 +1,12 @@
 import { AuthQueryHandler } from '@application/queries/handlers/auth-query.handler';
-import type { UserQueryPort, UserProfileView } from '@application/queries/ports/user-query.port';
+import type {
+  UserQueryPort,
+  UserProfileView,
+} from '@application/queries/ports/user-query.port';
 import type { ConsentRepository } from '@domain/repositories/consent.repository';
+import type { UserIdentityRepository } from '@domain/repositories/user-identity.repository';
 import { ConsentModel } from '@domain/models/consent';
+import { UserIdentityModel } from '@domain/models/user-identity';
 
 function makeProfileView(status = 'ACTIVE'): UserProfileView {
   return {
@@ -39,29 +44,45 @@ function createMockConsentRepo(): jest.Mocked<ConsentRepository> {
   };
 }
 
+function createMockUserIdentityRepo(): jest.Mocked<UserIdentityRepository> {
+  return {
+    findByProviderSub: jest.fn().mockResolvedValue(null),
+    findByIdForUser: jest.fn().mockResolvedValue(null),
+    listByUser: jest.fn().mockResolvedValue([]),
+    save: jest.fn(),
+    delete: jest.fn(),
+  };
+}
+
 describe('AuthQueryHandler', () => {
   let handler: AuthQueryHandler;
   let userQuery: jest.Mocked<UserQueryPort>;
   let consentRepo: jest.Mocked<ConsentRepository>;
+  let userIdentityRepo: jest.Mocked<UserIdentityRepository>;
 
   beforeEach(() => {
     jest.clearAllMocks();
     userQuery = createMockUserQuery();
     consentRepo = createMockConsentRepo();
-    handler = new AuthQueryHandler(userQuery, consentRepo);
+    userIdentityRepo = createMockUserIdentityRepo();
+    handler = new AuthQueryHandler(userQuery, consentRepo, userIdentityRepo);
   });
 
   describe('getProfile', () => {
     it('user 없음 → UserNotFound 에러', async () => {
       userQuery.findProfile.mockResolvedValue(null);
 
-      await expect(handler.getProfile('tenant-1', 'user-1')).rejects.toThrow('UserNotFound');
+      await expect(handler.getProfile('tenant-1', 'user-1')).rejects.toThrow(
+        'UserNotFound',
+      );
     });
 
     it('WITHDRAWN 상태 → UserWithdrawn 에러', async () => {
       userQuery.findProfile.mockResolvedValue(makeProfileView('WITHDRAWN'));
 
-      await expect(handler.getProfile('tenant-1', 'user-1')).rejects.toThrow('UserWithdrawn');
+      await expect(handler.getProfile('tenant-1', 'user-1')).rejects.toThrow(
+        'UserWithdrawn',
+      );
     });
 
     it('성공 → ProfileResponse 매핑', async () => {
@@ -135,6 +156,41 @@ describe('AuthQueryHandler', () => {
 
       expect(result[0].clientId).toBe('ref-only');
       expect(result[0].clientName).toBe('Unknown');
+    });
+  });
+
+  describe('getIdentityLinks', () => {
+    it('사용자 IdP 연결 목록을 응답으로 매핑한다', async () => {
+      const linkedAt = new Date('2025-01-01T00:00:00.000Z');
+      userIdentityRepo.listByUser.mockResolvedValue([
+        new UserIdentityModel(
+          {
+            tenantId: 'tenant-1',
+            userId: 'user-1',
+            provider: 'google',
+            providerSub: 'sub-1',
+            email: 'user@example.com',
+            profileJson: { name: 'User' },
+            linkedAt,
+          },
+          'identity-1',
+        ),
+      ]);
+
+      const result = await handler.getIdentityLinks('tenant-1', 'user-1');
+
+      expect(userIdentityRepo.listByUser).toHaveBeenCalledWith(
+        'tenant-1',
+        'user-1',
+      );
+      expect(result).toEqual([
+        {
+          id: 'identity-1',
+          provider: 'google',
+          email: 'user@example.com',
+          linkedAt,
+        },
+      ]);
     });
   });
 });

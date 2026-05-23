@@ -20,6 +20,7 @@ function createMockCommandPort(): jest.Mocked<AuthCommandPort> {
     beginTotpEnrollment: jest.fn(),
     confirmTotpEnrollment: jest.fn(),
     disableTotp: jest.fn(),
+    unlinkIdentity: jest.fn(),
     updateProfile: jest.fn(),
     revokeConsent: jest.fn(),
   } as any;
@@ -29,6 +30,7 @@ function createMockQueryPort(): jest.Mocked<AuthQueryPort> {
   return {
     getProfile: jest.fn(),
     getConsents: jest.fn(),
+    getIdentityLinks: jest.fn(),
   } as any;
 }
 
@@ -245,6 +247,32 @@ describe('AuthController', () => {
     expect(queryPort.getConsents).toHaveBeenCalledWith(
       tenant.id,
       authUser.userId,
+    );
+  });
+
+  it('getIdentityLinks는 tenant.id와 authUser.userId를 queryPort에 전달한다', async () => {
+    const links = [{ id: 'identity-1', provider: 'google' }] as any;
+    queryPort.getIdentityLinks.mockResolvedValue(links);
+
+    await expect(controller.getIdentityLinks(tenant, authUser)).resolves.toBe(
+      links,
+    );
+    expect(queryPort.getIdentityLinks).toHaveBeenCalledWith(
+      tenant.id,
+      authUser.userId,
+    );
+  });
+
+  it('unlinkIdentity는 tenant.id와 authUser.userId, identityId를 commandPort에 전달한다', async () => {
+    commandPort.unlinkIdentity.mockResolvedValue(undefined);
+
+    await expect(
+      controller.unlinkIdentity(tenant, authUser, 'identity-1'),
+    ).resolves.toBeUndefined();
+    expect(commandPort.unlinkIdentity).toHaveBeenCalledWith(
+      tenant.id,
+      authUser.userId,
+      'identity-1',
     );
   });
 

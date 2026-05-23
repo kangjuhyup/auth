@@ -1,8 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import type { ConsentResponse, ProfileResponse } from '@application/dto';
+import type {
+  ConsentResponse,
+  IdentityLinkResponse,
+  ProfileResponse,
+} from '@application/dto';
 import { AuthQueryPort } from '@application/queries/ports/auth-query.port';
 import { UserQueryPort } from '@application/queries/ports/user-query.port';
 import { ConsentRepository } from '@domain/repositories/consent.repository';
+import { UserIdentityRepository } from '@domain/repositories/user-identity.repository';
 import { orThrow } from '@domain/utils';
 
 @Injectable()
@@ -10,6 +15,7 @@ export class AuthQueryHandler implements AuthQueryPort {
   constructor(
     private readonly userQuery: UserQueryPort,
     private readonly consentRepo: ConsentRepository,
+    private readonly userIdentityRepo: UserIdentityRepository,
   ) {}
 
   async getProfile(tenantId: string, userId: string): Promise<ProfileResponse> {
@@ -46,6 +52,19 @@ export class AuthQueryHandler implements AuthQueryPort {
       clientName: consent.clientName ?? 'Unknown',
       grantedScopes: consent.grantedScopes,
       grantedAt: consent.grantedAt,
+    }));
+  }
+
+  async getIdentityLinks(
+    tenantId: string,
+    userId: string,
+  ): Promise<IdentityLinkResponse[]> {
+    const identities = await this.userIdentityRepo.listByUser(tenantId, userId);
+    return identities.map((identity) => ({
+      id: identity.id,
+      provider: identity.provider,
+      email: identity.email ?? null,
+      linkedAt: identity.linkedAt,
     }));
   }
 }

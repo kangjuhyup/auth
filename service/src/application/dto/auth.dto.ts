@@ -64,3 +64,10 @@ export interface ConsentResponse {
   grantedScopes: string;
   grantedAt: Date;
 }
+
+export interface IdentityLinkResponse {
+  id: string;
+  provider: string;
+  email?: string | null;
+  linkedAt: Date;
+}

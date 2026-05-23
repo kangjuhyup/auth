@@ -124,6 +124,16 @@ export abstract class AuthCommandPort {
   abstract disableTotp(tenantId: string, userId: string): Promise<void>;
 
   /**
+   * Unlink an external identity provider account
+   * @description 현재 사용자 외부 IdP 연결 해제
+   */
+  abstract unlinkIdentity(
+    tenantId: string,
+    userId: string,
+    identityId: string,
+  ): Promise<void>;
+
+  /**
    * Update the profile of a user
    * @description 유저 정보 업데이트
    */

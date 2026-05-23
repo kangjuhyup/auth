@@ -191,6 +191,29 @@ export class AuthController {
     return this.queryPort.getConsents(tenant.id, user.userId);
   }
 
+  @Get('identity-links')
+  @UseGuards(AccessGuard)
+  @ApiBearerAuth('access-token')
+  getIdentityLinks(
+    @Tenant() tenant: TenantContext,
+    @AuthUser() user: AuthenticatedUser,
+  ): Promise<
+    { id: string; provider: string; email?: string | null; linkedAt: Date }[]
+  > {
+    return this.queryPort.getIdentityLinks(tenant.id, user.userId);
+  }
+
+  @Delete('identity-links/:identityId')
+  @UseGuards(AccessGuard)
+  @ApiBearerAuth('access-token')
+  unlinkIdentity(
+    @Tenant() tenant: TenantContext,
+    @AuthUser() user: AuthenticatedUser,
+    @Param('identityId') identityId: string,
+  ): Promise<void> {
+    return this.commandPort.unlinkIdentity(tenant.id, user.userId, identityId);
+  }
+
   @Delete('consents/:clientId')
   @UseGuards(AccessGuard)
   @ApiBearerAuth('access-token')

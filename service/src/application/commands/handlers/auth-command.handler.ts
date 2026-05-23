@@ -23,6 +23,7 @@ import { NotificationPort } from '@application/ports/notification.port';
 import { MfaVerificationPort } from '@application/ports/mfa-verification.port';
 import { UserWriteRepositoryPort } from '../ports/user-write-repository.port';
 import { ConsentRepository } from '@domain/repositories/consent.repository';
+import { UserIdentityRepository } from '@domain/repositories/user-identity.repository';
 import { orThrow } from '@domain/utils';
 
 @Injectable()
@@ -38,6 +39,7 @@ export class AuthCommandHandler implements AuthCommandPort {
     private readonly mfaVerification: MfaVerificationPort,
     private readonly configService: ConfigService,
     private readonly consentRepo: ConsentRepository,
+    private readonly userIdentityRepo: UserIdentityRepository,
   ) {}
 
   async signup(tenantId: string, dto: SignupDto): Promise<{ userId: string }> {
@@ -472,6 +474,28 @@ export class AuthCommandHandler implements AuthCommandPort {
       credential.disable();
       await this.userWriteRepo.saveCredential(credential);
     }
+  }
+
+  async unlinkIdentity(
+    tenantId: string,
+    userId: string,
+    identityId: string,
+  ): Promise<void> {
+    const user = this.assertActiveTenantUser(
+      await this.userWriteRepo.findById(userId),
+      tenantId,
+    );
+    const identity = orThrow(
+      await this.userIdentityRepo.findByIdForUser(tenantId, userId, identityId),
+      new Error('IdentityLinkNotFound'),
+    );
+    const links = await this.userIdentityRepo.listByUser(tenantId, userId);
+
+    if (!user.passwordCredential && links.length <= 1) {
+      throw new Error('LastLoginMethodCannotBeUnlinked');
+    }
+
+    await this.userIdentityRepo.delete(identity.id);
   }
 
   async updateProfile(
