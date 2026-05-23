@@ -35,9 +35,19 @@ export const queryKeys = {
     identityProviders: {
       all: ['admin', 'identity-providers'] as const,
       list: (tenantId: string, filters: { page?: number; limit?: number }) =>
-        [...queryKeys.admin.identityProviders.all, tenantId, 'list', filters] as const,
+        [
+          ...queryKeys.admin.identityProviders.all,
+          tenantId,
+          'list',
+          filters,
+        ] as const,
       detail: (tenantId: string, id: string) =>
-        [...queryKeys.admin.identityProviders.all, tenantId, 'detail', id] as const,
+        [
+          ...queryKeys.admin.identityProviders.all,
+          tenantId,
+          'detail',
+          id,
+        ] as const,
     },
     users: {
       all: ['admin', 'users'] as const,
@@ -48,5 +58,10 @@ export const queryKeys = {
       roles: (tenantId: string, userId: string) =>
         [...queryKeys.admin.users.all, tenantId, 'roles', userId] as const,
     },
+  },
+  auth: {
+    profile: (tenantCode: string) => ['auth', tenantCode, 'profile'] as const,
+    identityLinks: (tenantCode: string) =>
+      ['auth', tenantCode, 'identity-links'] as const,
   },
 } as const;

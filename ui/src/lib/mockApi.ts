@@ -24,7 +24,14 @@ import type {
   CreateUserDto,
   UpdateUserDto,
 } from '@/types/user.types';
-import type { LoginDto, LoginResponse } from '@/types/auth.types';
+import type {
+  IdentityLinkResponse,
+  LoginDto,
+  LoginResponse,
+  ProfileResponse,
+  TotpConfirmationResponse,
+  TotpEnrollmentResponse,
+} from '@/types/auth.types';
 
 // Simulate network delay
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -263,6 +270,50 @@ const mockUserRoles = new Map<string, string[]>([
   ['5', ['3']], // disabled.user has Viewer role
 ]);
 
+const mockProfileByTenant = new Map<string, ProfileResponse>([
+  [
+    'default',
+    {
+      id: '1',
+      username: 'admin',
+      email: 'admin@example.com',
+      emailVerified: false,
+      phone: '+821012345678',
+      phoneVerified: false,
+      status: 'active',
+      createdAt: new Date('2024-01-01'),
+      updatedAt: new Date('2024-01-01'),
+    },
+  ],
+]);
+
+const mockIdentityLinksByTenant = new Map<string, IdentityLinkResponse[]>([
+  [
+    'default',
+    [
+      {
+        id: 'identity-link-1',
+        provider: 'google',
+        email: 'admin@example.com',
+        linkedAt: new Date('2024-01-15'),
+      },
+      {
+        id: 'identity-link-2',
+        provider: 'saml-corporate',
+        email: 'admin@corp.example.com',
+        linkedAt: new Date('2024-02-20'),
+      },
+    ],
+  ],
+]);
+
+function getMockProfile(tenantCode: string): ProfileResponse {
+  const profile =
+    mockProfileByTenant.get(tenantCode) ?? mockProfileByTenant.get('default');
+  if (!profile) throw new Error('Profile not found');
+  return profile;
+}
+
 // ============================================================================
 // AUTHENTICATION API
 // ============================================================================
@@ -285,6 +336,91 @@ export const mockAuthApi = {
   logout: async (): Promise<void> => {
     await delay(200);
     // Nothing to do for mock
+  },
+
+  getProfile: async (tenantCode: string): Promise<ProfileResponse> => {
+    await delay(200);
+    return { ...getMockProfile(tenantCode) };
+  },
+
+  requestEmailVerification: async (tenantCode: string): Promise<void> => {
+    void tenantCode;
+    await delay(200);
+  },
+
+  verifyEmail: async (tenantCode: string, token: string): Promise<void> => {
+    await delay(200);
+    if (!token.trim()) throw new Error('Verification token is required');
+    const profile = getMockProfile(tenantCode);
+    profile.emailVerified = true;
+    profile.updatedAt = new Date();
+  },
+
+  requestPhoneVerification: async (tenantCode: string): Promise<void> => {
+    void tenantCode;
+    await delay(200);
+  },
+
+  verifyPhone: async (tenantCode: string, token: string): Promise<void> => {
+    await delay(200);
+    if (!token.trim()) throw new Error('Verification token is required');
+    const profile = getMockProfile(tenantCode);
+    profile.phoneVerified = true;
+    profile.updatedAt = new Date();
+  },
+
+  beginTotpEnrollment: async (
+    tenantCode: string,
+  ): Promise<TotpEnrollmentResponse> => {
+    void tenantCode;
+    await delay(200);
+    return {
+      secret: 'JBSWY3DPEHPK3PXP',
+      otpauthUrl:
+        'otpauth://totp/Auth%20Server:admin?secret=JBSWY3DPEHPK3PXP&issuer=Auth%20Server',
+    };
+  },
+
+  confirmTotpEnrollment: async (
+    tenantCode: string,
+    code: string,
+  ): Promise<TotpConfirmationResponse> => {
+    void tenantCode;
+    await delay(200);
+    if (!/^\d{6}$/.test(code)) throw new Error('TOTP code must be 6 digits');
+    return {
+      recoveryCodes: ['RC-1234-5678', 'RC-2345-6789', 'RC-3456-7890'],
+    };
+  },
+
+  disableTotp: async (tenantCode: string): Promise<void> => {
+    void tenantCode;
+    await delay(200);
+  },
+
+  getIdentityLinks: async (
+    tenantCode: string,
+  ): Promise<IdentityLinkResponse[]> => {
+    await delay(200);
+    return [
+      ...(mockIdentityLinksByTenant.get(tenantCode) ??
+        mockIdentityLinksByTenant.get('default') ??
+        []),
+    ];
+  },
+
+  unlinkIdentity: async (
+    tenantCode: string,
+    identityId: string,
+  ): Promise<void> => {
+    await delay(200);
+    const links =
+      mockIdentityLinksByTenant.get(tenantCode) ??
+      mockIdentityLinksByTenant.get('default') ??
+      [];
+    const index = links.findIndex((link) => link.id === identityId);
+    if (index === -1) throw new Error('Identity link not found');
+    links.splice(index, 1);
   },
 };
 
