@@ -15,6 +15,7 @@ import type { MfaVerificationPort } from '@application/ports/mfa-verification.po
 import type { ConfigService } from '@nestjs/config';
 import type { ConsentRepository } from '@domain/repositories/consent.repository';
 import type { UserIdentityRepository } from '@domain/repositories/user-identity.repository';
+import type { EventRepository } from '@domain/repositories/event.repository';
 import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
 import { ConsentModel } from '@domain/models/consent';
@@ -93,6 +94,13 @@ function createMockUserIdentityRepo(): jest.Mocked<UserIdentityRepository> {
     listByUser: jest.fn().mockResolvedValue([identity]),
     save: jest.fn().mockResolvedValue(identity),
     delete: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
+function createMockEventRepo(): jest.Mocked<EventRepository> {
+  return {
+    list: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+    save: jest.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -182,6 +190,7 @@ describe('AuthCommandHandler', () => {
   let configService: jest.Mocked<ConfigService>;
   let consentRepo: jest.Mocked<ConsentRepository>;
   let userIdentityRepo: jest.Mocked<UserIdentityRepository>;
+  let eventRepo: jest.Mocked<EventRepository>;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -193,6 +202,7 @@ describe('AuthCommandHandler', () => {
     mfaVerification = createMockMfaVerification();
     consentRepo = createMockConsentRepo();
     userIdentityRepo = createMockUserIdentityRepo();
+    eventRepo = createMockEventRepo();
     configService = {
       get: jest.fn().mockReturnValue(undefined),
       getOrThrow: jest.fn().mockReturnValue('600'),
@@ -208,6 +218,7 @@ describe('AuthCommandHandler', () => {
       configService,
       consentRepo,
       userIdentityRepo,
+      eventRepo,
     );
   });
 
@@ -614,6 +625,18 @@ describe('AuthCommandHandler', () => {
           otpTokenId: 'token-1',
         }),
       );
+      expect(eventRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          category: 'USER',
+          action: 'UPDATE',
+          resourceType: 'user_contact',
+          resourceId: 'user-1',
+          success: true,
+          metadata: { contact: 'email', verified: true },
+        }),
+      );
     });
 
     it('verifyEmail에서 유효한 토큰이 없으면 저장/consume하지 않는다', async () => {
@@ -745,6 +768,18 @@ describe('AuthCommandHandler', () => {
           tenantId: 'tenant-1',
           purpose: 'PHONE_VERIFICATION',
           otpTokenId: 'token-1',
+        }),
+      );
+      expect(eventRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          category: 'USER',
+          action: 'UPDATE',
+          resourceType: 'user_contact',
+          resourceId: 'user-1',
+          success: true,
+          metadata: { contact: 'phone', verified: true },
         }),
       );
     });
@@ -880,6 +915,22 @@ describe('AuthCommandHandler', () => {
       expect(result.recoveryCodes).toEqual(
         Array.from({ length: 10 }, () => 'recovery-code'),
       );
+      expect(eventRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          category: 'SECURITY',
+          action: 'UPDATE',
+          resourceType: 'mfa',
+          resourceId: 'totp',
+          success: true,
+          metadata: expect.objectContaining({
+            method: 'totp',
+            enabled: true,
+            recoveryCodeCount: 10,
+          }),
+        }),
+      );
     });
 
     it('confirmTotpEnrollment은 pending credential이 없으면 실패한다', async () => {
@@ -893,6 +944,7 @@ describe('AuthCommandHandler', () => {
 
       expect(userWriteRepo.saveCredential).not.toHaveBeenCalled();
       expect(userWriteRepo.createCredential).not.toHaveBeenCalled();
+      expect(eventRepo.save).not.toHaveBeenCalled();
     });
 
     it('confirmTotpEnrollment은 disabled지만 enrollment pending이 아니면 실패한다', async () => {
@@ -916,6 +968,7 @@ describe('AuthCommandHandler', () => {
 
       expect(userWriteRepo.saveCredential).not.toHaveBeenCalled();
       expect(userWriteRepo.createCredential).not.toHaveBeenCalled();
+      expect(eventRepo.save).not.toHaveBeenCalled();
     });
 
     it('confirmTotpEnrollment은 잘못된 코드면 credential을 변경하지 않는다', async () => {
@@ -940,6 +993,20 @@ describe('AuthCommandHandler', () => {
 
       expect(userWriteRepo.saveCredential).not.toHaveBeenCalled();
       expect(userWriteRepo.createCredential).not.toHaveBeenCalled();
+      expect(eventRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          category: 'SECURITY',
+          severity: 'WARN',
+          action: 'ACCESS_DENIED',
+          resourceType: 'mfa',
+          resourceId: 'totp',
+          success: false,
+          reason: 'InvalidTotpCode',
+          metadata: { method: 'totp', phase: 'enrollment' },
+        }),
+      );
     });
 
     it('disableTotp은 활성 TOTP와 recovery code credential을 비활성화한다', async () => {
@@ -976,6 +1043,18 @@ describe('AuthCommandHandler', () => {
       expect(recoveryCode.enabled).toBe(false);
       expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(totp);
       expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(recoveryCode);
+      expect(eventRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          category: 'SECURITY',
+          action: 'UPDATE',
+          resourceType: 'mfa',
+          resourceId: 'totp',
+          success: true,
+          metadata: { method: 'totp', enabled: false },
+        }),
+      );
     });
   });
 
@@ -993,6 +1072,21 @@ describe('AuthCommandHandler', () => {
         'identity-1',
       );
       expect(userIdentityRepo.delete).toHaveBeenCalledWith('identity-1');
+      expect(eventRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          category: 'SECURITY',
+          action: 'UNLINK_IDP',
+          resourceType: 'identity_provider_link',
+          resourceId: 'identity-1',
+          success: true,
+          metadata: {
+            provider: 'google',
+            email: 'john@example.com',
+          },
+        }),
+      );
     });
 
     it('identity가 없으면 delete를 호출하지 않는다', async () => {
@@ -1016,6 +1110,7 @@ describe('AuthCommandHandler', () => {
 
       expect(userIdentityRepo.findByIdForUser).not.toHaveBeenCalled();
       expect(userIdentityRepo.delete).not.toHaveBeenCalled();
+      expect(eventRepo.save).not.toHaveBeenCalled();
     });
 
     it('마지막 로그인 수단이면 연결을 해제하지 않는다', async () => {
@@ -1031,6 +1126,20 @@ describe('AuthCommandHandler', () => {
       ).rejects.toThrow('LastLoginMethodCannotBeUnlinked');
 
       expect(userIdentityRepo.delete).not.toHaveBeenCalled();
+      expect(eventRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          category: 'SECURITY',
+          severity: 'WARN',
+          action: 'ACCESS_DENIED',
+          resourceType: 'identity_provider_link',
+          resourceId: 'identity-1',
+          success: false,
+          reason: 'LastLoginMethodCannotBeUnlinked',
+          metadata: { provider: 'google' },
+        }),
+      );
     });
 
     it('비밀번호가 없어도 다른 IdP 연결이 남아 있으면 해제할 수 있다', async () => {

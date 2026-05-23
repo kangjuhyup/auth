@@ -24,6 +24,8 @@ import { MfaVerificationPort } from '@application/ports/mfa-verification.port';
 import { UserWriteRepositoryPort } from '../ports/user-write-repository.port';
 import { ConsentRepository } from '@domain/repositories/consent.repository';
 import { UserIdentityRepository } from '@domain/repositories/user-identity.repository';
+import { EventRepository } from '@domain/repositories/event.repository';
+import { EventModel } from '@domain/models/event';
 import { orThrow } from '@domain/utils';
 
 @Injectable()
@@ -40,6 +42,7 @@ export class AuthCommandHandler implements AuthCommandPort {
     private readonly configService: ConfigService,
     private readonly consentRepo: ConsentRepository,
     private readonly userIdentityRepo: UserIdentityRepository,
+    private readonly eventRepo: EventRepository,
   ) {}
 
   async signup(tenantId: string, dto: SignupDto): Promise<{ userId: string }> {
@@ -304,6 +307,15 @@ export class AuthCommandHandler implements AuthCommandPort {
       otpTokenId: record.id,
       consumedAt: new Date(),
     });
+    await this.recordAudit({
+      tenantId,
+      userId,
+      category: 'USER',
+      action: 'UPDATE',
+      resourceType: 'user_contact',
+      resourceId: userId,
+      metadata: { contact: 'email', verified: true },
+    });
   }
 
   async requestPhoneVerification(
@@ -374,6 +386,15 @@ export class AuthCommandHandler implements AuthCommandPort {
       otpTokenId: record.id,
       consumedAt: new Date(),
     });
+    await this.recordAudit({
+      tenantId,
+      userId,
+      category: 'USER',
+      action: 'UPDATE',
+      resourceType: 'user_contact',
+      resourceId: userId,
+      metadata: { contact: 'phone', verified: true },
+    });
   }
 
   async beginTotpEnrollment(
@@ -437,7 +458,21 @@ export class AuthCommandHandler implements AuthCommandPort {
       pending.secretHash,
       dto.code,
     );
-    if (!verified) throw new Error('InvalidTotpCode');
+    if (!verified) {
+      await this.recordAudit({
+        tenantId,
+        userId,
+        category: 'SECURITY',
+        severity: 'WARN',
+        action: 'ACCESS_DENIED',
+        resourceType: 'mfa',
+        resourceId: 'totp',
+        success: false,
+        reason: 'InvalidTotpCode',
+        metadata: { method: 'totp', phase: 'enrollment' },
+      });
+      throw new Error('InvalidTotpCode');
+    }
 
     const activeCredentials = await this.userWriteRepo.findCredentialsByType(
       userId,
@@ -457,6 +492,19 @@ export class AuthCommandHandler implements AuthCommandPort {
     await this.userWriteRepo.saveCredential(pending);
 
     const recoveryCodes = await this.createRecoveryCodes(userId);
+    await this.recordAudit({
+      tenantId,
+      userId,
+      category: 'SECURITY',
+      action: 'UPDATE',
+      resourceType: 'mfa',
+      resourceId: 'totp',
+      metadata: {
+        method: 'totp',
+        enabled: true,
+        recoveryCodeCount: recoveryCodes.length,
+      },
+    });
     return { recoveryCodes };
   }
 
@@ -474,6 +522,15 @@ export class AuthCommandHandler implements AuthCommandPort {
       credential.disable();
       await this.userWriteRepo.saveCredential(credential);
     }
+    await this.recordAudit({
+      tenantId,
+      userId,
+      category: 'SECURITY',
+      action: 'UPDATE',
+      resourceType: 'mfa',
+      resourceId: 'totp',
+      metadata: { method: 'totp', enabled: false },
+    });
   }
 
   async unlinkIdentity(
@@ -492,10 +549,34 @@ export class AuthCommandHandler implements AuthCommandPort {
     const links = await this.userIdentityRepo.listByUser(tenantId, userId);
 
     if (!user.passwordCredential && links.length <= 1) {
+      await this.recordAudit({
+        tenantId,
+        userId,
+        category: 'SECURITY',
+        severity: 'WARN',
+        action: 'ACCESS_DENIED',
+        resourceType: 'identity_provider_link',
+        resourceId: identity.id,
+        success: false,
+        reason: 'LastLoginMethodCannotBeUnlinked',
+        metadata: { provider: identity.provider },
+      });
       throw new Error('LastLoginMethodCannotBeUnlinked');
     }
 
     await this.userIdentityRepo.delete(identity.id);
+    await this.recordAudit({
+      tenantId,
+      userId,
+      category: 'SECURITY',
+      action: 'UNLINK_IDP',
+      resourceType: 'identity_provider_link',
+      resourceId: identity.id,
+      metadata: {
+        provider: identity.provider,
+        email: identity.email ?? null,
+      },
+    });
   }
 
   async updateProfile(
@@ -588,6 +669,35 @@ export class AuthCommandHandler implements AuthCommandPort {
       codes.push(code);
     }
     return codes;
+  }
+
+  private async recordAudit(params: {
+    tenantId: string;
+    userId?: string | null;
+    category: 'AUTH' | 'USER' | 'SECURITY';
+    severity?: 'INFO' | 'WARN' | 'ERROR';
+    action: 'UPDATE' | 'UNLINK_IDP' | 'ACCESS_DENIED';
+    resourceType: string;
+    resourceId?: string | null;
+    success?: boolean;
+    reason?: string | null;
+    metadata?: Record<string, unknown> | null;
+  }): Promise<void> {
+    await this.eventRepo.save(
+      new EventModel({
+        tenantId: params.tenantId,
+        userId: params.userId ?? null,
+        category: params.category,
+        severity: params.severity ?? 'INFO',
+        action: params.action,
+        resourceType: params.resourceType,
+        resourceId: params.resourceId ?? null,
+        success: params.success ?? true,
+        reason: params.reason ?? null,
+        metadata: params.metadata ?? null,
+        occurredAt: new Date(),
+      }),
+    );
   }
 
   private assertActiveTenantUser(
