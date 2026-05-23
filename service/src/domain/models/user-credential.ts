@@ -1,3 +1,4 @@
+import { Getter } from '../decorators';
 import { PersistenceModel } from './persistence-model';
 
 export type CredentialType = 'password' | 'totp' | 'webauthn' | 'recovery_code';
@@ -41,15 +42,18 @@ export class UserCredentialModel extends PersistenceModel<
     });
   }
 
-  static of(params: {
-    type: CredentialType;
-    secretHash: string;
-    hashAlg: string;
-    hashParams?: Record<string, unknown> | null;
-    hashVersion?: number | null;
-    enabled: boolean;
-    expiresAt?: Date | null;
-  }, id?: string): UserCredentialModel {
+  static of(
+    params: {
+      type: CredentialType;
+      secretHash: string;
+      hashAlg: string;
+      hashParams?: Record<string, unknown> | null;
+      hashVersion?: number | null;
+      enabled: boolean;
+      expiresAt?: Date | null;
+    },
+    id?: string,
+  ): UserCredentialModel {
     return new UserCredentialModel(params, id);
   }
 
@@ -61,27 +65,24 @@ export class UserCredentialModel extends PersistenceModel<
     this.etc.hashParams = params;
   }
 
-  get type(): CredentialType {
-    return this.etc.type;
-  }
-  get secretHash(): string {
-    return this.etc.secretHash;
-  }
+  @Getter()
+  declare readonly type: CredentialType;
 
-  get hashAlg(): string {
-    return this.etc.hashAlg;
-  }
-  get hashParams(): Record<string, unknown> | null | undefined {
-    return this.etc.hashParams;
-  }
-  get hashVersion(): number | null | undefined {
-    return this.etc.hashVersion;
-  }
+  @Getter()
+  declare readonly secretHash: string;
 
-  get enabled(): boolean {
-    return this.etc.enabled;
-  }
-  get expiresAt(): Date | null | undefined {
-    return this.etc.expiresAt;
-  }
+  @Getter()
+  declare readonly hashAlg: string;
+
+  @Getter()
+  declare readonly hashParams: Record<string, unknown> | null | undefined;
+
+  @Getter()
+  declare readonly hashVersion: number | null | undefined;
+
+  @Getter()
+  declare readonly enabled: boolean;
+
+  @Getter()
+  declare readonly expiresAt: Date | null | undefined;
 }

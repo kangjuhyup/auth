@@ -1,3 +1,4 @@
+import { Getter } from '../decorators';
 import { PersistenceModel } from './persistence-model';
 
 export type AuthMethod = 'password' | 'totp' | 'webauthn' | 'magic_link';
@@ -23,41 +24,32 @@ export class ClientAuthPolicyModel extends PersistenceModel<
     super(props, id);
   }
 
-  get tenantId(): string {
-    return this.etc.tenantId;
-  }
+  @Getter()
+  declare readonly tenantId: string;
 
-  get clientRefId(): string {
-    return this.etc.clientRefId;
-  }
+  @Getter()
+  declare readonly clientRefId: string;
 
-  get allowedAuthMethods(): AuthMethod[] {
-    return this.etc.allowedAuthMethods;
-  }
+  @Getter()
+  declare readonly allowedAuthMethods: AuthMethod[];
 
-  get defaultAcr(): string {
-    return this.etc.defaultAcr;
-  }
+  @Getter()
+  declare readonly defaultAcr: string;
 
-  get mfaRequired(): boolean {
-    return this.etc.mfaRequired;
-  }
+  @Getter()
+  declare readonly mfaRequired: boolean;
 
-  get allowedMfaMethods(): MfaMethod[] {
-    return this.etc.allowedMfaMethods;
-  }
+  @Getter()
+  declare readonly allowedMfaMethods: MfaMethod[];
 
-  get maxSessionDurationSec(): number | null {
-    return this.etc.maxSessionDurationSec;
-  }
+  @Getter()
+  declare readonly maxSessionDurationSec: number | null;
 
-  get consentRequired(): boolean {
-    return this.etc.consentRequired;
-  }
+  @Getter()
+  declare readonly consentRequired: boolean;
 
-  get requireAuthTime(): boolean {
-    return this.etc.requireAuthTime;
-  }
+  @Getter()
+  declare readonly requireAuthTime: boolean;
 
   changeAllowedAuthMethods(methods: AuthMethod[]): void {
     this.etc.allowedAuthMethods = methods;

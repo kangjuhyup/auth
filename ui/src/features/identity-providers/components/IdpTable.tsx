@@ -32,6 +32,16 @@ export function IdpTable({
       render: (p: string) => <Tag>{p}</Tag>,
     },
     {
+      title: 'Protocol',
+      dataIndex: 'protocol',
+      key: 'protocol',
+      render: (protocol: IdentityProviderResponse['protocol']) => (
+        <Tag color={protocol === 'saml2' ? 'purple' : 'geekblue'}>
+          {protocol === 'saml2' ? 'SAML 2.0' : 'OAuth 2.0'}
+        </Tag>
+      ),
+    },
+    {
       title: 'Display name',
       dataIndex: 'displayName',
       key: 'displayName',
@@ -68,7 +78,12 @@ export function IdpTable({
       key: 'actions',
       render: (_, row) => (
         <Space>
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => onEdit(row.id)}>
+          <Button
+            type="link"
+            size="small"
+            icon={<EditOutlined />}
+            onClick={() => onEdit(row.id)}
+          >
             Edit
           </Button>
           <Button

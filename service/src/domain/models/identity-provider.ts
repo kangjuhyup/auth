@@ -1,3 +1,4 @@
+import { Getter } from '../decorators';
 import { PersistenceModel } from './persistence-model';
 import type { IdpOauthEndpointsConfig } from './idp-oauth-endpoints';
 import type { IdpProtocol, IdpSamlConfig } from './idp-saml-config';
@@ -38,33 +39,34 @@ export class IdentityProviderModel extends PersistenceModel<
     super(normalized, id);
   }
 
-  get tenantId(): string {
-    return this.etc.tenantId;
-  }
-  get provider(): IdpProvider {
-    return this.etc.provider;
-  }
+  @Getter()
+  declare readonly tenantId: string;
+
+  @Getter()
+  declare readonly provider: IdpProvider;
+
   get protocol(): IdpProtocol {
     return this.etc.protocol ?? 'oauth2';
   }
-  get displayName(): string {
-    return this.etc.displayName;
-  }
-  get clientId(): string {
-    return this.etc.clientId;
-  }
-  get clientSecret(): string | null {
-    return this.etc.clientSecret;
-  }
-  get redirectUri(): string {
-    return this.etc.redirectUri;
-  }
-  get enabled(): boolean {
-    return this.etc.enabled;
-  }
-  get oauthConfig(): IdpOauthEndpointsConfig | null {
-    return this.etc.oauthConfig;
-  }
+
+  @Getter()
+  declare readonly displayName: string;
+
+  @Getter()
+  declare readonly clientId: string;
+
+  @Getter()
+  declare readonly clientSecret: string | null;
+
+  @Getter()
+  declare readonly redirectUri: string;
+
+  @Getter()
+  declare readonly enabled: boolean;
+
+  @Getter()
+  declare readonly oauthConfig: IdpOauthEndpointsConfig | null;
+
   get samlConfig(): IdpSamlConfig | null {
     return this.etc.samlConfig ?? null;
   }

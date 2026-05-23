@@ -1,3 +1,4 @@
+import { Getter } from '../decorators';
 import { PersistenceModel } from './persistence-model';
 
 interface TenantModelProps {
@@ -10,13 +11,11 @@ export class TenantModel extends PersistenceModel<string, TenantModelProps> {
     super(props, id);
   }
 
-  get code(): string {
-    return this.etc.code;
-  }
+  @Getter()
+  declare readonly code: string;
 
-  get name(): string {
-    return this.etc.name;
-  }
+  @Getter()
+  declare readonly name: string;
 
   changeName(name: string): void {
     this.etc.name = name;

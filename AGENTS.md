@@ -61,7 +61,9 @@ presentation → application → domain
 infrastructure → application → domain
 ```
 
-Domain은 NestJS, MikroORM, node-oidc-provider, decorator, framework exception에 절대 의존 금지.
+Domain은 NestJS, MikroORM, node-oidc-provider, framework exception에 절대 의존 금지.
+외부 라이브러리/프레임워크 데코레이터 사용 금지.
+직접 만든 도메인 유틸 데코레이터는 도메인 순수성을 해치지 않고, 인프라/프레임워크/런타임 스캔 의존이 없을 때만 허용.
 
 > 상세 규칙: [`skills/architecture.md`](skills/architecture.md)
 

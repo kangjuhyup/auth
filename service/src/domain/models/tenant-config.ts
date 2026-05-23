@@ -1,3 +1,5 @@
+import { Getter } from '../decorators';
+
 export type SignupPolicy = 'invite' | 'open';
 
 interface TenantConfigModelProps {
@@ -17,33 +19,26 @@ export class TenantConfigModel {
     this.props = { ...props };
   }
 
-  get tenantId(): string {
-    return this.props.tenantId;
-  }
+  @Getter()
+  declare readonly tenantId: string;
 
-  get signupPolicy(): SignupPolicy {
-    return this.props.signupPolicy;
-  }
+  @Getter()
+  declare readonly signupPolicy: SignupPolicy;
 
-  get requirePhoneVerify(): boolean {
-    return this.props.requirePhoneVerify;
-  }
+  @Getter()
+  declare readonly requirePhoneVerify: boolean;
 
-  get brandName(): string | null | undefined {
-    return this.props.brandName;
-  }
+  @Getter()
+  declare readonly brandName: string | null | undefined;
 
-  get accessTokenTtlSec(): number {
-    return this.props.accessTokenTtlSec;
-  }
+  @Getter()
+  declare readonly accessTokenTtlSec: number;
 
-  get refreshTokenTtlSec(): number {
-    return this.props.refreshTokenTtlSec;
-  }
+  @Getter()
+  declare readonly refreshTokenTtlSec: number;
 
-  get extra(): Record<string, unknown> | null | undefined {
-    return this.props.extra;
-  }
+  @Getter()
+  declare readonly extra: Record<string, unknown> | null | undefined;
 
   updatePolicies(policies: Record<string, unknown>): void {
     this.props.extra = { ...(this.props.extra ?? {}), policies };

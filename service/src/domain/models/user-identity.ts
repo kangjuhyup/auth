@@ -1,3 +1,4 @@
+import { Getter } from '../decorators';
 import { PersistenceModel } from './persistence-model';
 import type { IdpProvider } from './identity-provider';
 
@@ -19,25 +20,24 @@ export class UserIdentityModel extends PersistenceModel<
     super(props, id);
   }
 
-  get tenantId(): string {
-    return this.etc.tenantId;
-  }
-  get userId(): string {
-    return this.etc.userId;
-  }
-  get provider(): IdpProvider {
-    return this.etc.provider;
-  }
-  get providerSub(): string {
-    return this.etc.providerSub;
-  }
-  get email(): string | null | undefined {
-    return this.etc.email;
-  }
-  get profileJson(): Record<string, unknown> | null | undefined {
-    return this.etc.profileJson;
-  }
-  get linkedAt(): Date {
-    return this.etc.linkedAt;
-  }
+  @Getter()
+  declare readonly tenantId: string;
+
+  @Getter()
+  declare readonly userId: string;
+
+  @Getter()
+  declare readonly provider: IdpProvider;
+
+  @Getter()
+  declare readonly providerSub: string;
+
+  @Getter()
+  declare readonly email: string | null | undefined;
+
+  @Getter()
+  declare readonly profileJson: Record<string, unknown> | null | undefined;
+
+  @Getter()
+  declare readonly linkedAt: Date;
 }

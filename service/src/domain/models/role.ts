@@ -1,3 +1,4 @@
+import { Getter } from '../decorators';
 import { PersistenceModel } from './persistence-model';
 
 interface RoleModelProps {
@@ -12,21 +13,17 @@ export class RoleModel extends PersistenceModel<string, RoleModelProps> {
     super(props, id);
   }
 
-  get tenantId(): string {
-    return this.etc.tenantId;
-  }
+  @Getter()
+  declare readonly tenantId: string;
 
-  get code(): string {
-    return this.etc.code;
-  }
+  @Getter()
+  declare readonly code: string;
 
-  get name(): string {
-    return this.etc.name;
-  }
+  @Getter()
+  declare readonly name: string;
 
-  get description(): string | null | undefined {
-    return this.etc.description;
-  }
+  @Getter()
+  declare readonly description: string | null | undefined;
 
   changeName(name: string): void {
     this.etc.name = name;

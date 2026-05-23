@@ -42,6 +42,7 @@ export function IdpFormModal({
   useEffect(() => {
     if (editing) {
       editForm.setFieldsValue({
+        protocol: editing.protocol,
         displayName: editing.displayName,
         clientId: editing.clientId,
         redirectUri: editing.redirectUri,
@@ -50,6 +51,24 @@ export function IdpFormModal({
           editing.oauthConfig != null
             ? JSON.stringify(editing.oauthConfig, null, 2)
             : '',
+        samlEntryPoint: editing.samlConfig?.entryPoint ?? '',
+        samlIdpCerts: editing.samlConfig?.idpCerts?.join('\n\n') ?? '',
+        samlIdpIssuer: editing.samlConfig?.idpIssuer ?? '',
+        samlAudience: editing.samlConfig?.audience ?? '',
+        samlIdentifierFormat: editing.samlConfig?.identifierFormat ?? '',
+        samlAcceptedClockSkewMs: editing.samlConfig?.acceptedClockSkewMs,
+        samlMaxAssertionAgeMs: editing.samlConfig?.maxAssertionAgeMs,
+        samlRequestIdExpirationMs: editing.samlConfig?.requestIdExpirationMs,
+        samlWantAssertionsSigned:
+          editing.samlConfig?.wantAssertionsSigned ?? true,
+        samlWantAuthnResponseSigned:
+          editing.samlConfig?.wantAuthnResponseSigned ?? true,
+        samlForceAuthn: editing.samlConfig?.forceAuthn ?? false,
+        samlDisableRequestedAuthnContext:
+          editing.samlConfig?.disableRequestedAuthnContext ?? false,
+        samlAuthnContext: editing.samlConfig?.authnContext?.join('\n') ?? '',
+        samlAttributeSub: editing.samlConfig?.attributeMapping?.sub ?? '',
+        samlAttributeEmail: editing.samlConfig?.attributeMapping?.email ?? '',
       });
     }
   }, [editing, editForm]);
@@ -98,7 +117,7 @@ export function IdpFormModal({
         }}
         onOk={() => createForm.submit()}
         confirmLoading={createMutation.isPending}
-        width={560}
+        width={720}
         destroyOnClose
       >
         <IdpForm mode="create" form={createForm} onFinish={handleCreate} />
@@ -113,7 +132,7 @@ export function IdpFormModal({
         }}
         onOk={() => editForm.submit()}
         confirmLoading={updateMutation.isPending}
-        width={560}
+        width={720}
         destroyOnClose
       >
         <IdpForm mode="edit" form={editForm} onFinish={handleUpdate} />

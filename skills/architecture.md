@@ -19,7 +19,14 @@ infrastructure → application → domain
 Domain must NEVER depend on:
 
 - NestJS, MikroORM, node-oidc-provider
-- decorators, persistence entities, framework exceptions
+- framework decorators, external decorators, persistence entities, framework exceptions
+
+Domain may use project-owned utility decorators only when they:
+
+- depend on pure TypeScript/JavaScript only
+- do not import framework, infrastructure, persistence, HTTP, DI, validation, serialization, or cache concerns
+- do not require `reflect-metadata`, global registries, or runtime scanning
+- make domain intent clearer without hiding invariants
 
 ### Layer Responsibilities
 
@@ -70,6 +77,7 @@ export class CreateUserDto {
 ## Don't
 
 - domain에 NestJS/MikroORM import
+- domain에 외부 라이브러리/프레임워크 데코레이터 사용
 - controller에 비즈니스 로직 배치
 - `new DTO()` 직접 호출
 - port 구현체를 application 레이어에 배치

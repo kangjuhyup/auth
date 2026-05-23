@@ -1,3 +1,4 @@
+import { Getter } from '../decorators';
 import { PersistenceModel } from './persistence-model';
 import { UserCredentialModel } from './user-credential';
 
@@ -113,28 +114,27 @@ export class UserModel extends PersistenceModel<string, UserProps> {
      Getters
   =============================== */
 
-  get tenantId(): string {
-    return this.etc.tenantId;
-  }
-  get username(): string {
-    return this.etc.username;
-  }
-  get email(): string | null | undefined {
-    return this.etc.email;
-  }
-  get emailVerified(): boolean {
-    return this.etc.emailVerified;
-  }
-  get phone(): string | null | undefined {
-    return this.etc.phone;
-  }
-  get phoneVerified(): boolean {
-    return this.etc.phoneVerified;
-  }
-  get status(): UserStatus {
-    return this.etc.status;
-  }
-  get passwordCredential(): UserCredentialModel | undefined {
-    return this.etc.passwordCredential;
-  }
+  @Getter()
+  declare readonly tenantId: string;
+
+  @Getter()
+  declare readonly username: string;
+
+  @Getter()
+  declare readonly email: string | null | undefined;
+
+  @Getter()
+  declare readonly emailVerified: boolean;
+
+  @Getter()
+  declare readonly phone: string | null | undefined;
+
+  @Getter()
+  declare readonly phoneVerified: boolean;
+
+  @Getter()
+  declare readonly status: UserStatus;
+
+  @Getter()
+  declare readonly passwordCredential: UserCredentialModel | undefined;
 }

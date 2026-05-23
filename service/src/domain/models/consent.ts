@@ -1,3 +1,5 @@
+import { Getter } from '../decorators';
+
 export interface ConsentModelProps {
   tenantId: string;
   userId: string;
@@ -22,37 +24,29 @@ export class ConsentModel {
     return this._id;
   }
 
-  get tenantId(): string {
-    return this.props.tenantId;
-  }
+  @Getter()
+  declare readonly tenantId: string;
 
-  get userId(): string {
-    return this.props.userId;
-  }
+  @Getter()
+  declare readonly userId: string;
 
-  get clientRefId(): string {
-    return this.props.clientRefId;
-  }
+  @Getter()
+  declare readonly clientRefId: string;
 
-  get clientId(): string | undefined {
-    return this.props.clientId;
-  }
+  @Getter()
+  declare readonly clientId: string | undefined;
 
-  get clientName(): string | undefined {
-    return this.props.clientName;
-  }
+  @Getter()
+  declare readonly clientName: string | undefined;
 
-  get grantedScopes(): string {
-    return this.props.grantedScopes;
-  }
+  @Getter()
+  declare readonly grantedScopes: string;
 
-  get grantedAt(): Date {
-    return this.props.grantedAt;
-  }
+  @Getter()
+  declare readonly grantedAt: Date;
 
-  get revokedAt(): Date | null | undefined {
-    return this.props.revokedAt;
-  }
+  @Getter()
+  declare readonly revokedAt: Date | null | undefined;
 
   get isRevoked(): boolean {
     return !!this.props.revokedAt;

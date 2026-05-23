@@ -1,3 +1,5 @@
+import { Getter } from '../decorators';
+
 export type KeyStatus = 'active' | 'rotated' | 'revoked';
 export type KeyAlgorithm = 'RS256' | 'ES256';
 
@@ -20,21 +22,41 @@ export class JwksKeyModel {
     this.props = { ...props };
   }
 
-  get kid(): string { return this.props.kid; }
-  get tenantId(): string { return this.props.tenantId; }
-  get algorithm(): KeyAlgorithm { return this.props.algorithm; }
-  get publicKey(): string { return this.props.publicKey; }
-  get privateKeyEnc(): string { return this.props.privateKeyEnc; }
-  get status(): KeyStatus { return this.props.status; }
-  get rotatedAt(): Date | null | undefined { return this.props.rotatedAt; }
-  get expiresAt(): Date | null | undefined { return this.props.expiresAt; }
-  get createdAt(): Date { return this.props.createdAt; }
+  @Getter()
+  declare readonly kid: string;
+
+  @Getter()
+  declare readonly tenantId: string;
+
+  @Getter()
+  declare readonly algorithm: KeyAlgorithm;
+
+  @Getter()
+  declare readonly publicKey: string;
+
+  @Getter()
+  declare readonly privateKeyEnc: string;
+
+  @Getter()
+  declare readonly status: KeyStatus;
+
+  @Getter()
+  declare readonly rotatedAt: Date | null | undefined;
+
+  @Getter()
+  declare readonly expiresAt: Date | null | undefined;
+
+  @Getter()
+  declare readonly createdAt: Date;
 
   /**
    * 키를 rotated 상태로 전환하고 오버랩 만료시각을 설정한다.
    * overlapWindowMs: rotated 키가 검증에 사용되는 유예 기간 (기본 24시간)
    */
-  markRotated(now: Date = new Date(), overlapWindowMs = 24 * 60 * 60 * 1000): void {
+  markRotated(
+    now: Date = new Date(),
+    overlapWindowMs = 24 * 60 * 60 * 1000,
+  ): void {
     this.props.status = 'rotated';
     this.props.rotatedAt = now;
     this.props.expiresAt = new Date(now.getTime() + overlapWindowMs);

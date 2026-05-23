@@ -1,3 +1,4 @@
+import { Getter } from '../decorators';
 import { PersistenceModel } from './persistence-model';
 
 export type ClientType = 'confidential' | 'public' | 'service';
@@ -30,81 +31,62 @@ export class ClientModel extends PersistenceModel<string, ClientModelProps> {
     super(props, id);
   }
 
-  get tenantId(): string {
-    return this.etc.tenantId;
-  }
+  @Getter()
+  declare readonly tenantId: string;
 
-  get clientId(): string {
-    return this.etc.clientId;
-  }
+  @Getter()
+  declare readonly clientId: string;
 
-  get secretEnc(): string | null | undefined {
-    return this.etc.secretEnc;
-  }
+  @Getter()
+  declare readonly secretEnc: string | null | undefined;
 
-  get name(): string {
-    return this.etc.name;
-  }
+  @Getter()
+  declare readonly name: string;
 
-  get type(): ClientType {
-    return this.etc.type;
-  }
+  @Getter()
+  declare readonly type: ClientType;
 
-  get enabled(): boolean {
-    return this.etc.enabled;
-  }
+  @Getter()
+  declare readonly enabled: boolean;
 
-  get redirectUris(): string[] {
-    return this.etc.redirectUris;
-  }
+  @Getter()
+  declare readonly redirectUris: string[];
 
-  get grantTypes(): string[] {
-    return this.etc.grantTypes;
-  }
+  @Getter()
+  declare readonly grantTypes: string[];
 
-  get responseTypes(): string[] {
-    return this.etc.responseTypes;
-  }
+  @Getter()
+  declare readonly responseTypes: string[];
 
-  get tokenEndpointAuthMethod(): string {
-    return this.etc.tokenEndpointAuthMethod;
-  }
+  @Getter()
+  declare readonly tokenEndpointAuthMethod: string;
 
-  get scope(): string {
-    return this.etc.scope;
-  }
+  @Getter()
+  declare readonly scope: string;
 
-  get postLogoutRedirectUris(): string[] {
-    return this.etc.postLogoutRedirectUris;
-  }
+  @Getter()
+  declare readonly postLogoutRedirectUris: string[];
 
-  get applicationType(): ApplicationType {
-    return this.etc.applicationType;
-  }
+  @Getter()
+  declare readonly applicationType: ApplicationType;
 
-  get backchannelLogoutUri(): string | null | undefined {
-    return this.etc.backchannelLogoutUri;
-  }
+  @Getter()
+  declare readonly backchannelLogoutUri: string | null | undefined;
 
-  get frontchannelLogoutUri(): string | null | undefined {
-    return this.etc.frontchannelLogoutUri;
-  }
+  @Getter()
+  declare readonly frontchannelLogoutUri: string | null | undefined;
 
-  get accessTokenTtlSec(): number | null | undefined {
-    return this.etc.accessTokenTtlSec;
-  }
+  @Getter()
+  declare readonly accessTokenTtlSec: number | null | undefined;
 
-  get refreshTokenTtlSec(): number | null | undefined {
-    return this.etc.refreshTokenTtlSec;
-  }
+  @Getter()
+  declare readonly refreshTokenTtlSec: number | null | undefined;
 
-  get allowedResources(): string[] {
-    return this.etc.allowedResources;
-  }
+  @Getter()
+  declare readonly allowedResources: string[];
 
-  get skipConsent(): boolean {
-    return this.etc.skipConsent;
-  }
+  @Getter()
+  declare readonly skipConsent: boolean;
 
   setSkipConsent(value: boolean): void {
     this.etc.skipConsent = value;
