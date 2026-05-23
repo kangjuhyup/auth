@@ -10,6 +10,9 @@ import {
   ValidateNested,
   IsArray,
   Matches,
+  IsIn,
+  IsInt,
+  Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -49,6 +52,80 @@ class IdpOauthConfigDto {
   extraAuthParams?: Record<string, string>;
 }
 
+class IdpSamlAttributeMappingDto {
+  @IsOptional()
+  @IsString()
+  sub?: string;
+
+  @IsOptional()
+  @IsString()
+  email?: string;
+}
+
+class IdpSamlConfigDto {
+  @IsString()
+  @IsNotEmpty()
+  @IsUrl(URL_OPTIONS)
+  entryPoint!: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  idpCerts!: string[];
+
+  @IsOptional()
+  @IsString()
+  idpIssuer?: string;
+
+  @IsOptional()
+  @IsString()
+  audience?: string;
+
+  @IsOptional()
+  @IsString()
+  identifierFormat?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  acceptedClockSkewMs?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  maxAssertionAgeMs?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  requestIdExpirationMs?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  wantAssertionsSigned?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  wantAuthnResponseSigned?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  forceAuthn?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  disableRequestedAuthnContext?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  authnContext?: string[];
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => IdpSamlAttributeMappingDto)
+  attributeMapping?: IdpSamlAttributeMappingDto;
+}
+
 export class CreateIdentityProviderDto {
   @IsString()
   @IsNotEmpty()
@@ -58,6 +135,10 @@ export class CreateIdentityProviderDto {
       'provider must be 1–64 chars, start with alphanumeric, then alphanumeric, underscore, or hyphen',
   })
   provider!: string;
+
+  @IsOptional()
+  @IsIn(['oauth2', 'saml2'])
+  protocol?: 'oauth2' | 'saml2';
 
   @IsString()
   @IsNotEmpty()
@@ -89,9 +170,18 @@ export class CreateIdentityProviderDto {
   @ValidateNested()
   @Type(() => IdpOauthConfigDto)
   oauthConfig?: IdpOauthConfigDto | null;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => IdpSamlConfigDto)
+  samlConfig?: IdpSamlConfigDto | null;
 }
 
 export class UpdateIdentityProviderDto {
+  @IsOptional()
+  @IsIn(['oauth2', 'saml2'])
+  protocol?: 'oauth2' | 'saml2';
+
   @IsOptional()
   @IsString()
   @IsNotEmpty()
@@ -122,4 +212,9 @@ export class UpdateIdentityProviderDto {
   @ValidateNested()
   @Type(() => IdpOauthConfigDto)
   oauthConfig?: IdpOauthConfigDto | null;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => IdpSamlConfigDto)
+  samlConfig?: IdpSamlConfigDto | null;
 }

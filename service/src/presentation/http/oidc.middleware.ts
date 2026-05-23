@@ -1,20 +1,14 @@
-// service/src/infrastructure/oidc-provider/oidc-delegate.middleware.ts
-import { OIDC_PROVIDER } from '@infrastructure/oidc-provider/oidc-provider.constants';
-import { OidcProviderRegistry } from '@infrastructure/oidc-provider/oidc-provider.registry';
 import {
   BadRequestException,
-  Inject,
   Injectable,
   NestMiddleware,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { OidcInteractionPort } from '@application/ports/oidc-interaction.port';
 
 @Injectable()
 export class OidcDelegateMiddleware implements NestMiddleware {
-  constructor(
-    @Inject(OIDC_PROVIDER)
-    private readonly registry: OidcProviderRegistry,
-  ) {}
+  constructor(private readonly oidcInteraction: OidcInteractionPort) {}
 
   async use(req: Request, res: Response) {
     const tenantCode = req.params.tenantCode;
@@ -24,13 +18,10 @@ export class OidcDelegateMiddleware implements NestMiddleware {
     if (Array.isArray(tenantCode)) {
       throw new BadRequestException('Tenant code is must be a string');
     }
-    const provider = await this.registry.get(tenantCode);
-
-    const prefix = `/t/${tenantCode}/oidc`;
-    if (req.url.startsWith(prefix)) {
-      req.url = req.url.slice(prefix.length) || '/';
-    }
-
-    return provider.callback()(req as any, res as any);
+    return this.oidcInteraction.delegateProviderCallback({
+      tenantCode,
+      req,
+      res,
+    });
   }
 }

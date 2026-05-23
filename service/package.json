@@ -42,6 +42,7 @@
     "@nestjs/serve-static": "^5.0.4",
     "@nestjs/swagger": "^11.2.6",
     "@nestjs/throttler": "^6.5.0",
+    "@node-saml/node-saml": "^5.1.0",
     "@simplewebauthn/server": "^13.3.0",
     "argon2": "^0.44.0",
     "class-transformer": "^0.5.1",

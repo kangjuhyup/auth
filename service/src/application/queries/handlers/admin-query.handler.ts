@@ -105,7 +105,11 @@ export class AdminQueryHandler implements AdminQueryPort {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 
-    const { items, total } = await this.clientRepo.list({ tenantId, page, limit });
+    const { items, total } = await this.clientRepo.list({
+      tenantId,
+      page,
+      limit,
+    });
 
     return {
       items: items.map((c) => ({
@@ -220,7 +224,11 @@ export class AdminQueryHandler implements AdminQueryPort {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 
-    const { items, total } = await this.eventRepo.list({ tenantId, page, limit });
+    const { items, total } = await this.eventRepo.list({
+      tenantId,
+      page,
+      limit,
+    });
 
     return {
       items: items.map((e) => ({
@@ -251,7 +259,11 @@ export class AdminQueryHandler implements AdminQueryPort {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 
-    const { items, total } = await this.userRepo.list({ tenantId, page, limit });
+    const { items, total } = await this.userRepo.list({
+      tenantId,
+      page,
+      limit,
+    });
 
     return {
       items: items.map((u) => ({
@@ -298,7 +310,11 @@ export class AdminQueryHandler implements AdminQueryPort {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 
-    const { items, total } = await this.roleRepo.list({ tenantId, page, limit });
+    const { items, total } = await this.roleRepo.list({
+      tenantId,
+      page,
+      limit,
+    });
 
     return {
       items: items.map((r) => ({
@@ -346,7 +362,11 @@ export class AdminQueryHandler implements AdminQueryPort {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 
-    const { items, total } = await this.rolePermissionRepo.listByRole({ roleId, page, limit });
+    const { items, total } = await this.rolePermissionRepo.listByRole({
+      roleId,
+      page,
+      limit,
+    });
 
     return {
       items: items.map((p) => ({
@@ -371,7 +391,11 @@ export class AdminQueryHandler implements AdminQueryPort {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 
-    const { items, total } = await this.permissionRepo.list({ tenantId, page, limit });
+    const { items, total } = await this.permissionRepo.list({
+      tenantId,
+      page,
+      limit,
+    });
 
     return {
       items: items.map((p) => ({
@@ -389,7 +413,10 @@ export class AdminQueryHandler implements AdminQueryPort {
     };
   }
 
-  async getPermission(tenantId: string, id: string): Promise<PermissionResponse> {
+  async getPermission(
+    tenantId: string,
+    id: string,
+  ): Promise<PermissionResponse> {
     const permission = orThrow(
       await this.permissionRepo.findById(id),
       new NotFoundException('Permission not found'),
@@ -414,7 +441,11 @@ export class AdminQueryHandler implements AdminQueryPort {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 
-    const { items, total } = await this.groupRepo.list({ tenantId, page, limit });
+    const { items, total } = await this.groupRepo.list({
+      tenantId,
+      page,
+      limit,
+    });
 
     return {
       items: items.map((g) => ({
@@ -448,7 +479,10 @@ export class AdminQueryHandler implements AdminQueryPort {
     };
   }
 
-  async getGroupRoles(tenantId: string, groupId: string): Promise<RoleResponse[]> {
+  async getGroupRoles(
+    tenantId: string,
+    groupId: string,
+  ): Promise<RoleResponse[]> {
     orThrow(
       await this.groupRepo.findById(groupId),
       new NotFoundException('Group not found'),
@@ -466,7 +500,10 @@ export class AdminQueryHandler implements AdminQueryPort {
     }));
   }
 
-  async getUserRoles(tenantId: string, userId: string): Promise<RoleResponse[]> {
+  async getUserRoles(
+    tenantId: string,
+    userId: string,
+  ): Promise<RoleResponse[]> {
     const roles = await this.roleAssignmentRepo.listForUser(userId);
     return roles.map((r) => ({
       id: r.id,
@@ -478,16 +515,20 @@ export class AdminQueryHandler implements AdminQueryPort {
     }));
   }
 
-  private toIdentityProviderResponse(m: IdentityProviderModel): IdentityProviderResponse {
+  private toIdentityProviderResponse(
+    m: IdentityProviderModel,
+  ): IdentityProviderResponse {
     return {
       id: m.id,
       provider: m.provider,
+      protocol: m.protocol,
       displayName: m.displayName,
       clientId: m.clientId,
       clientSecretSet: m.clientSecret != null && m.clientSecret.length > 0,
       redirectUri: m.redirectUri,
       enabled: m.enabled,
       oauthConfig: m.oauthConfig,
+      samlConfig: m.samlConfig,
       createdAt: m.createdAt,
       updatedAt: m.updatedAt,
     };

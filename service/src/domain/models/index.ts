@@ -19,6 +19,11 @@ export { ConsentModel } from './consent';
 export { EventModel } from './event';
 export type { EventCategory, EventSeverity, EventAction } from './event';
 export { IdentityProviderModel } from './identity-provider';
+export type {
+  IdpProtocol,
+  IdpSamlAttributeMapping,
+  IdpSamlConfig,
+} from './idp-saml-config';
 export type { IdpProvider } from './identity-provider';
 export type {
   IdpOauthEndpointsConfig,

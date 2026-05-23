@@ -1,6 +1,12 @@
-import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
+import {
+  MiddlewareConsumer,
+  Module,
+  NestModule,
+  RequestMethod,
+} from '@nestjs/common';
 import { ApplicationModule } from '@application/application.module';
 import { TenantMiddleware } from './http/tenant.middleware';
+import { OidcDelegateMiddleware } from './http/oidc.middleware';
 import { HealthController } from './controllers/health.controller';
 import { AuthController } from './controllers/auth.controller';
 import { AdminClientController } from './controllers/admin/client.controller';
@@ -19,7 +25,7 @@ import { AdminGuard } from './http/admin.guard';
 
 @Module({
   imports: [ApplicationModule],
-  providers: [AdminGuard],
+  providers: [AdminGuard, OidcDelegateMiddleware],
   controllers: [
     HealthController,
     AuthController,
@@ -39,12 +45,22 @@ import { AdminGuard } from './http/admin.guard';
 })
 export class PresentationModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
+    consumer.apply(TenantMiddleware, OidcDelegateMiddleware).forRoutes(
+      {
+        path: 't/:tenantCode/oidc',
+        method: RequestMethod.ALL,
+      },
+      {
+        path: 't/:tenantCode/oidc/*path',
+        method: RequestMethod.ALL,
+      },
+    );
+
     consumer
       .apply(TenantMiddleware)
-      .forRoutes(
-        AuthController,
-        InteractionController,
-        { path: 't/:tenantCode/admin/*path', method: RequestMethod.ALL },
-      );
+      .forRoutes(AuthController, InteractionController, {
+        path: 't/:tenantCode/admin/*path',
+        method: RequestMethod.ALL,
+      });
   }
 }

@@ -2,8 +2,12 @@ import { Module, Global } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OidcProviderModule } from './oidc-provider/oidc-provider.module';
 import { NotificationModule } from './notification/notification.module';
+import { RedisModule } from './redis/redis.module';
 import { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
 import { UserWriteRepositoryImpl } from './repositories/user-write.repository.impl';
+import { AdminSessionPort } from '@application/ports/admin-session.port';
+import { OidcInteractionPort } from '@application/ports/oidc-interaction.port';
+import { TenantContextPort } from '@application/ports/tenant-context.port';
 import {
   TenantRepository,
   GroupRepository,
@@ -55,9 +59,14 @@ import { SymmetricCryptoAdapter } from './crypto/symmetric/symmetric-crypto.adap
 
 // IdP & MFA
 import { IdpPort } from '@application/ports/idp.port';
+import { SamlSpPort } from '@application/ports/saml-sp.port';
 import { MfaVerificationPort } from '@application/ports/mfa-verification.port';
 import { OAuth2IdpAdapter } from './idp/oauth2-idp.adapter';
+import { SamlSpAdapter } from './idp/saml-sp.adapter';
 import { MfaVerificationAdapter } from './mfa/mfa-verification.adapter';
+import { TenantContextAdapter } from './adapters/tenant-context.adapter';
+import { AdminSessionAdapter } from './oidc-provider/admin-session.adapter';
+import { OidcInteractionAdapter } from './oidc-provider/oidc-interaction.adapter';
 
 // Password Hash Implementations
 import { Argon2idHash } from './crypto/password/impl/argon2-hash';
@@ -65,7 +74,7 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
 
 @Global()
 @Module({
-  imports: [OidcProviderModule, NotificationModule],
+  imports: [OidcProviderModule, NotificationModule, RedisModule],
   providers: [
     {
       provide: TenantRepository,
@@ -132,8 +141,24 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
       useClass: UserWriteRepositoryImpl,
     },
     {
+      provide: TenantContextPort,
+      useClass: TenantContextAdapter,
+    },
+    {
+      provide: AdminSessionPort,
+      useClass: AdminSessionAdapter,
+    },
+    {
+      provide: OidcInteractionPort,
+      useClass: OidcInteractionAdapter,
+    },
+    {
       provide: IdpPort,
       useClass: OAuth2IdpAdapter,
+    },
+    {
+      provide: SamlSpPort,
+      useClass: SamlSpAdapter,
     },
     {
       provide: MfaVerificationPort,
@@ -191,6 +216,9 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     OidcProviderModule,
     NotificationModule,
     UserWriteRepositoryPort,
+    TenantContextPort,
+    AdminSessionPort,
+    OidcInteractionPort,
     TenantRepository,
     GroupRepository,
     RoleRepository,
@@ -205,6 +233,7 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     EventRepository,
     RoleInheritRepository,
     IdentityProviderRepository,
+    SamlSpPort,
     UserIdentityRepository,
     IdpPort,
     MfaVerificationPort,
