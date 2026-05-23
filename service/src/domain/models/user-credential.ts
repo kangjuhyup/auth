@@ -57,6 +57,10 @@ export class UserCredentialModel extends PersistenceModel<
     return new UserCredentialModel(params, id);
   }
 
+  enable(): void {
+    this.etc.enabled = true;
+  }
+
   disable(): void {
     this.etc.enabled = false;
   }

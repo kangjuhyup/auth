@@ -63,4 +63,32 @@ describe('UserCredentialModel', () => {
       ).toThrow('HashAlgRequired');
     });
   });
+
+  describe('enable/disable', () => {
+    it('disabled credential을 enable할 수 있다', () => {
+      const cred = UserCredentialModel.of({
+        type: 'totp',
+        secretHash: 'JBSWY3DPEHPK3PXP',
+        hashAlg: 'totp-sha1',
+        enabled: false,
+      });
+
+      cred.enable();
+
+      expect(cred.enabled).toBe(true);
+    });
+
+    it('enabled credential을 disable할 수 있다', () => {
+      const cred = UserCredentialModel.of({
+        type: 'totp',
+        secretHash: 'JBSWY3DPEHPK3PXP',
+        hashAlg: 'totp-sha1',
+        enabled: true,
+      });
+
+      cred.disable();
+
+      expect(cred.enabled).toBe(false);
+    });
+  });
 });

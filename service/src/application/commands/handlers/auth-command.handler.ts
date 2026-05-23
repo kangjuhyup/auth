@@ -4,6 +4,9 @@ import {
   PasswordResetRequestDto,
   PasswordResetDto,
   VerificationTokenDto,
+  TotpEnrollmentResponse,
+  TotpConfirmationDto,
+  TotpConfirmationResponse,
   UpdateProfileDto,
   SignupDto,
 } from '@application/dto';
@@ -17,6 +20,7 @@ import { PasswordHashPort } from '@application/ports/password-hash.port';
 import { OtpHashPort } from '@application/ports/otp-hash.port';
 import { OtpTokenPort } from '@application/ports/otp-token.port';
 import { NotificationPort } from '@application/ports/notification.port';
+import { MfaVerificationPort } from '@application/ports/mfa-verification.port';
 import { UserWriteRepositoryPort } from '../ports/user-write-repository.port';
 import { ConsentRepository } from '@domain/repositories/consent.repository';
 import { orThrow } from '@domain/utils';
@@ -31,6 +35,7 @@ export class AuthCommandHandler implements AuthCommandPort {
     private readonly otpHash: OtpHashPort,
     private readonly otpToken: OtpTokenPort,
     private readonly notification: NotificationPort,
+    private readonly mfaVerification: MfaVerificationPort,
     private readonly configService: ConfigService,
     private readonly consentRepo: ConsentRepository,
   ) {}
@@ -369,6 +374,106 @@ export class AuthCommandHandler implements AuthCommandPort {
     });
   }
 
+  async beginTotpEnrollment(
+    tenantId: string,
+    userId: string,
+  ): Promise<TotpEnrollmentResponse> {
+    const user = this.assertActiveTenantUser(
+      await this.userWriteRepo.findById(userId),
+      tenantId,
+    );
+
+    const secret = this.mfaVerification.generateTotpSecret();
+    const issuer = this.getStringConfig('OTP_TOTP_ISSUER', 'Auth');
+    const accountName = user.email ?? user.username;
+    const credential = UserCredentialModel.of({
+      type: 'totp',
+      secretHash: secret,
+      hashAlg: 'totp-sha1',
+      hashParams: {
+        issuer,
+        accountName,
+        pendingEnrollment: true,
+      },
+      hashVersion: 1,
+      enabled: false,
+    });
+
+    await this.userWriteRepo.createCredential(user.id, credential);
+
+    return {
+      secret,
+      otpauthUrl: this.mfaVerification.buildTotpUri({
+        issuer,
+        accountName,
+        secret,
+      }),
+    };
+  }
+
+  async confirmTotpEnrollment(
+    tenantId: string,
+    userId: string,
+    dto: TotpConfirmationDto,
+  ): Promise<TotpConfirmationResponse> {
+    this.assertActiveTenantUser(
+      await this.userWriteRepo.findById(userId),
+      tenantId,
+    );
+
+    const pendingCredentials = await this.userWriteRepo.findCredentialsByType(
+      userId,
+      ['totp'],
+      { enabled: false },
+    );
+    const pending = pendingCredentials.find(
+      (credential) => credential.hashParams?.pendingEnrollment === true,
+    );
+    if (!pending) throw new Error('TotpEnrollmentNotFound');
+
+    const verified = this.mfaVerification.verifyTotp(
+      pending.secretHash,
+      dto.code,
+    );
+    if (!verified) throw new Error('InvalidTotpCode');
+
+    const activeCredentials = await this.userWriteRepo.findCredentialsByType(
+      userId,
+      ['totp'],
+    );
+    for (const credential of activeCredentials) {
+      credential.disable();
+      await this.userWriteRepo.saveCredential(credential);
+    }
+
+    pending.enable();
+    pending.updateHashParams({
+      ...(pending.hashParams ?? {}),
+      pendingEnrollment: false,
+      enrolledAt: new Date().toISOString(),
+    });
+    await this.userWriteRepo.saveCredential(pending);
+
+    const recoveryCodes = await this.createRecoveryCodes(userId);
+    return { recoveryCodes };
+  }
+
+  async disableTotp(tenantId: string, userId: string): Promise<void> {
+    this.assertActiveTenantUser(
+      await this.userWriteRepo.findById(userId),
+      tenantId,
+    );
+
+    const credentials = await this.userWriteRepo.findCredentialsByType(userId, [
+      'totp',
+      'recovery_code',
+    ]);
+    for (const credential of credentials) {
+      credential.disable();
+      await this.userWriteRepo.saveCredential(credential);
+    }
+  }
+
   async updateProfile(
     tenantId: string,
     userId: string,
@@ -435,6 +540,30 @@ export class AuthCommandHandler implements AuthCommandPort {
     const raw = this.configService.get<string>(key);
     const parsed = Number(raw);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  }
+
+  private getStringConfig(key: string, fallback: string): string {
+    const value = this.configService.get<string>(key);
+    return value?.trim() ? value.trim() : fallback;
+  }
+
+  private async createRecoveryCodes(userId: string): Promise<string[]> {
+    const codes: string[] = [];
+    for (let i = 0; i < 10; i += 1) {
+      const code = this.otpHash.generateToken(10);
+      const hash = await this.passwordHash.hash(code);
+      const credential = UserCredentialModel.of({
+        type: 'recovery_code',
+        secretHash: hash.hash,
+        hashAlg: hash.alg,
+        hashParams: hash.params,
+        hashVersion: hash.version,
+        enabled: true,
+      });
+      await this.userWriteRepo.createCredential(userId, credential);
+      codes.push(code);
+    }
+    return codes;
   }
 
   private assertActiveTenantUser(

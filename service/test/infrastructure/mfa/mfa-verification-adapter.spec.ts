@@ -9,6 +9,29 @@ describe('MfaVerificationAdapter', () => {
 
   // ── TOTP ──────────────────────────────────────────────────────────────────
 
+  describe('generateTotpSecret', () => {
+    it('base32 TOTP secret을 생성한다', () => {
+      const secret = adapter.generateTotpSecret();
+
+      expect(secret).toMatch(/^[A-Z2-7]+$/);
+      expect(secret.length).toBeGreaterThanOrEqual(32);
+    });
+  });
+
+  describe('buildTotpUri', () => {
+    it('otpauth URI를 생성한다', () => {
+      const uri = adapter.buildTotpUri({
+        issuer: 'ExampleAuth',
+        accountName: 'john@example.com',
+        secret: 'JBSWY3DPEHPK3PXP',
+      });
+
+      expect(uri).toContain('otpauth://totp/');
+      expect(uri).toContain('secret=JBSWY3DPEHPK3PXP');
+      expect(uri).toContain('issuer=ExampleAuth');
+    });
+  });
+
   describe('verifyTotp', () => {
     // TOTP RFC 6238 base32 secret: "JBSWY3DPEHPK3PXP"
     const secret = 'JBSWY3DPEHPK3PXP';
@@ -79,7 +102,10 @@ describe('MfaVerificationAdapter', () => {
     });
 
     it('빈 credentials로도 옵션 생성', async () => {
-      const options = await adapter.generateWebAuthnAuthOptions([], 'example.com');
+      const options = await adapter.generateWebAuthnAuthOptions(
+        [],
+        'example.com',
+      );
 
       expect(options).toBeDefined();
     });

@@ -6,6 +6,14 @@ export interface WebAuthnVerifyResult {
 }
 
 export abstract class MfaVerificationPort {
+  abstract generateTotpSecret(): string;
+
+  abstract buildTotpUri(params: {
+    issuer: string;
+    accountName: string;
+    secret: string;
+  }): string;
+
   abstract verifyTotp(secret: string, code: string): boolean;
 
   abstract generateWebAuthnAuthOptions(

@@ -1,8 +1,15 @@
 import { NotFoundException } from '@nestjs/common';
 import { UserCommandHandler } from '@application/commands/handlers/user-command.handler';
 import type { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
-import type { RoleRepository, RoleAssignmentRepository } from '@domain/repositories';
-import type { PasswordHashPort, HashResult, HashPolicy } from '@application/ports/password-hash.port';
+import type {
+  RoleRepository,
+  RoleAssignmentRepository,
+} from '@domain/repositories';
+import type {
+  PasswordHashPort,
+  HashResult,
+  HashPolicy,
+} from '@application/ports/password-hash.port';
 import { UserModel } from '@domain/models/user';
 import { RoleModel } from '@domain/models/role';
 
@@ -35,14 +42,24 @@ function createMockUserWriteRepo(): jest.Mocked<UserWriteRepositoryPort> {
     list: jest.fn().mockResolvedValue({ items: [], total: 0 }),
     save: jest.fn().mockResolvedValue(undefined),
     findCredentialsByType: jest.fn().mockResolvedValue([]),
+    createCredential: jest.fn().mockResolvedValue(undefined),
     saveCredential: jest.fn().mockResolvedValue(undefined),
   };
 }
 
 function createMockPasswordHash(): jest.Mocked<PasswordHashPort> {
-  const result: HashResult = { alg: 'argon2id', params: {}, version: 1, hash: 'hashed' };
+  const result: HashResult = {
+    alg: 'argon2id',
+    params: {},
+    version: 1,
+    hash: 'hashed',
+  };
   return {
-    defaultPolicy: jest.fn().mockReturnValue({ alg: 'argon2id', params: {}, version: 1 } as HashPolicy),
+    defaultPolicy: jest.fn().mockReturnValue({
+      alg: 'argon2id',
+      params: {},
+      version: 1,
+    } as HashPolicy),
     hash: jest.fn().mockResolvedValue(result),
     verify: jest.fn().mockResolvedValue(true),
   };
@@ -84,7 +101,12 @@ describe('UserCommandHandler', () => {
     roleRepo = createMockRoleRepo();
     roleAssignment = createMockRoleAssignment();
     passwordHash = createMockPasswordHash();
-    handler = new UserCommandHandler(userWriteRepo, roleRepo, roleAssignment, passwordHash);
+    handler = new UserCommandHandler(
+      userWriteRepo,
+      roleRepo,
+      roleAssignment,
+      passwordHash,
+    );
   });
 
   describe('assignRole', () => {
@@ -120,7 +142,9 @@ describe('UserCommandHandler', () => {
     });
 
     it('유저 tenantId 불일치 시 NotFoundException을 던진다', async () => {
-      userWriteRepo.findById.mockResolvedValue(makeUser('user-1', 'other-tenant'));
+      userWriteRepo.findById.mockResolvedValue(
+        makeUser('user-1', 'other-tenant'),
+      );
 
       await expect(
         handler.assignRole('tenant-1', 'user-1', 'role-1'),
@@ -166,7 +190,9 @@ describe('UserCommandHandler', () => {
     });
 
     it('유저 tenantId 불일치 시 NotFoundException을 던진다', async () => {
-      userWriteRepo.findById.mockResolvedValue(makeUser('user-1', 'other-tenant'));
+      userWriteRepo.findById.mockResolvedValue(
+        makeUser('user-1', 'other-tenant'),
+      );
 
       await expect(
         handler.removeRole('tenant-1', 'user-1', 'role-1'),
@@ -179,7 +205,10 @@ describe('UserCommandHandler', () => {
       userWriteRepo.findByUsername.mockResolvedValue(makeUser());
 
       await expect(
-        handler.createUser('tenant-1', { username: 'testuser', password: 'pw' } as any),
+        handler.createUser('tenant-1', {
+          username: 'testuser',
+          password: 'pw',
+        } as any),
       ).rejects.toThrow('UsernameAlreadyExists');
 
       expect(userWriteRepo.save).not.toHaveBeenCalled();
@@ -222,7 +251,9 @@ describe('UserCommandHandler', () => {
     });
 
     it('다른 tenant의 유저이면 NotFoundException을 던진다', async () => {
-      userWriteRepo.findById.mockResolvedValue(makeUser('user-1', 'other-tenant'));
+      userWriteRepo.findById.mockResolvedValue(
+        makeUser('user-1', 'other-tenant'),
+      );
 
       await expect(
         handler.updateUser('tenant-1', 'user-1', {} as any),
@@ -264,17 +295,19 @@ describe('UserCommandHandler', () => {
     it('유저가 없으면 NotFoundException을 던진다', async () => {
       userWriteRepo.findById.mockResolvedValue(undefined);
 
-      await expect(
-        handler.deleteUser('tenant-1', 'user-1'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(handler.deleteUser('tenant-1', 'user-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('다른 tenant의 유저이면 NotFoundException을 던진다', async () => {
-      userWriteRepo.findById.mockResolvedValue(makeUser('user-1', 'other-tenant'));
+      userWriteRepo.findById.mockResolvedValue(
+        makeUser('user-1', 'other-tenant'),
+      );
 
-      await expect(
-        handler.deleteUser('tenant-1', 'user-1'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(handler.deleteUser('tenant-1', 'user-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('성공 시 withdraw() 상태로 변경하고 save를 호출한다', async () => {

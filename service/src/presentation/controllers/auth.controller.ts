@@ -17,6 +17,7 @@ import {
   PasswordResetRequestDto,
   PasswordResetDto,
   VerificationTokenDto,
+  TotpConfirmationDto,
   UpdateProfileDto,
   ProfileResponse,
   ConsentResponse,
@@ -126,6 +127,37 @@ export class AuthController {
     @Body() dto: VerificationTokenDto,
   ): Promise<void> {
     return this.commandPort.verifyPhone(tenant.id, user.userId, dto);
+  }
+
+  @Post('mfa/totp/enroll')
+  @UseGuards(AccessGuard)
+  @ApiBearerAuth('access-token')
+  beginTotpEnrollment(
+    @Tenant() tenant: TenantContext,
+    @AuthUser() user: AuthenticatedUser,
+  ): Promise<{ secret: string; otpauthUrl: string }> {
+    return this.commandPort.beginTotpEnrollment(tenant.id, user.userId);
+  }
+
+  @Post('mfa/totp/confirm')
+  @UseGuards(AccessGuard)
+  @ApiBearerAuth('access-token')
+  confirmTotpEnrollment(
+    @Tenant() tenant: TenantContext,
+    @AuthUser() user: AuthenticatedUser,
+    @Body() dto: TotpConfirmationDto,
+  ): Promise<{ recoveryCodes: string[] }> {
+    return this.commandPort.confirmTotpEnrollment(tenant.id, user.userId, dto);
+  }
+
+  @Delete('mfa/totp')
+  @UseGuards(AccessGuard)
+  @ApiBearerAuth('access-token')
+  disableTotp(
+    @Tenant() tenant: TenantContext,
+    @AuthUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    return this.commandPort.disableTotp(tenant.id, user.userId);
   }
 
   @Get('profile')

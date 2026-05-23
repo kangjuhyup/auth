@@ -26,7 +26,13 @@ export abstract class UserWriteRepositoryPort {
   abstract findCredentialsByType(
     userId: string,
     types: CredentialType[],
+    options?: { enabled?: boolean },
   ): Promise<UserCredentialModel[]>;
+
+  abstract createCredential(
+    userId: string,
+    credential: UserCredentialModel,
+  ): Promise<void>;
 
   abstract saveCredential(credential: UserCredentialModel): Promise<void>;
 }

@@ -90,6 +90,13 @@ export class VerificationTokenDto {
   token!: string;
 }
 
+export class TotpConfirmationDto {
+  @IsString()
+  @IsNotEmpty()
+  @Matches(/^[0-9]{6}$/, { message: 'TOTP 코드는 6자리 숫자여야 합니다' })
+  code!: string;
+}
+
 export class UpdateProfileDto {
   @IsOptional()
   @IsEmail()

@@ -5,6 +5,9 @@ import {
   PasswordResetRequestDto,
   PasswordResetDto,
   VerificationTokenDto,
+  TotpEnrollmentResponse,
+  TotpConfirmationDto,
+  TotpConfirmationResponse,
   UpdateProfileDto,
 } from '@application/dto';
 
@@ -94,6 +97,31 @@ export abstract class AuthCommandPort {
     userId: string,
     dto: VerificationTokenDto,
   ): Promise<void>;
+
+  /**
+   * Begin TOTP MFA enrollment
+   * @description 현재 사용자 TOTP MFA 등록 시작
+   */
+  abstract beginTotpEnrollment(
+    tenantId: string,
+    userId: string,
+  ): Promise<TotpEnrollmentResponse>;
+
+  /**
+   * Confirm TOTP MFA enrollment
+   * @description TOTP 코드 검증 후 MFA 등록 완료
+   */
+  abstract confirmTotpEnrollment(
+    tenantId: string,
+    userId: string,
+    dto: TotpConfirmationDto,
+  ): Promise<TotpConfirmationResponse>;
+
+  /**
+   * Disable TOTP MFA
+   * @description 현재 사용자 TOTP MFA 비활성화
+   */
+  abstract disableTotp(tenantId: string, userId: string): Promise<void>;
 
   /**
    * Update the profile of a user

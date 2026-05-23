@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { EntityManager } from '@mikro-orm/core';
-import { UserWriteRepositoryPort, UserListQuery } from '@application/commands/ports/user-write-repository.port';
+import {
+  UserWriteRepositoryPort,
+  UserListQuery,
+} from '@application/commands/ports/user-write-repository.port';
 import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
 import type { CredentialType } from '@domain/models/user-credential';
@@ -152,12 +155,21 @@ export class UserWriteRepositoryImpl implements UserWriteRepositoryPort {
   async findCredentialsByType(
     userId: string,
     types: CredentialType[],
+    options?: { enabled?: boolean },
   ): Promise<UserCredentialModel[]> {
-    const entities = await this.em.find(UserCredentialOrmEntity, {
-      user: { id: userId },
-      type: { $in: types },
-      enabled: true,
-    });
+    const enabledFilter =
+      options?.enabled === undefined
+        ? { enabled: true }
+        : { enabled: options.enabled };
+    const entities = await this.em.find(
+      UserCredentialOrmEntity,
+      {
+        user: { id: userId },
+        type: { $in: types },
+        ...enabledFilter,
+      },
+      { orderBy: { createdAt: 'DESC' } },
+    );
 
     return entities.map((e) => {
       const model = UserCredentialModel.of(
@@ -175,6 +187,24 @@ export class UserWriteRepositoryImpl implements UserWriteRepositoryPort {
       model.setPersistence(e.id, e.createdAt!, e.updatedAt!);
       return model;
     });
+  }
+
+  async createCredential(
+    userId: string,
+    credential: UserCredentialModel,
+  ): Promise<void> {
+    const entity = this.em.create(UserCredentialOrmEntity, {
+      user: this.em.getReference(UserOrmEntity, userId),
+      type: credential.type,
+      secretHash: credential.secretHash,
+      hashAlg: credential.hashAlg,
+      hashParams: credential.hashParams ?? undefined,
+      hashVersion: credential.hashVersion ?? undefined,
+      enabled: credential.enabled,
+      expiresAt: credential.expiresAt ?? undefined,
+    });
+    this.em.persist(entity);
+    await this.em.flush();
   }
 
   async saveCredential(credential: UserCredentialModel): Promise<void> {

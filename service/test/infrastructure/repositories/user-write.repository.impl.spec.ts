@@ -57,7 +57,9 @@ describe('UserWriteRepositoryImpl', () => {
         phone: '01099998888',
       });
       attachCredentials(emailUser, [createUserCredentialEntity()]);
-      attachCredentials(phoneUser, [createUserCredentialEntity({ id: 'cred-2' })]);
+      attachCredentials(phoneUser, [
+        createUserCredentialEntity({ id: 'cred-2' }),
+      ]);
 
       em.findOne
         .mockResolvedValueOnce(emailUser)
@@ -89,7 +91,10 @@ describe('UserWriteRepositoryImpl', () => {
       });
 
       expect(result.total).toBe(2);
-      expect(result.items.map((item) => item.username)).toEqual(['alice', 'bob']);
+      expect(result.items.map((item) => item.username)).toEqual([
+        'alice',
+        'bob',
+      ]);
       expect(em.findAndCount).toHaveBeenCalledWith(
         UserOrmEntity,
         { tenant: 'tenant-1' },
@@ -118,11 +123,43 @@ describe('UserWriteRepositoryImpl', () => {
 
       expect(result.map((item) => item.type)).toEqual(['password', 'totp']);
       expect(result[0].hashVersion).toBe(2);
-      expect(em.find).toHaveBeenCalledWith(UserCredentialOrmEntity, {
-        user: { id: 'user-1' },
-        type: { $in: ['password', 'totp'] },
-        enabled: true,
-      });
+      expect(em.find).toHaveBeenCalledWith(
+        UserCredentialOrmEntity,
+        {
+          user: { id: 'user-1' },
+          type: { $in: ['password', 'totp'] },
+          enabled: true,
+        },
+        { orderBy: { createdAt: 'DESC' } },
+      );
+    });
+
+    it('credential 타입별 조회는 disabled credential도 명시적으로 조회할 수 있다', async () => {
+      em.find.mockResolvedValue([
+        createUserCredentialEntity({
+          id: 'cred-pending-totp',
+          type: 'totp',
+          enabled: false,
+        }),
+      ]);
+
+      const result = await repository.findCredentialsByType(
+        'user-1',
+        ['totp'],
+        { enabled: false },
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0].enabled).toBe(false);
+      expect(em.find).toHaveBeenCalledWith(
+        UserCredentialOrmEntity,
+        {
+          user: { id: 'user-1' },
+          type: { $in: ['totp'] },
+          enabled: false,
+        },
+        { orderBy: { createdAt: 'DESC' } },
+      );
     });
   });
 
@@ -230,6 +267,32 @@ describe('UserWriteRepositoryImpl', () => {
       expect(em.flush).toHaveBeenCalled();
     });
 
+    it('새 credential을 사용자에 연결해 저장한다', async () => {
+      const em = createEntityManagerMock();
+      const repository = new UserWriteRepositoryImpl(em as any);
+      const credential = createUserCredentialModel({
+        type: 'totp',
+        secretHash: 'JBSWY3DPEHPK3PXP',
+        hashAlg: 'totp-sha1',
+        enabled: false,
+      });
+
+      await repository.createCredential('user-1', credential);
+
+      expect(em.create).toHaveBeenCalledWith(
+        UserCredentialOrmEntity,
+        expect.objectContaining({
+          user: expect.objectContaining({ id: 'user-1' }),
+          type: 'totp',
+          secretHash: 'JBSWY3DPEHPK3PXP',
+          hashAlg: 'totp-sha1',
+          enabled: false,
+        }),
+      );
+      expect(em.persist).toHaveBeenCalled();
+      expect(em.flush).toHaveBeenCalled();
+    });
+
     it('username으로 사용자를 조회한다', async () => {
       const em = createEntityManagerMock();
       const repository = new UserWriteRepositoryImpl(em as any);
@@ -277,7 +340,10 @@ describe('UserWriteRepositoryImpl', () => {
         }),
       );
 
-      expect(txEm.getReference).toHaveBeenCalledWith(TenantOrmEntity, 'tenant-9');
+      expect(txEm.getReference).toHaveBeenCalledWith(
+        TenantOrmEntity,
+        'tenant-9',
+      );
     });
   });
 });

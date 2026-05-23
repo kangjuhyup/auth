@@ -28,6 +28,19 @@ export interface VerificationTokenDto {
   token: string;
 }
 
+export interface TotpEnrollmentResponse {
+  secret: string;
+  otpauthUrl: string;
+}
+
+export interface TotpConfirmationDto {
+  code: string;
+}
+
+export interface TotpConfirmationResponse {
+  recoveryCodes: string[];
+}
+
 export interface UpdateProfileDto {
   email?: string;
   phone?: string;

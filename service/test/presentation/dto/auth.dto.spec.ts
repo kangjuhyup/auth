@@ -7,6 +7,7 @@ import {
   PasswordResetRequestDto,
   PasswordResetDto,
   VerificationTokenDto,
+  TotpConfirmationDto,
   UpdateProfileDto,
 } from '@presentation/dto/auth/auth.dto';
 
@@ -223,6 +224,24 @@ describe('VerificationTokenDto', () => {
       token: 'a'.repeat(513),
     });
     expect(errors.some((e) => e.property === 'token')).toBe(true);
+  });
+});
+
+describe('TotpConfirmationDto', () => {
+  it('6자리 숫자 code면 에러 없음', async () => {
+    expect(
+      await getErrors(TotpConfirmationDto, { code: '123456' }),
+    ).toHaveLength(0);
+  });
+
+  it('code 누락 시 에러', async () => {
+    const errors = await getErrors(TotpConfirmationDto, {});
+    expect(errors.some((e) => e.property === 'code')).toBe(true);
+  });
+
+  it('code가 6자리 숫자가 아니면 에러', async () => {
+    const errors = await getErrors(TotpConfirmationDto, { code: 'abc123' });
+    expect(errors.some((e) => e.property === 'code')).toBe(true);
   });
 });
 

@@ -11,6 +11,7 @@ import type {
   OtpTokenRecord,
 } from '@application/ports/otp-token.port';
 import type { NotificationPort } from '@application/ports/notification.port';
+import type { MfaVerificationPort } from '@application/ports/mfa-verification.port';
 import type { ConfigService } from '@nestjs/config';
 import type { ConsentRepository } from '@domain/repositories/consent.repository';
 import { UserModel } from '@domain/models/user';
@@ -48,6 +49,7 @@ function createMockUserWriteRepo(): jest.Mocked<UserWriteRepositoryPort> {
     list: jest.fn().mockResolvedValue({ items: [], total: 0 }),
     save: jest.fn().mockResolvedValue(undefined),
     findCredentialsByType: jest.fn().mockResolvedValue([]),
+    createCredential: jest.fn().mockResolvedValue(undefined),
     saveCredential: jest.fn().mockResolvedValue(undefined),
   };
 }
@@ -123,6 +125,20 @@ function createMockNotification(): jest.Mocked<NotificationPort> {
   };
 }
 
+function createMockMfaVerification(): jest.Mocked<MfaVerificationPort> {
+  return {
+    generateTotpSecret: jest.fn().mockReturnValue('JBSWY3DPEHPK3PXP'),
+    buildTotpUri: jest.fn().mockReturnValue('otpauth://totp/Auth%3Ajohn'),
+    verifyTotp: jest.fn().mockReturnValue(true),
+    generateWebAuthnAuthOptions: jest.fn().mockResolvedValue({}),
+    verifyWebAuthn: jest.fn().mockResolvedValue({
+      verified: true,
+      newCounter: 1,
+    }),
+    verifyRecoveryCode: jest.fn().mockResolvedValue(true),
+  };
+}
+
 describe('AuthCommandHandler', () => {
   let handler: AuthCommandHandler;
   let userWriteRepo: jest.Mocked<UserWriteRepositoryPort>;
@@ -130,6 +146,7 @@ describe('AuthCommandHandler', () => {
   let otpHash: jest.Mocked<OtpHashPort>;
   let otpToken: jest.Mocked<OtpTokenPort>;
   let notification: jest.Mocked<NotificationPort>;
+  let mfaVerification: jest.Mocked<MfaVerificationPort>;
   let configService: jest.Mocked<ConfigService>;
   let consentRepo: jest.Mocked<ConsentRepository>;
 
@@ -140,6 +157,7 @@ describe('AuthCommandHandler', () => {
     otpHash = createMockOtpHash();
     otpToken = createMockOtpToken();
     notification = createMockNotification();
+    mfaVerification = createMockMfaVerification();
     consentRepo = createMockConsentRepo();
     configService = {
       get: jest.fn().mockReturnValue(undefined),
@@ -152,6 +170,7 @@ describe('AuthCommandHandler', () => {
       otpHash,
       otpToken,
       notification,
+      mfaVerification,
       configService,
       consentRepo,
     );
@@ -730,6 +749,198 @@ describe('AuthCommandHandler', () => {
 
       expect(userWriteRepo.save).not.toHaveBeenCalled();
       expect(otpToken.consume).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('TOTP MFA enrollment', () => {
+    it('beginTotpEnrollment은 disabled TOTP credential을 만들고 secret/otpauthUrl을 반환한다', async () => {
+      configService.get.mockImplementation((key: string) =>
+        key === 'OTP_TOTP_ISSUER' ? 'ExampleAuth' : undefined,
+      );
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({
+          username: 'john',
+          email: 'john@example.com',
+        }),
+      );
+
+      const result = await handler.beginTotpEnrollment('tenant-1', 'user-1');
+
+      expect(mfaVerification.generateTotpSecret).toHaveBeenCalledTimes(1);
+      expect(userWriteRepo.createCredential).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({
+          type: 'totp',
+          secretHash: 'JBSWY3DPEHPK3PXP',
+          hashAlg: 'totp-sha1',
+          enabled: false,
+        }),
+      );
+      expect(mfaVerification.buildTotpUri).toHaveBeenCalledWith({
+        issuer: 'ExampleAuth',
+        accountName: 'john@example.com',
+        secret: 'JBSWY3DPEHPK3PXP',
+      });
+      expect(result).toEqual({
+        secret: 'JBSWY3DPEHPK3PXP',
+        otpauthUrl: 'otpauth://totp/Auth%3Ajohn',
+      });
+    });
+
+    it('beginTotpEnrollment은 tenant가 다르면 credential을 만들지 않는다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({ tenantId: 'other-tenant' }),
+      );
+
+      await expect(
+        handler.beginTotpEnrollment('tenant-1', 'user-1'),
+      ).rejects.toThrow('TenantMismatch');
+
+      expect(userWriteRepo.createCredential).not.toHaveBeenCalled();
+    });
+
+    it('confirmTotpEnrollment은 pending TOTP를 활성화하고 recovery code를 발급한다', async () => {
+      const pending = UserCredentialModel.of(
+        {
+          type: 'totp',
+          secretHash: 'JBSWY3DPEHPK3PXP',
+          hashAlg: 'totp-sha1',
+          hashParams: { pendingEnrollment: true },
+          hashVersion: 1,
+          enabled: false,
+        },
+        'pending-totp',
+      );
+      const active = UserCredentialModel.of(
+        {
+          type: 'totp',
+          secretHash: 'OLDSECRET',
+          hashAlg: 'totp-sha1',
+          enabled: true,
+        },
+        'active-totp',
+      );
+      userWriteRepo.findCredentialsByType
+        .mockResolvedValueOnce([pending])
+        .mockResolvedValueOnce([active]);
+      otpHash.generateToken.mockReturnValue('recovery-code');
+
+      const result = await handler.confirmTotpEnrollment('tenant-1', 'user-1', {
+        code: '123456',
+      });
+
+      expect(mfaVerification.verifyTotp).toHaveBeenCalledWith(
+        'JBSWY3DPEHPK3PXP',
+        '123456',
+      );
+      expect(active.enabled).toBe(false);
+      expect(pending.enabled).toBe(true);
+      expect(pending.hashParams).toEqual(
+        expect.objectContaining({ pendingEnrollment: false }),
+      );
+      expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(active);
+      expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(pending);
+      expect(userWriteRepo.createCredential).toHaveBeenCalledTimes(10);
+      expect(result.recoveryCodes).toHaveLength(10);
+      expect(result.recoveryCodes).toEqual(
+        Array.from({ length: 10 }, () => 'recovery-code'),
+      );
+    });
+
+    it('confirmTotpEnrollment은 pending credential이 없으면 실패한다', async () => {
+      userWriteRepo.findCredentialsByType.mockResolvedValueOnce([]);
+
+      await expect(
+        handler.confirmTotpEnrollment('tenant-1', 'user-1', {
+          code: '123456',
+        }),
+      ).rejects.toThrow('TotpEnrollmentNotFound');
+
+      expect(userWriteRepo.saveCredential).not.toHaveBeenCalled();
+      expect(userWriteRepo.createCredential).not.toHaveBeenCalled();
+    });
+
+    it('confirmTotpEnrollment은 disabled지만 enrollment pending이 아니면 실패한다', async () => {
+      const disabledTotp = UserCredentialModel.of(
+        {
+          type: 'totp',
+          secretHash: 'JBSWY3DPEHPK3PXP',
+          hashAlg: 'totp-sha1',
+          hashParams: { pendingEnrollment: false },
+          enabled: false,
+        },
+        'disabled-totp',
+      );
+      userWriteRepo.findCredentialsByType.mockResolvedValueOnce([disabledTotp]);
+
+      await expect(
+        handler.confirmTotpEnrollment('tenant-1', 'user-1', {
+          code: '123456',
+        }),
+      ).rejects.toThrow('TotpEnrollmentNotFound');
+
+      expect(userWriteRepo.saveCredential).not.toHaveBeenCalled();
+      expect(userWriteRepo.createCredential).not.toHaveBeenCalled();
+    });
+
+    it('confirmTotpEnrollment은 잘못된 코드면 credential을 변경하지 않는다', async () => {
+      const pending = UserCredentialModel.of(
+        {
+          type: 'totp',
+          secretHash: 'JBSWY3DPEHPK3PXP',
+          hashAlg: 'totp-sha1',
+          hashParams: { pendingEnrollment: true },
+          enabled: false,
+        },
+        'pending-totp',
+      );
+      userWriteRepo.findCredentialsByType.mockResolvedValueOnce([pending]);
+      mfaVerification.verifyTotp.mockReturnValue(false);
+
+      await expect(
+        handler.confirmTotpEnrollment('tenant-1', 'user-1', {
+          code: '000000',
+        }),
+      ).rejects.toThrow('InvalidTotpCode');
+
+      expect(userWriteRepo.saveCredential).not.toHaveBeenCalled();
+      expect(userWriteRepo.createCredential).not.toHaveBeenCalled();
+    });
+
+    it('disableTotp은 활성 TOTP와 recovery code credential을 비활성화한다', async () => {
+      const totp = UserCredentialModel.of(
+        {
+          type: 'totp',
+          secretHash: 'JBSWY3DPEHPK3PXP',
+          hashAlg: 'totp-sha1',
+          enabled: true,
+        },
+        'totp-1',
+      );
+      const recoveryCode = UserCredentialModel.of(
+        {
+          type: 'recovery_code',
+          secretHash: 'hashed-code',
+          hashAlg: 'argon2id',
+          enabled: true,
+        },
+        'recovery-1',
+      );
+      userWriteRepo.findCredentialsByType.mockResolvedValueOnce([
+        totp,
+        recoveryCode,
+      ]);
+
+      await handler.disableTotp('tenant-1', 'user-1');
+
+      expect(userWriteRepo.findCredentialsByType).toHaveBeenCalledWith(
+        'user-1',
+        ['totp', 'recovery_code'],
+      );
+      expect(totp.enabled).toBe(false);
+      expect(recoveryCode.enabled).toBe(false);
+      expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(totp);
+      expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(recoveryCode);
     });
   });
 

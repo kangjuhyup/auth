@@ -180,6 +180,7 @@ function createMockUserRepo(): jest.Mocked<UserWriteRepositoryPort> {
     list: jest.fn().mockResolvedValue({ items: [], total: 0 }),
     save: jest.fn(),
     findCredentialsByType: jest.fn().mockResolvedValue([]),
+    createCredential: jest.fn().mockResolvedValue(undefined),
     saveCredential: jest.fn().mockResolvedValue(undefined),
   };
 }
@@ -838,7 +839,10 @@ describe('AdminQueryHandler - AuditLogs', () => {
         total: 1,
       });
 
-      const result = await handler.getAuditLogs('tenant-1', { page: 1, limit: 10 });
+      const result = await handler.getAuditLogs('tenant-1', {
+        page: 1,
+        limit: 10,
+      });
       const item = result.items[0];
 
       expect(item['id']).toBe('e-1');
@@ -964,7 +968,9 @@ describe('AdminQueryHandler - Permissions', () => {
 
   describe('getPermission', () => {
     it('id로 권한을 조회하여 반환한다', async () => {
-      permissionRepo.findById.mockResolvedValue(makePermission('p-1', 'tenant-1'));
+      permissionRepo.findById.mockResolvedValue(
+        makePermission('p-1', 'tenant-1'),
+      );
 
       const result = await handler.getPermission('tenant-1', 'p-1');
 
@@ -1051,17 +1057,17 @@ describe('AdminQueryHandler - GroupRoles & UserRoles', () => {
     it('그룹이 없으면 NotFoundException을 던진다', async () => {
       groupRepo.findById.mockResolvedValue(null);
 
-      await expect(
-        handler.getGroupRoles('tenant-1', 'g-1'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(handler.getGroupRoles('tenant-1', 'g-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('tenantId 불일치 시 NotFoundException을 던진다', async () => {
       groupRepo.findById.mockResolvedValue(makeGroup('g-1', 'other-tenant'));
 
-      await expect(
-        handler.getGroupRoles('tenant-1', 'g-1'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(handler.getGroupRoles('tenant-1', 'g-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('그룹의 역할 목록을 반환한다', async () => {

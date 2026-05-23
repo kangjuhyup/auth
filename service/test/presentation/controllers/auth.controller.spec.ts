@@ -17,6 +17,9 @@ function createMockCommandPort(): jest.Mocked<AuthCommandPort> {
     verifyEmail: jest.fn(),
     requestPhoneVerification: jest.fn(),
     verifyPhone: jest.fn(),
+    beginTotpEnrollment: jest.fn(),
+    confirmTotpEnrollment: jest.fn(),
+    disableTotp: jest.fn(),
     updateProfile: jest.fn(),
     revokeConsent: jest.fn(),
   } as any;
@@ -157,6 +160,49 @@ describe('AuthController', () => {
       tenant.id,
       authUser.userId,
       dto,
+    );
+  });
+
+  it('beginTotpEnrollment는 tenant.id와 authUser.userId를 commandPort에 전달한다', async () => {
+    const result = {
+      secret: 'JBSWY3DPEHPK3PXP',
+      otpauthUrl: 'otpauth://totp/Auth%3Ajohn',
+    };
+    commandPort.beginTotpEnrollment.mockResolvedValue(result);
+
+    await expect(
+      controller.beginTotpEnrollment(tenant, authUser),
+    ).resolves.toBe(result);
+    expect(commandPort.beginTotpEnrollment).toHaveBeenCalledWith(
+      tenant.id,
+      authUser.userId,
+    );
+  });
+
+  it('confirmTotpEnrollment는 tenant.id와 authUser.userId, dto를 commandPort에 전달한다', async () => {
+    const dto = { code: '123456' } as any;
+    const result = { recoveryCodes: ['recovery-code'] };
+    commandPort.confirmTotpEnrollment.mockResolvedValue(result);
+
+    await expect(
+      controller.confirmTotpEnrollment(tenant, authUser, dto),
+    ).resolves.toBe(result);
+    expect(commandPort.confirmTotpEnrollment).toHaveBeenCalledWith(
+      tenant.id,
+      authUser.userId,
+      dto,
+    );
+  });
+
+  it('disableTotp는 tenant.id와 authUser.userId를 commandPort에 전달한다', async () => {
+    commandPort.disableTotp.mockResolvedValue(undefined);
+
+    await expect(
+      controller.disableTotp(tenant, authUser),
+    ).resolves.toBeUndefined();
+    expect(commandPort.disableTotp).toHaveBeenCalledWith(
+      tenant.id,
+      authUser.userId,
     );
   });
 
