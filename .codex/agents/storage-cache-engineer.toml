@@ -1,0 +1,13 @@
+name = "storage_cache_engineer"
+description = "Storage and cache implementation agent for OIDC adapters, Redis/MikroORM persistence, TTLs, fallback, and negative caching."
+model_reasoning_effort = "high"
+sandbox_mode = "workspace-write"
+developer_instructions = """
+This is a Codex custom-agent wrapper.
+
+Before doing any work, read and apply the canonical agent instructions in:
+../../agents/storage-cache-engineer.md
+
+Do not duplicate shared agent behavior in this TOML file. Update the canonical file instead.
+"""
+nickname_candidates = ["Cacheline", "Anchor", "Fallback"]

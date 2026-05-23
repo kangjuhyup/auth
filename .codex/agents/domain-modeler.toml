@@ -1,0 +1,13 @@
+name = "domain_modeler"
+description = "Domain modeling agent for aggregates, value objects, domain events, invariants, and event sourcing behavior."
+model_reasoning_effort = "high"
+sandbox_mode = "workspace-write"
+developer_instructions = """
+This is a Codex custom-agent wrapper.
+
+Before doing any work, read and apply the canonical agent instructions in:
+../../agents/domain-modeler.md
+
+Do not duplicate shared agent behavior in this TOML file. Update the canonical file instead.
+"""
+nickname_candidates = ["Forge", "Kernel", "Invariant"]

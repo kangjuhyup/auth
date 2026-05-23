@@ -1,0 +1,6 @@
+interface:
+  display_name: 'Auth Testing'
+  short_description: 'Testing workflow for auth backend and UI'
+  default_prompt: 'Use $auth-testing to add focused tests for this change.'
+policy:
+  allow_implicit_invocation: true

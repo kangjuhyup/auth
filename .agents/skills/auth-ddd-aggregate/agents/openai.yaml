@@ -1,0 +1,6 @@
+interface:
+  display_name: 'Auth DDD Aggregate'
+  short_description: 'Aggregate invariants and domain events'
+  default_prompt: 'Use $auth-ddd-aggregate to model this business rule in the domain layer.'
+policy:
+  allow_implicit_invocation: true

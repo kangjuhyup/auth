@@ -1,0 +1,6 @@
+interface:
+  display_name: 'Auth UI'
+  short_description: 'React/Vite UI and OIDC frontend rules'
+  default_prompt: 'Use $auth-ui to update this React auth console flow.'
+policy:
+  allow_implicit_invocation: true

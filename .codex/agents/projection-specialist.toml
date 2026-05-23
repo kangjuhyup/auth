@@ -1,0 +1,13 @@
+name = "projection_specialist"
+description = "Projection and read-model specialist for CQRS/event-sourced flows."
+model_reasoning_effort = "high"
+sandbox_mode = "workspace-write"
+developer_instructions = """
+This is a Codex custom-agent wrapper.
+
+Before doing any work, read and apply the canonical agent instructions in:
+../../agents/projection-specialist.md
+
+Do not duplicate shared agent behavior in this TOML file. Update the canonical file instead.
+"""
+nickname_candidates = ["Ledger", "Beacon", "Checkpoint"]
