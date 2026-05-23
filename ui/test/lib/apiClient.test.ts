@@ -11,10 +11,13 @@ vi.mock('@/stores/auth.store', () => ({
 const { apiClient } = await import('@/lib/apiClient');
 
 function makeResponse(body: unknown, status = 200, ok = true): Response {
+  const text = body === undefined || body === null ? '' : JSON.stringify(body);
+
   return {
     ok,
     status,
     json: vi.fn().mockResolvedValue(body),
+    text: vi.fn().mockResolvedValue(text),
   } as unknown as Response;
 }
 
@@ -117,6 +120,18 @@ describe('apiClient', () => {
       const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(init.method).toBe('DELETE');
       expect(init.body).toBeUndefined();
+    });
+
+    it('200 OK 이지만 body가 비어 있는 응답을 성공으로 처리한다', async () => {
+      fetchMock.mockResolvedValue(makeResponse(undefined, 200, true));
+
+      await expect(apiClient.delete('/test/1')).resolves.toBeUndefined();
+    });
+
+    it('204 No Content 응답을 성공으로 처리한다', async () => {
+      fetchMock.mockResolvedValue(makeResponse(undefined, 204, true));
+
+      await expect(apiClient.delete('/test/1')).resolves.toBeUndefined();
     });
   });
 

@@ -5,6 +5,19 @@ interface RequestOptions extends Omit<RequestInit, 'body'> {
   params?: Record<string, string | number | boolean | undefined | null>;
 }
 
+async function parseResponseBody<T>(response: Response): Promise<T> {
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const text = await response.text();
+  if (!text) {
+    return undefined as T;
+  }
+
+  return JSON.parse(text) as T;
+}
+
 async function request<T>(
   endpoint: string,
   options: RequestOptions = {},
@@ -55,7 +68,7 @@ async function request<T>(
     throw new Error(error.message || `API Error: ${response.status}`);
   }
 
-  return response.json() as Promise<T>;
+  return parseResponseBody<T>(response);
 }
 
 export const apiClient = {

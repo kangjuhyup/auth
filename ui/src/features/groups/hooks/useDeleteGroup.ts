@@ -10,8 +10,18 @@ export function useDeleteGroup() {
 
   return useMutation({
     mutationFn: (id: string) => groupApi.delete(tenantCode!, id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.admin.groups.all });
+    onSuccess: (_result, id) => {
+      const tenantKey = tenantCode ?? '';
+
+      queryClient.removeQueries({
+        queryKey: queryKeys.admin.groups.detail(tenantKey, id),
+      });
+      queryClient.removeQueries({
+        queryKey: queryKeys.admin.groups.roles(tenantKey, id),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.admin.groups.all,
+      });
       message.success('Group deleted successfully');
     },
     onError: (error: Error) => {

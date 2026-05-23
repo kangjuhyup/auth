@@ -7,6 +7,8 @@ import {
   Body,
   Param,
   Query,
+  HttpCode,
+  HttpStatus,
   UseGuards,
 } from '@nestjs/common';
 import { AdminGuard } from '@presentation/http/admin.guard';
@@ -65,6 +67,7 @@ export class AdminGroupController {
   }
 
   @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
   delete(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
