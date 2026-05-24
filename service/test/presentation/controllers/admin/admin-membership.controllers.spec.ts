@@ -74,7 +74,9 @@ describe('관리자 관계형 컨트롤러', () => {
     it('delete는 tenant.id와 id를 commandPort에 전달한다', async () => {
       commandPort.deleteGroup.mockResolvedValue(undefined);
 
-      await expect(controller.delete(tenant, 'group-1')).resolves.toBeUndefined();
+      await expect(
+        controller.delete(tenant, 'group-1'),
+      ).resolves.toBeUndefined();
       expect(commandPort.deleteGroup).toHaveBeenCalledWith(
         tenant.id,
         'group-1',
@@ -85,7 +87,9 @@ describe('관리자 관계형 컨트롤러', () => {
       const result = [{ id: 'role-1', code: 'admin' }] as any;
       queryPort.getGroupRoles.mockResolvedValue(result);
 
-      await expect(controller.getRoles(tenant, 'group-1')).resolves.toBe(result);
+      await expect(controller.getRoles(tenant, 'group-1')).resolves.toBe(
+        result,
+      );
       expect(queryPort.getGroupRoles).toHaveBeenCalledWith(
         tenant.id,
         'group-1',
@@ -182,11 +186,10 @@ describe('관리자 관계형 컨트롤러', () => {
     it('delete는 tenant.id와 id를 commandPort에 전달한다', async () => {
       commandPort.deleteRole.mockResolvedValue(undefined);
 
-      await expect(controller.delete(tenant, 'role-1')).resolves.toBeUndefined();
-      expect(commandPort.deleteRole).toHaveBeenCalledWith(
-        tenant.id,
-        'role-1',
-      );
+      await expect(
+        controller.delete(tenant, 'role-1'),
+      ).resolves.toBeUndefined();
+      expect(commandPort.deleteRole).toHaveBeenCalledWith(tenant.id, 'role-1');
     });
 
     it('listPermissions는 tenant.id와 roleId, query를 queryPort에 전달한다', async () => {
@@ -247,6 +250,8 @@ describe('관리자 관계형 컨트롤러', () => {
         getUsers: jest.fn(),
         getUser: jest.fn(),
         getUserRoles: jest.fn(),
+        getUserConsents: jest.fn(),
+        getUserConsentHistory: jest.fn(),
       };
       controller = new AdminUserController(commandPort, queryPort);
     });
@@ -265,6 +270,34 @@ describe('관리자 관계형 컨트롤러', () => {
 
       await expect(controller.get(tenant, 'user-1')).resolves.toBe(result);
       expect(queryPort.getUser).toHaveBeenCalledWith(tenant.id, 'user-1');
+    });
+
+    it('getConsents는 tenant.id와 userId, query를 queryPort에 전달한다', async () => {
+      const result = makePaginatedResult([{ id: 'consent-1' } as any], 1);
+      queryPort.getUserConsents.mockResolvedValue(result);
+
+      await expect(
+        controller.getConsents(tenant, 'user-1', query),
+      ).resolves.toBe(result);
+      expect(queryPort.getUserConsents).toHaveBeenCalledWith(
+        tenant.id,
+        'user-1',
+        query,
+      );
+    });
+
+    it('getConsentHistory는 tenant.id와 userId, query를 queryPort에 전달한다', async () => {
+      const result = makePaginatedResult([{ id: 'consent-1' } as any], 1);
+      queryPort.getUserConsentHistory.mockResolvedValue(result);
+
+      await expect(
+        controller.getConsentHistory(tenant, 'user-1', query),
+      ).resolves.toBe(result);
+      expect(queryPort.getUserConsentHistory).toHaveBeenCalledWith(
+        tenant.id,
+        'user-1',
+        query,
+      );
     });
 
     it('create는 tenant.id와 dto를 commandPort에 전달한다', async () => {
@@ -293,11 +326,10 @@ describe('관리자 관계형 컨트롤러', () => {
     it('delete는 tenant.id와 id를 commandPort에 전달한다', async () => {
       commandPort.deleteUser.mockResolvedValue(undefined);
 
-      await expect(controller.delete(tenant, 'user-1')).resolves.toBeUndefined();
-      expect(commandPort.deleteUser).toHaveBeenCalledWith(
-        tenant.id,
-        'user-1',
-      );
+      await expect(
+        controller.delete(tenant, 'user-1'),
+      ).resolves.toBeUndefined();
+      expect(commandPort.deleteUser).toHaveBeenCalledWith(tenant.id, 'user-1');
     });
 
     it('getRoles는 tenant.id와 id를 queryPort에 전달한다', async () => {
@@ -305,10 +337,7 @@ describe('관리자 관계형 컨트롤러', () => {
       queryPort.getUserRoles.mockResolvedValue(result);
 
       await expect(controller.getRoles(tenant, 'user-1')).resolves.toBe(result);
-      expect(queryPort.getUserRoles).toHaveBeenCalledWith(
-        tenant.id,
-        'user-1',
-      );
+      expect(queryPort.getUserRoles).toHaveBeenCalledWith(tenant.id, 'user-1');
     });
 
     it('assignRole은 tenant.id와 userId, roleId를 commandPort에 전달한다', async () => {

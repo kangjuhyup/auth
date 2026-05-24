@@ -265,6 +265,33 @@ describe('Identity And Config Repository Implementations', () => {
       );
     });
 
+    it('includeRevoked가 true이면 revoked 동의까지 포함해 조회한다', async () => {
+      const repository = new ConsentRepositoryImpl(em as any);
+      em.findAndCount.mockResolvedValue([[createConsentEntity()], 1]);
+
+      await repository.listByUser({
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+        page: 1,
+        limit: 10,
+        includeRevoked: true,
+      });
+
+      expect(em.findAndCount).toHaveBeenCalledWith(
+        ConsentOrmEntity,
+        {
+          tenant: { id: 'tenant-1' },
+          user: { id: 'user-1' },
+        },
+        {
+          populate: ['tenant', 'user', 'client'],
+          limit: 10,
+          offset: 0,
+          orderBy: { grantedAt: 'DESC' },
+        },
+      );
+    });
+
     it('신규 동의를 저장한다', async () => {
       const repository = new ConsentRepositoryImpl(em as any);
       em.persist.mockImplementation((entity: any) => {

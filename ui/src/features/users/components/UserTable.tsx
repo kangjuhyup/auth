@@ -1,5 +1,10 @@
 import { Table, Button, Space, Tag } from 'antd';
-import { EditOutlined, DeleteOutlined, TeamOutlined } from '@ant-design/icons';
+import {
+  AuditOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  TeamOutlined,
+} from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { UserResponse } from '@/types/user.types';
 import { useAdminUiStore } from '@/stores/adminUi.store';
@@ -21,7 +26,8 @@ export function UserTable({
   pageSize,
   onPageChange,
 }: UserTableProps) {
-  const { openEditModal, openDeleteModal, openRoleModal } = useAdminUiStore();
+  const { openEditModal, openDeleteModal, openRoleModal, openConsentModal } =
+    useAdminUiStore();
 
   const columns: ColumnsType<UserResponse> = [
     {
@@ -69,7 +75,7 @@ export function UserTable({
     {
       title: 'Actions',
       key: 'actions',
-      width: 180,
+      width: 220,
       render: (_, record) => (
         <Space>
           <Button
@@ -77,6 +83,12 @@ export function UserTable({
             icon={<TeamOutlined />}
             onClick={() => openRoleModal(record.id)}
             title="Manage Roles"
+          />
+          <Button
+            type="link"
+            icon={<AuditOutlined />}
+            onClick={() => openConsentModal(record.id)}
+            title="View Consents"
           />
           <Button
             type="link"

@@ -8,6 +8,7 @@ import {
   ClientResponse,
   ClientAuthPolicyResponse,
   UserResponse,
+  UserConsentResponse,
   RoleResponse,
   PermissionResponse,
   GroupResponse,
@@ -26,9 +27,11 @@ import {
   ClientAuthPolicyRepository,
   EventRepository,
   IdentityProviderRepository,
+  ConsentRepository,
 } from '@domain/repositories';
 import { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
 import { IdentityProviderModel } from '@domain/models/identity-provider';
+import { ConsentModel } from '@domain/models/consent';
 
 @Injectable()
 export class AdminQueryHandler implements AdminQueryPort {
@@ -46,6 +49,7 @@ export class AdminQueryHandler implements AdminQueryPort {
     private readonly eventRepo: EventRepository,
     private readonly userRepo: UserWriteRepositoryPort,
     private readonly identityProviderRepo: IdentityProviderRepository,
+    private readonly consentRepo: ConsentRepository,
   ) {}
 
   // ── Tenant ──────────────────────────────────────────────────────────────
@@ -306,6 +310,80 @@ export class AdminQueryHandler implements AdminQueryPort {
       status: user.status,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
+    };
+  }
+
+  async getUserConsents(
+    tenantId: string,
+    userId: string,
+    query: PaginationQuery,
+  ): Promise<PaginatedResult<UserConsentResponse>> {
+    await this.assertUserInTenant(tenantId, userId);
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const { items, total } = await this.consentRepo.listByUser({
+      tenantId,
+      userId,
+      page,
+      limit,
+    });
+
+    return {
+      items: items.map((consent) => this.toUserConsentResponse(consent)),
+      total,
+      page,
+      limit,
+    };
+  }
+
+  async getUserConsentHistory(
+    tenantId: string,
+    userId: string,
+    query: PaginationQuery,
+  ): Promise<PaginatedResult<UserConsentResponse>> {
+    await this.assertUserInTenant(tenantId, userId);
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const { items, total } = await this.consentRepo.listByUser({
+      tenantId,
+      userId,
+      page,
+      limit,
+      includeRevoked: true,
+    });
+
+    return {
+      items: items.map((consent) => this.toUserConsentResponse(consent)),
+      total,
+      page,
+      limit,
+    };
+  }
+
+  private async assertUserInTenant(
+    tenantId: string,
+    userId: string,
+  ): Promise<void> {
+    orThrow(
+      await this.userRepo.findById(userId),
+      new NotFoundException('User not found'),
+      (u) => u.tenantId === tenantId,
+    );
+  }
+
+  private toUserConsentResponse(consent: ConsentModel): UserConsentResponse {
+    return {
+      id: consent.id ?? '',
+      userId: consent.userId,
+      clientRefId: consent.clientRefId,
+      clientId: consent.clientId ?? consent.clientRefId,
+      clientName: consent.clientName ?? consent.clientId ?? consent.clientRefId,
+      grantedScopes: consent.grantedScopes,
+      grantedAt: consent.grantedAt,
+      revokedAt: consent.revokedAt ?? null,
+      status: consent.isRevoked ? 'REVOKED' : 'ACTIVE',
     };
   }
 

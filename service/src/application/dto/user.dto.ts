@@ -23,3 +23,17 @@ export interface UserResponse {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export type UserConsentStatus = 'ACTIVE' | 'REVOKED';
+
+export interface UserConsentResponse {
+  id: string;
+  userId: string;
+  clientRefId: string;
+  clientId: string;
+  clientName: string;
+  grantedScopes: string;
+  grantedAt: Date;
+  revokedAt?: Date | null;
+  status: UserConsentStatus;
+}

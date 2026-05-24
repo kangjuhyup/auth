@@ -63,6 +63,25 @@ describe('queryKeys', () => {
       const rolesKey = queryKeys.admin.users.roles('acme', 'user-1');
       expect(listKey).not.toEqual(rolesKey);
     });
+
+    it('consent 목록과 이력 키가 userId 와 페이지 필터를 담는다', () => {
+      const filters = { page: 1, limit: 10 };
+      const consentsKey = queryKeys.admin.users.consents(
+        'acme',
+        'user-1',
+        filters,
+      );
+      const historyKey = queryKeys.admin.users.consentHistory(
+        'acme',
+        'user-1',
+        filters,
+      );
+
+      expect(consentsKey).toContain('acme');
+      expect(consentsKey).toContain('user-1');
+      expect(historyKey).toContain('user-1');
+      expect(consentsKey).not.toEqual(historyKey);
+    });
   });
 
   describe('admin.groups (roles 포함)', () => {

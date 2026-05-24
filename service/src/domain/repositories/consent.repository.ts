@@ -5,6 +5,7 @@ export interface ConsentListQuery {
   userId: string;
   page: number;
   limit: number;
+  includeRevoked?: boolean;
 }
 
 export abstract class ConsentRepository {

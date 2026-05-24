@@ -21,6 +21,7 @@ import type {
 } from '@/types/group.types';
 import type {
   UserResponse,
+  UserConsentResponse,
   CreateUserDto,
   UpdateUserDto,
 } from '@/types/user.types';
@@ -269,6 +270,68 @@ const mockUserRoles = new Map<string, string[]>([
   ['4', ['3']], // locked.user has Viewer role
   ['5', ['3']], // disabled.user has Viewer role
 ]);
+
+const mockUserConsents = new Map<string, UserConsentResponse[]>([
+  [
+    '1',
+    [
+      {
+        id: 'consent-1',
+        userId: '1',
+        clientRefId: '1',
+        clientId: 'web-app',
+        clientName: 'Web Application',
+        grantedScopes: 'openid profile email',
+        grantedAt: new Date('2024-03-01T09:00:00Z'),
+        revokedAt: null,
+        status: 'ACTIVE',
+      },
+      {
+        id: 'consent-2',
+        userId: '1',
+        clientRefId: '2',
+        clientId: 'mobile-app',
+        clientName: 'Mobile Application',
+        grantedScopes: 'openid profile email offline_access',
+        grantedAt: new Date('2024-02-10T09:00:00Z'),
+        revokedAt: new Date('2024-02-20T09:00:00Z'),
+        status: 'REVOKED',
+      },
+    ],
+  ],
+  [
+    '2',
+    [
+      {
+        id: 'consent-3',
+        userId: '2',
+        clientRefId: '1',
+        clientId: 'web-app',
+        clientName: 'Web Application',
+        grantedScopes: 'openid profile',
+        grantedAt: new Date('2024-03-04T12:00:00Z'),
+        revokedAt: null,
+        status: 'ACTIVE',
+      },
+    ],
+  ],
+]);
+
+function paginate<T>(
+  items: T[],
+  params: { page?: number; limit?: number },
+): PaginatedResult<T> {
+  const page = params.page ?? 1;
+  const limit = params.limit ?? 10;
+  const start = (page - 1) * limit;
+
+  return {
+    items: items.slice(start, start + limit),
+    total: items.length,
+    page,
+    limit,
+  };
+}
 
 const mockProfileByTenant = new Map<string, ProfileResponse>([
   [
@@ -805,6 +868,25 @@ export const mockUserApi = {
       userId,
       existing.filter((id) => id !== roleId),
     );
+  },
+
+  getConsents: async (
+    userId: string,
+    params: { page?: number; limit?: number },
+  ): Promise<PaginatedResult<UserConsentResponse>> => {
+    await delay(200);
+    const items = (mockUserConsents.get(userId) ?? []).filter(
+      (consent) => consent.status === 'ACTIVE',
+    );
+    return paginate(items, params);
+  },
+
+  getConsentHistory: async (
+    userId: string,
+    params: { page?: number; limit?: number },
+  ): Promise<PaginatedResult<UserConsentResponse>> => {
+    await delay(200);
+    return paginate(mockUserConsents.get(userId) ?? [], params);
   },
 };
 

@@ -16,6 +16,7 @@ import {
   CreateUserDto,
   UpdateUserDto,
   UserResponse,
+  UserConsentResponse,
   RoleResponse,
   PaginationQuery,
   PaginatedResult,
@@ -45,6 +46,24 @@ export class AdminUserController {
     @Param('id') id: string,
   ): Promise<UserResponse> {
     return this.queryPort.getUser(tenant.id, id);
+  }
+
+  @Get(':id/consents')
+  getConsents(
+    @Tenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @Query() query: PaginationQuery,
+  ): Promise<PaginatedResult<UserConsentResponse>> {
+    return this.queryPort.getUserConsents(tenant.id, id, query);
+  }
+
+  @Get(':id/consents/history')
+  getConsentHistory(
+    @Tenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @Query() query: PaginationQuery,
+  ): Promise<PaginatedResult<UserConsentResponse>> {
+    return this.queryPort.getUserConsentHistory(tenant.id, id, query);
   }
 
   @Post()

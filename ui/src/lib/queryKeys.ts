@@ -57,6 +57,30 @@ export const queryKeys = {
         [...queryKeys.admin.users.all, tenantId, 'detail', id] as const,
       roles: (tenantId: string, userId: string) =>
         [...queryKeys.admin.users.all, tenantId, 'roles', userId] as const,
+      consents: (
+        tenantId: string,
+        userId: string,
+        filters: { page?: number; limit?: number },
+      ) =>
+        [
+          ...queryKeys.admin.users.all,
+          tenantId,
+          'consents',
+          userId,
+          filters,
+        ] as const,
+      consentHistory: (
+        tenantId: string,
+        userId: string,
+        filters: { page?: number; limit?: number },
+      ) =>
+        [
+          ...queryKeys.admin.users.all,
+          tenantId,
+          'consent-history',
+          userId,
+          filters,
+        ] as const,
     },
   },
   auth: {

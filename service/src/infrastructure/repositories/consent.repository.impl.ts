@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { EntityManager, ref } from '@mikro-orm/core';
-import { ConsentRepository, ConsentListQuery } from '@domain/repositories/consent.repository';
+import {
+  ConsentRepository,
+  ConsentListQuery,
+} from '@domain/repositories/consent.repository';
 import { ConsentModel } from '@domain/models/consent';
 import { ConsentOrmEntity } from '../mikro-orm/entities/consent';
 import { TenantOrmEntity } from '../mikro-orm/entities/tenant';
@@ -49,14 +52,20 @@ export class ConsentRepositoryImpl implements ConsentRepository {
     query: ConsentListQuery,
   ): Promise<{ items: ConsentModel[]; total: number }> {
     const offset = (query.page - 1) * query.limit;
+    const where = {
+      tenant: { id: query.tenantId },
+      user: { id: query.userId },
+      ...(!query.includeRevoked ? { revokedAt: null } : {}),
+    };
     const [entities, total] = await this.em.findAndCount(
       ConsentOrmEntity,
+      where,
       {
-        tenant: { id: query.tenantId },
-        user: { id: query.userId },
-        revokedAt: null,
+        populate: ['tenant', 'user', 'client'],
+        limit: query.limit,
+        offset,
+        orderBy: { grantedAt: 'DESC' },
       },
-      { populate: ['tenant', 'user', 'client'], limit: query.limit, offset },
     );
     return { items: entities.map(ConsentMapper.toDomain), total };
   }
@@ -73,9 +82,13 @@ export class ConsentRepositoryImpl implements ConsentRepository {
       return ConsentMapper.toDomain(existing);
     } else {
       const entity = ConsentMapper.toOrm(consent);
-      entity.tenant = ref(this.em.getReference(TenantOrmEntity, consent.tenantId));
+      entity.tenant = ref(
+        this.em.getReference(TenantOrmEntity, consent.tenantId),
+      );
       entity.user = ref(this.em.getReference(UserOrmEntity, consent.userId));
-      entity.client = ref(this.em.getReference(ClientOrmEntity, consent.clientRefId));
+      entity.client = ref(
+        this.em.getReference(ClientOrmEntity, consent.clientRefId),
+      );
       await this.em.persist(entity).flush();
       return ConsentMapper.toDomain(entity);
     }

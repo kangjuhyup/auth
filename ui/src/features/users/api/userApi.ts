@@ -3,6 +3,7 @@ import { mockApi } from '@/lib/mockApi';
 import type { PaginatedResult } from '@/types/pagination.types';
 import type {
   UserResponse,
+  UserConsentResponse,
   CreateUserDto,
   UpdateUserDto,
 } from '@/types/user.types';
@@ -29,7 +30,11 @@ export const userApi = {
     return apiClient.post(`/t/${tenantCode}/admin/users`, dto);
   },
 
-  update: (tenantCode: string, id: string, dto: UpdateUserDto): Promise<void> => {
+  update: (
+    tenantCode: string,
+    id: string,
+    dto: UpdateUserDto,
+  ): Promise<void> => {
     if (USE_MOCK) return mockApi.users.update(id, dto);
     return apiClient.put(`/t/${tenantCode}/admin/users/${id}`, dto);
   },
@@ -44,13 +49,48 @@ export const userApi = {
     return apiClient.get(`/t/${tenantCode}/admin/users/${userId}/roles`);
   },
 
-  addRole: (tenantCode: string, userId: string, roleId: string): Promise<void> => {
-    if (USE_MOCK) return mockApi.users.addRole(userId, roleId);
-    return apiClient.post(`/t/${tenantCode}/admin/users/${userId}/roles/${roleId}`);
+  getConsents: (
+    tenantCode: string,
+    userId: string,
+    params: { page?: number; limit?: number },
+  ): Promise<PaginatedResult<UserConsentResponse>> => {
+    if (USE_MOCK) return mockApi.users.getConsents(userId, params);
+    return apiClient.get(`/t/${tenantCode}/admin/users/${userId}/consents`, {
+      params,
+    });
   },
 
-  removeRole: (tenantCode: string, userId: string, roleId: string): Promise<void> => {
+  getConsentHistory: (
+    tenantCode: string,
+    userId: string,
+    params: { page?: number; limit?: number },
+  ): Promise<PaginatedResult<UserConsentResponse>> => {
+    if (USE_MOCK) return mockApi.users.getConsentHistory(userId, params);
+    return apiClient.get(
+      `/t/${tenantCode}/admin/users/${userId}/consents/history`,
+      { params },
+    );
+  },
+
+  addRole: (
+    tenantCode: string,
+    userId: string,
+    roleId: string,
+  ): Promise<void> => {
+    if (USE_MOCK) return mockApi.users.addRole(userId, roleId);
+    return apiClient.post(
+      `/t/${tenantCode}/admin/users/${userId}/roles/${roleId}`,
+    );
+  },
+
+  removeRole: (
+    tenantCode: string,
+    userId: string,
+    roleId: string,
+  ): Promise<void> => {
     if (USE_MOCK) return mockApi.users.removeRole(userId, roleId);
-    return apiClient.delete(`/t/${tenantCode}/admin/users/${userId}/roles/${roleId}`);
+    return apiClient.delete(
+      `/t/${tenantCode}/admin/users/${userId}/roles/${roleId}`,
+    );
   },
 };

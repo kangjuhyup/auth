@@ -13,6 +13,7 @@ import type {
   ClientAuthPolicyRepository,
   EventRepository,
   IdentityProviderRepository,
+  ConsentRepository,
 } from '@domain/repositories';
 import type { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
 import { TenantModel } from '@domain/models/tenant';
@@ -25,6 +26,7 @@ import { JwksKeyModel } from '@domain/models/jwks-key';
 import { EventModel } from '@domain/models/event';
 import { UserModel } from '@domain/models/user';
 import { TenantConfigModel } from '@domain/models/tenant-config';
+import { ConsentModel } from '@domain/models/consent';
 
 function makeTenant(id: string, code: string, name: string): TenantModel {
   const t = new TenantModel({ code, name });
@@ -196,6 +198,16 @@ function createMockIdentityProviderRepo(): jest.Mocked<IdentityProviderRepositor
   };
 }
 
+function createMockConsentRepo(): jest.Mocked<ConsentRepository> {
+  return {
+    findByTenantUserClient: jest.fn().mockResolvedValue(null),
+    listAllByUser: jest.fn().mockResolvedValue([]),
+    listByUser: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+    save: jest.fn(),
+    delete: jest.fn(),
+  } as any;
+}
+
 function createHandler() {
   const tenantRepo = createMockTenantRepo();
   const groupRepo = createMockGroupRepo();
@@ -210,6 +222,7 @@ function createHandler() {
   const eventRepo = createMockEventRepo();
   const userRepo = createMockUserRepo();
   const identityProviderRepo = createMockIdentityProviderRepo();
+  const consentRepo = createMockConsentRepo();
 
   const handler = new AdminQueryHandler(
     tenantRepo,
@@ -225,6 +238,7 @@ function createHandler() {
     eventRepo,
     userRepo,
     identityProviderRepo,
+    consentRepo,
   );
 
   return {
@@ -242,6 +256,7 @@ function createHandler() {
     eventRepo,
     userRepo,
     identityProviderRepo,
+    consentRepo,
   };
 }
 
@@ -649,6 +664,34 @@ function makeUser(id: string, tenantId: string): UserModel {
   });
 }
 
+function makeConsent(
+  id: string,
+  props: Partial<{
+    tenantId: string;
+    userId: string;
+    clientRefId: string;
+    clientId: string;
+    clientName: string;
+    grantedScopes: string;
+    grantedAt: Date;
+    revokedAt: Date | null;
+  }> = {},
+): ConsentModel {
+  return new ConsentModel(
+    {
+      tenantId: props.tenantId ?? 'tenant-1',
+      userId: props.userId ?? 'u-1',
+      clientRefId: props.clientRefId ?? 'client-ref-1',
+      clientId: props.clientId ?? 'app-web',
+      clientName: props.clientName ?? 'Web App',
+      grantedScopes: props.grantedScopes ?? 'openid profile email',
+      grantedAt: props.grantedAt ?? new Date('2024-03-01T00:00:00Z'),
+      revokedAt: props.revokedAt ?? null,
+    },
+    id,
+  );
+}
+
 function makeTenantConfig(tenantId: string): TenantConfigModel {
   return new TenantConfigModel({
     tenantId,
@@ -862,12 +905,14 @@ describe('AdminQueryHandler - AuditLogs', () => {
 describe('AdminQueryHandler - Users', () => {
   let handler: AdminQueryHandler;
   let userRepo: jest.Mocked<UserWriteRepositoryPort>;
+  let consentRepo: jest.Mocked<ConsentRepository>;
 
   beforeEach(() => {
     jest.clearAllMocks();
     const deps = createHandler();
     handler = deps.handler;
     userRepo = deps.userRepo;
+    consentRepo = deps.consentRepo;
   });
 
   describe('getUsers', () => {
@@ -927,6 +972,77 @@ describe('AdminQueryHandler - Users', () => {
       await expect(handler.getUser('tenant-1', 'u-1')).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('getUserConsents', () => {
+    it('사용자의 활성 Consent 목록을 반환한다', async () => {
+      userRepo.findById.mockResolvedValue(makeUser('u-1', 'tenant-1'));
+      consentRepo.listByUser.mockResolvedValue({
+        items: [makeConsent('consent-1')],
+        total: 1,
+      });
+
+      const result = await handler.getUserConsents('tenant-1', 'u-1', {
+        page: 1,
+        limit: 10,
+      });
+
+      expect(userRepo.findById).toHaveBeenCalledWith('u-1');
+      expect(consentRepo.listByUser).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        userId: 'u-1',
+        page: 1,
+        limit: 10,
+      });
+      expect(result.items[0]).toMatchObject({
+        id: 'consent-1',
+        userId: 'u-1',
+        clientRefId: 'client-ref-1',
+        clientId: 'app-web',
+        clientName: 'Web App',
+        grantedScopes: 'openid profile email',
+        status: 'ACTIVE',
+        revokedAt: null,
+      });
+    });
+
+    it('사용자가 테넌트에 없으면 NotFoundException을 던진다', async () => {
+      userRepo.findById.mockResolvedValue(makeUser('u-1', 'other-tenant'));
+
+      await expect(
+        handler.getUserConsents('tenant-1', 'u-1', { page: 1, limit: 10 }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(consentRepo.listByUser).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getUserConsentHistory', () => {
+    it('revoked Consent 를 포함한 이력을 반환한다', async () => {
+      const revokedAt = new Date('2024-03-10T00:00:00Z');
+      userRepo.findById.mockResolvedValue(makeUser('u-1', 'tenant-1'));
+      consentRepo.listByUser.mockResolvedValue({
+        items: [makeConsent('consent-2', { revokedAt })],
+        total: 1,
+      });
+
+      const result = await handler.getUserConsentHistory('tenant-1', 'u-1', {
+        page: 2,
+        limit: 5,
+      });
+
+      expect(consentRepo.listByUser).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        userId: 'u-1',
+        page: 2,
+        limit: 5,
+        includeRevoked: true,
+      });
+      expect(result.items[0]).toMatchObject({
+        id: 'consent-2',
+        status: 'REVOKED',
+        revokedAt,
+      });
     });
   });
 });
