@@ -267,7 +267,7 @@ describe('UserQueryHandler', () => {
 
       await expect(
         handler.getRecoveryCodeStatus('tenant-1', 'user-1'),
-      ).resolves.toEqual({ remaining: 0, total: 0, low: false });
+      ).resolves.toEqual({ remaining: 0, total: 0, used: 0, low: false });
     });
 
     it('현재 배치 기준 remaining/total/low를 계산한다', async () => {
@@ -297,7 +297,7 @@ describe('UserQueryHandler', () => {
 
       await expect(
         handler.getRecoveryCodeStatus('tenant-1', 'user-1'),
-      ).resolves.toEqual({ remaining: 1, total: 2, low: true });
+      ).resolves.toEqual({ remaining: 1, total: 2, used: 1, low: true });
       expect(userRepo.findCredentialsByType).toHaveBeenCalledWith(
         'user-1',
         ['recovery_code'],

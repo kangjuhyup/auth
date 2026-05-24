@@ -30,7 +30,7 @@ export abstract class UserQueryPort {
   abstract getRecoveryCodeStatus(
     tenantId: string,
     userId: string,
-  ): Promise<{ remaining: number; total: number; low: boolean }>;
+  ): Promise<{ remaining: number; total: number; used: number; low: boolean }>;
 
   abstract verifyMfa(params: {
     tenantId: string;

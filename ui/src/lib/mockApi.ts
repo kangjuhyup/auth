@@ -618,10 +618,15 @@ export const mockAuthApi = {
 
   getRecoveryCodeStatus: async (
     tenantCode: string,
-  ): Promise<{ remaining: number; total: number; low: boolean }> => {
+  ): Promise<{
+    remaining: number;
+    total: number;
+    used: number;
+    low: boolean;
+  }> => {
     void tenantCode;
     await delay(150);
-    return { remaining: 3, total: 10, low: false };
+    return { remaining: 3, total: 10, used: 7, low: false };
   },
 
   rotateRecoveryCodes: async (

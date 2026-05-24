@@ -219,6 +219,9 @@ export class InteractionCommandHandler
     method: 'totp' | 'webauthn' | 'recovery_code';
     code?: string;
     webauthnResponse?: Record<string, unknown>;
+    ipAddress?: string;
+    userAgent?: string;
+    correlationId?: string;
     req: unknown;
     res: unknown;
     rpId: string;
@@ -247,6 +250,27 @@ export class InteractionCommandHandler
     }
 
     this.mfaPendingSessions.delete(params.uid);
+    if (params.method === 'recovery_code') {
+      await this.auditRecorder?.recordAdminAction({
+        tenantId: pending.tenantId,
+        category: 'SECURITY',
+        severity: 'INFO',
+        action: 'UPDATE',
+        resourceType: 'mfa-recovery-code',
+        resourceId: pending.userId,
+        success: true,
+        reason: 'RecoveryCodeUsed',
+        metadata: {
+          method: 'recovery_code',
+        },
+        auditContext: {
+          actorUserId: pending.userId,
+          ipAddress: params.ipAddress ?? null,
+          userAgent: params.userAgent ?? null,
+          correlationId: params.correlationId ?? null,
+        },
+      });
+    }
 
     const { redirectTo } = await this.oidcInteraction.completeLogin({
       tenantCode: params.tenantCode,

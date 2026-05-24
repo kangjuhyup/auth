@@ -43,6 +43,9 @@ export abstract class InteractionCommandPort {
     method: InteractionMfaMethod;
     code?: string;
     webauthnResponse?: Record<string, unknown>;
+    ipAddress?: string;
+    userAgent?: string;
+    correlationId?: string;
     req: unknown;
     res: unknown;
     rpId: string;

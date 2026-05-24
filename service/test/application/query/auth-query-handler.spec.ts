@@ -34,6 +34,7 @@ function createMockUserQuery(): jest.Mocked<UserQueryPort> {
     getRecoveryCodeStatus: jest.fn().mockResolvedValue({
       remaining: 9,
       total: 10,
+      used: 1,
       low: false,
     }),
     verifyMfa: jest.fn().mockResolvedValue(false),
@@ -213,7 +214,7 @@ describe('AuthQueryHandler', () => {
         'tenant-1',
         'user-1',
       );
-      expect(result).toEqual({ remaining: 9, total: 10, low: false });
+      expect(result).toEqual({ remaining: 9, total: 10, used: 1, low: false });
     });
 
     it('WITHDRAWN 상태면 UserWithdrawn 에러', async () => {

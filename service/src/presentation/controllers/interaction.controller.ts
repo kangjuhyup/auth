@@ -91,6 +91,12 @@ export class InteractionController {
       method: body.method,
       code: body.code,
       webauthnResponse: body.webauthnResponse,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+      correlationId:
+        (req as any).correlationId ??
+        req.get('x-correlation-id') ??
+        req.get('x-request-id'),
       req,
       res,
       rpId: host.split(':')[0],

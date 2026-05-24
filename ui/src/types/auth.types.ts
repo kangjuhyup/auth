@@ -37,6 +37,7 @@ export interface TotpConfirmationResponse {
 export interface RecoveryCodeStatusResponse {
   remaining: number;
   total: number;
+  used: number;
   low: boolean;
 }
 

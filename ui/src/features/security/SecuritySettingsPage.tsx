@@ -432,6 +432,9 @@ export function SecuritySettingsPage() {
                     ? `${recoveryCodeStatusQuery.data.remaining}/${recoveryCodeStatusQuery.data.total}`
                     : '-'}
                 </Text>
+                {recoveryCodeStatusQuery.data && (
+                  <Tag>Used {recoveryCodeStatusQuery.data.used}</Tag>
+                )}
                 {recoveryCodeStatusQuery.data?.low && (
                   <Tag color="orange">Low</Tag>
                 )}

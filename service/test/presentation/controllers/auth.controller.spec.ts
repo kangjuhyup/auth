@@ -214,7 +214,7 @@ describe('AuthController', () => {
   });
 
   it('getRecoveryCodeStatus는 tenant.id와 authUser.userId를 queryPort에 전달한다', async () => {
-    const result = { remaining: 9, total: 10, low: false };
+    const result = { remaining: 9, total: 10, used: 1, low: false };
     queryPort.getRecoveryCodeStatus.mockResolvedValue(result);
 
     await expect(

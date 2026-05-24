@@ -449,4 +449,67 @@ describe('InteractionCommandHandler', () => {
       body: { error: 'no_pending_mfa' },
     });
   });
+
+  it('recovery code MFA 검증 성공 시 recovery code 사용 audit을 기록한다', async () => {
+    const req = {};
+    const res = {};
+    userQuery.authenticate.mockResolvedValue({ userId: 'user-1' });
+    userQuery.getMfaMethods.mockResolvedValue(['recovery_code']);
+    userQuery.verifyMfa.mockResolvedValue(true);
+    oidcInteraction.getDetails.mockResolvedValue({
+      uid: 'uid-1',
+      prompt: 'login',
+      clientId: 'web-app',
+      missingScopes: [],
+      mfaRequired: true,
+      idpList: [],
+    });
+    oidcInteraction.completeLogin.mockResolvedValue({
+      redirectTo: '/interaction/done',
+    });
+
+    await handler.submitLogin({
+      tenantCode: 'acme',
+      uid: 'uid-1',
+      username: 'john',
+      password: 'secret',
+      req,
+      res,
+      tenant,
+    });
+
+    await handler.submitMfa({
+      tenantCode: 'acme',
+      uid: 'uid-1',
+      method: 'recovery_code',
+      code: 'RC-1234',
+      ipAddress: '203.0.113.10',
+      userAgent: 'jest',
+      correlationId: 'req-1',
+      req,
+      res,
+      rpId: 'auth.example.com',
+      expectedOrigin: 'https://auth.example.com',
+    });
+
+    expect(auditRecorder.recordAdminAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        category: 'SECURITY',
+        severity: 'INFO',
+        action: 'UPDATE',
+        resourceType: 'mfa-recovery-code',
+        resourceId: 'user-1',
+        success: true,
+        reason: 'RecoveryCodeUsed',
+        metadata: { method: 'recovery_code' },
+        auditContext: {
+          actorUserId: 'user-1',
+          ipAddress: '203.0.113.10',
+          userAgent: 'jest',
+          correlationId: 'req-1',
+        },
+      }),
+    );
+  });
 });

@@ -22,51 +22,51 @@ OIDC Authorization Server를 엔터프라이즈 인증 서비스로 확장하기
 
 목표: tenant 기본 정책과 client별 override 정책을 분리해서 운영자가 인증 정책을 제어할 수 있게 한다.
 
-- [ ] Password policy
-  - [ ] 최소 길이
-  - [ ] 복잡도
-  - [ ] 비밀번호 재사용 금지
-  - [ ] 비밀번호 만료 정책
-  - [ ] 실패 횟수 기반 잠금 정책
+- [x] Password policy
+  - [x] 최소 길이
+  - [x] 복잡도
+  - [x] 비밀번호 재사용 금지
+  - [x] 비밀번호 만료 정책
+  - [x] 실패 횟수 기반 잠금 정책
 - [ ] MFA required policy
-  - [ ] tenant 전체 MFA 필수
+  - [x] tenant 전체 MFA 필수
   - [ ] admin 사용자 MFA 필수
-  - [ ] client별 MFA 필수 override
-- [ ] Allowed IdP policy
-  - [ ] tenant별 허용 IdP 제한
-  - [ ] client별 허용 IdP override
-- [ ] Session policy
-  - [ ] session max age
-  - [ ] require auth_time
-  - [ ] re-authentication interval
-- [ ] Tenant 기본 refresh token TTL 정책 UI/API 정리
-- [ ] Signup / invite policy
-  - [ ] 공개 가입
-  - [ ] 초대 기반 가입
-  - [ ] 허용 이메일 도메인
-- [ ] 테스트
-  - [ ] tenant 정책 도메인 테스트
-  - [ ] client override 우선순위 테스트
-  - [ ] policy command/query 테스트
+  - [x] client별 MFA 필수 override
+- [x] Allowed IdP policy
+  - [x] tenant별 허용 IdP 제한
+  - [x] client별 허용 IdP override
+- [x] Session policy
+  - [x] session max age
+  - [x] require auth_time
+  - [x] re-authentication interval
+- [x] Tenant 기본 refresh token TTL 정책 UI/API 정리
+- [x] Signup / invite policy
+  - [x] 공개 가입
+  - [x] 초대 기반 가입
+  - [x] 허용 이메일 도메인
+- [x] 테스트
+  - [x] tenant 정책 도메인 테스트
+  - [x] client override 우선순위 테스트
+  - [x] policy command/query 테스트
 
 ## P1. Recovery Code 운영
 
 목표: MFA 수단 분실 시 안전한 복구 경로를 제공한다.
 
-- [ ] Recovery code 재발급
-- [ ] 재발급 시 기존 recovery code 폐기
-- [ ] 사용된 코드 표시
-- [ ] 남은 코드 개수 표시
+- [x] Recovery code 재발급
+- [x] 재발급 시 기존 recovery code 폐기
+- [x] 사용된 코드 표시
+- [x] 남은 코드 개수 표시
 - [ ] 남은 코드 부족 시 알림 이벤트 생성
-- [ ] Recovery code 원문은 최초 발급 시에만 표시
-- [ ] Recovery code는 해시로만 저장
-- [ ] Audit 기록
-  - [ ] recovery code 발급
-  - [ ] recovery code 재발급
-  - [ ] recovery code 사용
+- [x] Recovery code 원문은 최초 발급 시에만 표시
+- [x] Recovery code는 해시로만 저장
+- [x] Audit 기록
+  - [x] recovery code 발급
+  - [x] recovery code 재발급
+  - [x] recovery code 사용
 - [ ] 테스트
-  - [ ] recovery code 재발급 테스트
-  - [ ] 사용된 코드 재사용 차단 테스트
+  - [x] recovery code 재발급 테스트
+  - [x] 사용된 코드 재사용 차단 테스트
   - [ ] 부족 알림 이벤트 테스트
 
 ## P2. WebAuthn / Passkey 등록 UX

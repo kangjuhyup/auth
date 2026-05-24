@@ -228,5 +228,8 @@ export class RecoveryCodeStatusResponse {
   total!: number;
 
   @Expose()
+  used!: number;
+
+  @Expose()
   low!: boolean;
 }

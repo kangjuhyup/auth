@@ -2344,7 +2344,12 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           .set('Authorization', `Bearer ${initialLogin.accessToken}`)
           .expect(200)
           .expect(({ body }) => {
-            expect(body).toEqual({ remaining: 10, total: 10, low: false });
+            expect(body).toEqual({
+              remaining: 10,
+              total: 10,
+              used: 0,
+              low: false,
+            });
           });
 
         const rotateResponse = await request(fixture.app.getHttpServer())
@@ -2416,7 +2421,12 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           .set('Authorization', `Bearer ${initialLogin.accessToken}`)
           .expect(200)
           .expect(({ body }) => {
-            expect(body).toEqual({ remaining: 9, total: 10, low: false });
+            expect(body).toEqual({
+              remaining: 9,
+              total: 10,
+              used: 1,
+              low: false,
+            });
           });
       });
 

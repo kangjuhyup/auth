@@ -143,10 +143,15 @@ export class UserQueryHandler implements UserQueryPort {
   async getRecoveryCodeStatus(
     tenantId: string,
     userId: string,
-  ): Promise<{ remaining: number; total: number; low: boolean }> {
+  ): Promise<{
+    remaining: number;
+    total: number;
+    used: number;
+    low: boolean;
+  }> {
     const user = await this.userWriteRepository.findById(userId);
     if (!user || user.tenantId !== tenantId) {
-      return { remaining: 0, total: 0, low: false };
+      return { remaining: 0, total: 0, used: 0, low: false };
     }
 
     const credentials = await this.userWriteRepository.findCredentialsByType(
@@ -161,10 +166,12 @@ export class UserQueryHandler implements UserQueryPort {
       (credential) => credential.enabled,
     ).length;
     const total = currentBatch.length;
+    const used = total - remaining;
 
     return {
       remaining,
       total,
+      used,
       low: total > 0 && remaining <= this.recoveryCodeLowThreshold,
     };
   }
