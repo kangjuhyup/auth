@@ -1,3 +1,5 @@
+import { message } from 'antd';
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 
 interface RequestOptions extends Omit<RequestInit, 'body'> {
@@ -51,7 +53,7 @@ async function request<T>(
     body: body ? JSON.stringify(body) : undefined,
   });
 
-  if (response.status === 401 || response.status === 403) {
+  if (response.status === 401) {
     // Clear auth and redirect to login
     try {
       const { useAuthStore } = await import('@/stores/auth.store');
@@ -61,6 +63,11 @@ async function request<T>(
     }
     window.location.href = '/login';
     throw new Error(`Unauthorized: ${response.status}`);
+  }
+
+  if (response.status === 403) {
+    message.error('권한이 부족합니다.');
+    throw new Error(`Forbidden: ${response.status}`);
   }
 
   if (!response.ok) {

@@ -1,9 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useAuthStore } from '@/stores/auth.store';
+import { message } from 'antd';
 
 vi.mock('@/stores/auth.store', () => ({
   useAuthStore: {
     getState: vi.fn(),
+  },
+}));
+
+vi.mock('antd', () => ({
+  message: {
+    error: vi.fn(),
   },
 }));
 
@@ -30,6 +37,7 @@ describe('apiClient', () => {
     clearAuthMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     vi.stubGlobal('location', { href: '' });
+    vi.mocked(message.error).mockClear();
 
     vi.mocked(useAuthStore.getState).mockReturnValue({
       clearAuth: clearAuthMock,
@@ -146,14 +154,13 @@ describe('apiClient', () => {
       expect(location.href).toBe('/login');
     });
 
-    it('403 응답 시 clearAuth 를 호출하고 /login 으로 리다이렉트한다', async () => {
+    it('403 응답 시 로그인으로 이동하지 않고 권한 부족 토스트를 표시한다', async () => {
       fetchMock.mockResolvedValue(makeResponse({}, 403, false));
 
-      await expect(apiClient.get('/secure')).rejects.toThrow(
-        'Unauthorized: 403',
-      );
-      expect(clearAuthMock).toHaveBeenCalledOnce();
-      expect(location.href).toBe('/login');
+      await expect(apiClient.get('/secure')).rejects.toThrow('Forbidden: 403');
+      expect(clearAuthMock).not.toHaveBeenCalled();
+      expect(location.href).toBe('');
+      expect(message.error).toHaveBeenCalledWith('권한이 부족합니다.');
     });
 
     it('서버가 message 를 반환하면 해당 메시지로 throw 한다', async () => {
