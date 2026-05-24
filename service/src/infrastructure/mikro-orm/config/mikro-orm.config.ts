@@ -50,6 +50,8 @@ export function resolveMikroOrmDriver(
 export function buildMikroOrmConfig(config: ConfigReader): Options {
   const driverName = getDriverNameFrom(config);
   const DriverClass = resolveMikroOrmDriver(config);
+  const logger =
+    config.get('MIKRO_ORM_LOGGER') === 'silent' ? () => undefined : undefined;
 
   return {
     driver: DriverClass,
@@ -60,6 +62,7 @@ export function buildMikroOrmConfig(config: ConfigReader): Options {
     port: Number(config.get('DB_PORT') ?? DEFAULT_PORTS[driverName]),
     user: config.get('DB_USER') ?? 'postgres',
     password: config.get('DB_PASSWORD') ?? '',
+    logger,
     migrations: {
       path: `./dist/infrastructure/mikro-orm/migrations/${driverName}`,
       pathTs: `./src/infrastructure/mikro-orm/migrations/${driverName}`,

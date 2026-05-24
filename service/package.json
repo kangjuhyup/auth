@@ -20,7 +20,7 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:arch": "depcruise src --config .dependency-cruiser.cjs --output-type err",
-    "test:e2e": "NODE_OPTIONS=--experimental-vm-modules yarn exec jest --config ./test/jest-e2e.json",
+    "test:e2e": "NODE_OPTIONS=--experimental-vm-modules yarn exec jest --watchman=false --config ./test/jest-e2e.json",
     "migration:up": "mikro-orm migration:up",
     "migration:down": "mikro-orm migration:rollback",
     "migration:create": "mikro-orm migration:create",

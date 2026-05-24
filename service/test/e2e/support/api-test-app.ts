@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import * as argon2 from 'argon2';
 import { Client as PgClient } from 'pg';
 import type Redis from 'ioredis';
 import { MikroORM, RequestContext } from '@mikro-orm/core';
@@ -7,7 +8,6 @@ import type { INestApplication } from '@nestjs/common';
 import { ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { AppModule } from '../../../src/app.module';
 import { REDIS } from '@infrastructure/redis/redis.module';
 import { OIDC_PROVIDER } from '@infrastructure/oidc-provider/oidc-provider.constants';
 import { OidcProviderRegistry } from '@infrastructure/oidc-provider/oidc-provider.registry';
@@ -16,6 +16,7 @@ import { ConsentRepository } from '@domain/repositories/consent.repository';
 import { UserIdentityRepository } from '@domain/repositories/user-identity.repository';
 import { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
 import { configureBodyParsers } from '@presentation/http/body-parser';
+import { ulid } from 'ulid';
 
 type LoadedEnv = Record<string, string>;
 
@@ -90,12 +91,17 @@ function resolveEnvFilePath(): string {
   return found;
 }
 
-function buildRedisTestUrl(redisUrl: string): string {
+function getE2eWorkerId(): number {
+  return Number(process.env.JEST_WORKER_ID ?? '1');
+}
+
+function buildRedisTestUrl(redisUrl: string, workerId: number): string {
   const url = new URL(redisUrl);
   if (url.hostname === 'localhost') {
     url.hostname = '127.0.0.1';
   }
-  url.pathname = '/15';
+  const dbIndex = Math.max(0, 15 - ((workerId - 1) % 16));
+  url.pathname = `/${dbIndex}`;
   return url.toString();
 }
 
@@ -139,6 +145,7 @@ function loadTestEnvironment(): TestEnvironment {
   const dbPassword = pick('DB_PASSWORD', '');
   const baseDbName = pick('DB_NAME', 'auth');
   const redisUrl = pick('REDIS_URL', 'redis://localhost:6379');
+  const workerId = getE2eWorkerId();
 
   return {
     dbDriver,
@@ -146,8 +153,9 @@ function loadTestEnvironment(): TestEnvironment {
     dbPort,
     dbUser,
     dbPassword,
-    dbName: process.env.E2E_DB_NAME ?? `${baseDbName}_e2e`,
-    redisUrl: process.env.E2E_REDIS_URL ?? buildRedisTestUrl(redisUrl),
+    dbName: process.env.E2E_DB_NAME ?? `${baseDbName}_e2e_${workerId}`,
+    redisUrl:
+      process.env.E2E_REDIS_URL ?? buildRedisTestUrl(redisUrl, workerId),
     adminUsername: pick('ADMIN_USERNAME', 'admin'),
     adminPassword: pick('ADMIN_PASSWORD', 'admin'),
   };
@@ -194,6 +202,9 @@ function applyTestEnvironment(env: TestEnvironment): void {
   process.env.REDIS_URL = env.redisUrl;
   process.env.ADMIN_USERNAME = env.adminUsername;
   process.env.ADMIN_PASSWORD = env.adminPassword;
+  process.env.RVLOG_MIN_LEVEL = process.env.RVLOG_MIN_LEVEL ?? 'ERROR';
+  process.env.RVLOG_PRETTY = process.env.RVLOG_PRETTY ?? 'false';
+  process.env.MIKRO_ORM_LOGGER = process.env.MIKRO_ORM_LOGGER ?? 'silent';
 }
 
 function clearOidcRegistryCache(registry: OidcProviderRegistry): void {
@@ -203,10 +214,154 @@ function clearOidcRegistryCache(registry: OidcProviderRegistry): void {
   providers?.clear();
 }
 
+function sqlLiteral(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
+function quoteIdentifier(value: string): string {
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+async function truncateApplicationTables(orm: MikroORM): Promise<void> {
+  const connection = orm.em.getConnection();
+  const rows = (await connection.execute(`
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = current_schema()
+      AND table_type = 'BASE TABLE'
+      AND table_name NOT IN ('mikro_orm_migrations')
+    ORDER BY table_name;
+  `)) as Array<{ table_name: string }>;
+
+  if (rows.length === 0) {
+    return;
+  }
+
+  const tables = rows.map((row) => quoteIdentifier(row.table_name)).join(', ');
+  await connection.execute(
+    `TRUNCATE TABLE ${tables} RESTART IDENTITY CASCADE;`,
+  );
+}
+
+async function seedMasterData(
+  orm: MikroORM,
+  env: TestEnvironment,
+): Promise<void> {
+  const connection = orm.em.getConnection();
+  const adminId = ulid();
+  const passwordHash = await argon2.hash(env.adminPassword);
+  const adminUiUrl = process.env.ADMIN_UI_URL ?? 'http://localhost:5173';
+  const googleSeedOauthJson = JSON.stringify({
+    authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+    tokenUrl: 'https://oauth2.googleapis.com/token',
+    userinfoUrl: 'https://openidconnect.googleapis.com/v1/userinfo',
+    scopes: ['openid', 'email', 'profile'],
+    subField: 'sub',
+    emailField: 'email',
+    extraAuthParams: { prompt: 'select_account' },
+  });
+  const base = (
+    process.env.SEED_AUTH_PUBLIC_BASE ?? 'http://localhost:3000'
+  ).replace(/\/$/, '');
+  const googleClientId = (process.env.SEED_GOOGLE_OIDC_CLIENT_ID ?? '').trim();
+  const googleSecret = (
+    process.env.SEED_GOOGLE_OIDC_CLIENT_SECRET ?? ''
+  ).trim();
+  const googleConfigured = Boolean(googleClientId && googleSecret);
+  const googleSeedClientId = googleConfigured
+    ? googleClientId
+    : '__configure_google_client_id__';
+  const googleSeedSecret = googleConfigured
+    ? `'${sqlLiteral(googleSecret)}'`
+    : 'NULL';
+  const googleSeedEnabled = googleConfigured ? 'true' : 'false';
+  const googleRedirectUri = `${base}/t/master/interaction/seed/google/callback`;
+
+  await connection.execute(`
+    INSERT INTO "tenant" (code, name, created_at, updated_at)
+    VALUES ('master', 'Master', NOW(), NOW());
+  `);
+  await connection.execute(`
+    INSERT INTO "tenant_config" (tenant_id, signup_policy, require_phone_verify)
+    SELECT id, 'invite', false
+    FROM "tenant"
+    WHERE code = 'master';
+  `);
+  await connection.execute(`
+    INSERT INTO "user"
+      (id, tenant_id, username, email, email_verified, phone_verified, status, created_at, updated_at)
+    SELECT
+      '${sqlLiteral(adminId)}',
+      id,
+      '${sqlLiteral(env.adminUsername)}',
+      'admin@localhost',
+      true,
+      false,
+      'ACTIVE',
+      NOW(),
+      NOW()
+    FROM "tenant"
+    WHERE code = 'master';
+  `);
+  await connection.execute(`
+    INSERT INTO "user_credential"
+      (user_id, type, secret_hash, hash_alg, hash_params, enabled, created_at, updated_at)
+    VALUES
+      ('${sqlLiteral(adminId)}', 'password', '${sqlLiteral(passwordHash)}', 'argon2id', '{}', true, NOW(), NOW());
+  `);
+  await connection.execute(`
+    INSERT INTO "role" (tenant_id, code, name, description, created_at, updated_at)
+    SELECT id, 'SUPER_ADMIN', 'Super Admin', '플랫폼 최고 관리자', NOW(), NOW()
+    FROM "tenant"
+    WHERE code = 'master';
+  `);
+  await connection.execute(`
+    INSERT INTO "user_role" (user_id, role_id)
+    SELECT '${sqlLiteral(adminId)}', r.id
+    FROM "role" r
+    JOIN "tenant" t ON r.tenant_id = t.id
+    WHERE t.code = 'master' AND r.code = 'SUPER_ADMIN';
+  `);
+  await connection.execute(`
+    INSERT INTO "client"
+      (tenant_id, client_id, name, type, enabled,
+       redirect_uris, grant_types, response_types,
+       token_endpoint_auth_method, scope,
+       post_logout_redirect_uris, application_type,
+       skip_consent, created_at, updated_at)
+    SELECT
+      id, '__admin-portal__', 'Admin Portal', 'confidential', true,
+      '["${sqlLiteral(adminUiUrl)}/admin/tenants"]', '["authorization_code"]', '["code"]',
+      'none', 'openid profile',
+      '["${sqlLiteral(adminUiUrl)}/login"]', 'web',
+      true, NOW(), NOW()
+    FROM "tenant"
+    WHERE code = 'master';
+  `);
+  await connection.execute(`
+    INSERT INTO "identity_provider"
+      (tenant_id, provider, display_name, client_id, client_secret, redirect_uri, enabled, oauth_config, created_at, updated_at)
+    SELECT
+      t.id,
+      'google',
+      'Google',
+      '${sqlLiteral(googleSeedClientId)}',
+      ${googleSeedSecret},
+      '${sqlLiteral(googleRedirectUri)}',
+      ${googleSeedEnabled},
+      '${sqlLiteral(googleSeedOauthJson)}'::jsonb,
+      NOW(),
+      NOW()
+    FROM "tenant" t
+    WHERE t.code = 'master';
+  `);
+}
+
 export async function createApiE2eFixture(): Promise<ApiE2eFixture> {
   const env = loadTestEnvironment();
   await ensurePostgresDatabase(env);
   applyTestEnvironment(env);
+  const { AppModule } = await import('../../../src/app.module');
 
   const moduleRef = await Test.createTestingModule({
     imports: [AppModule],
@@ -235,7 +390,7 @@ export async function createApiE2eFixture(): Promise<ApiE2eFixture> {
   const userIdentityRepository = app.get(UserIdentityRepository);
   const userWriteRepository = app.get(UserWriteRepositoryPort);
 
-  const resetPersistence = async (): Promise<void> => {
+  const initializePersistence = async (): Promise<void> => {
     let step = 'clear oidc registry';
 
     try {
@@ -251,10 +406,33 @@ export async function createApiE2eFixture(): Promise<ApiE2eFixture> {
       await (orm.migrator as any).up();
     } catch (error) {
       throw new Error(
+        `Failed to initialize E2E persistence at step "${step}": ${formatNestedError(error)}`,
+      );
+    }
+  };
+
+  const resetPersistence = async (): Promise<void> => {
+    let step = 'clear oidc registry';
+
+    try {
+      clearOidcRegistryCache(registry);
+
+      step = 'flush redis db';
+      await redis.flushdb();
+
+      step = 'truncate application tables';
+      await truncateApplicationTables(orm);
+
+      step = 'seed master data';
+      await seedMasterData(orm, env);
+    } catch (error) {
+      throw new Error(
         `Failed to reset E2E persistence at step "${step}": ${formatNestedError(error)}`,
       );
     }
   };
+
+  await initializePersistence();
 
   return {
     app,
