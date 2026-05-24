@@ -16,7 +16,7 @@
 
 # 1. Runtime Configuration
 
-`AppModule`에서 `RvlogNestModule.forRoot()`를 통해 전역 HTTP interceptor를 등록한다.
+`AppModule`에서 `RvlogNestModule.forRoot()`를 통해 전역 request context middleware와 HTTP interceptor를 등록한다.
 
 현재 설정:
 
@@ -52,11 +52,12 @@ RvlogNestModule.forRoot({
 
 동작:
 
-1. `CorrelationIdMiddleware`가 `x-correlation-id` 또는 `x-request-id`를 읽는다.
-2. 안전한 값이면 그대로 사용한다.
-3. 없거나 안전하지 않은 값이면 ULID를 생성한다.
-4. 생성/선택된 값을 `req.correlationId`, `req.headers['x-correlation-id']`, 응답 `x-correlation-id` 헤더에 설정한다.
-5. `rvlog-nest`는 `requestIdHeader: 'x-correlation-id'` 설정으로 같은 값을 HTTP log request id로 사용한다.
+1. `rvlog-nest` request context middleware가 `x-correlation-id` 기반 requestId를 HTTP 요청 초기에 준비한다.
+2. `CorrelationIdMiddleware`가 `x-correlation-id`, 이미 응답에 설정된 `x-correlation-id`, 또는 `x-request-id`를 읽는다.
+3. 안전한 값이면 그대로 사용한다.
+4. 없거나 안전하지 않은 값이면 ULID를 생성한다.
+5. 생성/선택된 값을 `req.correlationId`, `req.headers['x-correlation-id']`, 응답 `x-correlation-id` 헤더에 설정한다.
+6. Guard에서 실행되는 service/application `@Logging` 로그도 같은 requestId로 묶인다.
 
 ---
 
@@ -142,6 +143,8 @@ HTTP 요청 로그는 운영 관측성을 위해 `INFO`를 유지하고, 내부 
 - `AdminSessionTokenAdapter`
 - `InfrastructureReadinessAdapter`
 - `RedisSamlCacheProviderFactory`
+- `AdminGuard`, `AccessGuard`, `AppThrottlerGuard`는 `ExecutionContext` 자동 로깅 대신 토큰/쿠키/헤더를 제외한 decision 로그만 수동 기록한다.
+- `CorrelationIdMiddleware`, `TenantMiddleware`, `OidcDelegateMiddleware`는 request 원문 대신 선택/해결/위임 결과만 수동 기록한다.
 
 민감정보가 primitive string 또는 plain object로 들어오는 메서드는 `@Logging` 대상에서 제외하거나 `@NoLog`를 적용한다.
 
@@ -155,6 +158,8 @@ HTTP 요청 로그는 운영 관측성을 위해 `INFO`를 유지하고, 내부 
 `@Logging`을 새로 추가할 때는 다음을 확인한다.
 
 - 메서드 인자에 raw password, token, authorization code, client secret, SAMLResponse, WebAuthn payload가 없어야 한다.
+- Guard/Middleware/Interceptor에는 `@Logging`을 붙이지 않는다. `ExecutionContext`, `Request`, `Response`에 request header/cookie/body가 포함될 수 있으므로 안전한 필드만 수동으로 기록한다.
+- HTTP interceptor 호출/완료 로그는 `rvlog-nest`가 담당한다. 별도 interceptor를 추가할 때도 request/response 객체 전체를 로그 인자로 넘기지 않는다.
 - 민감 필드가 있다면 class DTO + `@MaskLog` metadata를 통해 마스킹 가능한지 확인한다.
 - `interface`, `type`, inline object type은 runtime metadata가 없으므로 마스킹 보장 대상으로 보지 않는다.
 - repository/mapper/metrics adapter처럼 매우 자주 호출되거나 내부 반복에서 호출되는 클래스에는 기본적으로 붙이지 않는다.

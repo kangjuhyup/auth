@@ -2,6 +2,16 @@ import { AccessGuard } from '@presentation/http/access.guard';
 import type { ExecutionContext } from '@nestjs/common';
 
 describe('AccessGuard', () => {
+  let debugSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    debugSpy = jest.spyOn(console, 'debug').mockImplementation();
+  });
+
+  afterEach(() => {
+    debugSpy.mockRestore();
+  });
+
   const makeContext = (req: any): ExecutionContext =>
     ({
       switchToHttp: () => ({
@@ -74,6 +84,8 @@ describe('AccessGuard', () => {
     expect(result).toBe(true);
     expect(verify).toHaveBeenCalledTimes(1);
     expect(req.authUser).toEqual({ userId: 'user-1' });
+    expect(JSON.stringify(debugSpy.mock.calls)).not.toContain('Bearer token');
+    expect(JSON.stringify(debugSpy.mock.calls)).not.toContain(' token');
   });
 
   it('req.tenant.id가 존재하면 헤더보다 우선한다', async () => {

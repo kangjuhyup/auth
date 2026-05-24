@@ -3,6 +3,16 @@ import type { Request, Response } from 'express';
 import { OidcDelegateMiddleware } from '@presentation/http/oidc.middleware';
 
 describe('OidcDelegateMiddleware', () => {
+  let debugSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    debugSpy = jest.spyOn(console, 'debug').mockImplementation();
+  });
+
+  afterEach(() => {
+    debugSpy.mockRestore();
+  });
+
   const makeReq = (overrides: Partial<Request> = {}): Request =>
     ({
       params: {},
@@ -50,5 +60,11 @@ describe('OidcDelegateMiddleware', () => {
       req,
       res,
     });
+    expect(JSON.stringify(debugSpy.mock.calls)).toContain(
+      'delegated reason=provider_callback tenantCode=tenant-a',
+    );
+    expect(JSON.stringify(debugSpy.mock.calls)).not.toContain(
+      'delegateProviderCallback',
+    );
   });
 });

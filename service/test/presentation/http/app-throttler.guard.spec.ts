@@ -11,6 +11,16 @@ function makeContext(path: string) {
 }
 
 describe('AppThrottlerGuard', () => {
+  let debugSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    debugSpy = jest.spyOn(console, 'debug').mockImplementation();
+  });
+
+  afterEach(() => {
+    debugSpy.mockRestore();
+  });
+
   function makeGuard() {
     return new AppThrottlerGuard([], {} as any, new Reflector());
   }
@@ -21,6 +31,9 @@ describe('AppThrottlerGuard', () => {
     await expect(
       (guard as any).shouldSkip(makeContext('/t/acme/oidc/token')),
     ).resolves.toBe(false);
+    expect(JSON.stringify(debugSpy.mock.calls)).toContain(
+      'included reason=oidc_token_endpoint',
+    );
   });
 
   it('token endpoint 외 OIDC provider 경로는 전역 throttling에서 제외한다', async () => {

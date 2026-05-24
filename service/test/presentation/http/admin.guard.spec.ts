@@ -17,6 +17,16 @@ function makeAdminSession(result: boolean) {
 }
 
 describe('AdminGuard', () => {
+  let debugSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    debugSpy = jest.spyOn(console, 'debug').mockImplementation();
+  });
+
+  afterEach(() => {
+    debugSpy.mockRestore();
+  });
+
   it('Authorization 헤더가 없으면 false를 반환한다', async () => {
     const adminSession = makeAdminSession(true);
     const guard = new AdminGuard(adminSession as any);
@@ -49,6 +59,7 @@ describe('AdminGuard', () => {
 
     expect(adminSession.getAdminSession).toHaveBeenCalledWith('invalid-token');
     expect(result).toBe(false);
+    expect(JSON.stringify(debugSpy.mock.calls)).not.toContain('invalid-token');
   });
 
   it('AdminSessionPort가 true를 반환하면 true를 반환한다', async () => {

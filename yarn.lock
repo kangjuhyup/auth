@@ -192,7 +192,7 @@ __metadata:
   resolution: "@auth/service@workspace:service"
   dependencies:
     "@kangjuhyup/rvlog": "npm:^0.2.0"
-    "@kangjuhyup/rvlog-nest": "npm:1.0.0"
+    "@kangjuhyup/rvlog-nest": "npm:^1.0.1"
     "@mikro-orm/cli": "npm:6.6.12"
     "@mikro-orm/core": "npm:6.6.12"
     "@mikro-orm/migrations": "npm:6.6.12"
@@ -2080,16 +2080,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@kangjuhyup/rvlog-nest@npm:1.0.0":
-  version: 1.0.0
-  resolution: "@kangjuhyup/rvlog-nest@npm:1.0.0"
+"@kangjuhyup/rvlog-nest@npm:^1.0.1":
+  version: 1.0.1
+  resolution: "@kangjuhyup/rvlog-nest@npm:1.0.1"
   peerDependencies:
     "@kangjuhyup/rvlog": ^0.2.0
     "@nestjs/common": ^10.0.0 || ^11.0.0
     "@nestjs/core": ^10.0.0 || ^11.0.0
     reflect-metadata: ^0.2.2
     rxjs: ^7.0.0
-  checksum: 10c0/6e45d5cdec6944825adddfe0e0d200c2ff302898b6d8f67895181ce3dbef4b40615f1434de8df7c2fb4f4d5401c47d80f8a2288c9d996537cab1025318c662a9
+  checksum: 10c0/f1f3ee2c0a5c8df87fe9d66cdafb74dfc74a499430cf42b5051993054d8a00a73f68b8101e040f45d143feeebc066870c8d240df135fa4872a6c5efad4e0aa1f
   languageName: node
   linkType: hard
 

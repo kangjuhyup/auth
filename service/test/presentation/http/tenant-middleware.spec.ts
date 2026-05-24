@@ -35,11 +35,17 @@ describe('TenantMiddleware', () => {
   let middleware: TenantMiddleware;
   let repository: jest.Mocked<TenantRepository>;
   const next = jest.fn();
+  let debugSpy: jest.SpyInstance;
 
   beforeEach(() => {
+    debugSpy = jest.spyOn(console, 'debug').mockImplementation();
     repository = createMockRepository();
     middleware = new TenantMiddleware(repository);
     next.mockClear();
+  });
+
+  afterEach(() => {
+    debugSpy.mockRestore();
   });
 
   it('tenantCode로 테넌트를 조회하여 req.tenant에 설정한다', async () => {
@@ -52,6 +58,9 @@ describe('TenantMiddleware', () => {
     expect(repository.findByCode).toHaveBeenCalledWith('acme');
     expect(req.tenant).toBe(tenant);
     expect(next).toHaveBeenCalled();
+    expect(JSON.stringify(debugSpy.mock.calls)).toContain(
+      'resolved reason=tenant_found',
+    );
   });
 
   it('tenantCode가 없으면 BadRequestException을 던진다', async () => {
