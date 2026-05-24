@@ -5,6 +5,7 @@ import {
   type InteractionResponse,
 } from '@application/ports/interaction-command.port';
 import { UserQueryPort } from '@application/queries/ports/user-query.port';
+import { LoginAttemptPolicyPort } from '@application/ports/login-attempt-policy.port';
 import type { TenantContext } from '@application/dto';
 
 type PendingMfaSession = Readonly<{
@@ -26,6 +27,7 @@ export class InteractionCommandHandler
   constructor(
     private readonly userQuery: UserQueryPort,
     private readonly oidcInteraction: OidcInteractionPort,
+    private readonly loginAttemptPolicy: LoginAttemptPolicyPort,
   ) {
     super();
   }
@@ -58,12 +60,33 @@ export class InteractionCommandHandler
     uid: string;
     username: string;
     password: string;
+    ipAddress?: string;
     req: unknown;
     res: unknown;
     tenant?: TenantContext;
   }): Promise<InteractionResponse> {
     if (!params.tenant) {
       return { status: 400, body: { error: 'tenant_not_found' } };
+    }
+
+    const attempt = {
+      tenantId: params.tenant.id,
+      username: params.username,
+      ipAddress: params.ipAddress,
+      scope: 'interaction' as const,
+    };
+    const decision = await this.loginAttemptPolicy.consumeAttempt(attempt);
+    if (!decision.allowed) {
+      return {
+        status: decision.reason === 'rate_limited' ? 429 : 423,
+        body: {
+          error:
+            decision.reason === 'rate_limited'
+              ? 'too_many_login_attempts'
+              : 'account_temporarily_locked',
+          retryAfterSec: decision.retryAfterSec,
+        },
+      };
     }
 
     const result = await this.userQuery.authenticate({
@@ -73,8 +96,11 @@ export class InteractionCommandHandler
     });
 
     if (!result) {
+      await this.loginAttemptPolicy.recordFailure(attempt);
       return { status: 401, body: { error: 'invalid_credentials' } };
     }
+
+    await this.loginAttemptPolicy.recordSuccess(attempt);
 
     const details = await this.oidcInteraction.getDetails({
       tenantCode: params.tenantCode,

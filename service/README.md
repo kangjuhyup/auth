@@ -20,11 +20,13 @@ DB 설정/마이그레이션은 `docs/DATABASE.md` 참고.
 ## 서비스의 역할
 
 ### node-oidc-provider가 담당하는 것
+
 - Authorization / Token / UserInfo / JWKS 엔드포인트
 - PKCE 검증, state/nonce 처리, grant/session/interaction 관리
 - ID Token 발급/서명 (키 제공 기반)
 
 ### 서비스 코드가 담당하는 것
+
 - 테넌트/클라이언트/키/동의/정책의 라이프사이클 관리
 - 커스텀 클레임(정책 기반, 최소)
 - 감사 로그 및 보안 이벤트 기록
@@ -85,11 +87,13 @@ src/
 ## CQRS 규칙 (현재 코드 기준)
 
 ### Command (Write)
+
 - 커맨드 핸들러는 도메인 모델과 리포지토리(포트)를 통해 상태를 변경한다.
 - 불변성·비즈니스 규칙은 도메인 모델·핸들러에서 검증한다.
 - 필요 시 `@Transactional` 등으로 트랜잭션 경계를 맞춘다.
 
 ### Query (Read)
+
 - 쿼리 핸들러는 조회 전용 포트·리포지토리(또는 읽기 모델)만 사용한다.
 - 쓰기용 리포지토리로 동일 요청 안에서 우회 갱신하지 않는 것을 원칙으로 한다.
 
@@ -111,17 +115,24 @@ src/
 
 앱 부팅 시 [`src/main.ts`](src/main.ts)에서 [`src/presentation/http/http-security.ts`](src/presentation/http/http-security.ts)로 **Helmet·trust proxy·`X-Powered-By` 제거**를 적용하고, [`src/app.module.ts`](src/app.module.ts)의 **`@nestjs/throttler`** 로 Nest 컨트롤러에 **전역 레이트 리밋**을 건다. Helmet 세부 옵션은 [`src/presentation/http/security-headers.config.ts`](src/presentation/http/security-headers.config.ts), 경로 예외는 [`src/presentation/http/app-throttler.guard.ts`](src/presentation/http/app-throttler.guard.ts)를 본다.
 
-| 변수 | 기본(미설정 시 코드 기본값) | 설명 |
-|------|---------------------------|------|
-| `HTTP_TRUST_PROXY_HOPS` | (끔) | Ingress 등 프록시 뒤에서 `req.ip`·레이트 리밋이 실제 클라이언트를 보려면 hop 수(예: `1`). |
-| `HTTP_HELMET_ENABLED` | `true` | `false`면 Helmet 미들웨어 비활성. |
-| `HTTP_HSTS_ENABLED` | `false` | **HTTPS 프로덕션**에서만 `true`. 로컬 `http://` 에서 켜면 브라우저가 불필요하게 HTTPS 를 강요할 수 있다. |
-| `HTTP_HSTS_MAX_AGE_SEC` | `15552000` | HSTS `max-age`(초). |
-| `HTTP_THROTTLE_ENABLED` | `true` | `false`면 사실상 무제한(내부적으로 매우 큰 limit). E2E 는 `.env.e2e`에서 끈다. |
-| `HTTP_THROTTLE_TTL_MS` | `60000` | 윈도 길이(ms). |
-| `HTTP_THROTTLE_LIMIT` | `120` | 위 윈도당 허용 요청 수(컨트롤러 기준). |
+| 변수                             | 기본(미설정 시 코드 기본값) | 설명                                                                                                     |
+| -------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `HTTP_TRUST_PROXY_HOPS`          | (끔)                        | Ingress 등 프록시 뒤에서 `req.ip`·레이트 리밋이 실제 클라이언트를 보려면 hop 수(예: `1`).                |
+| `HTTP_HELMET_ENABLED`            | `true`                      | `false`면 Helmet 미들웨어 비활성.                                                                        |
+| `HTTP_HSTS_ENABLED`              | `false`                     | **HTTPS 프로덕션**에서만 `true`. 로컬 `http://` 에서 켜면 브라우저가 불필요하게 HTTPS 를 강요할 수 있다. |
+| `HTTP_HSTS_MAX_AGE_SEC`          | `15552000`                  | HSTS `max-age`(초).                                                                                      |
+| `HTTP_THROTTLE_ENABLED`          | `true`                      | `false`면 사실상 무제한(내부적으로 매우 큰 limit). E2E 는 `.env.e2e`에서 끈다.                           |
+| `HTTP_THROTTLE_TTL_MS`           | `60000`                     | 윈도 길이(ms).                                                                                           |
+| `HTTP_THROTTLE_LIMIT`            | `120`                       | 위 윈도당 허용 요청 수(컨트롤러 기준).                                                                   |
+| `LOGIN_RATE_LIMIT_IP_MAX`        | `10`                        | 로그인 시도 IP 기준 허용 횟수. 대상: admin session, interaction login.                                   |
+| `LOGIN_RATE_LIMIT_IP_WINDOW_SEC` | `60`                        | 로그인 IP 카운터 윈도(초). 초과 시 429.                                                                  |
+| `LOGIN_FAILURE_MAX`              | `5`                         | tenant+username 기준 인증 실패 허용 횟수.                                                                |
+| `LOGIN_FAILURE_WINDOW_SEC`       | `900`                       | 인증 실패 카운터 윈도(초).                                                                               |
+| `LOGIN_LOCK_TTL_SEC`             | `900`                       | 실패 횟수 초과 시 임시 계정 잠금 TTL(초).                                                                |
 
-**레이트 리밋 범위:** `@nestjs/throttler` 가드는 **Nest 라우트 핸들러**에만 적용된다. 가드에서 **`/t/:tenantCode/oidc/...`**, **`/health`**, **`/interaction-assets`** 는 스킵한다. OIDC 토큰 엔드포인트에 대한 공격 완화는 **Ingress/WAF** 쪽 제한을 함께 검토한다.
+**레이트 리밋 범위:** `@nestjs/throttler` 가드는 **Nest 라우트 핸들러**에만 적용된다. 가드에서 **`/health`**, **`/interaction-assets`**, OIDC 토큰 엔드포인트를 제외한 **`/t/:tenantCode/oidc/...`** 는 스킵한다. `/t/:tenantCode/oidc/token` 은 전역 throttling 대상에 포함하며, Ingress/WAF 쪽 제한도 함께 검토한다.
+
+**로그인 방어:** admin session 로그인과 interaction login은 Redis 기반 `LoginAttemptPolicyPort`를 통해 IP 기준 rate limit과 tenant+username 기준 실패 카운터를 적용한다. 실패 한도 초과 시 임시 잠금 TTL 동안 인증을 차단한다.
 
 **Helmet:** 기본적으로 **CSP(Content-Security-Policy)는 끈다**(OIDC 리다이렉트·interaction UI 와의 충돌을 피함). 정적 화면을 엄격히 통제할 때는 `security-headers.config.ts`에서 정책을 설계한다.
 
@@ -132,12 +143,14 @@ src/
 ## 개발/테스트
 
 ### 테스트 전략
-1) 도메인·유틸 단위 테스트
-2) 커맨드/쿼리 핸들러 테스트(리포지토리·포트 목)
-3) 인프라 어댑터·매퍼 테스트
-4) HTTP·OIDC 통합 / E2E
+
+1. 도메인·유틸 단위 테스트
+2. 커맨드/쿼리 핸들러 테스트(리포지토리·포트 목)
+3. 인프라 어댑터·매퍼 테스트
+4. HTTP·OIDC 통합 / E2E
 
 ### 실행
+
 ```bash
 yarn workspace @auth/service test
 yarn workspace @auth/service build

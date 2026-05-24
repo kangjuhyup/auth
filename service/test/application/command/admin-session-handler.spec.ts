@@ -6,6 +6,7 @@ describe('AdminSessionHandler', () => {
   let userQuery: any;
   let adminQuery: any;
   let tokenPort: any;
+  let loginAttemptPolicy: any;
 
   beforeEach(() => {
     tenantRepo = {
@@ -25,12 +26,21 @@ describe('AdminSessionHandler', () => {
       issue: jest.fn().mockResolvedValue('access-token'),
       verify: jest.fn().mockResolvedValue({ userId: 'user-1' }),
     };
+    loginAttemptPolicy = {
+      consumeAttempt: jest.fn().mockResolvedValue({ allowed: true }),
+      recordFailure: jest.fn().mockResolvedValue({
+        failureCount: 1,
+        temporarilyLocked: false,
+      }),
+      recordSuccess: jest.fn().mockResolvedValue(undefined),
+    };
 
     handler = new AdminSessionHandler(
       tenantRepo,
       userQuery,
       adminQuery,
       tokenPort,
+      loginAttemptPolicy,
     );
   });
 
@@ -38,9 +48,16 @@ describe('AdminSessionHandler', () => {
     const result = await handler.issueAdminToken({
       username: 'admin',
       password: 'secret',
+      ipAddress: '203.0.113.10',
     });
 
     expect(tenantRepo.findByCode).toHaveBeenCalledWith('master');
+    expect(loginAttemptPolicy.consumeAttempt).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      username: 'admin',
+      ipAddress: '203.0.113.10',
+      scope: 'admin',
+    });
     expect(userQuery.authenticate).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
       username: 'admin',
@@ -54,6 +71,44 @@ describe('AdminSessionHandler', () => {
     expect(result).toEqual({
       token: 'access-token',
       username: 'admin',
+    });
+    expect(loginAttemptPolicy.recordSuccess).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      username: 'admin',
+      ipAddress: '203.0.113.10',
+      scope: 'admin',
+    });
+  });
+
+  it('rate limit 상태면 인증을 수행하지 않고 차단 결과를 반환한다', async () => {
+    loginAttemptPolicy.consumeAttempt.mockResolvedValue({
+      allowed: false,
+      reason: 'rate_limited',
+      retryAfterSec: 60,
+    });
+
+    await expect(
+      handler.issueAdminToken({ username: 'admin', password: 'secret' }),
+    ).resolves.toEqual({
+      blocked: true,
+      reason: 'rate_limited',
+      retryAfterSec: 60,
+    });
+    expect(userQuery.authenticate).not.toHaveBeenCalled();
+  });
+
+  it('인증 실패 시 실패 카운터를 기록한다', async () => {
+    userQuery.authenticate.mockResolvedValue(null);
+
+    await expect(
+      handler.issueAdminToken({ username: 'admin', password: 'wrong' }),
+    ).resolves.toBeNull();
+
+    expect(loginAttemptPolicy.recordFailure).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      username: 'admin',
+      ipAddress: undefined,
+      scope: 'admin',
     });
   });
 

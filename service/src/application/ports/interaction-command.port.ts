@@ -29,6 +29,7 @@ export abstract class InteractionCommandPort {
     uid: string;
     username: string;
     password: string;
+    ipAddress?: string;
     req: unknown;
     res: unknown;
     tenant?: TenantContext;

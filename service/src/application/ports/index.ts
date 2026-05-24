@@ -11,6 +11,14 @@ export type {
 } from './mfa-verification.port';
 export { TenantContextPort } from './tenant-context.port';
 export { AdminSessionPort } from './admin-session.port';
+export { LoginAttemptPolicyPort } from './login-attempt-policy.port';
+export type {
+  LoginAttemptBlockReason,
+  LoginAttemptDecision,
+  LoginAttemptFailureResult,
+  LoginAttemptParams,
+  LoginAttemptScope,
+} from './login-attempt-policy.port';
 export { OidcInteractionPort } from './oidc-interaction.port';
 export type {
   InteractionCompletionResult,

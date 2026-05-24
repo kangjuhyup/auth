@@ -9,6 +9,7 @@ import {
 } from '@nestjs/throttler';
 
 const OIDC_PATH = /^\/t\/[^/]+\/oidc(?:\/|$)/;
+const OIDC_TOKEN_PATH = /^\/t\/[^/]+\/oidc\/token$/;
 
 /**
  * OIDC·헬스·정적 자산 경로는 전역 레이트 리밋에서 제외한다.
@@ -24,7 +25,9 @@ export class AppThrottlerGuard extends ThrottlerGuard {
     super(options, storageService, reflector);
   }
 
-  protected override async shouldSkip(context: ExecutionContext): Promise<boolean> {
+  protected override async shouldSkip(
+    context: ExecutionContext,
+  ): Promise<boolean> {
     if (context.getType() !== 'http') {
       return true;
     }
@@ -32,6 +35,9 @@ export class AppThrottlerGuard extends ThrottlerGuard {
     const path = req.path ?? '';
     if (path === '/health' || path.startsWith('/health/')) {
       return true;
+    }
+    if (OIDC_TOKEN_PATH.test(path)) {
+      return false;
     }
     if (OIDC_PATH.test(path)) {
       return true;

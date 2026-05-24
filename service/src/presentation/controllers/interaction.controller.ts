@@ -58,6 +58,7 @@ export class InteractionController {
       uid,
       username: body.username ?? '',
       password: body.password ?? '',
+      ipAddress: req.ip,
       req,
       res,
       tenant: this.getTenant(req),

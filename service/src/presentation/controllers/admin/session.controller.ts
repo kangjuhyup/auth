@@ -3,7 +3,9 @@ import {
   Controller,
   Delete,
   Get,
+  HttpException,
   HttpCode,
+  HttpStatus,
   Post,
   Req,
   Res,
@@ -35,11 +37,25 @@ export class AdminSessionController {
   @Post()
   async login(
     @Body() dto: AdminLoginDto,
+    @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<{ username: string }> {
-    const result = await this.adminSession.issueAdminToken(dto);
+    const result = await this.adminSession.issueAdminToken({
+      ...dto,
+      ipAddress: request.ip,
+    });
     if (!result) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+    if ('blocked' in result) {
+      if (result.reason === 'rate_limited') {
+        throw new HttpException(
+          'Too many login attempts',
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+
+      throw new HttpException('Account temporarily locked', HttpStatus.LOCKED);
     }
 
     setAdminSessionCookie(response, this.config, result.token);

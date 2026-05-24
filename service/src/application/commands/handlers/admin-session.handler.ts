@@ -4,6 +4,7 @@ import { AdminQueryPort } from '@application/queries/ports';
 import { UserQueryPort } from '@application/queries/ports/user-query.port';
 import { AdminSessionPort } from '@application/ports/admin-session.port';
 import { AdminSessionTokenPort } from '@application/ports/admin-session-token.port';
+import { LoginAttemptPolicyPort } from '@application/ports/login-attempt-policy.port';
 
 const MASTER_TENANT = 'master';
 const ADMIN_ROLE = 'SUPER_ADMIN';
@@ -15,6 +16,7 @@ export class AdminSessionHandler extends AdminSessionPort {
     private readonly userQuery: UserQueryPort,
     private readonly adminQuery: AdminQueryPort,
     private readonly tokenPort: AdminSessionTokenPort,
+    private readonly loginAttemptPolicy: LoginAttemptPolicyPort,
   ) {
     super();
   }
@@ -22,10 +24,26 @@ export class AdminSessionHandler extends AdminSessionPort {
   async issueAdminToken(params: {
     username: string;
     password: string;
-  }): Promise<{ token: string; username: string } | null> {
+    ipAddress?: string;
+  }) {
     const tenant = await this.tenantRepo.findByCode(MASTER_TENANT);
     if (!tenant) {
       return null;
+    }
+
+    const attempt = {
+      tenantId: tenant.id,
+      username: params.username,
+      ipAddress: params.ipAddress,
+      scope: 'admin' as const,
+    };
+    const decision = await this.loginAttemptPolicy.consumeAttempt(attempt);
+    if (!decision.allowed) {
+      return {
+        blocked: true as const,
+        reason: decision.reason,
+        retryAfterSec: decision.retryAfterSec,
+      };
     }
 
     const result = await this.userQuery.authenticate({
@@ -34,11 +52,13 @@ export class AdminSessionHandler extends AdminSessionPort {
       password: params.password,
     });
     if (!result) {
+      await this.loginAttemptPolicy.recordFailure(attempt);
       return null;
     }
 
     const roles = await this.adminQuery.getUserRoles(tenant.id, result.userId);
     if (!roles.some((role) => role.code === ADMIN_ROLE)) {
+      await this.loginAttemptPolicy.recordFailure(attempt);
       return null;
     }
 
@@ -49,6 +69,8 @@ export class AdminSessionHandler extends AdminSessionPort {
     if (!token) {
       return null;
     }
+
+    await this.loginAttemptPolicy.recordSuccess(attempt);
 
     return { token, username: params.username };
   }
