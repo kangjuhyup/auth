@@ -65,10 +65,13 @@ import { MfaVerificationPort } from '@application/ports/mfa-verification.port';
 import { OAuth2IdpAdapter } from './idp/oauth2-idp.adapter';
 import { SamlSpAdapter } from './idp/saml-sp.adapter';
 import { MfaVerificationAdapter } from './mfa/mfa-verification.adapter';
-import { TenantContextAdapter } from './adapters/tenant-context.adapter';
-import { RedisLoginAttemptPolicyAdapter } from './adapters/redis-login-attempt-policy.adapter';
+import { TenantContextAdapter } from './tenancy/tenant-context.adapter';
+import { RedisLoginAttemptPolicyAdapter } from './security/login-attempt/redis-login-attempt-policy.adapter';
 import { AdminSessionTokenAdapter } from './oidc-provider/admin-session-token.adapter';
 import { OidcInteractionAdapter } from './oidc-provider/oidc-interaction.adapter';
+import { RedisLoginAttemptStore } from './stores/redis/redis-login-attempt.store';
+import { RedisSamlCacheProviderFactory } from './stores/redis/redis-saml-cache-provider.factory';
+import { RedisSamlRelayStateStore } from './stores/redis/redis-saml-relay-state.store';
 
 // Password Hash Implementations
 import { Argon2idHash } from './crypto/password/impl/argon2-hash';
@@ -154,6 +157,7 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
       provide: LoginAttemptPolicyPort,
       useClass: RedisLoginAttemptPolicyAdapter,
     },
+    RedisLoginAttemptStore,
     {
       provide: OidcInteractionPort,
       useClass: OidcInteractionAdapter,
@@ -166,6 +170,8 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
       provide: SamlSpPort,
       useClass: SamlSpAdapter,
     },
+    RedisSamlRelayStateStore,
+    RedisSamlCacheProviderFactory,
     {
       provide: MfaVerificationPort,
       useClass: MfaVerificationAdapter,

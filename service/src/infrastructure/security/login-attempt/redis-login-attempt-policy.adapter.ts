@@ -1,14 +1,12 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHash } from 'node:crypto';
-import type Redis from 'ioredis';
 import {
   LoginAttemptPolicyPort,
   type LoginAttemptDecision,
   type LoginAttemptFailureResult,
   type LoginAttemptParams,
 } from '@application/ports/login-attempt-policy.port';
-import { REDIS } from '@infrastructure/redis/redis.module';
+import { RedisLoginAttemptStore } from '@infrastructure/stores/redis/redis-login-attempt.store';
 
 @Injectable()
 export class RedisLoginAttemptPolicyAdapter extends LoginAttemptPolicyPort {
@@ -19,7 +17,7 @@ export class RedisLoginAttemptPolicyAdapter extends LoginAttemptPolicyPort {
   private readonly lockTtlSec: number;
 
   constructor(
-    @Inject(REDIS) private readonly redis: Redis,
+    private readonly loginAttemptStore: RedisLoginAttemptStore,
     config: ConfigService,
   ) {
     super();
@@ -41,28 +39,30 @@ export class RedisLoginAttemptPolicyAdapter extends LoginAttemptPolicyPort {
   async consumeAttempt(
     params: LoginAttemptParams,
   ): Promise<LoginAttemptDecision> {
-    const ipCount = await this.incrementExpiring(
-      this.ipKey(params),
+    const ipCount = await this.loginAttemptStore.incrementIpCounter(
+      params,
       this.ipWindowSec,
     );
     if (ipCount > this.ipLimit) {
       return {
         allowed: false,
         reason: 'rate_limited',
-        retryAfterSec: await this.ttlOrDefault(
-          this.ipKey(params),
+        retryAfterSec: await this.loginAttemptStore.getIpCounterTtl(
+          params,
           this.ipWindowSec,
         ),
       };
     }
 
-    const lockKey = this.lockKey(params);
-    const isLocked = await this.redis.get(lockKey);
+    const isLocked = await this.loginAttemptStore.hasLock(params);
     if (isLocked) {
       return {
         allowed: false,
         reason: 'temporarily_locked',
-        retryAfterSec: await this.ttlOrDefault(lockKey, this.lockTtlSec),
+        retryAfterSec: await this.loginAttemptStore.getLockTtl(
+          params,
+          this.lockTtlSec,
+        ),
       };
     }
 
@@ -72,9 +72,8 @@ export class RedisLoginAttemptPolicyAdapter extends LoginAttemptPolicyPort {
   async recordFailure(
     params: LoginAttemptParams,
   ): Promise<LoginAttemptFailureResult> {
-    const failureKey = this.failureKey(params);
-    const failureCount = await this.incrementExpiring(
-      failureKey,
+    const failureCount = await this.loginAttemptStore.incrementFailureCounter(
+      params,
       this.failureWindowSec,
     );
 
@@ -82,9 +81,8 @@ export class RedisLoginAttemptPolicyAdapter extends LoginAttemptPolicyPort {
       return { failureCount, temporarilyLocked: false };
     }
 
-    const lockKey = this.lockKey(params);
-    await this.redis.set(lockKey, '1', 'EX', this.lockTtlSec);
-    await this.redis.del(failureKey);
+    await this.loginAttemptStore.setLock(params, this.lockTtlSec);
+    await this.loginAttemptStore.clearFailureCounter(params);
 
     return {
       failureCount,
@@ -94,48 +92,7 @@ export class RedisLoginAttemptPolicyAdapter extends LoginAttemptPolicyPort {
   }
 
   async recordSuccess(params: LoginAttemptParams): Promise<void> {
-    await this.redis.del(this.failureKey(params), this.lockKey(params));
-  }
-
-  private async incrementExpiring(
-    key: string,
-    ttlSec: number,
-  ): Promise<number> {
-    const count = await this.redis.incr(key);
-    if (count === 1) {
-      await this.redis.expire(key, ttlSec);
-    }
-    return count;
-  }
-
-  private async ttlOrDefault(
-    key: string,
-    fallbackSec: number,
-  ): Promise<number> {
-    const ttl = await this.redis.ttl(key);
-    return ttl > 0 ? ttl : fallbackSec;
-  }
-
-  private ipKey(params: LoginAttemptParams): string {
-    return `login:ip:${params.scope}:${this.hash(params.ipAddress ?? 'unknown')}`;
-  }
-
-  private failureKey(params: LoginAttemptParams): string {
-    return `login:failure:${params.scope}:${this.subjectKey(params)}`;
-  }
-
-  private lockKey(params: LoginAttemptParams): string {
-    return `login:lock:${params.scope}:${this.subjectKey(params)}`;
-  }
-
-  private subjectKey(params: LoginAttemptParams): string {
-    return `${this.hash(params.tenantId)}:${this.hash(
-      params.username.trim().toLowerCase(),
-    )}`;
-  }
-
-  private hash(value: string): string {
-    return createHash('sha256').update(value).digest('hex');
+    await this.loginAttemptStore.clearFailureAndLock(params);
   }
 
   private getNumber(

@@ -1,7 +1,6 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { SAML, ValidateInResponseTo } from '@node-saml/node-saml';
 import type { Profile, SamlConfig } from '@node-saml/node-saml';
-import type Redis from 'ioredis';
 import {
   SamlLoginRequest,
   SamlResponseRequest,
@@ -10,8 +9,8 @@ import {
 } from '@application/ports/saml-sp.port';
 import type { IdpUserInfo } from '@application/ports/idp.port';
 import type { IdpSamlConfig } from '@domain/models/identity-provider';
-import { REDIS } from '@infrastructure/redis/redis.module';
-import { RedisSamlCacheProvider } from './redis-saml-cache.provider';
+import { RedisSamlCacheProviderFactory } from '@infrastructure/stores/redis/redis-saml-cache-provider.factory';
+import { RedisSamlRelayStateStore } from '@infrastructure/stores/redis/redis-saml-relay-state.store';
 
 const DEFAULT_REQUEST_ID_EXPIRATION_MS = 10 * 60 * 1000;
 const DEFAULT_ASSERTION_AGE_MS = 5 * 60 * 1000;
@@ -20,16 +19,14 @@ const RELAY_STATE_TTL_SECONDS = 10 * 60;
 
 @Injectable()
 export class SamlSpAdapter implements SamlSpPort {
-  constructor(@Inject(REDIS) private readonly redis: Redis) {}
+  constructor(
+    private readonly relayStateStore: RedisSamlRelayStateStore,
+    private readonly cacheProviderFactory: RedisSamlCacheProviderFactory,
+  ) {}
 
   async getLoginUrl(params: SamlLoginRequest): Promise<string> {
     const saml = this.createSaml(params);
-    await this.redis.set(
-      this.relayStateKey(params),
-      '1',
-      'EX',
-      RELAY_STATE_TTL_SECONDS,
-    );
+    await this.relayStateStore.save(params, RELAY_STATE_TTL_SECONDS);
     return saml.getAuthorizeUrlAsync(params.relayState, undefined, {});
   }
 
@@ -40,12 +37,11 @@ export class SamlSpAdapter implements SamlSpPort {
       throw new Error('Missing SAMLResponse or RelayState');
     }
 
-    const relayStateKey = this.relayStateKey({
+    const relayStateRef = {
       ...params,
       relayState: params.relayState,
-    });
-    const relayStateExists = await this.redis.get(relayStateKey);
-    if (!relayStateExists) {
+    };
+    if (!(await this.relayStateStore.exists(relayStateRef))) {
       throw new Error('Invalid SAML RelayState');
     }
 
@@ -61,7 +57,7 @@ export class SamlSpAdapter implements SamlSpPort {
 
       return this.toUserInfo(profile, params.config);
     } finally {
-      await this.redis.del(relayStateKey);
+      await this.relayStateStore.delete(relayStateRef);
     }
   }
 
@@ -93,11 +89,10 @@ export class SamlSpAdapter implements SamlSpPort {
         params.config.maxAssertionAgeMs ?? DEFAULT_ASSERTION_AGE_MS,
       requestIdExpirationPeriodMs: requestIdExpirationMs,
       validateInResponseTo: ValidateInResponseTo.always,
-      cacheProvider: new RedisSamlCacheProvider(
-        this.redis,
-        `saml:request:${params.tenantId}:${params.provider}`,
-        Math.ceil(requestIdExpirationMs / 1000),
-      ),
+      cacheProvider: this.cacheProviderFactory.create({
+        keyPrefix: `saml:request:${params.tenantId}:${params.provider}`,
+        ttlSeconds: Math.ceil(requestIdExpirationMs / 1000),
+      }),
       wantAssertionsSigned: params.config.wantAssertionsSigned ?? true,
       wantAuthnResponseSigned: params.config.wantAuthnResponseSigned ?? true,
       forceAuthn: params.config.forceAuthn ?? false,
@@ -130,13 +125,5 @@ export class SamlSpAdapter implements SamlSpPort {
       email: typeof email === 'string' ? email : undefined,
       profile: profile as Record<string, unknown>,
     };
-  }
-
-  private relayStateKey(params: {
-    tenantId: string;
-    provider: string;
-    relayState: string;
-  }): string {
-    return `saml:relay:${params.tenantId}:${params.provider}:${params.relayState}`;
   }
 }

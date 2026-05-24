@@ -1,4 +1,4 @@
-import { RedisLoginAttemptPolicyAdapter } from '@infrastructure/adapters/redis-login-attempt-policy.adapter';
+import { RedisLoginAttemptPolicyAdapter } from '@infrastructure/security/login-attempt/redis-login-attempt-policy.adapter';
 
 function makeConfig(values: Record<string, string>) {
   return {
@@ -6,14 +6,16 @@ function makeConfig(values: Record<string, string>) {
   } as any;
 }
 
-function makeRedis(overrides: Record<string, jest.Mock> = {}) {
+function makeRepository(overrides: Record<string, jest.Mock> = {}) {
   return {
-    incr: jest.fn().mockResolvedValue(1),
-    expire: jest.fn().mockResolvedValue(1),
-    get: jest.fn().mockResolvedValue(null),
-    ttl: jest.fn().mockResolvedValue(60),
-    set: jest.fn().mockResolvedValue('OK'),
-    del: jest.fn().mockResolvedValue(1),
+    incrementIpCounter: jest.fn().mockResolvedValue(1),
+    getIpCounterTtl: jest.fn().mockResolvedValue(60),
+    hasLock: jest.fn().mockResolvedValue(false),
+    getLockTtl: jest.fn().mockResolvedValue(300),
+    incrementFailureCounter: jest.fn().mockResolvedValue(1),
+    setLock: jest.fn().mockResolvedValue(undefined),
+    clearFailureCounter: jest.fn().mockResolvedValue(undefined),
+    clearFailureAndLock: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   } as any;
 }
@@ -27,9 +29,9 @@ const params = {
 
 describe('RedisLoginAttemptPolicyAdapter', () => {
   it('IP 카운터가 한도 이하면 로그인 시도를 허용한다', async () => {
-    const redis = makeRedis();
+    const repository = makeRepository();
     const adapter = new RedisLoginAttemptPolicyAdapter(
-      redis,
+      repository,
       makeConfig({ LOGIN_RATE_LIMIT_IP_MAX: '10' }),
     );
 
@@ -37,19 +39,17 @@ describe('RedisLoginAttemptPolicyAdapter', () => {
       allowed: true,
     });
 
-    expect(redis.incr).toHaveBeenCalledWith(
-      expect.stringContaining('login:ip:interaction:'),
-    );
-    expect(redis.expire).toHaveBeenCalledWith(expect.any(String), 60);
+    expect(repository.incrementIpCounter).toHaveBeenCalledWith(params, 60);
+    expect(repository.hasLock).toHaveBeenCalledWith(params);
   });
 
   it('IP 카운터가 한도를 넘으면 rate_limited 결정을 반환한다', async () => {
-    const redis = makeRedis({
-      incr: jest.fn().mockResolvedValue(11),
-      ttl: jest.fn().mockResolvedValue(42),
+    const repository = makeRepository({
+      incrementIpCounter: jest.fn().mockResolvedValue(11),
+      getIpCounterTtl: jest.fn().mockResolvedValue(42),
     });
     const adapter = new RedisLoginAttemptPolicyAdapter(
-      redis,
+      repository,
       makeConfig({ LOGIN_RATE_LIMIT_IP_MAX: '10' }),
     );
 
@@ -58,14 +58,19 @@ describe('RedisLoginAttemptPolicyAdapter', () => {
       reason: 'rate_limited',
       retryAfterSec: 42,
     });
+    expect(repository.getIpCounterTtl).toHaveBeenCalledWith(params, 60);
+    expect(repository.hasLock).not.toHaveBeenCalled();
   });
 
   it('계정 lock 키가 있으면 temporarily_locked 결정을 반환한다', async () => {
-    const redis = makeRedis({
-      get: jest.fn().mockResolvedValue('1'),
-      ttl: jest.fn().mockResolvedValue(300),
+    const repository = makeRepository({
+      hasLock: jest.fn().mockResolvedValue(true),
+      getLockTtl: jest.fn().mockResolvedValue(300),
     });
-    const adapter = new RedisLoginAttemptPolicyAdapter(redis, makeConfig({}));
+    const adapter = new RedisLoginAttemptPolicyAdapter(
+      repository,
+      makeConfig({}),
+    );
 
     await expect(adapter.consumeAttempt(params)).resolves.toEqual({
       allowed: false,
@@ -75,11 +80,11 @@ describe('RedisLoginAttemptPolicyAdapter', () => {
   });
 
   it('실패 횟수가 한도에 도달하면 임시 잠금 키를 설정한다', async () => {
-    const redis = makeRedis({
-      incr: jest.fn().mockResolvedValue(5),
+    const repository = makeRepository({
+      incrementFailureCounter: jest.fn().mockResolvedValue(5),
     });
     const adapter = new RedisLoginAttemptPolicyAdapter(
-      redis,
+      repository,
       makeConfig({
         LOGIN_FAILURE_MAX: '5',
         LOGIN_LOCK_TTL_SEC: '900',
@@ -91,26 +96,19 @@ describe('RedisLoginAttemptPolicyAdapter', () => {
       temporarilyLocked: true,
       retryAfterSec: 900,
     });
-    expect(redis.set).toHaveBeenCalledWith(
-      expect.stringContaining('login:lock:interaction:'),
-      '1',
-      'EX',
-      900,
-    );
-    expect(redis.del).toHaveBeenCalledWith(
-      expect.stringContaining('login:failure:interaction:'),
-    );
+    expect(repository.setLock).toHaveBeenCalledWith(params, 900);
+    expect(repository.clearFailureCounter).toHaveBeenCalledWith(params);
   });
 
   it('성공 시 실패 카운터와 잠금 키를 제거한다', async () => {
-    const redis = makeRedis();
-    const adapter = new RedisLoginAttemptPolicyAdapter(redis, makeConfig({}));
+    const repository = makeRepository();
+    const adapter = new RedisLoginAttemptPolicyAdapter(
+      repository,
+      makeConfig({}),
+    );
 
     await adapter.recordSuccess(params);
 
-    expect(redis.del).toHaveBeenCalledWith(
-      expect.stringContaining('login:failure:interaction:'),
-      expect.stringContaining('login:lock:interaction:'),
-    );
+    expect(repository.clearFailureAndLock).toHaveBeenCalledWith(params);
   });
 });

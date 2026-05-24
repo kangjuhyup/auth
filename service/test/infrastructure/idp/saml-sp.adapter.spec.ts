@@ -25,7 +25,9 @@ import { SAML } from '@node-saml/node-saml';
 import { SamlSpAdapter } from '@infrastructure/idp/saml-sp.adapter';
 
 describe('SamlSpAdapter', () => {
-  let redis: any;
+  let relayStateRepository: any;
+  let cacheProviderFactory: any;
+  let cacheProvider: any;
   let adapter: SamlSpAdapter;
 
   const baseParams = {
@@ -43,12 +45,16 @@ describe('SamlSpAdapter', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     samlInstances.length = 0;
-    redis = {
-      set: jest.fn().mockResolvedValue('OK'),
-      get: jest.fn().mockResolvedValue('1'),
-      del: jest.fn().mockResolvedValue(1),
+    relayStateRepository = {
+      save: jest.fn().mockResolvedValue(undefined),
+      exists: jest.fn().mockResolvedValue(true),
+      delete: jest.fn().mockResolvedValue(undefined),
     };
-    adapter = new SamlSpAdapter(redis);
+    cacheProvider = { save: jest.fn(), get: jest.fn(), remove: jest.fn() };
+    cacheProviderFactory = {
+      create: jest.fn().mockReturnValue(cacheProvider),
+    };
+    adapter = new SamlSpAdapter(relayStateRepository, cacheProviderFactory);
   });
 
   it('AuthnRequest URL 생성 시 RelayState와 request id cache 설정을 구성한다', async () => {
@@ -58,12 +64,18 @@ describe('SamlSpAdapter', () => {
     });
 
     expect(url).toBe('https://idp.example.com/sso?SAMLRequest=req');
-    expect(redis.set).toHaveBeenCalledWith(
-      'saml:relay:tenant-1:okta:uid:uid-1:nonce',
-      '1',
-      'EX',
+    expect(relayStateRepository.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        provider: 'okta',
+        relayState: 'uid:uid-1:nonce',
+      }),
       600,
     );
+    expect(cacheProviderFactory.create).toHaveBeenCalledWith({
+      keyPrefix: 'saml:request:tenant-1:okta',
+      ttlSeconds: 600,
+    });
     expect(SAML).toHaveBeenCalledWith(
       expect.objectContaining({
         callbackUrl: baseParams.callbackUrl,
@@ -76,6 +88,7 @@ describe('SamlSpAdapter', () => {
         wantAuthnResponseSigned: true,
         signatureAlgorithm: 'sha256',
         digestAlgorithm: 'sha256',
+        cacheProvider,
       }),
     );
     expect(samlInstances[0].getAuthorizeUrlAsync).toHaveBeenCalledWith(
@@ -92,15 +105,23 @@ describe('SamlSpAdapter', () => {
       samlResponse: 'saml-response',
     });
 
-    expect(redis.get).toHaveBeenCalledWith(
-      'saml:relay:tenant-1:okta:uid:uid-1:nonce',
+    expect(relayStateRepository.exists).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        provider: 'okta',
+        relayState: 'uid:uid-1:nonce',
+      }),
     );
     expect(samlInstances[0].validatePostResponseAsync).toHaveBeenCalledWith({
       SAMLResponse: 'saml-response',
       RelayState: 'uid:uid-1:nonce',
     });
-    expect(redis.del).toHaveBeenCalledWith(
-      'saml:relay:tenant-1:okta:uid:uid-1:nonce',
+    expect(relayStateRepository.delete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        provider: 'okta',
+        relayState: 'uid:uid-1:nonce',
+      }),
     );
     expect(result).toEqual({
       sub: 'saml-sub',
@@ -114,7 +135,7 @@ describe('SamlSpAdapter', () => {
   });
 
   it('RelayState가 저장되어 있지 않으면 응답 검증을 거부한다', async () => {
-    redis.get.mockResolvedValue(null);
+    relayStateRepository.exists.mockResolvedValue(false);
 
     await expect(
       adapter.validatePostResponse({
