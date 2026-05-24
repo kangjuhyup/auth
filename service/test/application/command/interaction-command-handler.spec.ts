@@ -6,6 +6,7 @@ describe('InteractionCommandHandler', () => {
   let oidcInteraction: any;
   let loginAttemptPolicy: any;
   let metrics: any;
+  let auditRecorder: any;
   const tenant = { id: 'tenant-1', code: 'acme', name: 'ACME' };
 
   beforeEach(() => {
@@ -31,11 +32,15 @@ describe('InteractionCommandHandler', () => {
       observeLatency: jest.fn(),
       snapshot: jest.fn(),
     };
+    auditRecorder = {
+      recordAdminAction: jest.fn().mockResolvedValue(undefined),
+    };
     handler = new InteractionCommandHandler(
       userQuery,
       oidcInteraction,
       loginAttemptPolicy,
       metrics,
+      auditRecorder,
     );
   });
 
@@ -84,6 +89,53 @@ describe('InteractionCommandHandler', () => {
         tenantCode: 'acme',
         reason: 'invalid_credentials',
       },
+    );
+  });
+
+  it('인증 실패 급증으로 잠금이 발생하면 suspicious login audit을 기록한다', async () => {
+    userQuery.authenticate.mockResolvedValue(null);
+    loginAttemptPolicy.recordFailure.mockResolvedValue({
+      failureCount: 5,
+      temporarilyLocked: true,
+      retryAfterSec: 900,
+    });
+
+    await handler.submitLogin({
+      tenantCode: 'acme',
+      uid: 'uid-1',
+      username: 'john',
+      password: 'wrong',
+      ipAddress: '203.0.113.10',
+      userAgent: 'jest',
+      correlationId: 'req-1',
+      req: {},
+      res: {},
+      tenant,
+    });
+
+    expect(auditRecorder.recordAdminAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        category: 'SECURITY',
+        severity: 'WARN',
+        action: 'ACCESS_DENIED',
+        resourceType: 'login-risk',
+        resourceId: 'john',
+        success: false,
+        reason: 'FailureSpikeDetected',
+        metadata: expect.objectContaining({
+          source: 'interaction',
+          signal: 'failure_spike',
+          failureCount: 5,
+          retryAfterSec: 900,
+        }),
+        auditContext: expect.objectContaining({
+          actorUsername: 'john',
+          ipAddress: '203.0.113.10',
+          userAgent: 'jest',
+          correlationId: 'req-1',
+        }),
+      }),
     );
   });
 

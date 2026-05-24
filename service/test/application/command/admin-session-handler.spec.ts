@@ -112,6 +112,59 @@ describe('AdminSessionHandler', () => {
     });
   });
 
+  it('관리자 인증 실패 급증으로 잠금이 발생하면 suspicious login audit을 기록한다', async () => {
+    const auditRecorder = {
+      recordAdminAction: jest.fn().mockResolvedValue(undefined),
+    };
+    handler = new AdminSessionHandler(
+      tenantRepo,
+      userQuery,
+      adminQuery,
+      tokenPort,
+      loginAttemptPolicy,
+      auditRecorder as any,
+    );
+    userQuery.authenticate.mockResolvedValue(null);
+    loginAttemptPolicy.recordFailure.mockResolvedValue({
+      failureCount: 5,
+      temporarilyLocked: true,
+      retryAfterSec: 900,
+    });
+
+    await handler.issueAdminToken({
+      username: 'admin',
+      password: 'wrong',
+      ipAddress: '203.0.113.10',
+      userAgent: 'jest',
+      correlationId: 'req-1',
+    });
+
+    expect(auditRecorder.recordAdminAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        category: 'SECURITY',
+        severity: 'WARN',
+        action: 'ACCESS_DENIED',
+        resourceType: 'admin-login-risk',
+        resourceId: 'admin',
+        success: false,
+        reason: 'FailureSpikeDetected',
+        metadata: expect.objectContaining({
+          source: 'admin',
+          signal: 'failure_spike',
+          failureCount: 5,
+          retryAfterSec: 900,
+        }),
+        auditContext: expect.objectContaining({
+          actorUsername: 'admin',
+          ipAddress: '203.0.113.10',
+          userAgent: 'jest',
+          correlationId: 'req-1',
+        }),
+      }),
+    );
+  });
+
   it('SUPER_ADMIN 역할이 없으면 토큰을 발급하지 않는다', async () => {
     adminQuery.getUserRoles.mockResolvedValue([{ code: 'USER' }]);
 

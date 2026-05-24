@@ -53,6 +53,22 @@ export class AdminSessionHandler extends AdminSessionPort {
         userAgent: params.userAgent,
         correlationId: params.correlationId,
       });
+      await this.recordSuspiciousAdminLoginAudit({
+        tenantId: tenant.id,
+        username: params.username,
+        reason:
+          decision.reason === 'rate_limited'
+            ? 'LoginRateLimited'
+            : 'LoginTemporarilyLocked',
+        ipAddress: params.ipAddress,
+        userAgent: params.userAgent,
+        correlationId: params.correlationId,
+        metadata: {
+          source: 'admin',
+          signal: decision.reason,
+          retryAfterSec: decision.retryAfterSec,
+        },
+      });
       return {
         blocked: true as const,
         reason: decision.reason,
@@ -66,7 +82,8 @@ export class AdminSessionHandler extends AdminSessionPort {
       password: params.password,
     });
     if (!result) {
-      await this.loginAttemptPolicy.recordFailure(attempt);
+      const failureResult =
+        await this.loginAttemptPolicy.recordFailure(attempt);
       await this.recordAdminLoginAudit({
         tenantId: tenant.id,
         username: params.username,
@@ -77,12 +94,29 @@ export class AdminSessionHandler extends AdminSessionPort {
         userAgent: params.userAgent,
         correlationId: params.correlationId,
       });
+      if (failureResult.temporarilyLocked) {
+        await this.recordSuspiciousAdminLoginAudit({
+          tenantId: tenant.id,
+          username: params.username,
+          reason: 'FailureSpikeDetected',
+          ipAddress: params.ipAddress,
+          userAgent: params.userAgent,
+          correlationId: params.correlationId,
+          metadata: {
+            source: 'admin',
+            signal: 'failure_spike',
+            failureCount: failureResult.failureCount,
+            retryAfterSec: failureResult.retryAfterSec ?? null,
+          },
+        });
+      }
       return null;
     }
 
     const roles = await this.adminQuery.getUserRoles(tenant.id, result.userId);
     if (!roles.some((role) => role.code === ADMIN_ROLE)) {
-      await this.loginAttemptPolicy.recordFailure(attempt);
+      const failureResult =
+        await this.loginAttemptPolicy.recordFailure(attempt);
       await this.recordAdminLoginAudit({
         tenantId: tenant.id,
         userId: result.userId,
@@ -94,6 +128,23 @@ export class AdminSessionHandler extends AdminSessionPort {
         userAgent: params.userAgent,
         correlationId: params.correlationId,
       });
+      if (failureResult.temporarilyLocked) {
+        await this.recordSuspiciousAdminLoginAudit({
+          tenantId: tenant.id,
+          userId: result.userId,
+          username: params.username,
+          reason: 'FailureSpikeDetected',
+          ipAddress: params.ipAddress,
+          userAgent: params.userAgent,
+          correlationId: params.correlationId,
+          metadata: {
+            source: 'admin',
+            signal: 'failure_spike',
+            failureCount: failureResult.failureCount,
+            retryAfterSec: failureResult.retryAfterSec ?? null,
+          },
+        });
+      }
       return null;
     }
 
@@ -201,6 +252,36 @@ export class AdminSessionHandler extends AdminSessionPort {
       resourceId: params.username,
       success: params.success,
       reason: params.reason ?? null,
+      auditContext: {
+        actorUserId: params.userId ?? null,
+        actorUsername: params.username,
+        ipAddress: params.ipAddress ?? null,
+        userAgent: params.userAgent ?? null,
+        correlationId: params.correlationId ?? null,
+      },
+    });
+  }
+
+  private async recordSuspiciousAdminLoginAudit(params: {
+    tenantId: string;
+    userId?: string;
+    username: string;
+    reason: string;
+    ipAddress?: string;
+    userAgent?: string;
+    correlationId?: string;
+    metadata: Record<string, unknown>;
+  }): Promise<void> {
+    await this.auditRecorder?.recordAdminAction({
+      tenantId: params.tenantId,
+      category: 'SECURITY',
+      severity: 'WARN',
+      action: 'ACCESS_DENIED',
+      resourceType: 'admin-login-risk',
+      resourceId: params.username,
+      success: false,
+      reason: params.reason,
+      metadata: params.metadata,
       auditContext: {
         actorUserId: params.userId ?? null,
         actorUsername: params.username,

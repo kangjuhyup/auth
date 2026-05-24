@@ -8,6 +8,7 @@ import { UserQueryPort } from '@application/queries/ports/user-query.port';
 import { LoginAttemptPolicyPort } from '@application/ports/login-attempt-policy.port';
 import { OperationalMetricsPort } from '@application/ports/operational-metrics.port';
 import type { TenantContext } from '@application/dto';
+import { AuditRecorder } from '@application/services/audit-recorder';
 
 type PendingMfaSession = Readonly<{
   userId: string;
@@ -30,6 +31,7 @@ export class InteractionCommandHandler
     private readonly oidcInteraction: OidcInteractionPort,
     private readonly loginAttemptPolicy: LoginAttemptPolicyPort,
     private readonly metrics: OperationalMetricsPort,
+    private readonly auditRecorder?: AuditRecorder,
   ) {
     super();
   }
@@ -63,6 +65,8 @@ export class InteractionCommandHandler
     username: string;
     password: string;
     ipAddress?: string;
+    userAgent?: string;
+    correlationId?: string;
     req: unknown;
     res: unknown;
     tenant?: TenantContext;
@@ -87,6 +91,22 @@ export class InteractionCommandHandler
         tenantCode: params.tenantCode,
         reason: decision.reason,
       });
+      await this.recordSuspiciousLoginAudit({
+        tenantId: params.tenant.id,
+        username: params.username,
+        reason:
+          decision.reason === 'rate_limited'
+            ? 'LoginRateLimited'
+            : 'LoginTemporarilyLocked',
+        ipAddress: params.ipAddress,
+        userAgent: params.userAgent,
+        correlationId: params.correlationId,
+        metadata: {
+          source: 'interaction',
+          signal: decision.reason,
+          retryAfterSec: decision.retryAfterSec,
+        },
+      });
       return {
         status: decision.reason === 'rate_limited' ? 429 : 423,
         body: {
@@ -106,11 +126,28 @@ export class InteractionCommandHandler
     });
 
     if (!result) {
-      await this.loginAttemptPolicy.recordFailure(attempt);
+      const failureResult =
+        await this.loginAttemptPolicy.recordFailure(attempt);
       this.metrics.incrementCounter('login_failure_total', {
         tenantCode: params.tenantCode,
         reason: 'invalid_credentials',
       });
+      if (failureResult.temporarilyLocked) {
+        await this.recordSuspiciousLoginAudit({
+          tenantId: params.tenant.id,
+          username: params.username,
+          reason: 'FailureSpikeDetected',
+          ipAddress: params.ipAddress,
+          userAgent: params.userAgent,
+          correlationId: params.correlationId,
+          metadata: {
+            source: 'interaction',
+            signal: 'failure_spike',
+            failureCount: failureResult.failureCount,
+            retryAfterSec: failureResult.retryAfterSec ?? null,
+          },
+        });
+      }
       return { status: 401, body: { error: 'invalid_credentials' } };
     }
 
@@ -303,5 +340,33 @@ export class InteractionCommandHandler
         this.mfaPendingSessions.delete(uid);
       }
     }
+  }
+
+  private async recordSuspiciousLoginAudit(params: {
+    tenantId: string;
+    username: string;
+    reason: string;
+    ipAddress?: string;
+    userAgent?: string;
+    correlationId?: string;
+    metadata: Record<string, unknown>;
+  }): Promise<void> {
+    await this.auditRecorder?.recordAdminAction({
+      tenantId: params.tenantId,
+      category: 'SECURITY',
+      severity: 'WARN',
+      action: 'ACCESS_DENIED',
+      resourceType: 'login-risk',
+      resourceId: params.username,
+      success: false,
+      reason: params.reason,
+      metadata: params.metadata,
+      auditContext: {
+        actorUsername: params.username,
+        ipAddress: params.ipAddress ?? null,
+        userAgent: params.userAgent ?? null,
+        correlationId: params.correlationId ?? null,
+      },
+    });
   }
 }

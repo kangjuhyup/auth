@@ -6,16 +6,17 @@ OIDC Authorization Server를 엔터프라이즈 인증 서비스로 확장하기
 
 목표: 보안 사고 대응, 운영 추적, 관리자 작업 이력을 신뢰할 수 있게 남긴다.
 
-- [ ] Client 인증 실패 audit 기록
-  - [ ] invalid_client
-  - [ ] client_secret 불일치
-  - [ ] 비활성 client 접근
-- [ ] Suspicious login audit 기록
-  - [ ] 실패 횟수 급증
-  - [ ] 새 기기/새 위치
-  - [ ] 비정상 시간대 접근
-- [ ] 테스트
-  - [ ] OIDC provider 이벤트 audit 테스트
+- [x] Client 인증 실패 audit 기록
+  - [x] invalid_client
+  - [x] client_secret 불일치
+  - [x] 비활성 client 접근
+- [x] Suspicious login audit 기록
+  - [x] 실패 횟수 급증
+  - [x] rate limit / 임시 잠금 차단
+  - [ ] 새 기기/새 위치 (device fingerprint/location history 필요)
+  - [ ] 비정상 시간대 접근 (tenant risk policy 필요)
+- [x] 테스트
+  - [x] OIDC provider 이벤트 audit 테스트
 
 ## P1. Tenant / Client 정책 확장
 
