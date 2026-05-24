@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { EntityManager } from '@mikro-orm/core';
-import { EventRepository, EventListQuery } from '@domain/repositories/event.repository';
+import { EntityManager, type FilterQuery } from '@mikro-orm/core';
+import {
+  EventRepository,
+  EventListQuery,
+} from '@domain/repositories/event.repository';
 import { EventModel } from '@domain/models/event';
 import { EventOrmEntity } from '../mikro-orm/entities/event';
 import { TenantOrmEntity } from '../mikro-orm/entities/tenant';
@@ -16,12 +19,21 @@ export class EventRepositoryImpl implements EventRepository {
     query: EventListQuery,
   ): Promise<{ items: EventModel[]; total: number }> {
     const offset = (query.page - 1) * query.limit;
-    const where: Record<string, unknown> = {
+    const where: FilterQuery<EventOrmEntity> = {
       tenant: { id: query.tenantId },
     };
 
+    if (query.from || query.to) {
+      where.occurredAt = {
+        ...(query.from ? { $gte: query.from } : {}),
+        ...(query.to ? { $lte: query.to } : {}),
+      };
+    }
     if (query.category) {
       where.category = query.category;
+    }
+    if (query.severity) {
+      where.severity = query.severity;
     }
     if (query.action) {
       where.action = query.action;
@@ -29,10 +41,16 @@ export class EventRepositoryImpl implements EventRepository {
     if (query.userId) {
       where.user = { id: query.userId };
     }
+    if (query.clientId) {
+      where.client = { id: query.clientId };
+    }
+    if (query.correlationId) {
+      where.correlationId = query.correlationId;
+    }
 
     const [entities, total] = await this.em.findAndCount(
       EventOrmEntity,
-      where as any,
+      where,
       {
         populate: ['tenant', 'user', 'client'],
         limit: query.limit,
@@ -63,6 +81,7 @@ export class EventRepositoryImpl implements EventRepository {
     entity.reason = event.reason ?? null;
     entity.ip = event.ip ?? null;
     entity.userAgent = event.userAgent ?? null;
+    entity.correlationId = event.correlationId ?? null;
     entity.metadata = event.metadata ?? null;
     entity.occurredAt = event.occurredAt;
 

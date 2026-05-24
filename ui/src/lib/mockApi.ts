@@ -33,6 +33,10 @@ import type {
   TotpConfirmationResponse,
   TotpEnrollmentResponse,
 } from '@/types/auth.types';
+import type {
+  AuditLogFilters,
+  AuditLogResponse,
+} from '@/types/audit-log.types';
 
 // Simulate network delay
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -316,6 +320,41 @@ const mockUserConsents = new Map<string, UserConsentResponse[]>([
     ],
   ],
 ]);
+
+const mockAuditLogs: AuditLogResponse[] = [
+  {
+    id: 'audit-1',
+    category: 'AUTH',
+    severity: 'INFO',
+    action: 'LOGIN',
+    userId: '1',
+    clientId: '1',
+    resourceType: 'session',
+    resourceId: 'session-1',
+    success: true,
+    reason: null,
+    userAgent: 'Mozilla/5.0',
+    correlationId: 'req-1001',
+    metadata: { method: 'password' },
+    occurredAt: new Date('2024-03-01T09:00:00Z'),
+  },
+  {
+    id: 'audit-2',
+    category: 'SECURITY',
+    severity: 'WARN',
+    action: 'ACCESS_DENIED',
+    userId: null,
+    clientId: '3',
+    resourceType: 'client',
+    resourceId: '3',
+    success: false,
+    reason: 'invalid_client',
+    userAgent: null,
+    correlationId: 'req-1002',
+    metadata: { endpoint: 'token' },
+    occurredAt: new Date('2024-03-02T11:00:00Z'),
+  },
+];
 
 function paginate<T>(
   items: T[],
@@ -890,6 +929,33 @@ export const mockUserApi = {
   },
 };
 
+export const mockAuditLogApi = {
+  list: async (
+    params: AuditLogFilters,
+  ): Promise<PaginatedResult<AuditLogResponse>> => {
+    await delay(200);
+    const from = params.from ? new Date(params.from) : null;
+    const to = params.to ? new Date(params.to) : null;
+    const items = mockAuditLogs.filter((log) => {
+      const occurredAt =
+        log.occurredAt instanceof Date
+          ? log.occurredAt
+          : new Date(log.occurredAt);
+      return (
+        (!from || occurredAt >= from) &&
+        (!to || occurredAt <= to) &&
+        (!params.userId || log.userId === params.userId) &&
+        (!params.clientId || log.clientId === params.clientId) &&
+        (!params.category || log.category === params.category) &&
+        (!params.action || log.action === params.action) &&
+        (!params.severity || log.severity === params.severity) &&
+        (!params.correlationId || log.correlationId === params.correlationId)
+      );
+    });
+    return paginate(items, params);
+  },
+};
+
 // ============================================================================
 // EXPORT ALL MOCK APIs
 // ============================================================================
@@ -901,4 +967,5 @@ export const mockApi = {
   roles: mockRoleApi,
   groups: mockGroupApi,
   users: mockUserApi,
+  auditLogs: mockAuditLogApi,
 };

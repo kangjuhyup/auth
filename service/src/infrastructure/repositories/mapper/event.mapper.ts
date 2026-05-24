@@ -1,5 +1,9 @@
 import { EventModel } from '@domain/models/event';
-import type { EventCategory, EventSeverity, EventAction } from '@domain/models/event';
+import type {
+  EventCategory,
+  EventSeverity,
+  EventAction,
+} from '@domain/models/event';
 import { EventOrmEntity } from '../../mikro-orm/entities/event';
 
 export class EventMapper {
@@ -18,6 +22,7 @@ export class EventMapper {
         reason: entity.reason ?? null,
         ip: entity.ip ?? null,
         userAgent: entity.userAgent ?? null,
+        correlationId: entity.correlationId ?? null,
         metadata: entity.metadata ?? null,
         occurredAt: entity.occurredAt,
       },

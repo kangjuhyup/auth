@@ -8,6 +8,7 @@ import {
   LogoutOutlined,
   ApiOutlined,
   LockOutlined,
+  FileSearchOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useUiStore } from '@/stores/ui.store';
@@ -54,6 +55,11 @@ export function AdminLayout() {
       key: '/admin/users',
       icon: <UserOutlined />,
       label: 'Users',
+    },
+    {
+      key: '/admin/audit-logs',
+      icon: <FileSearchOutlined />,
+      label: 'Audit logs',
     },
     {
       key: '/admin/security',

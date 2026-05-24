@@ -1,8 +1,13 @@
 import { PaginationQuery, PaginatedResult } from '@application/dto';
+import type {
+  AuditLogQuery,
+  AuditLogResponse,
+} from '@application/dto/audit-log.dto';
 import {
   ClientResponse,
   ClientAuthPolicyResponse,
   IdentityProviderResponse,
+  TenantPolicyResponse,
 } from '@application/dto';
 import { TenantResponse } from '@application/dto';
 import { UserResponse, UserConsentResponse } from '@application/dto';
@@ -26,13 +31,13 @@ export abstract class AdminQueryPort {
   abstract getKeys(tenantId: string): Promise<unknown[]>;
 
   // Policy
-  abstract getPolicies(tenantId: string): Promise<Record<string, unknown>>;
+  abstract getPolicies(tenantId: string): Promise<TenantPolicyResponse>;
 
   // Audit Log
   abstract getAuditLogs(
     tenantId: string,
-    query: PaginationQuery,
-  ): Promise<PaginatedResult<Record<string, unknown>>>;
+    query: AuditLogQuery,
+  ): Promise<PaginatedResult<AuditLogResponse>>;
 
   // Tenant
   abstract getTenants(

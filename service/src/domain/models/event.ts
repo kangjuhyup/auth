@@ -41,6 +41,7 @@ export interface EventModelProps {
   reason?: string | null;
   ip?: Buffer | null;
   userAgent?: string | null;
+  correlationId?: string | null;
   metadata?: Record<string, unknown> | null;
   occurredAt: Date;
 }
@@ -93,6 +94,9 @@ export class EventModel {
 
   @Getter()
   declare readonly userAgent: string | null | undefined;
+
+  @Getter()
+  declare readonly correlationId: string | null | undefined;
 
   @Getter()
   declare readonly metadata: Record<string, unknown> | null | undefined;

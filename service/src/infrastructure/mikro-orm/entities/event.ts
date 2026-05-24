@@ -46,6 +46,10 @@ export type EventAction =
 @Index({ properties: ['user', 'occurredAt'], name: 'idx_event_user_time' })
 @Index({ properties: ['client', 'occurredAt'], name: 'idx_event_client_time' })
 @Index({ properties: ['action', 'occurredAt'], name: 'idx_event_action_time' })
+@Index({
+  properties: ['correlationId', 'occurredAt'],
+  name: 'idx_event_correlation_time',
+})
 export class EventOrmEntity {
   @PrimaryKey({ type: 'bigint', autoincrement: true })
   id!: string;
@@ -111,6 +115,14 @@ export class EventOrmEntity {
     nullable: true,
   })
   userAgent?: string | null;
+
+  @Property({
+    fieldName: 'correlation_id',
+    type: 'varchar',
+    length: 128,
+    nullable: true,
+  })
+  correlationId?: string | null;
 
   @Property({ type: 'json', nullable: true })
   metadata?: Record<string, unknown> | null;

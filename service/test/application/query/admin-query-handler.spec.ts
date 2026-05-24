@@ -880,6 +880,37 @@ describe('AdminQueryHandler - AuditLogs', () => {
       });
     });
 
+    it('AuditLog 필터를 repository query로 전달한다', async () => {
+      eventRepo.list.mockResolvedValue({ items: [], total: 0 });
+
+      await handler.getAuditLogs('tenant-1', {
+        page: 1,
+        limit: 10,
+        from: '2024-01-01T00:00:00.000Z',
+        to: '2024-01-31T23:59:59.000Z',
+        userId: 'user-1',
+        clientId: 'client-1',
+        category: 'SECURITY',
+        action: 'ACCESS_DENIED',
+        severity: 'WARN',
+        correlationId: 'req-1',
+      });
+
+      expect(eventRepo.list).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        page: 1,
+        limit: 10,
+        from: new Date('2024-01-01T00:00:00.000Z'),
+        to: new Date('2024-01-31T23:59:59.000Z'),
+        userId: 'user-1',
+        clientId: 'client-1',
+        category: 'SECURITY',
+        action: 'ACCESS_DENIED',
+        severity: 'WARN',
+        correlationId: 'req-1',
+      });
+    });
+
     it('반환 항목에 필수 필드가 포함된다', async () => {
       eventRepo.list.mockResolvedValue({
         items: [makeEvent('e-1')],
@@ -896,6 +927,7 @@ describe('AdminQueryHandler - AuditLogs', () => {
       expect(item['category']).toBe('AUTH');
       expect(item['action']).toBe('LOGIN');
       expect(item['success']).toBe(true);
+      expect(item['correlationId']).toBeNull();
     });
   });
 });

@@ -528,8 +528,13 @@ describe('Identity And Config Repository Implementations', () => {
       const result = await repository.list({
         tenantId: 'tenant-1',
         userId: 'user-1',
+        clientId: 'client-ref-1',
         category: 'AUTH',
         action: 'LOGIN',
+        severity: 'INFO',
+        correlationId: 'req-1',
+        from: new Date('2025-01-01T00:00:00.000Z'),
+        to: new Date('2025-01-31T23:59:59.000Z'),
         page: 2,
         limit: 2,
       });
@@ -543,9 +548,16 @@ describe('Identity And Config Repository Implementations', () => {
         EventOrmEntity,
         {
           tenant: { id: 'tenant-1' },
+          occurredAt: {
+            $gte: new Date('2025-01-01T00:00:00.000Z'),
+            $lte: new Date('2025-01-31T23:59:59.000Z'),
+          },
           category: 'AUTH',
+          severity: 'INFO',
           action: 'LOGIN',
           user: { id: 'user-1' },
+          client: { id: 'client-ref-1' },
+          correlationId: 'req-1',
         },
         {
           populate: ['tenant', 'user', 'client'],

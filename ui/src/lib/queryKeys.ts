@@ -9,6 +9,25 @@ export const queryKeys = {
       detail: (id: string) =>
         [...queryKeys.admin.tenants.all, 'detail', id] as const,
     },
+    auditLogs: {
+      all: ['admin', 'audit-logs'] as const,
+      list: (
+        tenantId: string,
+        filters: {
+          page?: number;
+          limit?: number;
+          from?: string;
+          to?: string;
+          userId?: string;
+          clientId?: string;
+          action?: string;
+          category?: string;
+          severity?: string;
+          correlationId?: string;
+        },
+      ) =>
+        [...queryKeys.admin.auditLogs.all, tenantId, 'list', filters] as const,
+    },
     clients: {
       all: ['admin', 'clients'] as const,
       list: (tenantId: string, filters: { page?: number; limit?: number }) =>

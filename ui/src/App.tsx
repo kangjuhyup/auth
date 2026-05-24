@@ -7,6 +7,7 @@ import { ClientsPage } from '@/features/clients/ClientsPage';
 import { RolesPage } from '@/features/roles/RolesPage';
 import { GroupsPage } from '@/features/groups/GroupsPage';
 import { UsersPage } from '@/features/users/UsersPage';
+import { AuditLogsPage } from '@/features/audit-logs/AuditLogsPage';
 import { IdentityProvidersPage } from '@/features/identity-providers/IdentityProvidersPage';
 import { SecuritySettingsPage } from '@/features/security/SecuritySettingsPage';
 import { AdminLayout } from '@/components/AdminLayout';
@@ -38,6 +39,7 @@ export function App() {
             <Route path="roles" element={<RolesPage />} />
             <Route path="groups" element={<GroupsPage />} />
             <Route path="users" element={<UsersPage />} />
+            <Route path="audit-logs" element={<AuditLogsPage />} />
             <Route path="security" element={<SecuritySettingsPage />} />
           </Route>
 

@@ -50,6 +50,27 @@ describe('queryKeys', () => {
     });
   });
 
+  describe('admin.auditLogs', () => {
+    it('list 키에 tenantId 와 필터를 포함한다', () => {
+      const key = queryKeys.admin.auditLogs.list('acme', {
+        page: 1,
+        limit: 10,
+        severity: 'WARN',
+        correlationId: 'req-1',
+      });
+
+      expect(key.slice(0, 2)).toEqual(['admin', 'audit-logs']);
+      expect(key).toContain('acme');
+      expect(key).toContain('list');
+    });
+
+    it('필터가 다르면 audit log list 키가 다르다', () => {
+      const key1 = queryKeys.admin.auditLogs.list('acme', { page: 1 });
+      const key2 = queryKeys.admin.auditLogs.list('acme', { page: 2 });
+      expect(key1).not.toEqual(key2);
+    });
+  });
+
   describe('admin.users (roles 포함)', () => {
     it('roles 키가 all 를 prefix 로 포함하고 userId 를 담는다', () => {
       const rolesKey = queryKeys.admin.users.roles('acme', 'user-99');
@@ -107,6 +128,15 @@ describe('queryKeys', () => {
       const ipAll = queryKeys.admin.identityProviders.all;
       expect(ipAll).not.toEqual(queryKeys.admin.users.all);
       expect(ipAll).not.toEqual(queryKeys.admin.clients.all);
+    });
+
+    it('auditLogs.all 은 다른 리소스와 다르다', () => {
+      expect(queryKeys.admin.auditLogs.all).not.toEqual(
+        queryKeys.admin.users.all,
+      );
+      expect(queryKeys.admin.auditLogs.all).not.toEqual(
+        queryKeys.admin.clients.all,
+      );
     });
   });
 });

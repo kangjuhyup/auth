@@ -14,6 +14,10 @@ import {
   GroupResponse,
   IdentityProviderResponse,
 } from '@application/dto';
+import type {
+  AuditLogQuery,
+  AuditLogResponse,
+} from '@application/dto/audit-log.dto';
 import {
   TenantRepository,
   GroupRepository,
@@ -229,8 +233,8 @@ export class AdminQueryHandler implements AdminQueryPort {
 
   async getAuditLogs(
     tenantId: string,
-    query: PaginationQuery,
-  ): Promise<PaginatedResult<Record<string, unknown>>> {
+    query: AuditLogQuery,
+  ): Promise<PaginatedResult<AuditLogResponse>> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 
@@ -238,6 +242,14 @@ export class AdminQueryHandler implements AdminQueryPort {
       tenantId,
       page,
       limit,
+      ...(query.from ? { from: new Date(query.from) } : {}),
+      ...(query.to ? { to: new Date(query.to) } : {}),
+      ...(query.userId ? { userId: query.userId } : {}),
+      ...(query.clientId ? { clientId: query.clientId } : {}),
+      ...(query.category ? { category: query.category } : {}),
+      ...(query.action ? { action: query.action } : {}),
+      ...(query.severity ? { severity: query.severity } : {}),
+      ...(query.correlationId ? { correlationId: query.correlationId } : {}),
     });
 
     return {
@@ -253,6 +265,7 @@ export class AdminQueryHandler implements AdminQueryPort {
         success: e.success,
         reason: e.reason ?? null,
         userAgent: e.userAgent ?? null,
+        correlationId: e.correlationId ?? null,
         metadata: e.metadata ?? null,
         occurredAt: e.occurredAt,
       })),
