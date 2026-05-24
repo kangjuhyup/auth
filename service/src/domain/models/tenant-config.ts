@@ -1,4 +1,10 @@
 import { Getter } from '../decorators';
+import {
+  mergeTenantPolicySet,
+  normalizeTenantPolicySet,
+  type TenantPolicyInput,
+  type TenantPolicySet,
+} from './tenant-policy';
 
 export type SignupPolicy = 'invite' | 'open';
 
@@ -40,11 +46,26 @@ export class TenantConfigModel {
   @Getter()
   declare readonly extra: Record<string, unknown> | null | undefined;
 
-  updatePolicies(policies: Record<string, unknown>): void {
-    this.props.extra = { ...(this.props.extra ?? {}), policies };
+  updatePolicies(policies: TenantPolicyInput): void {
+    const nextPolicies = mergeTenantPolicySet(this.getPolicies(), policies);
+    this.props.signupPolicy = nextPolicies.signup.mode;
+    this.props.refreshTokenTtlSec = nextPolicies.refreshToken.ttlSec;
+    this.props.extra = {
+      ...(this.props.extra ?? {}),
+      policies: nextPolicies,
+    };
   }
 
-  getPolicies(): Record<string, unknown> {
-    return (this.props.extra?.['policies'] as Record<string, unknown>) ?? {};
+  getPolicies(): TenantPolicySet {
+    const policies = this.props.extra?.['policies'];
+    return normalizeTenantPolicySet(
+      policies && typeof policies === 'object' && !Array.isArray(policies)
+        ? (policies as Record<string, unknown>)
+        : null,
+      {
+        signupMode: this.props.signupPolicy,
+        refreshTokenTtlSec: this.props.refreshTokenTtlSec,
+      },
+    );
   }
 }

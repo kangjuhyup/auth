@@ -18,8 +18,10 @@ import {
   ClientAuthPolicyRepository,
   ClientRepository,
   IdentityProviderRepository,
+  TenantConfigRepository,
   UserIdentityRepository,
 } from '@domain/repositories';
+import { TenantConfigModel } from '@domain/models/tenant-config';
 import { OIDC_PROVIDER } from './oidc-provider.constants';
 import { OidcProviderRegistry } from './oidc-provider.registry';
 
@@ -29,6 +31,7 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
     @Inject(OIDC_PROVIDER) private readonly registry: OidcProviderRegistry,
     private readonly clientAuthPolicyRepo: ClientAuthPolicyRepository,
     private readonly clientRepo: ClientRepository,
+    private readonly tenantConfigRepo: TenantConfigRepository,
     private readonly idpRepo: IdentityProviderRepository,
     private readonly userIdentityRepo: UserIdentityRepository,
     private readonly idpPort: IdpPort,
@@ -56,12 +59,12 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
     let mfaRequired = false;
 
     if (params.tenant) {
+      const tenantPolicies = (
+        (await this.tenantConfigRepo.findByTenantId(params.tenant.id)) ??
+        this.createDefaultTenantConfig(params.tenant.id)
+      ).getPolicies();
       const idps = await this.idpRepo.listEnabledByTenant(params.tenant.id);
-      idpList = idps.map((idp) => ({
-        provider: idp.provider,
-        name: idp.displayName,
-        protocol: idp.protocol,
-      }));
+      let allowedIdpProviderKeys = tenantPolicies.allowedIdp.providerKeys;
 
       const client = await this.clientRepo.findByClientId(
         params.tenant.id,
@@ -71,8 +74,31 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
         const policy = await this.clientAuthPolicyRepo.findByClientRefId(
           client.id,
         );
-        mfaRequired = policy?.mfaRequired ?? false;
+        if (policy) {
+          const effective = policy.resolveEffectivePolicy(
+            tenantPolicies,
+            client.refreshTokenTtlSec,
+          );
+          mfaRequired = effective.mfaRequired;
+          allowedIdpProviderKeys = effective.allowedIdpProviderKeys;
+        } else {
+          mfaRequired = tenantPolicies.mfa.required;
+        }
+      } else {
+        mfaRequired = tenantPolicies.mfa.required;
       }
+
+      idpList = idps
+        .filter(
+          (idp) =>
+            allowedIdpProviderKeys === null ||
+            allowedIdpProviderKeys.includes(idp.provider),
+        )
+        .map((idp) => ({
+          provider: idp.provider,
+          name: idp.displayName,
+          protocol: idp.protocol,
+        }));
     }
 
     const missingScopes =
@@ -190,6 +216,7 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
     uid: string;
     providerName: string;
     req: unknown;
+    res: unknown;
     tenant?: TenantContext;
   }): Promise<InteractionIdpRedirectResult> {
     if (!params.tenant) {
@@ -202,6 +229,17 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
     );
     if (!idpConfig || !idpConfig.enabled) {
       return { status: 404, body: { error: 'idp_not_found' } };
+    }
+    if (
+      !(await this.isIdpAllowedForInteraction({
+        tenant: params.tenant,
+        tenantCode: params.tenantCode,
+        providerName: params.providerName,
+        req: params.req,
+        res: params.res,
+      }))
+    ) {
+      return { status: 403, body: { error: 'idp_not_allowed' } };
     }
 
     if (idpConfig.protocol === 'saml2') {
@@ -276,6 +314,21 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
         params.tenantCode,
         params.uid,
         'idp_not_found',
+      );
+    }
+    if (
+      !(await this.isIdpAllowedForInteraction({
+        tenant: params.tenant,
+        tenantCode: params.tenantCode,
+        providerName: params.providerName,
+        req: params.req,
+        res: params.res,
+      }))
+    ) {
+      return this.interactionRedirect(
+        params.tenantCode,
+        params.uid,
+        'idp_not_allowed',
       );
     }
 
@@ -387,6 +440,21 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
         'idp_not_found',
       );
     }
+    if (
+      !(await this.isIdpAllowedForInteraction({
+        tenant: params.tenant,
+        tenantCode: params.tenantCode,
+        providerName: params.providerName,
+        req: params.req,
+        res: params.res,
+      }))
+    ) {
+      return this.interactionRedirect(
+        params.tenantCode,
+        parsedRelay.uid,
+        'idp_not_allowed',
+      );
+    }
 
     try {
       const userInfo = await this.samlSpPort.validatePostResponse({
@@ -459,6 +527,59 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
       configuredIssuer ||
       `${req.protocol}://${req.get('host')}/t/${tenantCode}/interaction/saml/${providerName}/metadata`
     );
+  }
+
+  private async isIdpAllowedForInteraction(params: {
+    tenant: TenantContext;
+    tenantCode: string;
+    providerName: string;
+    req: unknown;
+    res: unknown;
+  }): Promise<boolean> {
+    const provider = await this.registry.get(params.tenantCode);
+    const details = await provider.interactionDetails(
+      params.req as any,
+      params.res as any,
+    );
+    const clientId = String(details.params.client_id ?? '');
+    const tenantPolicies = (
+      (await this.tenantConfigRepo.findByTenantId(params.tenant.id)) ??
+      this.createDefaultTenantConfig(params.tenant.id)
+    ).getPolicies();
+    let allowedProviderKeys = tenantPolicies.allowedIdp.providerKeys;
+
+    const client = await this.clientRepo.findByClientId(
+      params.tenant.id,
+      clientId,
+    );
+    if (client) {
+      const policy = await this.clientAuthPolicyRepo.findByClientRefId(
+        client.id,
+      );
+      if (policy) {
+        allowedProviderKeys = policy.resolveEffectivePolicy(
+          tenantPolicies,
+          client.refreshTokenTtlSec,
+        ).allowedIdpProviderKeys;
+      }
+    }
+
+    return (
+      allowedProviderKeys === null ||
+      allowedProviderKeys.includes(params.providerName)
+    );
+  }
+
+  private createDefaultTenantConfig(tenantId: string): TenantConfigModel {
+    return new TenantConfigModel({
+      tenantId,
+      signupPolicy: 'open',
+      requirePhoneVerify: false,
+      brandName: null,
+      accessTokenTtlSec: 60 * 60,
+      refreshTokenTtlSec: 14 * 24 * 60 * 60,
+      extra: null,
+    });
   }
 
   private interactionRedirect(

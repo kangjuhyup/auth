@@ -76,6 +76,7 @@ export abstract class OidcInteractionPort {
     uid: string;
     providerName: string;
     req: unknown;
+    res: unknown;
     tenant?: TenantContext;
   }): Promise<InteractionIdpRedirectResult>;
 

@@ -77,6 +77,20 @@ export class ClientAuthPolicyOrmEntity extends BaseEntity {
   requireAuthTime!: boolean;
 
   @Property({
+    fieldName: 'allowed_idp_provider_keys',
+    type: 'json',
+    nullable: true,
+  })
+  allowedIdpProviderKeys?: string[] | null;
+
+  @Property({
+    fieldName: 'reauthentication_interval_sec',
+    type: 'int',
+    nullable: true,
+  })
+  reauthenticationIntervalSec?: number | null;
+
+  @Property({
     fieldName: 'refresh_token_rotation_enabled',
     type: 'boolean',
     default: true,

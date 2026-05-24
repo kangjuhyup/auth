@@ -229,6 +229,7 @@ export class InteractionCommandHandler
     uid: string;
     providerName: string;
     req: unknown;
+    res: unknown;
     tenant?: TenantContext;
   }) {
     return this.oidcInteraction.getIdpRedirect(params);

@@ -3,7 +3,9 @@ import { mockApi } from '@/lib/mockApi';
 import type { PaginatedResult } from '@/types/pagination.types';
 import type {
   ClientResponse,
+  ClientAuthPolicyResponse,
   CreateClientDto,
+  UpdateClientAuthPolicyDto,
   UpdateClientDto,
 } from '@/types/client.types';
 
@@ -23,12 +25,19 @@ export const clientApi = {
     return apiClient.get(`/t/${tenantCode}/admin/clients/${id}`);
   },
 
-  create: (tenantCode: string, dto: CreateClientDto): Promise<{ id: string }> => {
+  create: (
+    tenantCode: string,
+    dto: CreateClientDto,
+  ): Promise<{ id: string }> => {
     if (USE_MOCK) return mockApi.clients.create(dto);
     return apiClient.post(`/t/${tenantCode}/admin/clients`, dto);
   },
 
-  update: (tenantCode: string, id: string, dto: UpdateClientDto): Promise<void> => {
+  update: (
+    tenantCode: string,
+    id: string,
+    dto: UpdateClientDto,
+  ): Promise<void> => {
     if (USE_MOCK) return mockApi.clients.update(id, dto);
     return apiClient.put(`/t/${tenantCode}/admin/clients/${id}`, dto);
   },
@@ -37,4 +46,21 @@ export const clientApi = {
     if (USE_MOCK) return mockApi.clients.delete(id);
     return apiClient.delete(`/t/${tenantCode}/admin/clients/${id}`);
   },
+
+  getAuthPolicy: (
+    tenantCode: string,
+    id: string,
+  ): Promise<ClientAuthPolicyResponse> =>
+    USE_MOCK
+      ? mockApi.clients.getAuthPolicy(id)
+      : apiClient.get(`/t/${tenantCode}/admin/clients/${id}/auth-policy`),
+
+  updateAuthPolicy: (
+    tenantCode: string,
+    id: string,
+    dto: UpdateClientAuthPolicyDto,
+  ): Promise<void> =>
+    USE_MOCK
+      ? mockApi.clients.updateAuthPolicy(id, dto)
+      : apiClient.put(`/t/${tenantCode}/admin/clients/${id}/auth-policy`, dto),
 };

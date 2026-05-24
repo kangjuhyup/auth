@@ -36,3 +36,40 @@ export interface ClientResponse {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface UpdateClientAuthPolicyDto {
+  allowedAuthMethods?: string[];
+  defaultAcr?: string;
+  mfaRequired?: boolean;
+  allowedMfaMethods?: string[];
+  maxSessionDurationSec?: number | null;
+  consentRequired?: boolean;
+  requireAuthTime?: boolean;
+  allowedIdpProviderKeys?: string[] | null;
+  reauthenticationIntervalSec?: number | null;
+  refreshTokenRotationEnabled?: boolean;
+  refreshTokenReuseAction?: 'revoke_grant';
+}
+
+export interface ClientAuthPolicyResponse {
+  clientRefId: string;
+  allowedAuthMethods: string[];
+  defaultAcr: string;
+  mfaRequired: boolean;
+  allowedMfaMethods: string[];
+  maxSessionDurationSec: number | null;
+  consentRequired: boolean;
+  requireAuthTime: boolean;
+  allowedIdpProviderKeys: string[] | null;
+  reauthenticationIntervalSec: number | null;
+  refreshTokenRotationEnabled: boolean;
+  refreshTokenReuseAction: 'revoke_grant';
+  effective: {
+    mfaRequired: boolean;
+    allowedIdpProviderKeys: string[] | null;
+    maxSessionDurationSec: number | null;
+    requireAuthTime: boolean;
+    reauthenticationIntervalSec: number | null;
+    refreshTokenTtlSec: number;
+  };
+}

@@ -1,7 +1,13 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { Transactional } from '@application/decorators/transactional.decorator';
 import { TransactionManagerPort } from '@application/ports/transaction-manager.port';
 import { PolicyCommandPort } from '../ports/policy-command.port';
+import type { UpdateTenantPoliciesDto } from '@application/dto';
 import { TenantRepository, TenantConfigRepository } from '@domain/repositories';
 import { TenantConfigModel } from '@domain/models/tenant-config';
 import { orThrow } from '@domain/utils';
@@ -21,7 +27,7 @@ export class PolicyCommandHandler implements PolicyCommandPort {
   @Transactional()
   async updatePolicies(
     tenantId: string,
-    policies: Record<string, unknown>,
+    policies: UpdateTenantPoliciesDto,
   ): Promise<void> {
     if (!policies || typeof policies !== 'object' || Array.isArray(policies)) {
       throw new BadRequestException('Invalid policies payload');

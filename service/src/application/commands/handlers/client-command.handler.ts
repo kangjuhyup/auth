@@ -184,6 +184,12 @@ export class ClientCommandHandler implements ClientCommandPort {
     if (dto.requireAuthTime !== undefined) {
       policy.changeRequireAuthTime(dto.requireAuthTime);
     }
+    if (dto.allowedIdpProviderKeys !== undefined) {
+      policy.changeAllowedIdpProviderKeys(dto.allowedIdpProviderKeys);
+    }
+    if (dto.reauthenticationIntervalSec !== undefined) {
+      policy.changeReauthenticationIntervalSec(dto.reauthenticationIntervalSec);
+    }
     if (dto.refreshTokenRotationEnabled !== undefined) {
       policy.changeRefreshTokenRotationEnabled(dto.refreshTokenRotationEnabled);
     }
@@ -235,6 +241,8 @@ export class ClientCommandHandler implements ClientCommandPort {
       maxSessionDurationSec: null,
       consentRequired: true,
       requireAuthTime: false,
+      allowedIdpProviderKeys: null,
+      reauthenticationIntervalSec: null,
       refreshTokenRotationEnabled: true,
       refreshTokenReuseAction: 'revoke_grant',
     });

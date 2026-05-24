@@ -1,6 +1,10 @@
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
-import { CreateClientDto, UpdateClientDto } from '@presentation/dto/admin/client.dto';
+import {
+  CreateClientDto,
+  UpdateClientAuthPolicyDto,
+  UpdateClientDto,
+} from '@presentation/dto/admin/client.dto';
 
 async function getErrors(DtoClass: any, plain: object) {
   const instance = plainToInstance(DtoClass, plain);
@@ -15,26 +19,40 @@ describe('CreateClientDto', () => {
   });
 
   it('clientId 누락 시 에러', async () => {
-    const errors = await getErrors(CreateClientDto, { ...valid, clientId: undefined });
+    const errors = await getErrors(CreateClientDto, {
+      ...valid,
+      clientId: undefined,
+    });
     expect(errors.some((e) => e.property === 'clientId')).toBe(true);
   });
 
   it('clientId에 허용되지 않는 문자 포함 시 에러', async () => {
-    const errors = await getErrors(CreateClientDto, { ...valid, clientId: 'my client!' });
+    const errors = await getErrors(CreateClientDto, {
+      ...valid,
+      clientId: 'my client!',
+    });
     expect(errors.some((e) => e.property === 'clientId')).toBe(true);
   });
 
   it('name 누락 시 에러', async () => {
-    const errors = await getErrors(CreateClientDto, { ...valid, name: undefined });
+    const errors = await getErrors(CreateClientDto, {
+      ...valid,
+      name: undefined,
+    });
     expect(errors.some((e) => e.property === 'name')).toBe(true);
   });
 
   it('type이 confidential이면 에러 없음', async () => {
-    expect(await getErrors(CreateClientDto, { ...valid, type: 'confidential' })).toHaveLength(0);
+    expect(
+      await getErrors(CreateClientDto, { ...valid, type: 'confidential' }),
+    ).toHaveLength(0);
   });
 
   it('type이 허용되지 않는 값이면 에러', async () => {
-    const errors = await getErrors(CreateClientDto, { ...valid, type: 'secret' });
+    const errors = await getErrors(CreateClientDto, {
+      ...valid,
+      type: 'secret',
+    });
     expect(errors.some((e) => e.property === 'type')).toBe(true);
   });
 
@@ -72,7 +90,10 @@ describe('CreateClientDto', () => {
 
   it('tokenEndpointAuthMethod가 허용된 값이면 에러 없음', async () => {
     expect(
-      await getErrors(CreateClientDto, { ...valid, tokenEndpointAuthMethod: 'client_secret_basic' }),
+      await getErrors(CreateClientDto, {
+        ...valid,
+        tokenEndpointAuthMethod: 'client_secret_basic',
+      }),
     ).toHaveLength(0);
   });
 
@@ -81,7 +102,9 @@ describe('CreateClientDto', () => {
       ...valid,
       tokenEndpointAuthMethod: 'basic',
     });
-    expect(errors.some((e) => e.property === 'tokenEndpointAuthMethod')).toBe(true);
+    expect(errors.some((e) => e.property === 'tokenEndpointAuthMethod')).toBe(
+      true,
+    );
   });
 
   it('backchannelLogoutUri가 https URL이면 에러 없음', async () => {
@@ -98,7 +121,9 @@ describe('CreateClientDto', () => {
       ...valid,
       backchannelLogoutUri: 'http://example.com/logout',
     });
-    expect(errors.some((e) => e.property === 'backchannelLogoutUri')).toBe(true);
+    expect(errors.some((e) => e.property === 'backchannelLogoutUri')).toBe(
+      true,
+    );
   });
 
   it('allowedResources에 https가 아닌 URL이 있으면 에러', async () => {
@@ -110,20 +135,30 @@ describe('CreateClientDto', () => {
   });
 
   it('applicationType이 web이면 에러 없음', async () => {
-    expect(await getErrors(CreateClientDto, { ...valid, applicationType: 'web' })).toHaveLength(0);
+    expect(
+      await getErrors(CreateClientDto, { ...valid, applicationType: 'web' }),
+    ).toHaveLength(0);
   });
 
   it('applicationType이 허용되지 않는 값이면 에러', async () => {
-    const errors = await getErrors(CreateClientDto, { ...valid, applicationType: 'desktop' });
+    const errors = await getErrors(CreateClientDto, {
+      ...valid,
+      applicationType: 'desktop',
+    });
     expect(errors.some((e) => e.property === 'applicationType')).toBe(true);
   });
 
   it('skipConsent boolean이면 에러 없음', async () => {
-    expect(await getErrors(CreateClientDto, { ...valid, skipConsent: true })).toHaveLength(0);
+    expect(
+      await getErrors(CreateClientDto, { ...valid, skipConsent: true }),
+    ).toHaveLength(0);
   });
 
   it('skipConsent 문자열이면 에러', async () => {
-    const errors = await getErrors(CreateClientDto, { ...valid, skipConsent: 'yes' });
+    const errors = await getErrors(CreateClientDto, {
+      ...valid,
+      skipConsent: 'yes',
+    });
     expect(errors.some((e) => e.property === 'skipConsent')).toBe(true);
   });
 });
@@ -134,7 +169,9 @@ describe('UpdateClientDto', () => {
   });
 
   it('enabled boolean이면 에러 없음', async () => {
-    expect(await getErrors(UpdateClientDto, { enabled: false })).toHaveLength(0);
+    expect(await getErrors(UpdateClientDto, { enabled: false })).toHaveLength(
+      0,
+    );
   });
 
   it('secret null이면 에러 없음 (삭제 의도)', async () => {
@@ -147,18 +184,60 @@ describe('UpdateClientDto', () => {
   });
 
   it('backchannelLogoutUri null이면 에러 없음 (삭제 의도)', async () => {
-    expect(await getErrors(UpdateClientDto, { backchannelLogoutUri: null })).toHaveLength(0);
+    expect(
+      await getErrors(UpdateClientDto, { backchannelLogoutUri: null }),
+    ).toHaveLength(0);
   });
 
   it('backchannelLogoutUri http이면 에러', async () => {
     const errors = await getErrors(UpdateClientDto, {
       backchannelLogoutUri: 'http://example.com/logout',
     });
-    expect(errors.some((e) => e.property === 'backchannelLogoutUri')).toBe(true);
+    expect(errors.some((e) => e.property === 'backchannelLogoutUri')).toBe(
+      true,
+    );
   });
 
   it('name 빈 문자열이면 에러', async () => {
     const errors = await getErrors(UpdateClientDto, { name: '' });
     expect(errors.some((e) => e.property === 'name')).toBe(true);
+  });
+});
+
+describe('UpdateClientAuthPolicyDto', () => {
+  it('allowedIdpProviderKeys 배열이면 에러 없음', async () => {
+    expect(
+      await getErrors(UpdateClientAuthPolicyDto, {
+        allowedIdpProviderKeys: ['google', 'okta-workforce'],
+      }),
+    ).toHaveLength(0);
+  });
+
+  it('allowedIdpProviderKeys null이면 기본값 사용으로 에러 없음', async () => {
+    expect(
+      await getErrors(UpdateClientAuthPolicyDto, {
+        allowedIdpProviderKeys: null,
+      }),
+    ).toHaveLength(0);
+  });
+
+  it('allowedIdpProviderKeys에 허용되지 않는 문자가 있으면 에러', async () => {
+    const errors = await getErrors(UpdateClientAuthPolicyDto, {
+      allowedIdpProviderKeys: ['bad provider'],
+    });
+
+    expect(errors.some((e) => e.property === 'allowedIdpProviderKeys')).toBe(
+      true,
+    );
+  });
+
+  it('reauthenticationIntervalSec는 60초 이상이어야 한다', async () => {
+    const errors = await getErrors(UpdateClientAuthPolicyDto, {
+      reauthenticationIntervalSec: 30,
+    });
+
+    expect(
+      errors.some((e) => e.property === 'reauthenticationIntervalSec'),
+    ).toBe(true);
   });
 });

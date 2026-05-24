@@ -14,6 +14,8 @@ function makePolicy(
     maxSessionDurationSec: number | null;
     consentRequired: boolean;
     requireAuthTime: boolean;
+    allowedIdpProviderKeys: string[] | null;
+    reauthenticationIntervalSec: number | null;
     refreshTokenRotationEnabled: boolean;
     refreshTokenReuseAction: RefreshTokenReuseAction;
   }> = {},
@@ -28,6 +30,8 @@ function makePolicy(
     maxSessionDurationSec: overrides.maxSessionDurationSec ?? null,
     consentRequired: overrides.consentRequired ?? true,
     requireAuthTime: overrides.requireAuthTime ?? false,
+    allowedIdpProviderKeys: overrides.allowedIdpProviderKeys ?? null,
+    reauthenticationIntervalSec: overrides.reauthenticationIntervalSec ?? null,
     refreshTokenRotationEnabled: overrides.refreshTokenRotationEnabled ?? true,
     refreshTokenReuseAction:
       overrides.refreshTokenReuseAction ?? 'revoke_grant',
@@ -47,6 +51,8 @@ describe('ClientAuthPolicyModel', () => {
     expect(policy.maxSessionDurationSec).toBeNull();
     expect(policy.consentRequired).toBe(true);
     expect(policy.requireAuthTime).toBe(false);
+    expect(policy.allowedIdpProviderKeys).toBeNull();
+    expect(policy.reauthenticationIntervalSec).toBeNull();
     expect(policy.refreshTokenRotationEnabled).toBe(true);
     expect(policy.refreshTokenReuseAction).toBe('revoke_grant');
   });
@@ -63,6 +69,8 @@ describe('ClientAuthPolicyModel', () => {
         maxSessionDurationSec: null,
         consentRequired: true,
         requireAuthTime: false,
+        allowedIdpProviderKeys: null,
+        reauthenticationIntervalSec: null,
         refreshTokenRotationEnabled: true,
         refreshTokenReuseAction: 'revoke_grant',
       },
@@ -152,6 +160,22 @@ describe('ClientAuthPolicyModel', () => {
       expect(policy.requireAuthTime).toBe(true);
     });
 
+    it('changeAllowedIdpProviderKeys로 client IdP override를 변경한다', () => {
+      const policy = makePolicy();
+
+      policy.changeAllowedIdpProviderKeys(['google', 'okta']);
+
+      expect(policy.allowedIdpProviderKeys).toEqual(['google', 'okta']);
+    });
+
+    it('changeReauthenticationIntervalSec로 재인증 interval을 변경한다', () => {
+      const policy = makePolicy();
+
+      policy.changeReauthenticationIntervalSec(1800);
+
+      expect(policy.reauthenticationIntervalSec).toBe(1800);
+    });
+
     it('changeRefreshTokenRotationEnabled로 rotation 여부를 변경한다', () => {
       const policy = makePolicy();
 
@@ -166,6 +190,55 @@ describe('ClientAuthPolicyModel', () => {
       policy.changeRefreshTokenReuseAction('revoke_grant');
 
       expect(policy.refreshTokenReuseAction).toBe('revoke_grant');
+    });
+  });
+
+  it('tenant 기본 정책과 client override를 결합해 effective policy를 계산한다', () => {
+    const policy = makePolicy({
+      mfaRequired: true,
+      allowedIdpProviderKeys: ['okta'],
+      maxSessionDurationSec: 1800,
+      requireAuthTime: false,
+      reauthenticationIntervalSec: 900,
+    });
+
+    const effective = policy.resolveEffectivePolicy(
+      {
+        password: {
+          minLength: 12,
+          requireUppercase: true,
+          requireLowercase: true,
+          requireNumber: true,
+          requireSymbol: true,
+          preventReuseCount: 5,
+          expiresInDays: 90,
+          lockoutFailureThreshold: 5,
+          lockoutDurationSec: 900,
+        },
+        mfa: { required: false, adminRequired: true },
+        allowedIdp: { providerKeys: ['google'] },
+        session: {
+          maxAgeSec: 3600,
+          requireAuthTime: true,
+          reauthenticationIntervalSec: 1200,
+        },
+        refreshToken: {
+          ttlSec: 86400,
+          rotationEnabled: true,
+          reuseAction: 'revoke_grant',
+        },
+        signup: { mode: 'invite', allowedEmailDomains: [] },
+      },
+      7200,
+    );
+
+    expect(effective).toEqual({
+      mfaRequired: true,
+      allowedIdpProviderKeys: ['okta'],
+      maxSessionDurationSec: 1800,
+      requireAuthTime: true,
+      reauthenticationIntervalSec: 900,
+      refreshTokenTtlSec: 7200,
     });
   });
 });

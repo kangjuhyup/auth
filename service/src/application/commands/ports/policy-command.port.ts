@@ -1,3 +1,5 @@
+import type { UpdateTenantPoliciesDto } from '@application/dto';
+
 export abstract class PolicyCommandPort {
   /**
    * Update security policies for a tenant
@@ -5,6 +7,6 @@ export abstract class PolicyCommandPort {
    */
   abstract updatePolicies(
     tenantId: string,
-    policies: Record<string, unknown>,
+    policies: UpdateTenantPoliciesDto,
   ): Promise<void>;
 }

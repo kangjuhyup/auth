@@ -604,6 +604,8 @@ function makeClientAuthPolicy(clientRefId: string): ClientAuthPolicyModel {
     maxSessionDurationSec: 3600,
     consentRequired: true,
     requireAuthTime: false,
+    allowedIdpProviderKeys: ['okta'],
+    reauthenticationIntervalSec: 1800,
     refreshTokenRotationEnabled: true,
     refreshTokenReuseAction: 'revoke_grant',
   });
@@ -759,6 +761,16 @@ describe('AdminQueryHandler - ClientAuthPolicy', () => {
       expect(result.consentRequired).toBe(true);
       expect(result.refreshTokenRotationEnabled).toBe(true);
       expect(result.refreshTokenReuseAction).toBe('revoke_grant');
+      expect(result.allowedIdpProviderKeys).toEqual(['okta']);
+      expect(result.reauthenticationIntervalSec).toBe(1800);
+      expect(result.effective).toEqual({
+        mfaRequired: false,
+        allowedIdpProviderKeys: ['okta'],
+        maxSessionDurationSec: 3600,
+        requireAuthTime: false,
+        reauthenticationIntervalSec: 1800,
+        refreshTokenTtlSec: 14 * 24 * 60 * 60,
+      });
     });
   });
 });
@@ -813,10 +825,10 @@ describe('AdminQueryHandler - Keys & Policies', () => {
 
       const result = await handler.getPolicies('tenant-1');
 
-      expect(result['signupPolicy']).toBe('open');
-      expect(result['requirePhoneVerify']).toBe(true);
-      expect(result['brandName']).toBe('Test Brand');
-      expect(result['extra']).toEqual({ foo: 'bar' });
+      expect(result.signup.mode).toBe('open');
+      expect(result.refreshToken.ttlSec).toBe(86400);
+      expect(result.password.minLength).toBe(12);
+      expect(result.mfa.adminRequired).toBe(true);
     });
 
     it('config 없으면 기본값 반환', async () => {
@@ -824,10 +836,9 @@ describe('AdminQueryHandler - Keys & Policies', () => {
 
       const result = await handler.getPolicies('tenant-1');
 
-      expect(result['signupPolicy']).toBe('open');
-      expect(result['requirePhoneVerify']).toBe(false);
-      expect(result['brandName']).toBeNull();
-      expect(result['extra']).toBeNull();
+      expect(result.signup.mode).toBe('open');
+      expect(result.refreshToken.ttlSec).toBe(14 * 24 * 60 * 60);
+      expect(result.allowedIdp.providerKeys).toBeNull();
     });
   });
 });

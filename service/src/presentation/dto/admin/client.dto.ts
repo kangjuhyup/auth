@@ -259,6 +259,24 @@ export class UpdateClientAuthPolicyDto {
   requireAuthTime?: boolean;
 
   @IsOptional()
+  @ValidateIf((o) => o.allowedIdpProviderKeys !== null)
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MaxLength(128, { each: true })
+  @Matches(/^[a-zA-Z0-9_.:-]+$/, {
+    each: true,
+    message: 'allowedIdpProviderKeys는 영문자, 숫자, _, ., :, - 만 허용됩니다',
+  })
+  allowedIdpProviderKeys?: string[] | null;
+
+  @IsOptional()
+  @ValidateIf((o) => o.reauthenticationIntervalSec !== null)
+  @IsInt()
+  @Min(60)
+  reauthenticationIntervalSec?: number | null;
+
+  @IsOptional()
   @IsBoolean()
   refreshTokenRotationEnabled?: boolean;
 
@@ -361,8 +379,24 @@ export class ClientAuthPolicyResponse {
   requireAuthTime!: boolean;
 
   @Expose()
+  allowedIdpProviderKeys!: string[] | null;
+
+  @Expose()
+  reauthenticationIntervalSec!: number | null;
+
+  @Expose()
   refreshTokenRotationEnabled!: boolean;
 
   @Expose()
   refreshTokenReuseAction!: 'revoke_grant';
+
+  @Expose()
+  effective!: {
+    mfaRequired: boolean;
+    allowedIdpProviderKeys: string[] | null;
+    maxSessionDurationSec: number | null;
+    requireAuthTime: boolean;
+    reauthenticationIntervalSec: number | null;
+    refreshTokenTtlSec: number;
+  };
 }

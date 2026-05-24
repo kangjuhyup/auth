@@ -45,6 +45,8 @@ function makeClientAuthPolicy(clientRefId = 'client-1'): ClientAuthPolicyModel {
     maxSessionDurationSec: null,
     consentRequired: true,
     requireAuthTime: false,
+    allowedIdpProviderKeys: null,
+    reauthenticationIntervalSec: null,
     refreshTokenRotationEnabled: true,
     refreshTokenReuseAction: 'revoke_grant',
   });
@@ -310,6 +312,20 @@ describe('ClientCommandHandler', () => {
       expect(clientAuthPolicyRepo.save).toHaveBeenCalledWith(policy);
       expect(policy.refreshTokenRotationEnabled).toBe(false);
       expect(policy.refreshTokenReuseAction).toBe('revoke_grant');
+    });
+
+    it('클라이언트별 IdP와 재인증 override를 수정한다', async () => {
+      const policy = makeClientAuthPolicy('client-1');
+      clientAuthPolicyRepo.findByClientRefId.mockResolvedValue(policy);
+
+      await handler.updateClientAuthPolicy('tenant-1', 'client-1', {
+        allowedIdpProviderKeys: ['okta'],
+        reauthenticationIntervalSec: 1800,
+      });
+
+      expect(clientAuthPolicyRepo.save).toHaveBeenCalledWith(policy);
+      expect(policy.allowedIdpProviderKeys).toEqual(['okta']);
+      expect(policy.reauthenticationIntervalSec).toBe(1800);
     });
 
     it('기존 정책이 없으면 기본 정책을 생성한 뒤 수정한다', async () => {

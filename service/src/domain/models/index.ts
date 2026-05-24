@@ -6,6 +6,7 @@ export { PermissionModel } from './permission';
 export { ClientModel } from './client';
 export type { ClientType, ApplicationType } from './client';
 export { TenantConfigModel } from './tenant-config';
+export * from './tenant-policy';
 export type { SignupPolicy } from './tenant-config';
 export { JwksKeyModel } from './jwks-key';
 export type { KeyStatus, KeyAlgorithm } from './jwks-key';

@@ -19,6 +19,8 @@ export class ClientAuthPolicyMapper {
         maxSessionDurationSec: entity.maxSessionDurationSec ?? null,
         consentRequired: entity.consentRequired,
         requireAuthTime: entity.requireAuthTime,
+        allowedIdpProviderKeys: entity.allowedIdpProviderKeys ?? null,
+        reauthenticationIntervalSec: entity.reauthenticationIntervalSec ?? null,
         refreshTokenRotationEnabled: entity.refreshTokenRotationEnabled ?? true,
         refreshTokenReuseAction:
           (entity.refreshTokenReuseAction as
@@ -44,6 +46,8 @@ export class ClientAuthPolicyMapper {
     entity.maxSessionDurationSec = domain.maxSessionDurationSec;
     entity.consentRequired = domain.consentRequired;
     entity.requireAuthTime = domain.requireAuthTime;
+    entity.allowedIdpProviderKeys = domain.allowedIdpProviderKeys;
+    entity.reauthenticationIntervalSec = domain.reauthenticationIntervalSec;
     entity.refreshTokenRotationEnabled = domain.refreshTokenRotationEnabled;
     entity.refreshTokenReuseAction = domain.refreshTokenReuseAction;
 

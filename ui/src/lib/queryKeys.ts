@@ -34,6 +34,13 @@ export const queryKeys = {
         [...queryKeys.admin.clients.all, tenantId, 'list', filters] as const,
       detail: (tenantId: string, id: string) =>
         [...queryKeys.admin.clients.all, tenantId, 'detail', id] as const,
+      authPolicy: (tenantId: string, id: string) =>
+        [...queryKeys.admin.clients.all, tenantId, 'auth-policy', id] as const,
+    },
+    policies: {
+      all: ['admin', 'policies'] as const,
+      tenant: (tenantId: string) =>
+        [...queryKeys.admin.policies.all, tenantId] as const,
     },
     roles: {
       all: ['admin', 'roles'] as const,

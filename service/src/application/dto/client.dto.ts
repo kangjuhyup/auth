@@ -68,6 +68,8 @@ export interface UpdateClientAuthPolicyDto {
   maxSessionDurationSec?: number | null;
   consentRequired?: boolean;
   requireAuthTime?: boolean;
+  allowedIdpProviderKeys?: string[] | null;
+  reauthenticationIntervalSec?: number | null;
   refreshTokenRotationEnabled?: boolean;
   refreshTokenReuseAction?: 'revoke_grant';
 }
@@ -81,6 +83,16 @@ export interface ClientAuthPolicyResponse {
   maxSessionDurationSec: number | null;
   consentRequired: boolean;
   requireAuthTime: boolean;
+  allowedIdpProviderKeys: string[] | null;
+  reauthenticationIntervalSec: number | null;
   refreshTokenRotationEnabled: boolean;
   refreshTokenReuseAction: 'revoke_grant';
+  effective: {
+    mfaRequired: boolean;
+    allowedIdpProviderKeys: string[] | null;
+    maxSessionDurationSec: number | null;
+    requireAuthTime: boolean;
+    reauthenticationIntervalSec: number | null;
+    refreshTokenTtlSec: number;
+  };
 }

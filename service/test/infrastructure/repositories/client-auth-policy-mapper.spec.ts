@@ -14,6 +14,8 @@ function makeOrmEntity(): ClientAuthPolicyOrmEntity {
     maxSessionDurationSec: 3600,
     consentRequired: true,
     requireAuthTime: false,
+    allowedIdpProviderKeys: ['google'],
+    reauthenticationIntervalSec: 1800,
     refreshTokenRotationEnabled: true,
     refreshTokenReuseAction: 'revoke_grant',
     createdAt: new Date('2025-01-01'),
@@ -33,6 +35,8 @@ function makeDomainModel(id?: string): ClientAuthPolicyModel {
       maxSessionDurationSec: 3600,
       consentRequired: true,
       requireAuthTime: false,
+      allowedIdpProviderKeys: ['google'],
+      reauthenticationIntervalSec: 1800,
       refreshTokenRotationEnabled: true,
       refreshTokenReuseAction: 'revoke_grant',
     },
@@ -58,6 +62,8 @@ describe('ClientAuthPolicyMapper', () => {
       expect(domain.maxSessionDurationSec).toBe(3600);
       expect(domain.consentRequired).toBe(true);
       expect(domain.requireAuthTime).toBe(false);
+      expect(domain.allowedIdpProviderKeys).toEqual(['google']);
+      expect(domain.reauthenticationIntervalSec).toBe(1800);
       expect(domain.refreshTokenRotationEnabled).toBe(true);
       expect(domain.refreshTokenReuseAction).toBe('revoke_grant');
     });
@@ -93,6 +99,8 @@ describe('ClientAuthPolicyMapper', () => {
       expect(entity.maxSessionDurationSec).toBe(3600);
       expect(entity.consentRequired).toBe(true);
       expect(entity.requireAuthTime).toBe(false);
+      expect(entity.allowedIdpProviderKeys).toEqual(['google']);
+      expect(entity.reauthenticationIntervalSec).toBe(1800);
       expect(entity.refreshTokenRotationEnabled).toBe(true);
       expect(entity.refreshTokenReuseAction).toBe('revoke_grant');
     });
@@ -131,6 +139,8 @@ describe('ClientAuthPolicyMapper', () => {
           maxSessionDurationSec: null,
           consentRequired: false,
           requireAuthTime: true,
+          allowedIdpProviderKeys: ['okta'],
+          reauthenticationIntervalSec: 900,
           refreshTokenRotationEnabled: false,
           refreshTokenReuseAction: 'revoke_grant',
         },
@@ -147,6 +157,8 @@ describe('ClientAuthPolicyMapper', () => {
       expect(entity.maxSessionDurationSec).toBeNull();
       expect(entity.consentRequired).toBe(false);
       expect(entity.requireAuthTime).toBe(true);
+      expect(entity.allowedIdpProviderKeys).toEqual(['okta']);
+      expect(entity.reauthenticationIntervalSec).toBe(900);
       expect(entity.refreshTokenRotationEnabled).toBe(false);
       expect(entity.refreshTokenReuseAction).toBe('revoke_grant');
     });

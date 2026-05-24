@@ -319,6 +319,7 @@ describe('InteractionController', () => {
       uid: 'uid-1',
       providerName: 'google',
       req,
+      res,
       tenant,
     });
     expect(res.redirect).toHaveBeenCalledWith(

@@ -13,6 +13,7 @@ import {
   PermissionResponse,
   GroupResponse,
   IdentityProviderResponse,
+  TenantPolicyResponse,
 } from '@application/dto';
 import type {
   AuditLogQuery,
@@ -36,6 +37,7 @@ import {
 import { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
 import { IdentityProviderModel } from '@domain/models/identity-provider';
 import { ConsentModel } from '@domain/models/consent';
+import { TenantConfigModel } from '@domain/models/tenant-config';
 
 @Injectable()
 export class AdminQueryHandler implements AdminQueryPort {
@@ -183,7 +185,7 @@ export class AdminQueryHandler implements AdminQueryPort {
     tenantId: string,
     clientId: string,
   ): Promise<ClientAuthPolicyResponse> {
-    orThrow(
+    const client = orThrow(
       await this.clientRepo.findById(clientId),
       new NotFoundException('Client not found'),
       (c) => c.tenantId === tenantId,
@@ -193,6 +195,9 @@ export class AdminQueryHandler implements AdminQueryPort {
       await this.clientAuthPolicyRepo.findByClientRefId(clientId),
       new NotFoundException('Client auth policy not found'),
     );
+    const tenantConfig =
+      (await this.tenantConfigRepo.findByTenantId(tenantId)) ??
+      this.createDefaultTenantConfig(tenantId);
 
     return {
       clientRefId: policy.clientRefId,
@@ -203,8 +208,14 @@ export class AdminQueryHandler implements AdminQueryPort {
       maxSessionDurationSec: policy.maxSessionDurationSec,
       consentRequired: policy.consentRequired,
       requireAuthTime: policy.requireAuthTime,
+      allowedIdpProviderKeys: policy.allowedIdpProviderKeys,
+      reauthenticationIntervalSec: policy.reauthenticationIntervalSec,
       refreshTokenRotationEnabled: policy.refreshTokenRotationEnabled,
       refreshTokenReuseAction: policy.refreshTokenReuseAction,
+      effective: policy.resolveEffectivePolicy(
+        tenantConfig.getPolicies(),
+        client.refreshTokenTtlSec,
+      ),
     };
   }
 
@@ -221,14 +232,23 @@ export class AdminQueryHandler implements AdminQueryPort {
     }));
   }
 
-  async getPolicies(tenantId: string): Promise<Record<string, unknown>> {
-    const config = await this.tenantConfigRepo.findByTenantId(tenantId);
-    return {
-      signupPolicy: config?.signupPolicy ?? 'open',
-      requirePhoneVerify: config?.requirePhoneVerify ?? false,
-      brandName: config?.brandName ?? null,
-      extra: config?.extra ?? null,
-    };
+  async getPolicies(tenantId: string): Promise<TenantPolicyResponse> {
+    const config =
+      (await this.tenantConfigRepo.findByTenantId(tenantId)) ??
+      this.createDefaultTenantConfig(tenantId);
+    return config.getPolicies();
+  }
+
+  private createDefaultTenantConfig(tenantId: string): TenantConfigModel {
+    return new TenantConfigModel({
+      tenantId,
+      signupPolicy: 'open',
+      requirePhoneVerify: false,
+      brandName: null,
+      accessTokenTtlSec: 60 * 60,
+      refreshTokenTtlSec: 14 * 24 * 60 * 60,
+      extra: null,
+    });
   }
 
   async getAuditLogs(

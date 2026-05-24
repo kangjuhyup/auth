@@ -70,6 +70,7 @@ export abstract class InteractionCommandPort {
     uid: string;
     providerName: string;
     req: unknown;
+    res: unknown;
     tenant?: TenantContext;
   }): Promise<InteractionIdpRedirectResult>;
 

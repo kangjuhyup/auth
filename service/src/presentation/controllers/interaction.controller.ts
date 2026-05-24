@@ -157,6 +157,7 @@ export class InteractionController {
       uid,
       providerName,
       req,
+      res,
       tenant: this.getTenant(req),
     });
     if ('body' in result) {

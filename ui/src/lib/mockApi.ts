@@ -5,10 +5,16 @@ import type {
   UpdateTenantDto,
 } from '@/types/tenant.types';
 import type {
+  ClientAuthPolicyResponse,
   ClientResponse,
   CreateClientDto,
+  UpdateClientAuthPolicyDto,
   UpdateClientDto,
 } from '@/types/client.types';
+import type {
+  TenantPolicyResponse,
+  UpdateTenantPoliciesDto,
+} from '@/types/policy.types';
 import type {
   RoleResponse,
   CreateRoleDto,
@@ -127,6 +133,70 @@ const mockClients: ClientResponse[] = [
     updatedAt: new Date('2024-02-15'),
   },
 ];
+
+const defaultTenantPolicies: TenantPolicyResponse = {
+  password: {
+    minLength: 12,
+    requireUppercase: true,
+    requireLowercase: true,
+    requireNumber: true,
+    requireSymbol: true,
+    preventReuseCount: 5,
+    expiresInDays: 90,
+    lockoutFailureThreshold: 5,
+    lockoutDurationSec: 900,
+  },
+  mfa: {
+    required: false,
+    adminRequired: true,
+  },
+  allowedIdp: {
+    providerKeys: null,
+  },
+  session: {
+    maxAgeSec: 28800,
+    requireAuthTime: false,
+    reauthenticationIntervalSec: null,
+  },
+  refreshToken: {
+    ttlSec: 1209600,
+    rotationEnabled: true,
+    reuseAction: 'revoke_grant',
+  },
+  signup: {
+    mode: 'invite',
+    allowedEmailDomains: [],
+  },
+};
+
+let mockTenantPolicies: TenantPolicyResponse = structuredClone(
+  defaultTenantPolicies,
+);
+
+const mockClientAuthPolicies: Record<string, ClientAuthPolicyResponse> = {
+  '1': {
+    clientRefId: '1',
+    allowedAuthMethods: ['password'],
+    defaultAcr: 'urn:auth:pwd',
+    mfaRequired: false,
+    allowedMfaMethods: ['totp'],
+    maxSessionDurationSec: null,
+    consentRequired: true,
+    requireAuthTime: false,
+    allowedIdpProviderKeys: null,
+    reauthenticationIntervalSec: null,
+    refreshTokenRotationEnabled: true,
+    refreshTokenReuseAction: 'revoke_grant',
+    effective: {
+      mfaRequired: false,
+      allowedIdpProviderKeys: null,
+      maxSessionDurationSec: 28800,
+      requireAuthTime: false,
+      reauthenticationIntervalSec: null,
+      refreshTokenTtlSec: 1209600,
+    },
+  },
+};
 
 // Roles (tenant-scoped)
 const mockRoles: RoleResponse[] = [
@@ -664,6 +734,76 @@ export const mockClientApi = {
     if (index === -1) throw new Error('Client not found');
     mockClients.splice(index, 1);
   },
+
+  getAuthPolicy: async (id: string): Promise<ClientAuthPolicyResponse> => {
+    await delay(200);
+    return (
+      mockClientAuthPolicies[id] ?? {
+        ...mockClientAuthPolicies['1']!,
+        clientRefId: id,
+      }
+    );
+  },
+
+  updateAuthPolicy: async (
+    id: string,
+    dto: UpdateClientAuthPolicyDto,
+  ): Promise<void> => {
+    await delay(300);
+    const current = mockClientAuthPolicies[id] ?? {
+      ...mockClientAuthPolicies['1']!,
+      clientRefId: id,
+    };
+    mockClientAuthPolicies[id] = {
+      ...current,
+      ...dto,
+      effective: {
+        ...current.effective,
+        mfaRequired:
+          mockTenantPolicies.mfa.required || Boolean(dto.mfaRequired),
+        allowedIdpProviderKeys:
+          dto.allowedIdpProviderKeys ??
+          current.allowedIdpProviderKeys ??
+          mockTenantPolicies.allowedIdp.providerKeys,
+        maxSessionDurationSec:
+          dto.maxSessionDurationSec ??
+          current.maxSessionDurationSec ??
+          mockTenantPolicies.session.maxAgeSec,
+        requireAuthTime:
+          mockTenantPolicies.session.requireAuthTime ||
+          Boolean(dto.requireAuthTime ?? current.requireAuthTime),
+        reauthenticationIntervalSec:
+          dto.reauthenticationIntervalSec ??
+          current.reauthenticationIntervalSec ??
+          mockTenantPolicies.session.reauthenticationIntervalSec,
+      },
+    };
+  },
+};
+
+export const mockPolicyApi = {
+  getTenantPolicies: async (): Promise<TenantPolicyResponse> => {
+    await delay(200);
+    return mockTenantPolicies;
+  },
+
+  updateTenantPolicies: async (dto: UpdateTenantPoliciesDto): Promise<void> => {
+    await delay(300);
+    mockTenantPolicies = {
+      password: { ...mockTenantPolicies.password, ...(dto.password ?? {}) },
+      mfa: { ...mockTenantPolicies.mfa, ...(dto.mfa ?? {}) },
+      allowedIdp: {
+        ...mockTenantPolicies.allowedIdp,
+        ...(dto.allowedIdp ?? {}),
+      },
+      session: { ...mockTenantPolicies.session, ...(dto.session ?? {}) },
+      refreshToken: {
+        ...mockTenantPolicies.refreshToken,
+        ...(dto.refreshToken ?? {}),
+      },
+      signup: { ...mockTenantPolicies.signup, ...(dto.signup ?? {}) },
+    };
+  },
 };
 
 // ============================================================================
@@ -964,6 +1104,7 @@ export const mockApi = {
   auth: mockAuthApi,
   tenants: mockTenantApi,
   clients: mockClientApi,
+  policies: mockPolicyApi,
   roles: mockRoleApi,
   groups: mockGroupApi,
   users: mockUserApi,

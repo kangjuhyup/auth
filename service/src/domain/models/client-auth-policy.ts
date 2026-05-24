@@ -1,5 +1,6 @@
 import { Getter } from '../decorators';
 import { PersistenceModel } from './persistence-model';
+import type { TenantPolicySet } from './tenant-policy';
 
 export type AuthMethod = 'password' | 'totp' | 'webauthn' | 'magic_link';
 export type MfaMethod = 'totp' | 'webauthn' | 'recovery_code';
@@ -15,8 +16,19 @@ interface ClientAuthPolicyModelProps {
   maxSessionDurationSec: number | null;
   consentRequired: boolean;
   requireAuthTime: boolean;
+  allowedIdpProviderKeys: string[] | null;
+  reauthenticationIntervalSec: number | null;
   refreshTokenRotationEnabled: boolean;
   refreshTokenReuseAction: RefreshTokenReuseAction;
+}
+
+export interface EffectiveClientAuthPolicy {
+  mfaRequired: boolean;
+  allowedIdpProviderKeys: string[] | null;
+  maxSessionDurationSec: number | null;
+  requireAuthTime: boolean;
+  reauthenticationIntervalSec: number | null;
+  refreshTokenTtlSec: number;
 }
 
 export class ClientAuthPolicyModel extends PersistenceModel<
@@ -55,6 +67,12 @@ export class ClientAuthPolicyModel extends PersistenceModel<
   declare readonly requireAuthTime: boolean;
 
   @Getter()
+  declare readonly allowedIdpProviderKeys: string[] | null;
+
+  @Getter()
+  declare readonly reauthenticationIntervalSec: number | null;
+
+  @Getter()
   declare readonly refreshTokenRotationEnabled: boolean;
 
   @Getter()
@@ -88,11 +106,39 @@ export class ClientAuthPolicyModel extends PersistenceModel<
     this.etc.requireAuthTime = required;
   }
 
+  changeAllowedIdpProviderKeys(providerKeys: string[] | null): void {
+    this.etc.allowedIdpProviderKeys = providerKeys;
+  }
+
+  changeReauthenticationIntervalSec(sec: number | null): void {
+    this.etc.reauthenticationIntervalSec = sec;
+  }
+
   changeRefreshTokenRotationEnabled(enabled: boolean): void {
     this.etc.refreshTokenRotationEnabled = enabled;
   }
 
   changeRefreshTokenReuseAction(action: RefreshTokenReuseAction): void {
     this.etc.refreshTokenReuseAction = action;
+  }
+
+  resolveEffectivePolicy(
+    tenantPolicies: TenantPolicySet,
+    clientRefreshTokenTtlSec: number | null | undefined,
+  ): EffectiveClientAuthPolicy {
+    return {
+      mfaRequired: tenantPolicies.mfa.required || this.mfaRequired,
+      allowedIdpProviderKeys:
+        this.allowedIdpProviderKeys ?? tenantPolicies.allowedIdp.providerKeys,
+      maxSessionDurationSec:
+        this.maxSessionDurationSec ?? tenantPolicies.session.maxAgeSec,
+      requireAuthTime:
+        tenantPolicies.session.requireAuthTime || this.requireAuthTime,
+      reauthenticationIntervalSec:
+        this.reauthenticationIntervalSec ??
+        tenantPolicies.session.reauthenticationIntervalSec,
+      refreshTokenTtlSec:
+        clientRefreshTokenTtlSec ?? tenantPolicies.refreshToken.ttlSec,
+    };
   }
 }

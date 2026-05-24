@@ -1,6 +1,7 @@
 export * from './pagination.dto';
 export * from './auth.dto';
 export * from './client.dto';
+export * from './policy.dto';
 export * from './tenant.dto';
 export * from './user.dto';
 export * from './role.dto';
