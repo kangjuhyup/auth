@@ -9,6 +9,7 @@ import {
   Matches,
 } from 'class-validator';
 import { Expose, Transform } from 'class-transformer';
+import { MaskLog } from '@kangjuhyup/rvlog';
 
 const USER_STATUSES = ['ACTIVE', 'LOCKED', 'DISABLED'] as const;
 
@@ -26,16 +27,19 @@ export class CreateUserDto {
   @IsNotEmpty()
   @MinLength(8)
   @MaxLength(128)
+  @MaskLog({ type: 'full' })
   password!: string;
 
   @IsOptional()
   @IsEmail()
   @MaxLength(254)
+  @MaskLog({ type: 'email' })
   email?: string;
 
   @IsOptional()
   @IsString()
   @Matches(/^\+?[0-9]{7,15}$/, { message: '유효하지 않은 전화번호 형식입니다' })
+  @MaskLog({ type: 'phone' })
   phone?: string;
 
   @IsOptional()
@@ -47,11 +51,13 @@ export class UpdateUserDto {
   @IsOptional()
   @IsEmail()
   @MaxLength(254)
+  @MaskLog({ type: 'email' })
   email?: string;
 
   @IsOptional()
   @IsString()
   @Matches(/^\+?[0-9]{7,15}$/, { message: '유효하지 않은 전화번호 형식입니다' })
+  @MaskLog({ type: 'phone' })
   phone?: string;
 
   @IsOptional()

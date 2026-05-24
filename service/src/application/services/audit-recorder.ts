@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Logging, NoLog } from '@kangjuhyup/rvlog';
 import { ulid } from 'ulid';
 import type { AuditContext } from '@application/dto';
 import { EventModel } from '@domain/models/event';
@@ -24,6 +25,7 @@ export interface AdminAuditParams {
 }
 
 @Injectable()
+@Logging()
 export class AuditRecorder {
   constructor(private readonly eventRepo: EventRepository) {}
 
@@ -51,6 +53,7 @@ export class AuditRecorder {
     );
   }
 
+  @NoLog
   private buildMetadata(
     metadata?: Record<string, unknown> | null,
     auditContext?: AuditContext | null,
@@ -68,6 +71,7 @@ export class AuditRecorder {
     };
   }
 
+  @NoLog
   private toIpBuffer(ipAddress?: string | null): Buffer | null {
     return ipAddress ? Buffer.from(ipAddress, 'utf8') : null;
   }

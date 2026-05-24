@@ -165,6 +165,7 @@ GET /metrics
 - `/metrics`: provider cache, login, token endpoint 운영 메트릭 확인
 
 메트릭 이름, label, 응답 예시는 [METRICS.md](./METRICS.md)를 참고한다.
+HTTP 로깅 정책은 [LOGGING.md](./LOGGING.md)를 참고한다.
 
 ---
 

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Logging, NoLog } from '@kangjuhyup/rvlog';
 import { ConfigService } from '@nestjs/config';
 import {
   LoginAttemptPolicyPort,
@@ -9,6 +10,7 @@ import {
 import { RedisLoginAttemptStore } from '@infrastructure/stores/redis/redis-login-attempt.store';
 
 @Injectable()
+@Logging()
 export class RedisLoginAttemptPolicyAdapter extends LoginAttemptPolicyPort {
   private readonly ipLimit: number;
   private readonly ipWindowSec: number;
@@ -95,6 +97,7 @@ export class RedisLoginAttemptPolicyAdapter extends LoginAttemptPolicyPort {
     await this.loginAttemptStore.clearFailureAndLock(params);
   }
 
+  @NoLog
   private getNumber(
     config: ConfigService,
     key: string,

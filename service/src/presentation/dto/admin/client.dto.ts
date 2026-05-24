@@ -15,6 +15,7 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { Expose, Transform } from 'class-transformer';
+import { MaskLog } from '@kangjuhyup/rvlog';
 
 const CLIENT_TYPES = ['confidential', 'public', 'service'] as const;
 const APPLICATION_TYPES = ['web', 'native'] as const;
@@ -55,6 +56,7 @@ export class CreateClientDto {
   @IsString()
   @MinLength(32)
   @MaxLength(256)
+  @MaskLog({ type: 'full' })
   secret?: string;
 
   @IsString()
@@ -140,6 +142,7 @@ export class UpdateClientDto {
   @IsString()
   @MinLength(32)
   @MaxLength(256)
+  @MaskLog({ type: 'full' })
   secret?: string | null;
 
   @IsOptional()

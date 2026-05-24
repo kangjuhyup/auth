@@ -14,6 +14,7 @@ describe('CorrelationIdMiddleware', () => {
     middleware.use(req, res, next);
 
     expect(req.correlationId).toBe('req-123');
+    expect(req.headers['x-correlation-id']).toBe('req-123');
     expect(res.setHeader).toHaveBeenCalledWith('x-correlation-id', 'req-123');
     expect(next).toHaveBeenCalledTimes(1);
   });
@@ -30,6 +31,7 @@ describe('CorrelationIdMiddleware', () => {
     middleware.use(req, res, jest.fn());
 
     expect(req.correlationId).toMatch(/^[A-Z0-9]{26}$/);
+    expect(req.headers['x-correlation-id']).toBe(req.correlationId);
     expect(res.setHeader).toHaveBeenCalledWith(
       'x-correlation-id',
       req.correlationId,

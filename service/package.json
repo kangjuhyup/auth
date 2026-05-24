@@ -28,6 +28,8 @@
     "schema:fresh": "mikro-orm schema:drop --run --drop-migrations-table && mikro-orm migration:up"
   },
   "dependencies": {
+    "@kangjuhyup/rvlog": "^0.2.0",
+    "@kangjuhyup/rvlog-nest": "1.0.0",
     "@mikro-orm/cli": "6.6.12",
     "@mikro-orm/core": "6.6.12",
     "@mikro-orm/migrations": "6.6.12",

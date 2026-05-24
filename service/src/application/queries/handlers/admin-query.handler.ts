@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Logging, NoLog } from '@kangjuhyup/rvlog';
 import { orThrow } from '@domain/utils';
 import { AdminQueryPort } from '../ports/admin-query.port';
 import {
@@ -40,6 +41,7 @@ import { ConsentModel } from '@domain/models/consent';
 import { TenantConfigModel } from '@domain/models/tenant-config';
 
 @Injectable()
+@Logging()
 export class AdminQueryHandler implements AdminQueryPort {
   constructor(
     private readonly tenantRepo: TenantRepository,
@@ -239,6 +241,7 @@ export class AdminQueryHandler implements AdminQueryPort {
     return config.getPolicies();
   }
 
+  @NoLog
   private createDefaultTenantConfig(tenantId: string): TenantConfigModel {
     return new TenantConfigModel({
       tenantId,
@@ -395,6 +398,7 @@ export class AdminQueryHandler implements AdminQueryPort {
     };
   }
 
+  @NoLog
   private async assertUserInTenant(
     tenantId: string,
     userId: string,
@@ -406,6 +410,7 @@ export class AdminQueryHandler implements AdminQueryPort {
     );
   }
 
+  @NoLog
   private toUserConsentResponse(consent: ConsentModel): UserConsentResponse {
     return {
       id: consent.id ?? '',
@@ -632,6 +637,7 @@ export class AdminQueryHandler implements AdminQueryPort {
     }));
   }
 
+  @NoLog
   private toIdentityProviderResponse(
     m: IdentityProviderModel,
   ): IdentityProviderResponse {

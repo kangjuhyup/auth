@@ -21,11 +21,7 @@ import {
   resolveAdminSessionToken,
   setAdminSessionCookie,
 } from '@presentation/http/admin-session-cookie';
-
-interface AdminLoginDto {
-  username: string;
-  password: string;
-}
+import { AdminLoginDto } from '@presentation/dto';
 
 function pickFirst(value: unknown): string | undefined {
   if (Array.isArray(value)) {

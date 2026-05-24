@@ -1,4 +1,5 @@
 export * from './tenant.dto';
+export * from './admin-session.dto';
 export * from './client.dto';
 export * from './policy.dto';
 export * from './user.dto';

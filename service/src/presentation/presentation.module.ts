@@ -8,7 +8,6 @@ import { ApplicationModule } from '@application/application.module';
 import { TenantMiddleware } from './http/tenant.middleware';
 import { OidcDelegateMiddleware } from './http/oidc.middleware';
 import { CorrelationIdMiddleware } from './http/correlation-id.middleware';
-import { StructuredRequestLoggingMiddleware } from './http/structured-request-logging.middleware';
 import { HealthController } from './controllers/health.controller';
 import { AuthController } from './controllers/auth.controller';
 import { AdminClientController } from './controllers/admin/client.controller';
@@ -48,7 +47,7 @@ import { AdminGuard } from './http/admin.guard';
 export class PresentationModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
-      .apply(CorrelationIdMiddleware, StructuredRequestLoggingMiddleware)
+      .apply(CorrelationIdMiddleware)
       .forRoutes({ path: '*path', method: RequestMethod.ALL });
 
     consumer.apply(TenantMiddleware, OidcDelegateMiddleware).forRoutes(

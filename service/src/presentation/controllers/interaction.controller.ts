@@ -4,6 +4,11 @@ import { resolve } from 'node:path';
 import { readFileSync, existsSync } from 'node:fs';
 import { InteractionCommandPort } from '@application/ports/interaction-command.port';
 import type { TenantContext } from '@application/dto';
+import {
+  InteractionLoginDto,
+  InteractionMfaDto,
+  SamlCallbackDto,
+} from '@presentation/dto';
 
 const SPA_INDEX_PATH = resolve(
   __dirname,
@@ -49,7 +54,7 @@ export class InteractionController {
   async submitLogin(
     @Param('tenantCode') tenantCode: string,
     @Param('uid') uid: string,
-    @Body() body: { username?: string; password?: string },
+    @Body() body: InteractionLoginDto,
     @Req() req: Request,
     @Res() res: Response,
   ) {
@@ -75,12 +80,7 @@ export class InteractionController {
   async submitMfa(
     @Param('tenantCode') tenantCode: string,
     @Param('uid') uid: string,
-    @Body()
-    body: {
-      method: 'totp' | 'webauthn' | 'recovery_code';
-      code?: string;
-      webauthnResponse?: Record<string, unknown>;
-    },
+    @Body() body: InteractionMfaDto,
     @Req() req: Request,
     @Res() res: Response,
   ) {
@@ -217,7 +217,7 @@ export class InteractionController {
   async samlCallback(
     @Param('tenantCode') tenantCode: string,
     @Param('provider') providerName: string,
-    @Body() body: { SAMLResponse?: string; RelayState?: string },
+    @Body() body: SamlCallbackDto,
     @Req() req: Request,
     @Res() res: Response,
   ) {

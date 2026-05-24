@@ -15,6 +15,7 @@ import {
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { MaskLog } from '@kangjuhyup/rvlog';
 
 /** 1–64자: 영숫자로 시작, 이후 영숫자·`_`·`-` (임의 OAuth/OIDC IdP 확장용) */
 const IDP_PROVIDER_SLUG = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
@@ -154,6 +155,7 @@ export class CreateIdentityProviderDto {
   @IsString()
   @MinLength(1)
   @MaxLength(255)
+  @MaskLog({ type: 'full' })
   clientSecret?: string | null;
 
   @IsString()
@@ -197,6 +199,7 @@ export class UpdateIdentityProviderDto {
   @IsOptional()
   @IsString()
   @MaxLength(255)
+  @MaskLog({ type: 'full' })
   clientSecret?: string | null;
 
   @IsOptional()

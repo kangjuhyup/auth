@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { Logging, NoLog } from '@kangjuhyup/rvlog';
 import { ConfigService } from '@nestjs/config';
 import { MikroORM } from '@mikro-orm/core';
 import type Redis from 'ioredis';
@@ -14,6 +15,7 @@ type ReadinessCheck = Readonly<{
 }>;
 
 @Injectable()
+@Logging()
 export class InfrastructureReadinessAdapter extends ReadinessCheckPort {
   constructor(
     private readonly orm: MikroORM,
@@ -36,6 +38,7 @@ export class InfrastructureReadinessAdapter extends ReadinessCheckPort {
     return Promise.all(checks.map((check) => this.runCheck(check)));
   }
 
+  @NoLog
   private async runCheck(
     check: ReadinessCheck,
   ): Promise<ReadinessComponentDto> {
@@ -57,10 +60,12 @@ export class InfrastructureReadinessAdapter extends ReadinessCheckPort {
     }
   }
 
+  @NoLog
   private async checkDatabase(): Promise<void> {
     await this.orm.em.getConnection().execute('select 1');
   }
 
+  @NoLog
   private async checkRedis(): Promise<void> {
     const pong = await this.redis.ping();
     if (pong !== 'PONG') {
@@ -68,10 +73,12 @@ export class InfrastructureReadinessAdapter extends ReadinessCheckPort {
     }
   }
 
+  @NoLog
   private checkJwksConfig(): void {
     this.configService.getOrThrow<string>('JWKS_ENCRYPTION_KEY');
   }
 
+  @NoLog
   private checkOidcProvider(): void {
     this.configService.getOrThrow<string>('OIDC_ISSUER');
     if (!this.oidcProviderRegistry) {

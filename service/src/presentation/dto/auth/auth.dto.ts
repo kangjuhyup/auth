@@ -8,6 +8,7 @@ import {
   IsNotEmpty,
 } from 'class-validator';
 import { Transform, Expose } from 'class-transformer';
+import { MaskLog } from '@kangjuhyup/rvlog';
 
 export class SignupDto {
   @IsString()
@@ -23,16 +24,19 @@ export class SignupDto {
   @IsNotEmpty()
   @MinLength(8)
   @MaxLength(128)
+  @MaskLog({ type: 'full' })
   password!: string;
 
   @IsOptional()
   @IsEmail()
   @MaxLength(254)
+  @MaskLog({ type: 'email' })
   email?: string;
 
   @IsOptional()
   @IsString()
   @Matches(/^\+?[0-9]{7,15}$/, { message: '유효하지 않은 전화번호 형식입니다' })
+  @MaskLog({ type: 'phone' })
   phone?: string;
 }
 
@@ -41,6 +45,7 @@ export class WithdrawDto {
   @IsNotEmpty()
   @MinLength(8)
   @MaxLength(128)
+  @MaskLog({ type: 'full' })
   password!: string;
 }
 
@@ -49,12 +54,14 @@ export class ChangePasswordDto {
   @IsNotEmpty()
   @MinLength(8)
   @MaxLength(128)
+  @MaskLog({ type: 'full' })
   currentPassword!: string;
 
   @IsString()
   @IsNotEmpty()
   @MinLength(8)
   @MaxLength(128)
+  @MaskLog({ type: 'full' })
   newPassword!: string;
 }
 
@@ -62,11 +69,13 @@ export class PasswordResetRequestDto {
   @IsOptional()
   @IsEmail()
   @MaxLength(254)
+  @MaskLog({ type: 'email' })
   email?: string;
 
   @IsOptional()
   @IsString()
   @Matches(/^\+?[0-9]{7,15}$/, { message: '유효하지 않은 전화번호 형식입니다' })
+  @MaskLog({ type: 'phone' })
   phone?: string;
 }
 
@@ -74,12 +83,14 @@ export class PasswordResetDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(512)
+  @MaskLog({ type: 'full' })
   token!: string;
 
   @IsString()
   @IsNotEmpty()
   @MinLength(8)
   @MaxLength(128)
+  @MaskLog({ type: 'full' })
   newPassword!: string;
 }
 
@@ -87,6 +98,7 @@ export class VerificationTokenDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(512)
+  @MaskLog({ type: 'full' })
   token!: string;
 }
 
@@ -94,6 +106,7 @@ export class TotpConfirmationDto {
   @IsString()
   @IsNotEmpty()
   @Matches(/^[0-9]{6}$/, { message: 'TOTP 코드는 6자리 숫자여야 합니다' })
+  @MaskLog({ type: 'full' })
   code!: string;
 }
 
@@ -101,11 +114,13 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsEmail()
   @MaxLength(254)
+  @MaskLog({ type: 'email' })
   email?: string;
 
   @IsOptional()
   @IsString()
   @Matches(/^\+?[0-9]{7,15}$/, { message: '유효하지 않은 전화번호 형식입니다' })
+  @MaskLog({ type: 'phone' })
   phone?: string;
 }
 

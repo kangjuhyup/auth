@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { Logging, NoLog } from '@kangjuhyup/rvlog';
 import { AdminSessionTokenPort } from '@application/ports/admin-session-token.port';
 import { OIDC_PROVIDER } from './oidc-provider.constants';
 import { OidcProviderRegistry } from './oidc-provider.registry';
@@ -6,6 +7,7 @@ import { OidcProviderRegistry } from './oidc-provider.registry';
 const ADMIN_CLIENT_ID = '__admin-portal__';
 
 @Injectable()
+@Logging()
 export class AdminSessionTokenAdapter extends AdminSessionTokenPort {
   constructor(
     @Inject(OIDC_PROVIDER) private readonly registry: OidcProviderRegistry,
@@ -32,6 +34,7 @@ export class AdminSessionTokenAdapter extends AdminSessionTokenPort {
     return at.save();
   }
 
+  @NoLog
   async verify(params: {
     tenantCode: string;
     token: string;
