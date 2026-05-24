@@ -27,6 +27,11 @@ export abstract class UserQueryPort {
     userId: string,
   ): Promise<MfaMethodType[]>;
 
+  abstract getRecoveryCodeStatus(
+    tenantId: string,
+    userId: string,
+  ): Promise<{ remaining: number; total: number; low: boolean }>;
+
   abstract verifyMfa(params: {
     tenantId: string;
     userId: string;

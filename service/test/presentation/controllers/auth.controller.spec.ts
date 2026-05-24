@@ -20,6 +20,7 @@ function createMockCommandPort(): jest.Mocked<AuthCommandPort> {
     beginTotpEnrollment: jest.fn(),
     confirmTotpEnrollment: jest.fn(),
     disableTotp: jest.fn(),
+    rotateRecoveryCodes: jest.fn(),
     updateMfaPreference: jest.fn(),
     startIdentityLink: jest.fn(),
     completeIdentityLink: jest.fn(),
@@ -34,6 +35,7 @@ function createMockQueryPort(): jest.Mocked<AuthQueryPort> {
     getProfile: jest.fn(),
     getConsents: jest.fn(),
     getIdentityLinks: jest.fn(),
+    getRecoveryCodeStatus: jest.fn(),
   } as any;
 }
 
@@ -206,6 +208,32 @@ describe('AuthController', () => {
       controller.disableTotp(tenant, authUser),
     ).resolves.toBeUndefined();
     expect(commandPort.disableTotp).toHaveBeenCalledWith(
+      tenant.id,
+      authUser.userId,
+    );
+  });
+
+  it('getRecoveryCodeStatus는 tenant.id와 authUser.userId를 queryPort에 전달한다', async () => {
+    const result = { remaining: 9, total: 10, low: false };
+    queryPort.getRecoveryCodeStatus.mockResolvedValue(result);
+
+    await expect(
+      controller.getRecoveryCodeStatus(tenant, authUser),
+    ).resolves.toBe(result);
+    expect(queryPort.getRecoveryCodeStatus).toHaveBeenCalledWith(
+      tenant.id,
+      authUser.userId,
+    );
+  });
+
+  it('rotateRecoveryCodes는 tenant.id와 authUser.userId를 commandPort에 전달한다', async () => {
+    const result = { recoveryCodes: ['new-code'] };
+    commandPort.rotateRecoveryCodes.mockResolvedValue(result);
+
+    await expect(
+      controller.rotateRecoveryCodes(tenant, authUser),
+    ).resolves.toBe(result);
+    expect(commandPort.rotateRecoveryCodes).toHaveBeenCalledWith(
       tenant.id,
       authUser.userId,
     );

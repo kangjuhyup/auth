@@ -28,6 +28,7 @@ import {
   IdentityLinkCallbackQuery,
   ProfileResponse,
   ConsentResponse,
+  RecoveryCodeStatusResponse,
 } from '@presentation/dto';
 import { TenantContext } from '@application/dto';
 import { Tenant } from '../http/tenant.decorator';
@@ -165,6 +166,26 @@ export class AuthController {
     @AuthUser() user: AuthenticatedUser,
   ): Promise<void> {
     return this.commandPort.disableTotp(tenant.id, user.userId);
+  }
+
+  @Get('mfa/recovery-codes/status')
+  @UseGuards(AccessGuard)
+  @ApiBearerAuth('access-token')
+  getRecoveryCodeStatus(
+    @Tenant() tenant: TenantContext,
+    @AuthUser() user: AuthenticatedUser,
+  ): Promise<RecoveryCodeStatusResponse> {
+    return this.queryPort.getRecoveryCodeStatus(tenant.id, user.userId);
+  }
+
+  @Post('mfa/recovery-codes/rotate')
+  @UseGuards(AccessGuard)
+  @ApiBearerAuth('access-token')
+  rotateRecoveryCodes(
+    @Tenant() tenant: TenantContext,
+    @AuthUser() user: AuthenticatedUser,
+  ): Promise<{ recoveryCodes: string[] }> {
+    return this.commandPort.rotateRecoveryCodes(tenant.id, user.userId);
   }
 
   @Put('mfa/preference')

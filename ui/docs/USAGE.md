@@ -301,6 +301,13 @@ TOTP 인증 앱을 등록하거나 해제합니다.
 4. `Confirm`을 누릅니다.
 5. 발급된 recovery code를 안전한 곳에 보관합니다.
 
+복구 코드 운영:
+
+1. `Recovery codes`에서 남은 코드 수와 전체 코드 수를 확인합니다.
+2. `Low` 상태가 표시되면 `Regenerate codes`를 누릅니다.
+3. 확인 팝업에서 재발급을 승인합니다.
+4. 새로 표시된 recovery code를 안전한 곳에 보관합니다.
+
 해제:
 
 1. `Disable`을 누릅니다.
@@ -310,6 +317,7 @@ TOTP 인증 앱을 등록하거나 해제합니다.
 
 - recovery code는 발급 직후에만 표시됩니다.
 - recovery code 원문을 서버나 로그에 저장하지 않습니다.
+- 재발급하면 기존 recovery code는 모두 폐기됩니다.
 
 ### Connected identity providers
 

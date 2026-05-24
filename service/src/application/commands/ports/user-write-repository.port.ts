@@ -8,6 +8,14 @@ export interface UserListQuery {
   limit: number;
 }
 
+export interface CredentialLookupOptions {
+  /**
+   * undefined keeps the legacy default of enabled credentials only.
+   * null returns credentials regardless of enabled state.
+   */
+  enabled?: boolean | null;
+}
+
 export abstract class UserWriteRepositoryPort {
   abstract findById(id: string): Promise<UserModel | undefined>;
   abstract findByUsername(
@@ -26,7 +34,7 @@ export abstract class UserWriteRepositoryPort {
   abstract findCredentialsByType(
     userId: string,
     types: CredentialType[],
-    options?: { enabled?: boolean },
+    options?: CredentialLookupOptions,
   ): Promise<UserCredentialModel[]>;
 
   abstract createCredential(

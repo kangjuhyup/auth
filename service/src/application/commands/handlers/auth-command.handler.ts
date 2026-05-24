@@ -7,6 +7,7 @@ import {
   TotpEnrollmentResponse,
   TotpConfirmationDto,
   TotpConfirmationResponse,
+  RotateRecoveryCodesResponse,
   UpdateMfaPreferenceDto,
   UpdateProfileDto,
   SignupDto,
@@ -534,8 +535,15 @@ export class AuthCommandHandler implements AuthCommandPort {
       'totp',
       'recovery_code',
     ]);
+    const retiredAt = new Date().toISOString();
     for (const credential of credentials) {
       credential.disable();
+      if (credential.type === 'recovery_code') {
+        credential.updateHashParams({
+          ...(credential.hashParams ?? {}),
+          retiredAt,
+        });
+      }
       await this.userWriteRepo.saveCredential(credential);
     }
     user.changeMfaEnabled(false);
@@ -549,6 +557,53 @@ export class AuthCommandHandler implements AuthCommandPort {
       resourceId: 'totp',
       metadata: { method: 'totp', enabled: false },
     });
+  }
+
+  async rotateRecoveryCodes(
+    tenantId: string,
+    userId: string,
+  ): Promise<RotateRecoveryCodesResponse> {
+    this.assertActiveTenantUser(
+      await this.userWriteRepo.findById(userId),
+      tenantId,
+    );
+
+    const credentials = await this.userWriteRepo.findCredentialsByType(
+      userId,
+      ['recovery_code'],
+      { enabled: null },
+    );
+    let retiredCount = 0;
+    const retiredAt = new Date().toISOString();
+
+    for (const credential of credentials) {
+      if (credential.hashParams?.retiredAt) continue;
+
+      credential.disable();
+      credential.updateHashParams({
+        ...(credential.hashParams ?? {}),
+        retiredAt,
+      });
+      await this.userWriteRepo.saveCredential(credential);
+      retiredCount += 1;
+    }
+
+    const recoveryCodes = await this.createRecoveryCodes(userId);
+
+    await this.recordAudit({
+      tenantId,
+      userId,
+      category: 'SECURITY',
+      action: 'UPDATE',
+      resourceType: 'mfa-recovery-code',
+      resourceId: userId,
+      metadata: {
+        recoveryCodeCount: recoveryCodes.length,
+        retiredCount,
+      },
+    });
+
+    return { recoveryCodes };
   }
 
   async updateMfaPreference(
@@ -943,6 +998,8 @@ export class AuthCommandHandler implements AuthCommandPort {
   }
 
   private async createRecoveryCodes(userId: string): Promise<string[]> {
+    const batchId = ulid();
+    const issuedAt = new Date().toISOString();
     const codes: string[] = [];
     for (let i = 0; i < 10; i += 1) {
       const code = this.otpHash.generateToken(10);
@@ -951,7 +1008,11 @@ export class AuthCommandHandler implements AuthCommandPort {
         type: 'recovery_code',
         secretHash: hash.hash,
         hashAlg: hash.alg,
-        hashParams: hash.params,
+        hashParams: {
+          ...(hash.params ?? {}),
+          batchId,
+          issuedAt,
+        },
         hashVersion: hash.version,
         enabled: true,
       });

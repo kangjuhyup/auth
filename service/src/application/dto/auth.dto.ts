@@ -41,6 +41,16 @@ export interface TotpConfirmationResponse {
   recoveryCodes: string[];
 }
 
+export interface RecoveryCodeStatusResponse {
+  remaining: number;
+  total: number;
+  low: boolean;
+}
+
+export interface RotateRecoveryCodesResponse {
+  recoveryCodes: string[];
+}
+
 export interface UpdateMfaPreferenceDto {
   enabled: boolean;
 }

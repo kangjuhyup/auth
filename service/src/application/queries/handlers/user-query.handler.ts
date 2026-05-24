@@ -14,6 +14,7 @@ import type { MfaStrategy } from '@application/queries/strategies';
 @Injectable()
 @Logging({ level: LogLevel.DEBUG })
 export class UserQueryHandler implements UserQueryPort {
+  private readonly recoveryCodeLowThreshold = 2;
   private readonly mfaStrategies: Map<MfaMethodType, MfaStrategy>;
 
   constructor(
@@ -137,6 +138,35 @@ export class UserQueryHandler implements UserQueryPort {
       methods.add(cred.type as MfaMethodType);
     }
     return Array.from(methods);
+  }
+
+  async getRecoveryCodeStatus(
+    tenantId: string,
+    userId: string,
+  ): Promise<{ remaining: number; total: number; low: boolean }> {
+    const user = await this.userWriteRepository.findById(userId);
+    if (!user || user.tenantId !== tenantId) {
+      return { remaining: 0, total: 0, low: false };
+    }
+
+    const credentials = await this.userWriteRepository.findCredentialsByType(
+      userId,
+      ['recovery_code'],
+      { enabled: null },
+    );
+    const currentBatch = credentials.filter(
+      (credential) => !credential.hashParams?.retiredAt,
+    );
+    const remaining = currentBatch.filter(
+      (credential) => credential.enabled,
+    ).length;
+    const total = currentBatch.length;
+
+    return {
+      remaining,
+      total,
+      low: total > 0 && remaining <= this.recoveryCodeLowThreshold,
+    };
   }
 
   @NoLog

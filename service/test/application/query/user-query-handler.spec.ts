@@ -261,6 +261,51 @@ describe('UserQueryHandler', () => {
     });
   });
 
+  describe('getRecoveryCodeStatus', () => {
+    it('user 없음 → 0 상태', async () => {
+      userRepo.findById.mockResolvedValue(undefined);
+
+      await expect(
+        handler.getRecoveryCodeStatus('tenant-1', 'user-1'),
+      ).resolves.toEqual({ remaining: 0, total: 0, low: false });
+    });
+
+    it('현재 배치 기준 remaining/total/low를 계산한다', async () => {
+      userRepo.findCredentialsByType.mockResolvedValue([
+        UserCredentialModel.of({
+          type: 'recovery_code',
+          secretHash: 'active-1',
+          hashAlg: 'argon2id',
+          hashParams: { batchId: 'batch-1' },
+          enabled: true,
+        }),
+        UserCredentialModel.of({
+          type: 'recovery_code',
+          secretHash: 'used-1',
+          hashAlg: 'argon2id',
+          hashParams: { batchId: 'batch-1', usedAt: '2026-05-24T00:00:00Z' },
+          enabled: false,
+        }),
+        UserCredentialModel.of({
+          type: 'recovery_code',
+          secretHash: 'retired-1',
+          hashAlg: 'argon2id',
+          hashParams: { retiredAt: '2026-05-23T00:00:00Z' },
+          enabled: false,
+        }),
+      ]);
+
+      await expect(
+        handler.getRecoveryCodeStatus('tenant-1', 'user-1'),
+      ).resolves.toEqual({ remaining: 1, total: 2, low: true });
+      expect(userRepo.findCredentialsByType).toHaveBeenCalledWith(
+        'user-1',
+        ['recovery_code'],
+        { enabled: null },
+      );
+    });
+  });
+
   describe('verifyMfa', () => {
     it('user 없음 → false', async () => {
       userRepo.findById.mockResolvedValue(undefined);

@@ -219,3 +219,14 @@ export class ConsentResponse {
   )
   grantedAt!: Date;
 }
+
+export class RecoveryCodeStatusResponse {
+  @Expose()
+  remaining!: number;
+
+  @Expose()
+  total!: number;
+
+  @Expose()
+  low!: boolean;
+}

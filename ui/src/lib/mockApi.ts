@@ -616,6 +616,24 @@ export const mockAuthApi = {
     };
   },
 
+  getRecoveryCodeStatus: async (
+    tenantCode: string,
+  ): Promise<{ remaining: number; total: number; low: boolean }> => {
+    void tenantCode;
+    await delay(150);
+    return { remaining: 3, total: 10, low: false };
+  },
+
+  rotateRecoveryCodes: async (
+    tenantCode: string,
+  ): Promise<TotpConfirmationResponse> => {
+    void tenantCode;
+    await delay(200);
+    return {
+      recoveryCodes: ['RC-4567-8901', 'RC-5678-9012', 'RC-6789-0123'],
+    };
+  },
+
   disableTotp: async (tenantCode: string): Promise<void> => {
     await delay(200);
     const profile = getMockProfile(tenantCode);

@@ -31,6 +31,11 @@ function createMockUserQuery(): jest.Mocked<UserQueryPort> {
     findByUsername: jest.fn().mockResolvedValue(null),
     authenticate: jest.fn().mockResolvedValue(null),
     getMfaMethods: jest.fn().mockResolvedValue([]),
+    getRecoveryCodeStatus: jest.fn().mockResolvedValue({
+      remaining: 9,
+      total: 10,
+      low: false,
+    }),
     verifyMfa: jest.fn().mockResolvedValue(false),
   };
 }
@@ -193,6 +198,31 @@ describe('AuthQueryHandler', () => {
           linkedAt,
         },
       ]);
+    });
+  });
+
+  describe('getRecoveryCodeStatus', () => {
+    it('사용자 상태 확인 후 recovery code 상태를 반환한다', async () => {
+      const result = await handler.getRecoveryCodeStatus('tenant-1', 'user-1');
+
+      expect(userQuery.findProfile).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+      });
+      expect(userQuery.getRecoveryCodeStatus).toHaveBeenCalledWith(
+        'tenant-1',
+        'user-1',
+      );
+      expect(result).toEqual({ remaining: 9, total: 10, low: false });
+    });
+
+    it('WITHDRAWN 상태면 UserWithdrawn 에러', async () => {
+      userQuery.findProfile.mockResolvedValue(makeProfileView('WITHDRAWN'));
+
+      await expect(
+        handler.getRecoveryCodeStatus('tenant-1', 'user-1'),
+      ).rejects.toThrow('UserWithdrawn');
+      expect(userQuery.getRecoveryCodeStatus).not.toHaveBeenCalled();
     });
   });
 });

@@ -4,6 +4,7 @@ import type {
   ConsentResponse,
   IdentityLinkResponse,
   ProfileResponse,
+  RecoveryCodeStatusResponse,
 } from '@application/dto';
 import { AuthQueryPort } from '@application/queries/ports/auth-query.port';
 import { UserQueryPort } from '@application/queries/ports/user-query.port';
@@ -69,5 +70,21 @@ export class AuthQueryHandler implements AuthQueryPort {
       email: identity.email ?? null,
       linkedAt: identity.linkedAt,
     }));
+  }
+
+  async getRecoveryCodeStatus(
+    tenantId: string,
+    userId: string,
+  ): Promise<RecoveryCodeStatusResponse> {
+    const view = orThrow(
+      await this.userQuery.findProfile({ tenantId, userId }),
+      new Error('UserNotFound'),
+    );
+
+    if (view.status === 'WITHDRAWN') {
+      throw new Error('UserWithdrawn');
+    }
+
+    return this.userQuery.getRecoveryCodeStatus(tenantId, userId);
   }
 }

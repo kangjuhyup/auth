@@ -2,6 +2,7 @@ import {
   ProfileResponse,
   ConsentResponse,
   IdentityLinkResponse,
+  RecoveryCodeStatusResponse,
 } from '@application/dto';
 
 export abstract class AuthQueryPort {
@@ -17,4 +18,8 @@ export abstract class AuthQueryPort {
     tenantId: string,
     userId: string,
   ): Promise<IdentityLinkResponse[]>;
+  abstract getRecoveryCodeStatus(
+    tenantId: string,
+    userId: string,
+  ): Promise<RecoveryCodeStatusResponse>;
 }

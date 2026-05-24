@@ -34,6 +34,12 @@ export interface TotpConfirmationResponse {
   recoveryCodes: string[];
 }
 
+export interface RecoveryCodeStatusResponse {
+  remaining: number;
+  total: number;
+  low: boolean;
+}
+
 export interface IdentityLinkResponse {
   id: string;
   provider: string;

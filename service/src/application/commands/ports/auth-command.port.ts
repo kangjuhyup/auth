@@ -8,6 +8,7 @@ import {
   TotpEnrollmentResponse,
   TotpConfirmationDto,
   TotpConfirmationResponse,
+  RotateRecoveryCodesResponse,
   UpdateMfaPreferenceDto,
   UpdateProfileDto,
   StartIdentityLinkDto,
@@ -127,6 +128,15 @@ export abstract class AuthCommandPort {
    * @description 현재 사용자 TOTP MFA 비활성화
    */
   abstract disableTotp(tenantId: string, userId: string): Promise<void>;
+
+  /**
+   * Rotate recovery codes
+   * @description 기존 복구 코드를 폐기하고 새 복구 코드를 발급
+   */
+  abstract rotateRecoveryCodes(
+    tenantId: string,
+    userId: string,
+  ): Promise<RotateRecoveryCodesResponse>;
 
   /**
    * Update MFA login preference

@@ -3,6 +3,7 @@ import { EntityManager } from '@mikro-orm/core';
 import {
   UserWriteRepositoryPort,
   UserListQuery,
+  CredentialLookupOptions,
 } from '@application/commands/ports/user-write-repository.port';
 import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
@@ -157,12 +158,14 @@ export class UserWriteRepositoryImpl implements UserWriteRepositoryPort {
   async findCredentialsByType(
     userId: string,
     types: CredentialType[],
-    options?: { enabled?: boolean },
+    options?: CredentialLookupOptions,
   ): Promise<UserCredentialModel[]> {
     const enabledFilter =
-      options?.enabled === undefined
-        ? { enabled: true }
-        : { enabled: options.enabled };
+      options?.enabled === null
+        ? {}
+        : options?.enabled === undefined
+          ? { enabled: true }
+          : { enabled: options.enabled };
     const entities = await this.em.find(
       UserCredentialOrmEntity,
       {

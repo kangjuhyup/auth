@@ -90,6 +90,9 @@ describe('RecoveryCodeMfaStrategy', () => {
 
     expect(result).toBe(true);
     expect(cred2.enabled).toBe(false);
+    expect(cred2.hashParams).toEqual(
+      expect.objectContaining({ usedAt: expect.any(String) }),
+    );
     expect(userRepo.saveCredential).toHaveBeenCalledWith(cred2);
   });
 

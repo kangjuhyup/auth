@@ -25,6 +25,7 @@ import {
   MailOutlined,
   MobileOutlined,
   SafetyCertificateOutlined,
+  ReloadOutlined,
   StopOutlined,
 } from '@ant-design/icons';
 import { authApi } from '@/features/auth/api/authApi';
@@ -79,6 +80,14 @@ export function SecuritySettingsPage() {
     enabled: Boolean(tenantCode),
   });
 
+  const recoveryCodeStatusQuery = useQuery({
+    queryKey: tenantCode
+      ? queryKeys.auth.recoveryCodeStatus(tenantCode)
+      : ['auth', 'recovery-code-status', 'missing'],
+    queryFn: () => authApi.getRecoveryCodeStatus(tenantCode!),
+    enabled: Boolean(tenantCode),
+  });
+
   const idpQuery = useQuery({
     queryKey: tenantCode
       ? queryKeys.admin.identityProviders.list(tenantCode, {
@@ -98,6 +107,9 @@ export function SecuritySettingsPage() {
     });
     void queryClient.invalidateQueries({
       queryKey: queryKeys.auth.identityLinks(tenantCode),
+    });
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.auth.recoveryCodeStatus(tenantCode),
     });
   };
 
@@ -178,6 +190,7 @@ export function SecuritySettingsPage() {
       setTotpEnrollment(null);
       setTotpCode('');
       setRecoveryCodes(response.recoveryCodes);
+      refreshSecurityData();
       message.success('Authenticator app enabled');
     },
     onError: (error) => message.error(error.message),
@@ -190,6 +203,7 @@ export function SecuritySettingsPage() {
     },
     onSuccess: () => {
       refreshSecurityData();
+      setRecoveryCodes([]);
       message.success('Authenticator app disabled');
     },
     onError: (error) => message.error(error.message),
@@ -203,6 +217,19 @@ export function SecuritySettingsPage() {
     onSuccess: (_, enabled) => {
       refreshSecurityData();
       message.success(enabled ? 'MFA login enabled' : 'MFA login disabled');
+    },
+    onError: (error) => message.error(error.message),
+  });
+
+  const rotateRecoveryCodes = useMutation({
+    mutationFn: () => {
+      if (!tenantCode) throw new Error('Tenant is required');
+      return authApi.rotateRecoveryCodes(tenantCode);
+    },
+    onSuccess: (response) => {
+      setRecoveryCodes(response.recoveryCodes);
+      refreshSecurityData();
+      message.success('Recovery codes regenerated');
     },
     onError: (error) => message.error(error.message),
   });
@@ -383,7 +410,34 @@ export function SecuritySettingsPage() {
                 Disable
               </Button>
             </Popconfirm>
+            <Popconfirm
+              title="Regenerate recovery codes?"
+              okText="Regenerate"
+              onConfirm={() => rotateRecoveryCodes.mutate()}
+            >
+              <Button
+                icon={<ReloadOutlined />}
+                loading={rotateRecoveryCodes.isPending}
+              >
+                Regenerate codes
+              </Button>
+            </Popconfirm>
           </Space>
+
+          <Descriptions column={{ xs: 1, md: 3 }} size="small">
+            <Descriptions.Item label="Recovery codes">
+              <Space>
+                <Text>
+                  {recoveryCodeStatusQuery.data
+                    ? `${recoveryCodeStatusQuery.data.remaining}/${recoveryCodeStatusQuery.data.total}`
+                    : '-'}
+                </Text>
+                {recoveryCodeStatusQuery.data?.low && (
+                  <Tag color="orange">Low</Tag>
+                )}
+              </Space>
+            </Descriptions.Item>
+          </Descriptions>
 
           {totpEnrollment && (
             <Alert

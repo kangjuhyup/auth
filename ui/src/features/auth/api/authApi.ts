@@ -5,6 +5,7 @@ import type {
   LoginDto,
   LoginResponse,
   ProfileResponse,
+  RecoveryCodeStatusResponse,
   StartIdentityLinkResponse,
   TotpConfirmationResponse,
   TotpEnrollmentResponse,
@@ -102,6 +103,27 @@ export const authApi = {
   disableTotp: (tenantCode: string): Promise<void> => {
     if (USE_MOCK) return mockApi.auth.disableTotp(tenantCode);
     return apiClient.delete<void>('/auth/mfa/totp', tenantOptions(tenantCode));
+  },
+
+  getRecoveryCodeStatus: (
+    tenantCode: string,
+  ): Promise<RecoveryCodeStatusResponse> => {
+    if (USE_MOCK) return mockApi.auth.getRecoveryCodeStatus(tenantCode);
+    return apiClient.get<RecoveryCodeStatusResponse>(
+      '/auth/mfa/recovery-codes/status',
+      tenantOptions(tenantCode),
+    );
+  },
+
+  rotateRecoveryCodes: (
+    tenantCode: string,
+  ): Promise<TotpConfirmationResponse> => {
+    if (USE_MOCK) return mockApi.auth.rotateRecoveryCodes(tenantCode);
+    return apiClient.post<TotpConfirmationResponse>(
+      '/auth/mfa/recovery-codes/rotate',
+      undefined,
+      tenantOptions(tenantCode),
+    );
   },
 
   updateMfaPreference: (

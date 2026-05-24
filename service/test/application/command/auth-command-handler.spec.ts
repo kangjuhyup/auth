@@ -993,6 +993,16 @@ describe('AuthCommandHandler', () => {
       expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(active);
       expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(pending);
       expect(userWriteRepo.createCredential).toHaveBeenCalledTimes(10);
+      expect(userWriteRepo.createCredential).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({
+          type: 'recovery_code',
+          hashParams: expect.objectContaining({
+            batchId: expect.any(String),
+            issuedAt: expect.any(String),
+          }),
+        }),
+      );
       expect(userWriteRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({ mfaEnabled: true }),
       );
@@ -1126,6 +1136,9 @@ describe('AuthCommandHandler', () => {
       );
       expect(totp.enabled).toBe(false);
       expect(recoveryCode.enabled).toBe(false);
+      expect(recoveryCode.hashParams).toEqual(
+        expect.objectContaining({ retiredAt: expect.any(String) }),
+      );
       expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(totp);
       expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(recoveryCode);
       expect(userWriteRepo.save).toHaveBeenCalledWith(
@@ -1141,6 +1154,94 @@ describe('AuthCommandHandler', () => {
           resourceId: 'totp',
           success: true,
           metadata: { method: 'totp', enabled: false },
+        }),
+      );
+    });
+
+    it('rotateRecoveryCodes는 현재 recovery code를 폐기하고 새 코드를 발급한다', async () => {
+      const activeRecoveryCode = UserCredentialModel.of(
+        {
+          type: 'recovery_code',
+          secretHash: 'hashed-code',
+          hashAlg: 'argon2id',
+          hashParams: { batchId: 'old-batch' },
+          enabled: true,
+        },
+        'recovery-1',
+      );
+      const usedRecoveryCode = UserCredentialModel.of(
+        {
+          type: 'recovery_code',
+          secretHash: 'used-code',
+          hashAlg: 'argon2id',
+          hashParams: {
+            batchId: 'old-batch',
+            usedAt: '2026-05-24T00:00:00.000Z',
+          },
+          enabled: false,
+        },
+        'recovery-2',
+      );
+      const retiredRecoveryCode = UserCredentialModel.of(
+        {
+          type: 'recovery_code',
+          secretHash: 'retired-code',
+          hashAlg: 'argon2id',
+          hashParams: { retiredAt: '2026-05-23T00:00:00.000Z' },
+          enabled: false,
+        },
+        'recovery-3',
+      );
+      userWriteRepo.findCredentialsByType.mockResolvedValueOnce([
+        activeRecoveryCode,
+        usedRecoveryCode,
+        retiredRecoveryCode,
+      ]);
+      otpHash.generateToken.mockReturnValue('new-recovery-code');
+
+      const result = await handler.rotateRecoveryCodes('tenant-1', 'user-1');
+
+      expect(userWriteRepo.findCredentialsByType).toHaveBeenCalledWith(
+        'user-1',
+        ['recovery_code'],
+        { enabled: null },
+      );
+      expect(activeRecoveryCode.enabled).toBe(false);
+      expect(activeRecoveryCode.hashParams).toEqual(
+        expect.objectContaining({ retiredAt: expect.any(String) }),
+      );
+      expect(usedRecoveryCode.hashParams).toEqual(
+        expect.objectContaining({ retiredAt: expect.any(String) }),
+      );
+      expect(retiredRecoveryCode.hashParams).toEqual({
+        retiredAt: '2026-05-23T00:00:00.000Z',
+      });
+      expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(
+        activeRecoveryCode,
+      );
+      expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(
+        usedRecoveryCode,
+      );
+      expect(userWriteRepo.saveCredential).not.toHaveBeenCalledWith(
+        retiredRecoveryCode,
+      );
+      expect(userWriteRepo.createCredential).toHaveBeenCalledTimes(10);
+      expect(result.recoveryCodes).toEqual(
+        Array.from({ length: 10 }, () => 'new-recovery-code'),
+      );
+      expect(eventRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          category: 'SECURITY',
+          action: 'UPDATE',
+          resourceType: 'mfa-recovery-code',
+          resourceId: 'user-1',
+          success: true,
+          metadata: {
+            recoveryCodeCount: 10,
+            retiredCount: 2,
+          },
         }),
       );
     });
