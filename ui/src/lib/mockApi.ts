@@ -43,6 +43,7 @@ import type {
   AuditLogFilters,
   AuditLogResponse,
 } from '@/types/audit-log.types';
+import type { IdentityProviderResponse } from '@/types/identity-provider.types';
 
 // Simulate network delay
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -485,6 +486,44 @@ const mockIdentityLinksByTenant = new Map<string, IdentityLinkResponse[]>([
   ],
 ]);
 
+const mockIdentityProviders: IdentityProviderResponse[] = [
+  {
+    id: 'mock-idp-google',
+    provider: 'google',
+    protocol: 'oauth2',
+    displayName: 'Google',
+    clientId: 'google-client',
+    clientSecretSet: true,
+    redirectUri: 'http://localhost:3000/auth/identity-links/google/callback',
+    enabled: true,
+    oauthConfig: null,
+    samlConfig: null,
+    createdAt: new Date('2024-01-01').toISOString(),
+    updatedAt: new Date('2024-01-01').toISOString(),
+  },
+  {
+    id: 'mock-idp-github',
+    provider: 'github',
+    protocol: 'oauth2',
+    displayName: 'GitHub',
+    clientId: 'github-client',
+    clientSecretSet: true,
+    redirectUri: 'http://localhost:3000/auth/identity-links/github/callback',
+    enabled: true,
+    oauthConfig: {
+      authorizationUrl: 'https://github.com/login/oauth/authorize',
+      tokenUrl: 'https://github.com/login/oauth/access_token',
+      userinfoUrl: 'https://api.github.com/user',
+      scopes: ['read:user', 'user:email'],
+      subField: 'id',
+      emailField: 'email',
+    },
+    samlConfig: null,
+    createdAt: new Date('2024-01-02').toISOString(),
+    updatedAt: new Date('2024-01-02').toISOString(),
+  },
+];
+
 function getMockProfile(tenantCode: string): ProfileResponse {
   const profile =
     mockProfileByTenant.get(tenantCode) ?? mockProfileByTenant.get('default');
@@ -594,6 +633,33 @@ export const mockAuthApi = {
     profile.updatedAt = new Date();
   },
 
+  startIdentityLink: async (
+    tenantCode: string,
+    provider: string,
+    returnTo: string,
+  ): Promise<{ authorizationUrl: string }> => {
+    await delay(200);
+    const links =
+      mockIdentityLinksByTenant.get(tenantCode) ??
+      mockIdentityLinksByTenant.get('default') ??
+      [];
+    if (!links.some((link) => link.provider === provider)) {
+      links.push({
+        id: `identity-link-${provider}`,
+        provider,
+        email: `${provider}-user@example.com`,
+        linkedAt: new Date(),
+      });
+    }
+    const redirectTo =
+      returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')
+        ? returnTo
+        : '/admin/security';
+    return {
+      authorizationUrl: `${redirectTo}?identityLinked=${encodeURIComponent(provider)}`,
+    };
+  },
+
   getIdentityLinks: async (
     tenantCode: string,
   ): Promise<IdentityLinkResponse[]> => {
@@ -617,6 +683,16 @@ export const mockAuthApi = {
     const index = links.findIndex((link) => link.id === identityId);
     if (index === -1) throw new Error('Identity link not found');
     links.splice(index, 1);
+  },
+};
+
+export const mockIdentityProviderApi = {
+  list: async (params: {
+    page?: number;
+    limit?: number;
+  }): Promise<PaginatedResult<IdentityProviderResponse>> => {
+    await delay(200);
+    return paginate(mockIdentityProviders, params);
   },
 };
 
@@ -1130,4 +1206,5 @@ export const mockApi = {
   groups: mockGroupApi,
   users: mockUserApi,
   auditLogs: mockAuditLogApi,
+  identityProviders: mockIdentityProviderApi,
 };

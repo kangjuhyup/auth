@@ -140,6 +140,16 @@ export class StartIdentityLinkDto {
 export class IdentityLinkCallbackQuery {
   @IsOptional()
   @IsString()
+  @MaxLength(64)
+  tenantCode?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  tenant_code?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(512)
   state?: string;
 

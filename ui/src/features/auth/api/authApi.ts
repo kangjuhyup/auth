@@ -5,6 +5,7 @@ import type {
   LoginDto,
   LoginResponse,
   ProfileResponse,
+  StartIdentityLinkResponse,
   TotpConfirmationResponse,
   TotpEnrollmentResponse,
 } from '@/types/auth.types';
@@ -119,6 +120,21 @@ export const authApi = {
     if (USE_MOCK) return mockApi.auth.getIdentityLinks(tenantCode);
     return apiClient.get<IdentityLinkResponse[]>(
       '/auth/identity-links',
+      tenantOptions(tenantCode),
+    );
+  },
+
+  startIdentityLink: (
+    tenantCode: string,
+    provider: string,
+    returnTo: string,
+  ): Promise<StartIdentityLinkResponse> => {
+    if (USE_MOCK) {
+      return mockApi.auth.startIdentityLink(tenantCode, provider, returnTo);
+    }
+    return apiClient.post<StartIdentityLinkResponse>(
+      `/auth/identity-links/${provider}/start`,
+      { returnTo },
       tenantOptions(tenantCode),
     );
   },

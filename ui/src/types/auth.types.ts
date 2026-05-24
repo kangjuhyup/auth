@@ -40,3 +40,7 @@ export interface IdentityLinkResponse {
   email?: string | null;
   linkedAt: string | Date;
 }
+
+export interface StartIdentityLinkResponse {
+  authorizationUrl: string;
+}

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -27,6 +28,7 @@ import {
   StopOutlined,
 } from '@ant-design/icons';
 import { authApi } from '@/features/auth/api/authApi';
+import { identityProviderApi } from '@/features/identity-providers/api/identityProviderApi';
 import { queryKeys } from '@/lib/queryKeys';
 import { useTenantStore } from '@/stores/tenant.store';
 import type {
@@ -57,6 +59,7 @@ export function SecuritySettingsPage() {
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
 
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const selectedTenant = useTenantStore((state) => state.selectedTenant);
   const tenantCode = selectedTenant?.code;
 
@@ -76,6 +79,18 @@ export function SecuritySettingsPage() {
     enabled: Boolean(tenantCode),
   });
 
+  const idpQuery = useQuery({
+    queryKey: tenantCode
+      ? queryKeys.admin.identityProviders.list(tenantCode, {
+          page: 1,
+          limit: 100,
+        })
+      : ['admin', 'identity-providers', 'missing'],
+    queryFn: () =>
+      identityProviderApi.list(tenantCode!, { page: 1, limit: 100 }),
+    enabled: Boolean(tenantCode),
+  });
+
   const refreshSecurityData = () => {
     if (!tenantCode) return;
     void queryClient.invalidateQueries({
@@ -85,6 +100,29 @@ export function SecuritySettingsPage() {
       queryKey: queryKeys.auth.identityLinks(tenantCode),
     });
   };
+
+  useEffect(() => {
+    const linkedProvider = searchParams.get('identityLinked');
+    const linkError = searchParams.get('identityError');
+    if (!linkedProvider && !linkError) return;
+
+    if (linkedProvider) {
+      message.success(`${formatProviderLabel(linkedProvider)} connected`);
+    }
+    if (linkError) {
+      message.error(`Identity provider connection failed: ${linkError}`);
+    }
+    if (tenantCode) {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.auth.identityLinks(tenantCode),
+      });
+    }
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('identityLinked');
+    nextParams.delete('identityError');
+    setSearchParams(nextParams, { replace: true });
+  }, [queryClient, searchParams, setSearchParams, tenantCode]);
 
   const requestVerification = useMutation({
     mutationFn: (contact: ContactKey) => {
@@ -181,6 +219,17 @@ export function SecuritySettingsPage() {
     onError: (error) => message.error(error.message),
   });
 
+  const startIdentityLink = useMutation({
+    mutationFn: (provider: string) => {
+      if (!tenantCode) throw new Error('Tenant is required');
+      return authApi.startIdentityLink(tenantCode, provider, '/admin/security');
+    },
+    onSuccess: (response) => {
+      window.location.assign(response.authorizationUrl);
+    },
+    onError: (error) => message.error(error.message),
+  });
+
   if (!selectedTenant) {
     return (
       <Alert
@@ -194,6 +243,14 @@ export function SecuritySettingsPage() {
 
   const contactItems = getContactVerificationItems(profileQuery.data);
   const links = linksQuery.data ?? [];
+  const linkProviders = new Set(links.map((link) => link.provider));
+  const connectableIdps =
+    idpQuery.data?.items.filter(
+      (idp) =>
+        idp.enabled &&
+        idp.protocol === 'oauth2' &&
+        !linkProviders.has(idp.provider),
+    ) ?? [];
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -387,6 +444,34 @@ export function SecuritySettingsPage() {
       </Card>
 
       <Card title="Connected identity providers">
+        <Space
+          direction="vertical"
+          size="middle"
+          style={{ width: '100%', marginBottom: 16 }}
+        >
+          {connectableIdps.length > 0 ? (
+            <Space wrap>
+              {connectableIdps.map((idp) => (
+                <Button
+                  key={idp.id}
+                  icon={<LinkOutlined />}
+                  loading={
+                    startIdentityLink.isPending &&
+                    startIdentityLink.variables === idp.provider
+                  }
+                  onClick={() => startIdentityLink.mutate(idp.provider)}
+                >
+                  Connect {idp.displayName}
+                </Button>
+              ))}
+            </Space>
+          ) : (
+            <Text type="secondary">
+              No available OAuth identity providers to connect
+            </Text>
+          )}
+        </Space>
+
         {hasLinkedIdentities(links) ? (
           <List
             loading={linksQuery.isLoading}

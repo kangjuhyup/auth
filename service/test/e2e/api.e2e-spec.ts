@@ -1834,6 +1834,130 @@ describe('API E2E', () => {
       });
     });
 
+    it('로그인한 사용자는 mock OIDC IdP 계정을 연결한 뒤 외부 인증으로 로그인할 수 있다', async () => {
+      const adminToken = await loginAsAdmin();
+      await createTenant(adminToken, 'acme', 'Acme Corp');
+      const client = await createClient(
+        adminToken,
+        'acme',
+        'mock-idp-link-web',
+      );
+      const signup = await signupUser('acme', {
+        username: 'idp-linking-user',
+        password: 'Password123!',
+      });
+      const provider = 'mock_oidc';
+      const providerSub = 'mock-sub-link-flow-user';
+      const providerEmail = 'link-flow-user@mock-idp.test';
+      mockIdp.setProfile({
+        sub: providerSub,
+        email: providerEmail,
+        name: 'Link Flow User',
+      });
+      await createMockOidcIdentityProvider({
+        adminToken,
+        tenantCode: 'acme',
+        provider,
+      });
+      const login = await loginUserViaOidc({
+        tenantCode: 'acme',
+        clientId: client.clientId,
+        redirectUri: client.redirectUri,
+        username: signup.username,
+        password: signup.password,
+      });
+
+      const startResponse = await request(fixture.app.getHttpServer())
+        .post(`/auth/identity-links/${provider}/start`)
+        .query({ tenantCode: 'acme' })
+        .set('host', 'auth.e2e.test')
+        .set('Authorization', `Bearer ${login.accessToken}`)
+        .send({ returnTo: '/admin/security' })
+        .expect(201);
+      const authorizationUrl = new URL(startResponse.body.authorizationUrl);
+
+      expect(authorizationUrl.origin).toBe(mockIdp.origin);
+      expect(authorizationUrl.searchParams.get('client_id')).toBe(
+        mockIdp.clientId,
+      );
+      expect(authorizationUrl.searchParams.get('state')).toBeTruthy();
+
+      const idpCallbackUrl = await fetchMockIdpRedirect(authorizationUrl);
+
+      expect(idpCallbackUrl.pathname).toBe(
+        `/auth/identity-links/${provider}/callback`,
+      );
+      expect(idpCallbackUrl.searchParams.get('tenantCode')).toBe('acme');
+      expect(idpCallbackUrl.searchParams.get('code')).toBeTruthy();
+
+      const callbackResponse = await request(fixture.app.getHttpServer())
+        .get(toAppPath(idpCallbackUrl.toString()))
+        .set('host', 'auth.e2e.test')
+        .expect(302);
+
+      expect(callbackResponse.headers.location).toBe(
+        '/admin/security?identityLinked=mock_oidc',
+      );
+
+      const linksResponse = await request(fixture.app.getHttpServer())
+        .get('/auth/identity-links')
+        .query({ tenantCode: 'acme' })
+        .set('Authorization', `Bearer ${login.accessToken}`)
+        .expect(200);
+
+      expect(linksResponse.body).toEqual([
+        expect.objectContaining({
+          provider,
+          email: providerEmail,
+        }),
+      ]);
+
+      const externalLogin = await beginOidcInteraction({
+        tenantCode: 'acme',
+        clientId: client.clientId,
+        redirectUri: client.redirectUri,
+      });
+      const idpRedirectResponse = await externalLogin.agent
+        .get(`/t/acme/interaction/${externalLogin.uid}/idp/${provider}`)
+        .set('host', 'auth.e2e.test')
+        .expect(302);
+      const externalAuthorizationUrl = new URL(
+        idpRedirectResponse.headers.location as string,
+      );
+      const externalCallbackUrl = await fetchMockIdpRedirect(
+        externalAuthorizationUrl,
+      );
+      const externalCallbackResponse = await externalLogin.agent
+        .get(toAppPath(externalCallbackUrl.toString()))
+        .set('host', 'auth.e2e.test')
+        .expect((response) => {
+          expect([302, 303]).toContain(response.status);
+        });
+      const code = await resolveAuthorizationCode(
+        externalLogin.agent,
+        externalCallbackResponse.headers.location as string,
+      );
+      const tokenResponse = await exchangeAuthorizationCode({
+        agent: externalLogin.agent,
+        tenantCode: 'acme',
+        clientId: client.clientId,
+        redirectUri: client.redirectUri,
+        code,
+        codeVerifier: externalLogin.verifier,
+      }).expect(200);
+
+      const profileResponse = await request(fixture.app.getHttpServer())
+        .get('/auth/profile')
+        .query({ tenantCode: 'acme' })
+        .set('Authorization', `Bearer ${tokenResponse.body.access_token}`)
+        .expect(200);
+
+      expect(profileResponse.body).toMatchObject({
+        id: signup.userId,
+        username: signup.username,
+      });
+    });
+
     it('mock OIDC IdP 사용자가 연결되지 않았으면 interaction 오류로 되돌린다', async () => {
       const adminToken = await loginAsAdmin();
       await createTenant(adminToken, 'acme', 'Acme Corp');

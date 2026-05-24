@@ -319,7 +319,19 @@ TOTP 인증 앱을 등록하거나 해제합니다.
 - 연결 이메일
 - 연결 날짜
 
+연결:
+
+1. tenant에 활성화된 OAuth IdP가 있으면 `Connect {provider}` 버튼이 표시됩니다.
+2. 버튼을 누르면 backend가 생성한 IdP authorization URL로 이동합니다.
+3. 외부 IdP 인증이 끝나면 `/admin/security`로 돌아오며 연결 목록이 갱신됩니다.
+
 `Unlink`를 누르면 해당 IdP 연결을 해제합니다.
+
+주의:
+
+- 외부 IdP 계정 연결은 현재 로그인한 사용자에게만 저장됩니다.
+- 이미 다른 사용자에게 연결된 외부 IdP 계정은 연결할 수 없습니다.
+- authorization code, access token, IdP token 응답은 UI에 저장하지 않습니다.
 
 ## 로그아웃
 
