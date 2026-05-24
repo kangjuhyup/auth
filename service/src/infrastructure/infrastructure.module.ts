@@ -230,6 +230,7 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     UserWriteRepositoryPort,
     TenantContextPort,
     AdminSessionTokenPort,
+    LoginAttemptPolicyPort,
     OidcInteractionPort,
     TenantRepository,
     GroupRepository,
