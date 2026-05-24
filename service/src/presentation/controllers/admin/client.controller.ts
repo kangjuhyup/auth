@@ -21,8 +21,9 @@ import {
   PaginationQuery,
   PaginatedResult,
 } from '@presentation/dto';
-import { TenantContext } from '@application/dto';
+import { AuditContext, TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
+import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
 
 @UseGuards(AdminGuard)
 @Controller('t/:tenantCode/admin/clients')
@@ -52,8 +53,10 @@ export class AdminClientController {
   create(
     @Tenant() tenant: TenantContext,
     @Body() dto: CreateClientDto,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<{ id: string }> {
-    return this.commandPort.createClient(tenant.id, dto);
+    if (!auditContext) return this.commandPort.createClient(tenant.id, dto);
+    return this.commandPort.createClient(tenant.id, dto, auditContext);
   }
 
   @Get(':id/auth-policy')
@@ -69,8 +72,10 @@ export class AdminClientController {
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
     @Body() dto: UpdateClientDto,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    return this.commandPort.updateClient(tenant.id, id, dto);
+    if (!auditContext) return this.commandPort.updateClient(tenant.id, id, dto);
+    return this.commandPort.updateClient(tenant.id, id, dto, auditContext);
   }
 
   @Put(':id/auth-policy')
@@ -78,15 +83,26 @@ export class AdminClientController {
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
     @Body() dto: UpdateClientAuthPolicyDto,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    return this.commandPort.updateClientAuthPolicy(tenant.id, id, dto);
+    if (!auditContext) {
+      return this.commandPort.updateClientAuthPolicy(tenant.id, id, dto);
+    }
+    return this.commandPort.updateClientAuthPolicy(
+      tenant.id,
+      id,
+      dto,
+      auditContext,
+    );
   }
 
   @Delete(':id')
   delete(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    return this.commandPort.deleteClient(tenant.id, id);
+    if (!auditContext) return this.commandPort.deleteClient(tenant.id, id);
+    return this.commandPort.deleteClient(tenant.id, id, auditContext);
   }
 }

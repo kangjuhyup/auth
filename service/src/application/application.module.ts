@@ -25,11 +25,13 @@ import { AuthQueryHandler } from './queries/handlers/auth-query.handler';
 import { UserQueryPort } from './queries/ports/user-query.port';
 import { UserQueryHandler } from './queries/handlers/user-query.handler';
 import { ClientQueryPort } from './queries/ports/client-query.port';
+import { ObservabilityQueryPort } from './queries/ports/observability-query.port';
 
 // Domain Repositories
 import { ClientCommandPort } from './commands/ports/client-command.port';
 import { ClientCommandHandler } from './commands/handlers/client-command.handler';
 import { ClientQueryHandler } from './queries/handlers/client-query.handler';
+import { ObservabilityQueryHandler } from './queries/handlers/observability-query.handler';
 import { KeyCommandPort } from './commands/ports/key-command.port';
 import { KeyCommandHandler } from './commands/handlers/key-command.handler';
 import { PolicyCommandPort } from './commands/ports/policy-command.port';
@@ -130,6 +132,10 @@ const queries = [
   {
     provide: ClientQueryPort,
     useClass: ClientQueryHandler,
+  },
+  {
+    provide: ObservabilityQueryPort,
+    useClass: ObservabilityQueryHandler,
   },
 ];
 

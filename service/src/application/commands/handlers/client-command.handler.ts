@@ -7,6 +7,7 @@ import {
 import { ClientCommandPort } from '../ports/client-command.port';
 import {
   CreateClientDto,
+  AuditContext,
   UpdateClientAuthPolicyDto,
   UpdateClientDto,
 } from '@application/dto';
@@ -35,6 +36,7 @@ export class ClientCommandHandler implements ClientCommandPort {
   async createClient(
     tenantId: string,
     dto: CreateClientDto,
+    auditContext?: AuditContext,
   ): Promise<{ id: string }> {
     this.logger.log(
       `Creating client clientId=${dto.clientId} in tenant=${tenantId}`,
@@ -86,6 +88,7 @@ export class ClientCommandHandler implements ClientCommandPort {
         type: saved.type,
         tokenEndpointAuthMethod: saved.tokenEndpointAuthMethod,
       },
+      auditContext,
     });
     return { id: saved.id };
   }
@@ -94,6 +97,7 @@ export class ClientCommandHandler implements ClientCommandPort {
     tenantId: string,
     id: string,
     dto: UpdateClientDto,
+    auditContext?: AuditContext,
   ): Promise<void> {
     this.logger.log(`Updating client id=${id} in tenant=${tenantId}`);
 
@@ -144,6 +148,7 @@ export class ClientCommandHandler implements ClientCommandPort {
         changedFields: Object.keys(dto).filter((key) => key !== 'secret'),
         secretChanged: dto.secret !== undefined,
       },
+      auditContext,
     });
   }
 
@@ -151,6 +156,7 @@ export class ClientCommandHandler implements ClientCommandPort {
     tenantId: string,
     id: string,
     dto: UpdateClientAuthPolicyDto,
+    auditContext?: AuditContext,
   ): Promise<void> {
     this.logger.log(
       `Updating client auth policy id=${id} in tenant=${tenantId}`,
@@ -206,10 +212,15 @@ export class ClientCommandHandler implements ClientCommandPort {
       metadata: {
         changedFields: Object.keys(dto),
       },
+      auditContext,
     });
   }
 
-  async deleteClient(tenantId: string, id: string): Promise<void> {
+  async deleteClient(
+    tenantId: string,
+    id: string,
+    auditContext?: AuditContext,
+  ): Promise<void> {
     this.logger.log(`Deleting client id=${id} in tenant=${tenantId}`);
 
     orThrow(
@@ -223,6 +234,7 @@ export class ClientCommandHandler implements ClientCommandPort {
       action: 'DELETE',
       resourceType: 'client',
       resourceId: id,
+      auditContext,
     });
     await this.clientRepo.delete(id);
   }

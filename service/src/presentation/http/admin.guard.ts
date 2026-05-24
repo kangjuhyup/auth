@@ -13,7 +13,13 @@ export class AdminGuard implements CanActivate {
     if (!token) return false;
 
     try {
-      return await this.adminSession.verifyAdminToken(token);
+      const session = await this.adminSession.getAdminSession(token);
+      if (!session) {
+        return false;
+      }
+
+      (req as any).adminSession = session;
+      return true;
     } catch {
       return false;
     }

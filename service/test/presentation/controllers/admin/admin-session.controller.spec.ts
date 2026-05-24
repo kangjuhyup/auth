@@ -17,6 +17,7 @@ describe('AdminSessionController', () => {
         username: 'admin',
       }),
       getAdminSession: jest.fn().mockResolvedValue({
+        userId: 'user-1',
         username: 'admin',
       }),
     };
@@ -33,7 +34,7 @@ describe('AdminSessionController', () => {
       cookie: jest.fn(),
       clearCookie: jest.fn(),
     };
-    request = { ip: '203.0.113.10' };
+    request = { ip: '203.0.113.10', headers: {} };
 
     controller = new AdminSessionController(adminSession, config);
   });
@@ -64,6 +65,8 @@ describe('AdminSessionController', () => {
       username: 'admin',
       password: 'secret',
       ipAddress: '203.0.113.10',
+      userAgent: undefined,
+      correlationId: undefined,
     });
     expect(response.cookie).toHaveBeenCalledWith(
       ADMIN_SESSION_COOKIE_NAME,

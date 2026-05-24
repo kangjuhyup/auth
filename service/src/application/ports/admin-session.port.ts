@@ -14,9 +14,13 @@ export abstract class AdminSessionPort {
     username: string;
     password: string;
     ipAddress?: string;
+    userAgent?: string;
+    correlationId?: string;
   }): Promise<AdminSessionIssueResult>;
 
   abstract verifyAdminToken(token: string): Promise<boolean>;
 
-  abstract getAdminSession(token: string): Promise<{ username: string } | null>;
+  abstract getAdminSession(
+    token: string,
+  ): Promise<{ userId: string; username: string } | null>;
 }

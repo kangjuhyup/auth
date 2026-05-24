@@ -249,7 +249,7 @@ describe('createOidcProvider', () => {
 
     listener(
       {
-        req: { tenant: { id: 'tenant-1' } },
+        req: { tenant: { id: 'tenant-1' }, correlationId: 'req-1' },
         get: jest.fn().mockReturnValue('Mozilla/5.0'),
         oidc: {
           route: 'token',
@@ -278,6 +278,7 @@ describe('createOidcProvider', () => {
     expect(event.action).toBe('TOKEN_REVOKED');
     expect(event.reason).toBe('RefreshTokenReuseDetected');
     expect(event.resourceId).toBe('grant-1');
+    expect(event.correlationId).toBe('req-1');
     expect(event.metadata).toEqual({
       grantType: 'refresh_token',
       action: 'revoke_grant',

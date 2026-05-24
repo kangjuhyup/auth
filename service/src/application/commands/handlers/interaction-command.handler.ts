@@ -6,6 +6,7 @@ import {
 } from '@application/ports/interaction-command.port';
 import { UserQueryPort } from '@application/queries/ports/user-query.port';
 import { LoginAttemptPolicyPort } from '@application/ports/login-attempt-policy.port';
+import { OperationalMetricsPort } from '@application/ports/operational-metrics.port';
 import type { TenantContext } from '@application/dto';
 
 type PendingMfaSession = Readonly<{
@@ -28,6 +29,7 @@ export class InteractionCommandHandler
     private readonly userQuery: UserQueryPort,
     private readonly oidcInteraction: OidcInteractionPort,
     private readonly loginAttemptPolicy: LoginAttemptPolicyPort,
+    private readonly metrics: OperationalMetricsPort,
   ) {
     super();
   }
@@ -66,6 +68,10 @@ export class InteractionCommandHandler
     tenant?: TenantContext;
   }): Promise<InteractionResponse> {
     if (!params.tenant) {
+      this.metrics.incrementCounter('login_failure_total', {
+        tenantCode: params.tenantCode,
+        reason: 'tenant_not_found',
+      });
       return { status: 400, body: { error: 'tenant_not_found' } };
     }
 
@@ -77,6 +83,10 @@ export class InteractionCommandHandler
     };
     const decision = await this.loginAttemptPolicy.consumeAttempt(attempt);
     if (!decision.allowed) {
+      this.metrics.incrementCounter('login_failure_total', {
+        tenantCode: params.tenantCode,
+        reason: decision.reason,
+      });
       return {
         status: decision.reason === 'rate_limited' ? 429 : 423,
         body: {
@@ -97,10 +107,17 @@ export class InteractionCommandHandler
 
     if (!result) {
       await this.loginAttemptPolicy.recordFailure(attempt);
+      this.metrics.incrementCounter('login_failure_total', {
+        tenantCode: params.tenantCode,
+        reason: 'invalid_credentials',
+      });
       return { status: 401, body: { error: 'invalid_credentials' } };
     }
 
     await this.loginAttemptPolicy.recordSuccess(attempt);
+    this.metrics.incrementCounter('login_success_total', {
+      tenantCode: params.tenantCode,
+    });
 
     const details = await this.oidcInteraction.getDetails({
       tenantCode: params.tenantCode,
@@ -175,6 +192,9 @@ export class InteractionCommandHandler
     });
 
     if (!verified) {
+      this.metrics.incrementCounter('login_failure_total', {
+        reason: 'mfa_failed',
+      });
       return { status: 401, body: { error: 'mfa_failed' } };
     }
 

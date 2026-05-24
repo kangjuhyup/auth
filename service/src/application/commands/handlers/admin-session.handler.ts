@@ -5,6 +5,7 @@ import { UserQueryPort } from '@application/queries/ports/user-query.port';
 import { AdminSessionPort } from '@application/ports/admin-session.port';
 import { AdminSessionTokenPort } from '@application/ports/admin-session-token.port';
 import { LoginAttemptPolicyPort } from '@application/ports/login-attempt-policy.port';
+import { AuditRecorder } from '@application/services/audit-recorder';
 
 const MASTER_TENANT = 'master';
 const ADMIN_ROLE = 'SUPER_ADMIN';
@@ -17,6 +18,7 @@ export class AdminSessionHandler extends AdminSessionPort {
     private readonly adminQuery: AdminQueryPort,
     private readonly tokenPort: AdminSessionTokenPort,
     private readonly loginAttemptPolicy: LoginAttemptPolicyPort,
+    private readonly auditRecorder?: AuditRecorder,
   ) {
     super();
   }
@@ -25,6 +27,8 @@ export class AdminSessionHandler extends AdminSessionPort {
     username: string;
     password: string;
     ipAddress?: string;
+    userAgent?: string;
+    correlationId?: string;
   }) {
     const tenant = await this.tenantRepo.findByCode(MASTER_TENANT);
     if (!tenant) {
@@ -39,6 +43,16 @@ export class AdminSessionHandler extends AdminSessionPort {
     };
     const decision = await this.loginAttemptPolicy.consumeAttempt(attempt);
     if (!decision.allowed) {
+      await this.recordAdminLoginAudit({
+        tenantId: tenant.id,
+        username: params.username,
+        success: false,
+        reason: decision.reason,
+        severity: 'WARN',
+        ipAddress: params.ipAddress,
+        userAgent: params.userAgent,
+        correlationId: params.correlationId,
+      });
       return {
         blocked: true as const,
         reason: decision.reason,
@@ -53,12 +67,33 @@ export class AdminSessionHandler extends AdminSessionPort {
     });
     if (!result) {
       await this.loginAttemptPolicy.recordFailure(attempt);
+      await this.recordAdminLoginAudit({
+        tenantId: tenant.id,
+        username: params.username,
+        success: false,
+        reason: 'InvalidCredentials',
+        severity: 'WARN',
+        ipAddress: params.ipAddress,
+        userAgent: params.userAgent,
+        correlationId: params.correlationId,
+      });
       return null;
     }
 
     const roles = await this.adminQuery.getUserRoles(tenant.id, result.userId);
     if (!roles.some((role) => role.code === ADMIN_ROLE)) {
       await this.loginAttemptPolicy.recordFailure(attempt);
+      await this.recordAdminLoginAudit({
+        tenantId: tenant.id,
+        userId: result.userId,
+        username: params.username,
+        success: false,
+        reason: 'MissingSuperAdminRole',
+        severity: 'WARN',
+        ipAddress: params.ipAddress,
+        userAgent: params.userAgent,
+        correlationId: params.correlationId,
+      });
       return null;
     }
 
@@ -67,10 +102,30 @@ export class AdminSessionHandler extends AdminSessionPort {
       userId: result.userId,
     });
     if (!token) {
+      await this.recordAdminLoginAudit({
+        tenantId: tenant.id,
+        userId: result.userId,
+        username: params.username,
+        success: false,
+        reason: 'TokenIssueFailed',
+        severity: 'ERROR',
+        ipAddress: params.ipAddress,
+        userAgent: params.userAgent,
+        correlationId: params.correlationId,
+      });
       return null;
     }
 
     await this.loginAttemptPolicy.recordSuccess(attempt);
+    await this.recordAdminLoginAudit({
+      tenantId: tenant.id,
+      userId: result.userId,
+      username: params.username,
+      success: true,
+      ipAddress: params.ipAddress,
+      userAgent: params.userAgent,
+      correlationId: params.correlationId,
+    });
 
     return { token, username: params.username };
   }
@@ -80,18 +135,20 @@ export class AdminSessionHandler extends AdminSessionPort {
     return session !== null;
   }
 
-  async getAdminSession(token: string): Promise<{ username: string } | null> {
+  async getAdminSession(
+    token: string,
+  ): Promise<{ userId: string; username: string } | null> {
     const session = await this.getVerifiedSession(token);
     if (!session) {
       return null;
     }
 
-    return { username: session.username };
+    return session;
   }
 
   private async getVerifiedSession(
     token: string,
-  ): Promise<{ username: string } | null> {
+  ): Promise<{ userId: string; username: string } | null> {
     const tenant = await this.tenantRepo.findByCode(MASTER_TENANT);
     if (!tenant) {
       return null;
@@ -121,6 +178,36 @@ export class AdminSessionHandler extends AdminSessionPort {
       return null;
     }
 
-    return { username: profile.username };
+    return { userId: verified.userId, username: profile.username };
+  }
+
+  private async recordAdminLoginAudit(params: {
+    tenantId: string;
+    userId?: string;
+    username: string;
+    success: boolean;
+    reason?: string;
+    severity?: 'INFO' | 'WARN' | 'ERROR';
+    ipAddress?: string;
+    userAgent?: string;
+    correlationId?: string;
+  }): Promise<void> {
+    await this.auditRecorder?.recordAdminAction({
+      tenantId: params.tenantId,
+      category: params.success ? 'AUTH' : 'SECURITY',
+      severity: params.severity ?? 'INFO',
+      action: params.success ? 'LOGIN' : 'ACCESS_DENIED',
+      resourceType: 'admin-session',
+      resourceId: params.username,
+      success: params.success,
+      reason: params.reason ?? null,
+      auditContext: {
+        actorUserId: params.userId ?? null,
+        actorUsername: params.username,
+        ipAddress: params.ipAddress ?? null,
+        userAgent: params.userAgent ?? null,
+        correlationId: params.correlationId ?? null,
+      },
+    });
   }
 }

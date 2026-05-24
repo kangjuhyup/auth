@@ -2,8 +2,9 @@ import { Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { AdminGuard } from '@presentation/http/admin.guard';
 import { KeyCommandPort } from '@application/commands/ports/key-command.port';
 import { AdminQueryPort } from '@application/queries/ports';
-import { TenantContext } from '@application/dto';
+import { AuditContext, TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
+import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
 
 @UseGuards(AdminGuard)
 @Controller('t/:tenantCode/admin/keys')
@@ -19,7 +20,11 @@ export class AdminKeyController {
   }
 
   @Post('rotate')
-  rotate(@Tenant() tenant: TenantContext): Promise<void> {
-    return this.commandPort.rotateKeys(tenant.id);
+  rotate(
+    @Tenant() tenant: TenantContext,
+    @AdminAuditContext() auditContext?: AuditContext,
+  ): Promise<void> {
+    if (!auditContext) return this.commandPort.rotateKeys(tenant.id);
+    return this.commandPort.rotateKeys(tenant.id, auditContext);
   }
 }

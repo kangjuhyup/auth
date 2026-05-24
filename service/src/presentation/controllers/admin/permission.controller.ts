@@ -19,8 +19,9 @@ import {
   PaginationQuery,
   PaginatedResult,
 } from '@presentation/dto';
-import { TenantContext } from '@application/dto';
+import { AuditContext, TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
+import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
 
 @UseGuards(AdminGuard)
 @Controller('t/:tenantCode/admin/permissions')
@@ -50,8 +51,10 @@ export class AdminPermissionController {
   create(
     @Tenant() tenant: TenantContext,
     @Body() dto: CreatePermissionDto,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<{ id: string }> {
-    return this.commandPort.createPermission(tenant.id, dto);
+    if (!auditContext) return this.commandPort.createPermission(tenant.id, dto);
+    return this.commandPort.createPermission(tenant.id, dto, auditContext);
   }
 
   @Put(':id')
@@ -59,15 +62,21 @@ export class AdminPermissionController {
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
     @Body() dto: UpdatePermissionDto,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    return this.commandPort.updatePermission(tenant.id, id, dto);
+    if (!auditContext) {
+      return this.commandPort.updatePermission(tenant.id, id, dto);
+    }
+    return this.commandPort.updatePermission(tenant.id, id, dto, auditContext);
   }
 
   @Delete(':id')
   delete(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    return this.commandPort.deletePermission(tenant.id, id);
+    if (!auditContext) return this.commandPort.deletePermission(tenant.id, id);
+    return this.commandPort.deletePermission(tenant.id, id, auditContext);
   }
 }

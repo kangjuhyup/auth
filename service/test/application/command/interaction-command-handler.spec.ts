@@ -5,6 +5,7 @@ describe('InteractionCommandHandler', () => {
   let userQuery: any;
   let oidcInteraction: any;
   let loginAttemptPolicy: any;
+  let metrics: any;
   const tenant = { id: 'tenant-1', code: 'acme', name: 'ACME' };
 
   beforeEach(() => {
@@ -25,10 +26,16 @@ describe('InteractionCommandHandler', () => {
       }),
       recordSuccess: jest.fn().mockResolvedValue(undefined),
     };
+    metrics = {
+      incrementCounter: jest.fn(),
+      observeLatency: jest.fn(),
+      snapshot: jest.fn(),
+    };
     handler = new InteractionCommandHandler(
       userQuery,
       oidcInteraction,
       loginAttemptPolicy,
+      metrics,
     );
   });
 
@@ -71,6 +78,13 @@ describe('InteractionCommandHandler', () => {
       ipAddress: undefined,
       scope: 'interaction',
     });
+    expect(metrics.incrementCounter).toHaveBeenCalledWith(
+      'login_failure_total',
+      {
+        tenantCode: 'acme',
+        reason: 'invalid_credentials',
+      },
+    );
   });
 
   it('rate limit 상태면 인증을 수행하지 않고 429 응답을 반환한다', async () => {
@@ -98,6 +112,13 @@ describe('InteractionCommandHandler', () => {
       },
     });
     expect(userQuery.authenticate).not.toHaveBeenCalled();
+    expect(metrics.incrementCounter).toHaveBeenCalledWith(
+      'login_failure_total',
+      {
+        tenantCode: 'acme',
+        reason: 'rate_limited',
+      },
+    );
   });
 
   it('임시 계정 잠금 상태면 인증을 수행하지 않고 423 응답을 반환한다', async () => {
@@ -204,6 +225,10 @@ describe('InteractionCommandHandler', () => {
       ipAddress: undefined,
       scope: 'interaction',
     });
+    expect(metrics.incrementCounter).toHaveBeenCalledWith(
+      'login_success_total',
+      { tenantCode: 'acme' },
+    );
   });
 
   it('pending MFA가 없으면 400 응답을 반환한다', async () => {

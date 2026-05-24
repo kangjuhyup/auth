@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { KeyCommandPort } from '../ports/key-command.port';
+import type { AuditContext } from '@application/dto';
 import { TenantRepository, JwksKeyRepository } from '@domain/repositories';
 import { JwksKeyCryptoPort } from '@application/ports/jwks-key-crypto.port';
 import { JwksKeyModel } from '@domain/models/jwks-key';
@@ -17,7 +18,10 @@ export class KeyCommandHandler implements KeyCommandPort {
     private readonly auditRecorder?: AuditRecorder,
   ) {}
 
-  async rotateKeys(tenantId: string): Promise<void> {
+  async rotateKeys(
+    tenantId: string,
+    auditContext?: AuditContext,
+  ): Promise<void> {
     orThrow(
       await this.tenantRepo.findById(tenantId),
       new NotFoundException('Tenant not found'),
@@ -58,6 +62,7 @@ export class KeyCommandHandler implements KeyCommandPort {
         algorithm: kp.algorithm,
         rotatedKeyCount: activeKeys.length,
       },
+      auditContext,
     });
 
     this.logger.log(

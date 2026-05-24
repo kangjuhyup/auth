@@ -33,7 +33,12 @@ export class AppThrottlerGuard extends ThrottlerGuard {
     }
     const req = context.switchToHttp().getRequest<{ path?: string }>();
     const path = req.path ?? '';
-    if (path === '/health' || path.startsWith('/health/')) {
+    if (
+      path === '/health' ||
+      path.startsWith('/health/') ||
+      path === '/ready' ||
+      path === '/metrics'
+    ) {
       return true;
     }
     if (OIDC_TOKEN_PATH.test(path)) {

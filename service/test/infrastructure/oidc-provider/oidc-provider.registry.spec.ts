@@ -30,7 +30,10 @@ describe('OidcProviderRegistry', () => {
   });
 
   it('다른 tenantCode에 대해서는 각각 별도의 Provider를 생성한다', async () => {
-    const create = jest.fn().mockResolvedValueOnce(makeProvider()).mockResolvedValueOnce(makeProvider());
+    const create = jest
+      .fn()
+      .mockResolvedValueOnce(makeProvider())
+      .mockResolvedValueOnce(makeProvider());
 
     const registry = new OidcProviderRegistry(create);
 
@@ -56,5 +59,32 @@ describe('OidcProviderRegistry', () => {
 
     expect(again).toBe(providerInstance);
     expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('provider 생성과 cache hit/miss metric을 기록한다', async () => {
+    const providerInstance = makeProvider();
+    const create = jest.fn().mockResolvedValue(providerInstance);
+    const metrics = {
+      incrementCounter: jest.fn(),
+      observeLatency: jest.fn(),
+      snapshot: jest.fn(),
+    };
+    const registry = new OidcProviderRegistry(create, metrics as any);
+
+    await registry.get('tenant-a');
+    await registry.get('tenant-a');
+
+    expect(metrics.incrementCounter).toHaveBeenCalledWith(
+      'provider_cache_miss_total',
+      { tenantCode: 'tenant-a' },
+    );
+    expect(metrics.incrementCounter).toHaveBeenCalledWith(
+      'provider_created_total',
+      { tenantCode: 'tenant-a' },
+    );
+    expect(metrics.incrementCounter).toHaveBeenCalledWith(
+      'provider_cache_hit_total',
+      { tenantCode: 'tenant-a' },
+    );
   });
 });

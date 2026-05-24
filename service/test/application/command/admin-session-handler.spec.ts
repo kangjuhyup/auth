@@ -134,6 +134,7 @@ describe('AdminSessionHandler', () => {
 
   it('관리자 세션 조회 시 사용자명을 반환한다', async () => {
     await expect(handler.getAdminSession('valid-token')).resolves.toEqual({
+      userId: 'user-1',
       username: 'admin',
     });
 

@@ -19,6 +19,8 @@ import {
   PaginationQuery,
   PaginatedResult,
 } from '@presentation/dto';
+import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
+import type { AuditContext } from '@application/dto';
 
 @UseGuards(AdminGuard)
 @Controller('admin/tenants')
@@ -41,17 +43,30 @@ export class AdminTenantController {
   }
 
   @Post()
-  create(@Body() dto: CreateTenantDto): Promise<{ id: string }> {
-    return this.commandPort.createTenant(dto);
+  create(
+    @Body() dto: CreateTenantDto,
+    @AdminAuditContext() auditContext?: AuditContext,
+  ): Promise<{ id: string }> {
+    if (!auditContext) return this.commandPort.createTenant(dto);
+    return this.commandPort.createTenant(dto, auditContext);
   }
 
   @Put(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateTenantDto): Promise<void> {
-    return this.commandPort.updateTenant(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateTenantDto,
+    @AdminAuditContext() auditContext?: AuditContext,
+  ): Promise<void> {
+    if (!auditContext) return this.commandPort.updateTenant(id, dto);
+    return this.commandPort.updateTenant(id, dto, auditContext);
   }
 
   @Delete(':id')
-  delete(@Param('id') id: string): Promise<void> {
-    return this.commandPort.deleteTenant(id);
+  delete(
+    @Param('id') id: string,
+    @AdminAuditContext() auditContext?: AuditContext,
+  ): Promise<void> {
+    if (!auditContext) return this.commandPort.deleteTenant(id);
+    return this.commandPort.deleteTenant(id, auditContext);
   }
 }

@@ -91,6 +91,11 @@ function createAdapter(overrides: Record<string, unknown> = {}) {
       {} as any,
       idpPort as any,
       {} as any,
+      {
+        incrementCounter: jest.fn(),
+        observeLatency: jest.fn(),
+        snapshot: jest.fn(),
+      } as any,
     ),
     provider,
     registry,

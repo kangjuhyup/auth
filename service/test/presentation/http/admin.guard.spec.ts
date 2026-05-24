@@ -8,7 +8,11 @@ function makeContext(req: any): ExecutionContext {
 
 function makeAdminSession(result: boolean) {
   return {
-    verifyAdminToken: jest.fn().mockResolvedValue(result),
+    getAdminSession: jest
+      .fn()
+      .mockResolvedValue(
+        result ? { userId: 'user-1', username: 'admin' } : null,
+      ),
   };
 }
 
@@ -20,7 +24,7 @@ describe('AdminGuard', () => {
     const result = await guard.canActivate(makeContext({ headers: {} }));
 
     expect(result).toBe(false);
-    expect(adminSession.verifyAdminToken).not.toHaveBeenCalled();
+    expect(adminSession.getAdminSession).not.toHaveBeenCalled();
   });
 
   it('Bearer 형식이 아니면 false를 반환한다', async () => {
@@ -32,7 +36,7 @@ describe('AdminGuard', () => {
     );
 
     expect(result).toBe(false);
-    expect(adminSession.verifyAdminToken).not.toHaveBeenCalled();
+    expect(adminSession.getAdminSession).not.toHaveBeenCalled();
   });
 
   it('AdminSessionPort가 false를 반환하면 false를 반환한다', async () => {
@@ -43,7 +47,7 @@ describe('AdminGuard', () => {
       makeContext({ headers: { authorization: 'Bearer invalid-token' } }),
     );
 
-    expect(adminSession.verifyAdminToken).toHaveBeenCalledWith('invalid-token');
+    expect(adminSession.getAdminSession).toHaveBeenCalledWith('invalid-token');
     expect(result).toBe(false);
   });
 
@@ -55,7 +59,7 @@ describe('AdminGuard', () => {
       makeContext({ headers: { authorization: 'Bearer valid-token' } }),
     );
 
-    expect(adminSession.verifyAdminToken).toHaveBeenCalledWith('valid-token');
+    expect(adminSession.getAdminSession).toHaveBeenCalledWith('valid-token');
     expect(result).toBe(true);
   });
 
@@ -69,15 +73,13 @@ describe('AdminGuard', () => {
       }),
     );
 
-    expect(adminSession.verifyAdminToken).toHaveBeenCalledWith('cookie-token');
+    expect(adminSession.getAdminSession).toHaveBeenCalledWith('cookie-token');
     expect(result).toBe(true);
   });
 
   it('AdminSessionPort 오류가 발생하면 false를 반환한다', async () => {
     const adminSession = {
-      verifyAdminToken: jest
-        .fn()
-        .mockRejectedValue(new Error('provider error')),
+      getAdminSession: jest.fn().mockRejectedValue(new Error('provider error')),
     };
     const guard = new AdminGuard(adminSession as any);
 

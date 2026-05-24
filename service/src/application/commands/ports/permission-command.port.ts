@@ -1,4 +1,8 @@
-import { CreatePermissionDto, UpdatePermissionDto } from '@application/dto';
+import {
+  AuditContext,
+  CreatePermissionDto,
+  UpdatePermissionDto,
+} from '@application/dto';
 
 export abstract class PermissionCommandPort {
   /**
@@ -8,6 +12,7 @@ export abstract class PermissionCommandPort {
   abstract createPermission(
     tenantId: string,
     dto: CreatePermissionDto,
+    auditContext?: AuditContext,
   ): Promise<{ id: string }>;
 
   /**
@@ -18,11 +23,16 @@ export abstract class PermissionCommandPort {
     tenantId: string,
     id: string,
     dto: UpdatePermissionDto,
+    auditContext?: AuditContext,
   ): Promise<void>;
 
   /**
    * Delete a permission
    * @description 퍼미션 삭제
    */
-  abstract deletePermission(tenantId: string, id: string): Promise<void>;
+  abstract deletePermission(
+    tenantId: string,
+    id: string,
+    auditContext?: AuditContext,
+  ): Promise<void>;
 }

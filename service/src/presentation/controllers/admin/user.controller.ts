@@ -21,8 +21,9 @@ import {
   PaginationQuery,
   PaginatedResult,
 } from '@presentation/dto';
-import { TenantContext } from '@application/dto';
+import { AuditContext, TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
+import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
 
 @UseGuards(AdminGuard)
 @Controller('t/:tenantCode/admin/users')
@@ -70,8 +71,10 @@ export class AdminUserController {
   create(
     @Tenant() tenant: TenantContext,
     @Body() dto: CreateUserDto,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<{ id: string }> {
-    return this.commandPort.createUser(tenant.id, dto);
+    if (!auditContext) return this.commandPort.createUser(tenant.id, dto);
+    return this.commandPort.createUser(tenant.id, dto, auditContext);
   }
 
   @Put(':id')
@@ -79,16 +82,20 @@ export class AdminUserController {
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
     @Body() dto: UpdateUserDto,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    return this.commandPort.updateUser(tenant.id, id, dto);
+    if (!auditContext) return this.commandPort.updateUser(tenant.id, id, dto);
+    return this.commandPort.updateUser(tenant.id, id, dto, auditContext);
   }
 
   @Delete(':id')
   delete(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    return this.commandPort.deleteUser(tenant.id, id);
+    if (!auditContext) return this.commandPort.deleteUser(tenant.id, id);
+    return this.commandPort.deleteUser(tenant.id, id, auditContext);
   }
 
   @Get(':id/roles')
@@ -104,8 +111,12 @@ export class AdminUserController {
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
     @Param('roleId') roleId: string,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    return this.commandPort.assignRole(tenant.id, id, roleId);
+    if (!auditContext) {
+      return this.commandPort.assignRole(tenant.id, id, roleId);
+    }
+    return this.commandPort.assignRole(tenant.id, id, roleId, auditContext);
   }
 
   @Delete(':id/roles/:roleId')
@@ -113,7 +124,11 @@ export class AdminUserController {
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
     @Param('roleId') roleId: string,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    return this.commandPort.removeRole(tenant.id, id, roleId);
+    if (!auditContext) {
+      return this.commandPort.removeRole(tenant.id, id, roleId);
+    }
+    return this.commandPort.removeRole(tenant.id, id, roleId, auditContext);
   }
 }

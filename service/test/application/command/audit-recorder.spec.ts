@@ -20,7 +20,13 @@ describe('AuditRecorder', () => {
       resourceType: 'client',
       resourceId: 'client-1',
       metadata: { changedFields: ['name'] },
-      correlationId: 'req-1',
+      auditContext: {
+        actorUserId: 'admin-user-1',
+        actorUsername: 'admin',
+        ipAddress: '203.0.113.10',
+        userAgent: 'Mozilla/5.0',
+        correlationId: 'req-1',
+      },
     });
 
     expect(eventRepo.save).toHaveBeenCalledWith(expect.any(EventModel));
@@ -30,7 +36,13 @@ describe('AuditRecorder', () => {
     expect(event.action).toBe('UPDATE');
     expect(event.resourceType).toBe('client');
     expect(event.resourceId).toBe('client-1');
+    expect(event.userId).toBe('admin-user-1');
+    expect(event.ip?.toString('utf8')).toBe('203.0.113.10');
+    expect(event.userAgent).toBe('Mozilla/5.0');
     expect(event.correlationId).toBe('req-1');
-    expect(event.metadata).toEqual({ changedFields: ['name'] });
+    expect(event.metadata).toEqual({
+      changedFields: ['name'],
+      actor: { username: 'admin' },
+    });
   });
 });

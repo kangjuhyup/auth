@@ -7,6 +7,7 @@ import {
 import { IdentityProviderCommandPort } from '../ports/identity-provider-command.port';
 import {
   CreateIdentityProviderDto,
+  AuditContext,
   UpdateIdentityProviderDto,
 } from '@application/dto';
 import { IdentityProviderRepository } from '@domain/repositories';
@@ -26,6 +27,7 @@ export class IdentityProviderCommandHandler implements IdentityProviderCommandPo
   async createIdentityProvider(
     tenantId: string,
     dto: CreateIdentityProviderDto,
+    auditContext?: AuditContext,
   ): Promise<{ id: string }> {
     this.logger.log(`Creating IdP provider=${dto.provider} tenant=${tenantId}`);
 
@@ -63,6 +65,7 @@ export class IdentityProviderCommandHandler implements IdentityProviderCommandPo
         protocol: saved.protocol,
         enabled: saved.enabled,
       },
+      auditContext,
     });
     return { id: saved.id };
   }
@@ -71,6 +74,7 @@ export class IdentityProviderCommandHandler implements IdentityProviderCommandPo
     tenantId: string,
     id: string,
     dto: UpdateIdentityProviderDto,
+    auditContext?: AuditContext,
   ): Promise<void> {
     this.logger.log(`Updating IdP id=${id} tenant=${tenantId}`);
 
@@ -120,10 +124,15 @@ export class IdentityProviderCommandHandler implements IdentityProviderCommandPo
         changedFields: Object.keys(dto).filter((key) => key !== 'clientSecret'),
         clientSecretChanged: dto.clientSecret !== undefined,
       },
+      auditContext,
     });
   }
 
-  async deleteIdentityProvider(tenantId: string, id: string): Promise<void> {
+  async deleteIdentityProvider(
+    tenantId: string,
+    id: string,
+    auditContext?: AuditContext,
+  ): Promise<void> {
     this.logger.log(`Deleting IdP id=${id} tenant=${tenantId}`);
 
     orThrow(
@@ -136,6 +145,7 @@ export class IdentityProviderCommandHandler implements IdentityProviderCommandPo
       action: 'DELETE',
       resourceType: 'identity-provider',
       resourceId: id,
+      auditContext,
     });
     await this.idpRepo.delete(id);
   }

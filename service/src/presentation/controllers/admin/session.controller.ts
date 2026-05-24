@@ -27,6 +27,14 @@ interface AdminLoginDto {
   password: string;
 }
 
+function pickFirst(value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    return typeof value[0] === 'string' ? value[0] : undefined;
+  }
+
+  return typeof value === 'string' ? value : undefined;
+}
+
 @Controller('admin/session')
 export class AdminSessionController {
   constructor(
@@ -43,6 +51,10 @@ export class AdminSessionController {
     const result = await this.adminSession.issueAdminToken({
       ...dto,
       ipAddress: request.ip,
+      userAgent: pickFirst(request.headers?.['user-agent']),
+      correlationId:
+        pickFirst(request.headers?.['x-correlation-id']) ??
+        pickFirst(request.headers?.['x-request-id']),
     });
     if (!result) {
       throw new UnauthorizedException('Invalid credentials');
@@ -76,7 +88,7 @@ export class AdminSessionController {
       throw new UnauthorizedException('Invalid session');
     }
 
-    return session;
+    return { username: session.username };
   }
 
   @Delete()

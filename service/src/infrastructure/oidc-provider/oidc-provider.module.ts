@@ -22,6 +22,8 @@ import {
 } from '@domain/repositories';
 import { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
 import { JwksKeyCryptoPort } from '@application/ports/jwks-key-crypto.port';
+import { OperationalMetricsPort } from '@application/ports/operational-metrics.port';
+import { InMemoryOperationalMetricsAdapter } from '@infrastructure/observability/in-memory-operational-metrics.adapter';
 
 @Module({
   imports: [
@@ -47,6 +49,7 @@ import { JwksKeyCryptoPort } from '@application/ports/jwks-key-crypto.port';
         eventRepository: EventRepository,
         jwksKeyCrypto: JwksKeyCryptoPort,
         symmetricCrypto: SymmetricCryptoPort,
+        metrics: OperationalMetricsPort,
       ) => {
         const base = configService.getOrThrow<string>('OIDC_ISSUER');
 
@@ -70,7 +73,7 @@ import { JwksKeyCryptoPort } from '@application/ports/jwks-key-crypto.port';
             jwksKeyCrypto,
             symmetricCrypto,
           });
-        });
+        }, metrics);
 
         return registry;
       },
@@ -88,13 +91,18 @@ import { JwksKeyCryptoPort } from '@application/ports/jwks-key-crypto.port';
         EventRepository,
         JwksKeyCryptoPort,
         SymmetricCryptoPort,
+        OperationalMetricsPort,
       ],
+    },
+    {
+      provide: OperationalMetricsPort,
+      useClass: InMemoryOperationalMetricsAdapter,
     },
     {
       provide: AccessVerifierPort,
       useClass: AccessVerifierAdapter,
     },
   ],
-  exports: [OIDC_PROVIDER, AccessVerifierPort],
+  exports: [OIDC_PROVIDER, AccessVerifierPort, OperationalMetricsPort],
 })
 export class OidcProviderModule {}

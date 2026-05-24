@@ -139,6 +139,11 @@ async function auditRefreshTokenReuse(
       reason: 'RefreshTokenReuseDetected',
       ip: null,
       userAgent: ctx?.get?.('user-agent') ?? null,
+      correlationId:
+        ctx?.req?.correlationId ??
+        ctx?.get?.('x-correlation-id') ??
+        ctx?.get?.('x-request-id') ??
+        null,
       metadata: {
         grantType: 'refresh_token',
         action: 'revoke_grant',

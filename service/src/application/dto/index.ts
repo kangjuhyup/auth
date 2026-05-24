@@ -1,5 +1,6 @@
 export * from './pagination.dto';
 export * from './auth.dto';
+export * from './audit-context.dto';
 export * from './client.dto';
 export * from './policy.dto';
 export * from './tenant.dto';
@@ -8,3 +9,4 @@ export * from './role.dto';
 export * from './permission.dto';
 export * from './group.dto';
 export * from './identity-provider.dto';
+export * from './observability.dto';

@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { UserCommandPort } from '../ports/user-command.port';
-import { CreateUserDto, UpdateUserDto } from '@application/dto';
+import { AuditContext, CreateUserDto, UpdateUserDto } from '@application/dto';
 import { UserWriteRepositoryPort } from '../ports/user-write-repository.port';
 import { RoleRepository, RoleAssignmentRepository } from '@domain/repositories';
 import { PasswordHashPort } from '@application/ports/password-hash.port';
@@ -25,6 +25,7 @@ export class UserCommandHandler implements UserCommandPort {
   async createUser(
     tenantId: string,
     dto: CreateUserDto,
+    auditContext?: AuditContext,
   ): Promise<{ id: string }> {
     this.logger.log(`Creating user in tenant=${tenantId}`);
 
@@ -63,6 +64,7 @@ export class UserCommandHandler implements UserCommandPort {
       action: 'CREATE',
       resourceType: 'user',
       resourceId: userId,
+      auditContext,
     });
     return { id: userId };
   }
@@ -71,6 +73,7 @@ export class UserCommandHandler implements UserCommandPort {
     tenantId: string,
     id: string,
     dto: UpdateUserDto,
+    auditContext?: AuditContext,
   ): Promise<void> {
     this.logger.log(`Updating user=${id} in tenant=${tenantId}`);
 
@@ -101,10 +104,15 @@ export class UserCommandHandler implements UserCommandPort {
         changedFields: Object.keys(dto),
         statusChanged: dto.status !== undefined,
       },
+      auditContext,
     });
   }
 
-  async deleteUser(tenantId: string, id: string): Promise<void> {
+  async deleteUser(
+    tenantId: string,
+    id: string,
+    auditContext?: AuditContext,
+  ): Promise<void> {
     this.logger.log(`Deleting user=${id} in tenant=${tenantId}`);
 
     const user = orThrow(
@@ -121,6 +129,7 @@ export class UserCommandHandler implements UserCommandPort {
       action: 'DELETE',
       resourceType: 'user',
       resourceId: id,
+      auditContext,
     });
   }
 
@@ -128,6 +137,7 @@ export class UserCommandHandler implements UserCommandPort {
     tenantId: string,
     userId: string,
     roleId: string,
+    auditContext?: AuditContext,
   ): Promise<void> {
     this.logger.log(
       `Assigning role=${roleId} to user=${userId} in tenant=${tenantId}`,
@@ -152,12 +162,22 @@ export class UserCommandHandler implements UserCommandPort {
     if (alreadyAssigned) return;
 
     await this.roleAssignment.assignToUser({ userId, roleId });
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      category: 'USER',
+      action: 'ASSIGN',
+      resourceType: 'user-role',
+      resourceId: userId,
+      metadata: { roleId },
+      auditContext,
+    });
   }
 
   async removeRole(
     tenantId: string,
     userId: string,
     roleId: string,
+    auditContext?: AuditContext,
   ): Promise<void> {
     this.logger.log(
       `Removing role=${roleId} from user=${userId} in tenant=${tenantId}`,
@@ -170,5 +190,14 @@ export class UserCommandHandler implements UserCommandPort {
     );
 
     await this.roleAssignment.removeFromUser({ userId, roleId });
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      category: 'USER',
+      action: 'REVOKE',
+      resourceType: 'user-role',
+      resourceId: userId,
+      metadata: { roleId },
+      auditContext,
+    });
   }
 }

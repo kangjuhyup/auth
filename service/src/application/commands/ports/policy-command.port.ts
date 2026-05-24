@@ -1,4 +1,4 @@
-import type { UpdateTenantPoliciesDto } from '@application/dto';
+import type { AuditContext, UpdateTenantPoliciesDto } from '@application/dto';
 
 export abstract class PolicyCommandPort {
   /**
@@ -8,5 +8,6 @@ export abstract class PolicyCommandPort {
   abstract updatePolicies(
     tenantId: string,
     policies: UpdateTenantPoliciesDto,
+    auditContext?: AuditContext,
   ): Promise<void>;
 }

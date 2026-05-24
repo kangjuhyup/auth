@@ -7,7 +7,7 @@ import {
 import { Transactional } from '@application/decorators/transactional.decorator';
 import { TransactionManagerPort } from '@application/ports/transaction-manager.port';
 import { PolicyCommandPort } from '../ports/policy-command.port';
-import type { UpdateTenantPoliciesDto } from '@application/dto';
+import type { AuditContext, UpdateTenantPoliciesDto } from '@application/dto';
 import { TenantRepository, TenantConfigRepository } from '@domain/repositories';
 import { TenantConfigModel } from '@domain/models/tenant-config';
 import { orThrow } from '@domain/utils';
@@ -28,6 +28,7 @@ export class PolicyCommandHandler implements PolicyCommandPort {
   async updatePolicies(
     tenantId: string,
     policies: UpdateTenantPoliciesDto,
+    auditContext?: AuditContext,
   ): Promise<void> {
     if (!policies || typeof policies !== 'object' || Array.isArray(policies)) {
       throw new BadRequestException('Invalid policies payload');
@@ -60,6 +61,7 @@ export class PolicyCommandHandler implements PolicyCommandPort {
       resourceType: 'tenant-policy',
       resourceId: tenantId,
       metadata: { sections: Object.keys(policies) },
+      auditContext,
     });
 
     this.logger.log(`Updated policies for tenant=${tenantId}`);

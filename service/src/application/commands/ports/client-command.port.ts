@@ -1,4 +1,5 @@
 import {
+  AuditContext,
   CreateClientDto,
   UpdateClientAuthPolicyDto,
   UpdateClientDto,
@@ -12,6 +13,7 @@ export abstract class ClientCommandPort {
   abstract createClient(
     tenantId: string,
     dto: CreateClientDto,
+    auditContext?: AuditContext,
   ): Promise<{ id: string }>;
 
   /**
@@ -22,6 +24,7 @@ export abstract class ClientCommandPort {
     tenantId: string,
     id: string,
     dto: UpdateClientDto,
+    auditContext?: AuditContext,
   ): Promise<void>;
 
   /**
@@ -32,11 +35,16 @@ export abstract class ClientCommandPort {
     tenantId: string,
     id: string,
     dto: UpdateClientAuthPolicyDto,
+    auditContext?: AuditContext,
   ): Promise<void>;
 
   /**
    * Delete an OIDC client
    * @description OIDC 클라이언트 삭제
    */
-  abstract deleteClient(tenantId: string, id: string): Promise<void>;
+  abstract deleteClient(
+    tenantId: string,
+    id: string,
+    auditContext?: AuditContext,
+  ): Promise<void>;
 }

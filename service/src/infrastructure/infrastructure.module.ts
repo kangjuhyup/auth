@@ -72,6 +72,9 @@ import { OidcInteractionAdapter } from './oidc-provider/oidc-interaction.adapter
 import { RedisLoginAttemptStore } from './stores/redis/redis-login-attempt.store';
 import { RedisSamlCacheProviderFactory } from './stores/redis/redis-saml-cache-provider.factory';
 import { RedisSamlRelayStateStore } from './stores/redis/redis-saml-relay-state.store';
+import { ReadinessCheckPort } from '@application/ports/readiness-check.port';
+import { OperationalMetricsPort } from '@application/ports/operational-metrics.port';
+import { InfrastructureReadinessAdapter } from './observability/infrastructure-readiness.adapter';
 
 // Password Hash Implementations
 import { Argon2idHash } from './crypto/password/impl/argon2-hash';
@@ -173,6 +176,10 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     RedisSamlRelayStateStore,
     RedisSamlCacheProviderFactory,
     {
+      provide: ReadinessCheckPort,
+      useClass: InfrastructureReadinessAdapter,
+    },
+    {
       provide: MfaVerificationPort,
       useClass: MfaVerificationAdapter,
     },
@@ -256,6 +263,8 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     TransactionManagerPort,
     JwksKeyCryptoPort,
     SymmetricCryptoPort,
+    ReadinessCheckPort,
+    OperationalMetricsPort,
   ],
 })
 export class InfrastructureModule {}

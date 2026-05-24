@@ -59,6 +59,11 @@ export class InteractionController {
       username: body.username ?? '',
       password: body.password ?? '',
       ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+      correlationId:
+        (req as any).correlationId ??
+        req.get('x-correlation-id') ??
+        req.get('x-request-id'),
       req,
       res,
       tenant: this.getTenant(req),

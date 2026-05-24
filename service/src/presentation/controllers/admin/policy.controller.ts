@@ -2,9 +2,14 @@ import { Controller, Get, Put, Body, UseGuards } from '@nestjs/common';
 import { AdminGuard } from '@presentation/http/admin.guard';
 import { PolicyCommandPort } from '@application/commands/ports/policy-command.port';
 import { AdminQueryPort } from '@application/queries/ports';
-import { TenantContext, type TenantPolicyResponse } from '@application/dto';
+import {
+  AuditContext,
+  TenantContext,
+  type TenantPolicyResponse,
+} from '@application/dto';
 import { UpdateTenantPoliciesDto } from '@presentation/dto';
 import { Tenant } from '../../http/tenant.decorator';
+import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
 
 @UseGuards(AdminGuard)
 @Controller('t/:tenantCode/admin/policies')
@@ -22,8 +27,19 @@ export class AdminPolicyController {
   @Put()
   update(
     @Tenant() tenant: TenantContext,
-    @Body() policies: UpdateTenantPoliciesDto,
+    @Body() policies: UpdateTenantPoliciesDto | Record<string, unknown>,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    return this.commandPort.updatePolicies(tenant.id, policies);
+    if (!auditContext) {
+      return this.commandPort.updatePolicies(
+        tenant.id,
+        policies as UpdateTenantPoliciesDto,
+      );
+    }
+    return this.commandPort.updatePolicies(
+      tenant.id,
+      policies as UpdateTenantPoliciesDto,
+      auditContext,
+    );
   }
 }
