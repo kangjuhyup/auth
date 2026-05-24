@@ -6,8 +6,12 @@ import {
   Delete,
   Body,
   Param,
+  Query,
+  Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { AuthCommandPort } from '@application/commands/ports/auth-command.port';
 import { AuthQueryPort } from '@application/queries/ports';
 import {
@@ -20,6 +24,8 @@ import {
   TotpConfirmationDto,
   UpdateMfaPreferenceDto,
   UpdateProfileDto,
+  StartIdentityLinkDto,
+  IdentityLinkCallbackQuery,
   ProfileResponse,
   ConsentResponse,
 } from '@presentation/dto';
@@ -213,6 +219,40 @@ export class AuthController {
     { id: string; provider: string; email?: string | null; linkedAt: Date }[]
   > {
     return this.queryPort.getIdentityLinks(tenant.id, user.userId);
+  }
+
+  @Post('identity-links/:provider/start')
+  @UseGuards(AccessGuard)
+  @ApiBearerAuth('access-token')
+  startIdentityLink(
+    @Tenant() tenant: TenantContext,
+    @AuthUser() user: AuthenticatedUser,
+    @Param('provider') provider: string,
+    @Body() dto: StartIdentityLinkDto,
+    @Req() req: Request,
+  ): Promise<{ authorizationUrl: string }> {
+    const redirectUri = `${req.protocol}://${req.get('host')}/auth/identity-links/${provider}/callback?tenantCode=${encodeURIComponent(tenant.code)}`;
+    return this.commandPort.startIdentityLink(tenant.id, user.userId, {
+      provider,
+      tenantCode: tenant.code,
+      redirectUri,
+      returnTo: dto.returnTo,
+    });
+  }
+
+  @Get('identity-links/:provider/callback')
+  async completeIdentityLink(
+    @Param('provider') provider: string,
+    @Query() query: IdentityLinkCallbackQuery,
+    @Res() res: Response,
+  ): Promise<void> {
+    const result = await this.commandPort.completeIdentityLink({
+      provider,
+      state: query.state,
+      code: query.code,
+      error: query.error,
+    });
+    res.redirect(result.redirectTo);
   }
 
   @Delete('identity-links/:identityId')

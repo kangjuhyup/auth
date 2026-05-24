@@ -21,6 +21,8 @@ function createMockCommandPort(): jest.Mocked<AuthCommandPort> {
     confirmTotpEnrollment: jest.fn(),
     disableTotp: jest.fn(),
     updateMfaPreference: jest.fn(),
+    startIdentityLink: jest.fn(),
+    completeIdentityLink: jest.fn(),
     unlinkIdentity: jest.fn(),
     updateProfile: jest.fn(),
     revokeConsent: jest.fn(),
@@ -275,6 +277,61 @@ describe('AuthController', () => {
     expect(queryPort.getIdentityLinks).toHaveBeenCalledWith(
       tenant.id,
       authUser.userId,
+    );
+  });
+
+  it('startIdentityLink는 callback URL을 구성해 commandPort에 전달한다', async () => {
+    const result = {
+      authorizationUrl: 'https://idp.example/authorize?state=state-1',
+    };
+    const req = {
+      protocol: 'https',
+      get: jest.fn().mockReturnValue('auth.example'),
+    } as any;
+    commandPort.startIdentityLink.mockResolvedValue(result);
+
+    await expect(
+      controller.startIdentityLink(
+        tenant,
+        authUser,
+        'google',
+        { returnTo: '/admin/security' },
+        req,
+      ),
+    ).resolves.toBe(result);
+    expect(commandPort.startIdentityLink).toHaveBeenCalledWith(
+      tenant.id,
+      authUser.userId,
+      {
+        provider: 'google',
+        tenantCode: tenant.code,
+        redirectUri:
+          'https://auth.example/auth/identity-links/google/callback?tenantCode=acme',
+        returnTo: '/admin/security',
+      },
+    );
+  });
+
+  it('completeIdentityLink는 command 결과로 redirect 한다', async () => {
+    const res = { redirect: jest.fn() } as any;
+    commandPort.completeIdentityLink.mockResolvedValue({
+      redirectTo: '/admin/security?identityLinked=google',
+    });
+
+    await controller.completeIdentityLink(
+      'google',
+      { state: 'state-1', code: 'code-1' },
+      res,
+    );
+
+    expect(commandPort.completeIdentityLink).toHaveBeenCalledWith({
+      provider: 'google',
+      state: 'state-1',
+      code: 'code-1',
+      error: undefined,
+    });
+    expect(res.redirect).toHaveBeenCalledWith(
+      '/admin/security?identityLinked=google',
     );
   });
 

@@ -76,3 +76,25 @@ export interface IdentityLinkResponse {
   email?: string | null;
   linkedAt: Date;
 }
+
+export interface StartIdentityLinkDto {
+  provider: string;
+  tenantCode: string;
+  redirectUri: string;
+  returnTo?: string | null;
+}
+
+export interface StartIdentityLinkResponse {
+  authorizationUrl: string;
+}
+
+export interface CompleteIdentityLinkDto {
+  provider?: string | null;
+  state?: string | null;
+  code?: string | null;
+  error?: string | null;
+}
+
+export interface CompleteIdentityLinkResponse {
+  redirectTo: string;
+}

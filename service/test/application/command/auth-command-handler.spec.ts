@@ -12,14 +12,18 @@ import type {
 } from '@application/ports/otp-token.port';
 import type { NotificationPort } from '@application/ports/notification.port';
 import type { MfaVerificationPort } from '@application/ports/mfa-verification.port';
+import type { IdpPort } from '@application/ports/idp.port';
+import type { IdentityLinkSessionPort } from '@application/ports/identity-link-session.port';
 import type { ConfigService } from '@nestjs/config';
 import type { ConsentRepository } from '@domain/repositories/consent.repository';
 import type { UserIdentityRepository } from '@domain/repositories/user-identity.repository';
 import type { EventRepository } from '@domain/repositories/event.repository';
+import type { IdentityProviderRepository } from '@domain/repositories/identity-provider.repository';
 import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
 import { ConsentModel } from '@domain/models/consent';
 import { UserIdentityModel } from '@domain/models/user-identity';
+import { IdentityProviderModel } from '@domain/models/identity-provider';
 
 function makeActiveUser(
   overrides?: Partial<Parameters<typeof UserModel.of>[0]>,
@@ -94,6 +98,75 @@ function createMockUserIdentityRepo(): jest.Mocked<UserIdentityRepository> {
     listByUser: jest.fn().mockResolvedValue([identity]),
     save: jest.fn().mockResolvedValue(identity),
     delete: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
+function makeIdentityProvider(
+  overrides?: Partial<ConstructorParameters<typeof IdentityProviderModel>[0]>,
+): IdentityProviderModel {
+  return new IdentityProviderModel(
+    {
+      tenantId: 'tenant-1',
+      provider: 'google',
+      protocol: 'oauth2',
+      displayName: 'Google',
+      clientId: 'google-client',
+      clientSecret: 'google-secret',
+      redirectUri: 'https://auth.example/callback',
+      enabled: true,
+      oauthConfig: {
+        authorizationUrl: 'https://idp.example/authorize',
+        tokenUrl: 'https://idp.example/token',
+        userinfoUrl: 'https://idp.example/userinfo',
+        scopes: ['openid', 'email'],
+        subField: 'sub',
+        emailField: 'email',
+      },
+      ...overrides,
+    },
+    'idp-1',
+  );
+}
+
+function createMockIdentityProviderRepo(): jest.Mocked<IdentityProviderRepository> {
+  const provider = makeIdentityProvider();
+  return {
+    findByTenantAndProvider: jest.fn().mockResolvedValue(provider),
+    listEnabledByTenant: jest.fn().mockResolvedValue([provider]),
+    listByTenant: jest.fn().mockResolvedValue({ items: [provider], total: 1 }),
+    findByIdForTenant: jest.fn().mockResolvedValue(provider),
+    save: jest.fn().mockResolvedValue(provider),
+    delete: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
+function createMockIdpPort(): jest.Mocked<IdpPort> {
+  return {
+    getAuthorizationUrl: jest
+      .fn()
+      .mockReturnValue('https://idp.example/authorize?state=state-1'),
+    exchangeCode: jest.fn().mockResolvedValue({
+      sub: 'google-sub-1',
+      email: 'john@example.com',
+      profile: { sub: 'google-sub-1', email: 'john@example.com' },
+    }),
+  };
+}
+
+function createMockIdentityLinkSession(): jest.Mocked<IdentityLinkSessionPort> {
+  return {
+    create: jest.fn().mockResolvedValue(undefined),
+    consume: jest.fn().mockResolvedValue({
+      state: 'state-1',
+      tenantId: 'tenant-1',
+      tenantCode: 'acme',
+      userId: 'user-1',
+      provider: 'google',
+      redirectUri:
+        'https://auth.example/auth/identity-links/google/callback?tenantCode=acme',
+      returnTo: '/admin/security',
+      createdAt: '2026-05-24T00:00:00.000Z',
+    }),
   };
 }
 
@@ -190,6 +263,9 @@ describe('AuthCommandHandler', () => {
   let configService: jest.Mocked<ConfigService>;
   let consentRepo: jest.Mocked<ConsentRepository>;
   let userIdentityRepo: jest.Mocked<UserIdentityRepository>;
+  let identityProviderRepo: jest.Mocked<IdentityProviderRepository>;
+  let idpPort: jest.Mocked<IdpPort>;
+  let identityLinkSession: jest.Mocked<IdentityLinkSessionPort>;
   let eventRepo: jest.Mocked<EventRepository>;
 
   beforeEach(() => {
@@ -202,6 +278,9 @@ describe('AuthCommandHandler', () => {
     mfaVerification = createMockMfaVerification();
     consentRepo = createMockConsentRepo();
     userIdentityRepo = createMockUserIdentityRepo();
+    identityProviderRepo = createMockIdentityProviderRepo();
+    idpPort = createMockIdpPort();
+    identityLinkSession = createMockIdentityLinkSession();
     eventRepo = createMockEventRepo();
     configService = {
       get: jest.fn().mockReturnValue(undefined),
@@ -218,6 +297,9 @@ describe('AuthCommandHandler', () => {
       configService,
       consentRepo,
       userIdentityRepo,
+      identityProviderRepo,
+      idpPort,
+      identityLinkSession,
       eventRepo,
     );
   });
@@ -1117,6 +1199,164 @@ describe('AuthCommandHandler', () => {
       expect(userWriteRepo.findCredentialsByType).not.toHaveBeenCalled();
       expect(user.mfaEnabled).toBe(false);
       expect(userWriteRepo.save).toHaveBeenCalledWith(user);
+    });
+  });
+
+  describe('identity link flow', () => {
+    it('startIdentityLink는 state 세션을 저장하고 IdP authorization URL을 반환한다', async () => {
+      const result = await handler.startIdentityLink('tenant-1', 'user-1', {
+        provider: 'google',
+        tenantCode: 'acme',
+        redirectUri:
+          'https://auth.example/auth/identity-links/google/callback?tenantCode=acme',
+        returnTo: '/admin/security',
+      });
+
+      expect(identityProviderRepo.findByTenantAndProvider).toHaveBeenCalledWith(
+        'tenant-1',
+        'google',
+      );
+      expect(identityLinkSession.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          tenantCode: 'acme',
+          userId: 'user-1',
+          provider: 'google',
+          redirectUri:
+            'https://auth.example/auth/identity-links/google/callback?tenantCode=acme',
+          returnTo: '/admin/security',
+        }),
+        300,
+      );
+      expect(idpPort.getAuthorizationUrl).toHaveBeenCalledWith(
+        'google',
+        expect.any(Object),
+        'google-client',
+        'https://auth.example/auth/identity-links/google/callback?tenantCode=acme',
+        expect.any(String),
+      );
+      expect(result).toEqual({
+        authorizationUrl: 'https://idp.example/authorize?state=state-1',
+      });
+    });
+
+    it('startIdentityLink는 외부 returnTo를 기본 보안 설정 경로로 치환한다', async () => {
+      await handler.startIdentityLink('tenant-1', 'user-1', {
+        provider: 'google',
+        tenantCode: 'acme',
+        redirectUri:
+          'https://auth.example/auth/identity-links/google/callback?tenantCode=acme',
+        returnTo: 'https://evil.example/callback',
+      });
+
+      expect(identityLinkSession.create).toHaveBeenCalledWith(
+        expect.objectContaining({ returnTo: '/admin/security' }),
+        expect.any(Number),
+      );
+    });
+
+    it('completeIdentityLink는 state를 소비하고 외부 계정을 현재 사용자에게 연결한다', async () => {
+      userIdentityRepo.findByProviderSub.mockResolvedValue(null);
+      userIdentityRepo.listByUser.mockResolvedValue([]);
+
+      const result = await handler.completeIdentityLink({
+        provider: 'google',
+        state: 'state-1',
+        code: 'authorization-code',
+      });
+
+      expect(identityLinkSession.consume).toHaveBeenCalledWith('state-1');
+      expect(idpPort.exchangeCode).toHaveBeenCalledWith(
+        'google',
+        expect.any(Object),
+        'google-client',
+        'google-secret',
+        'authorization-code',
+        'https://auth.example/auth/identity-links/google/callback?tenantCode=acme',
+      );
+      expect(userIdentityRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          provider: 'google',
+          providerSub: 'google-sub-1',
+          email: 'john@example.com',
+        }),
+      );
+      expect(eventRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          category: 'SECURITY',
+          action: 'LINK_IDP',
+          resourceType: 'identity_provider_link',
+          metadata: {
+            provider: 'google',
+            email: 'john@example.com',
+            alreadyLinked: false,
+          },
+        }),
+      );
+      expect(result).toEqual({
+        redirectTo: '/admin/security?identityLinked=google',
+      });
+    });
+
+    it('completeIdentityLink는 다른 사용자에게 연결된 provider sub이면 저장하지 않는다', async () => {
+      userIdentityRepo.findByProviderSub.mockResolvedValue(
+        makeIdentity({ userId: 'other-user' }, 'identity-other'),
+      );
+
+      const result = await handler.completeIdentityLink({
+        provider: 'google',
+        state: 'state-1',
+        code: 'authorization-code',
+      });
+
+      expect(userIdentityRepo.save).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        redirectTo: '/admin/security?identityError=idp_already_linked',
+      });
+      expect(eventRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'ACCESS_DENIED',
+          reason: 'IdentityProviderAccountAlreadyLinked',
+          success: false,
+        }),
+      );
+    });
+
+    it('completeIdentityLink는 현재 사용자의 같은 provider가 다른 sub에 연결되어 있으면 차단한다', async () => {
+      userIdentityRepo.findByProviderSub.mockResolvedValue(null);
+      userIdentityRepo.listByUser.mockResolvedValue([
+        makeIdentity({ providerSub: 'other-google-sub' }, 'identity-2'),
+      ]);
+
+      const result = await handler.completeIdentityLink({
+        provider: 'google',
+        state: 'state-1',
+        code: 'authorization-code',
+      });
+
+      expect(userIdentityRepo.save).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        redirectTo: '/admin/security?identityError=idp_provider_already_linked',
+      });
+    });
+
+    it('completeIdentityLink는 state가 없거나 만료되면 기본 경로로 실패 redirect를 반환한다', async () => {
+      identityLinkSession.consume.mockResolvedValue(null);
+
+      await expect(
+        handler.completeIdentityLink({ state: null, code: 'code' }),
+      ).resolves.toEqual({
+        redirectTo: '/admin/security?identityError=invalid_state',
+      });
+      await expect(
+        handler.completeIdentityLink({ state: 'expired', code: 'code' }),
+      ).resolves.toEqual({
+        redirectTo: '/admin/security?identityError=invalid_state',
+      });
     });
   });
 

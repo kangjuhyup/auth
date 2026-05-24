@@ -10,6 +10,10 @@ import {
   TotpConfirmationResponse,
   UpdateMfaPreferenceDto,
   UpdateProfileDto,
+  StartIdentityLinkDto,
+  StartIdentityLinkResponse,
+  CompleteIdentityLinkDto,
+  CompleteIdentityLinkResponse,
 } from '@application/dto';
 
 export abstract class AuthCommandPort {
@@ -133,6 +137,24 @@ export abstract class AuthCommandPort {
     userId: string,
     dto: UpdateMfaPreferenceDto,
   ): Promise<void>;
+
+  /**
+   * Start external identity provider account linking
+   * @description 현재 사용자 외부 IdP 계정 연결 시작
+   */
+  abstract startIdentityLink(
+    tenantId: string,
+    userId: string,
+    dto: StartIdentityLinkDto,
+  ): Promise<StartIdentityLinkResponse>;
+
+  /**
+   * Complete external identity provider account linking
+   * @description 외부 IdP callback으로 현재 사용자 계정 연결 완료
+   */
+  abstract completeIdentityLink(
+    dto: CompleteIdentityLinkDto,
+  ): Promise<CompleteIdentityLinkResponse>;
 
   /**
    * Unlink an external identity provider account

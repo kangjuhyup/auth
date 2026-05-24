@@ -10,22 +10,31 @@ import {
   UpdateMfaPreferenceDto,
   UpdateProfileDto,
   SignupDto,
+  StartIdentityLinkDto,
+  StartIdentityLinkResponse,
+  CompleteIdentityLinkDto,
+  CompleteIdentityLinkResponse,
 } from '@application/dto';
 import { AuthCommandPort } from '../ports/auth-command.port';
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ulid } from 'ulid';
+import { randomBytes } from 'node:crypto';
 import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
+import { UserIdentityModel } from '@domain/models/user-identity';
 import { PasswordHashPort } from '@application/ports/password-hash.port';
 import { OtpHashPort } from '@application/ports/otp-hash.port';
 import { OtpTokenPort } from '@application/ports/otp-token.port';
 import { NotificationPort } from '@application/ports/notification.port';
 import { MfaVerificationPort } from '@application/ports/mfa-verification.port';
+import { IdpPort } from '@application/ports/idp.port';
+import { IdentityLinkSessionPort } from '@application/ports/identity-link-session.port';
 import { UserWriteRepositoryPort } from '../ports/user-write-repository.port';
 import { ConsentRepository } from '@domain/repositories/consent.repository';
 import { UserIdentityRepository } from '@domain/repositories/user-identity.repository';
 import { EventRepository } from '@domain/repositories/event.repository';
+import { IdentityProviderRepository } from '@domain/repositories/identity-provider.repository';
 import { EventModel } from '@domain/models/event';
 import { orThrow } from '@domain/utils';
 
@@ -43,6 +52,9 @@ export class AuthCommandHandler implements AuthCommandPort {
     private readonly configService: ConfigService,
     private readonly consentRepo: ConsentRepository,
     private readonly userIdentityRepo: UserIdentityRepository,
+    private readonly identityProviderRepo: IdentityProviderRepository,
+    private readonly idpPort: IdpPort,
+    private readonly identityLinkSession: IdentityLinkSessionPort,
     private readonly eventRepo: EventRepository,
   ) {}
 
@@ -572,6 +584,212 @@ export class AuthCommandHandler implements AuthCommandPort {
     });
   }
 
+  async startIdentityLink(
+    tenantId: string,
+    userId: string,
+    dto: StartIdentityLinkDto,
+  ): Promise<StartIdentityLinkResponse> {
+    this.assertActiveTenantUser(
+      await this.userWriteRepo.findById(userId),
+      tenantId,
+    );
+
+    const idpConfig = await this.identityProviderRepo.findByTenantAndProvider(
+      tenantId,
+      dto.provider,
+    );
+    if (!idpConfig || !idpConfig.enabled) {
+      throw new Error('IdentityProviderNotFound');
+    }
+    if (idpConfig.protocol !== 'oauth2') {
+      throw new BadRequestException(
+        'Only OAuth2 identity provider is supported',
+      );
+    }
+
+    const state = randomBytes(32).toString('base64url');
+    const returnTo = this.normalizeReturnTo(dto.returnTo);
+    await this.identityLinkSession.create(
+      {
+        state,
+        tenantId,
+        tenantCode: dto.tenantCode,
+        userId,
+        provider: dto.provider,
+        redirectUri: dto.redirectUri,
+        returnTo,
+        createdAt: new Date().toISOString(),
+      },
+      this.getTtlSec('IDENTITY_LINK_STATE_TTL_SEC', 300),
+    );
+
+    return {
+      authorizationUrl: this.idpPort.getAuthorizationUrl(
+        idpConfig.provider,
+        idpConfig.oauthConfig,
+        idpConfig.clientId,
+        dto.redirectUri,
+        state,
+      ),
+    };
+  }
+
+  async completeIdentityLink(
+    dto: CompleteIdentityLinkDto,
+  ): Promise<CompleteIdentityLinkResponse> {
+    if (!dto.state) {
+      return {
+        redirectTo: this.redirectWithIdentityLinkError(null, 'invalid_state'),
+      };
+    }
+
+    const session = await this.identityLinkSession.consume(dto.state);
+    if (!session) {
+      return {
+        redirectTo: this.redirectWithIdentityLinkError(null, 'invalid_state'),
+      };
+    }
+    if (dto.provider && dto.provider !== session.provider) {
+      return {
+        redirectTo: this.redirectWithIdentityLinkError(
+          session.returnTo,
+          'idp_provider_mismatch',
+        ),
+      };
+    }
+    if (dto.error) {
+      return {
+        redirectTo: this.redirectWithIdentityLinkError(
+          session.returnTo,
+          dto.error,
+        ),
+      };
+    }
+    if (!dto.code) {
+      return {
+        redirectTo: this.redirectWithIdentityLinkError(
+          session.returnTo,
+          'idp_no_code',
+        ),
+      };
+    }
+
+    const idpConfig = await this.identityProviderRepo.findByTenantAndProvider(
+      session.tenantId,
+      session.provider,
+    );
+    if (!idpConfig || !idpConfig.enabled || idpConfig.protocol !== 'oauth2') {
+      return {
+        redirectTo: this.redirectWithIdentityLinkError(
+          session.returnTo,
+          'idp_not_found',
+        ),
+      };
+    }
+
+    try {
+      const userInfo = await this.idpPort.exchangeCode(
+        idpConfig.provider,
+        idpConfig.oauthConfig,
+        idpConfig.clientId,
+        idpConfig.clientSecret,
+        dto.code,
+        session.redirectUri,
+      );
+      if (!userInfo.sub) {
+        return {
+          redirectTo: this.redirectWithIdentityLinkError(
+            session.returnTo,
+            'idp_missing_subject',
+          ),
+        };
+      }
+
+      const existing = await this.userIdentityRepo.findByProviderSub(
+        session.tenantId,
+        session.provider,
+        userInfo.sub,
+      );
+      if (existing && existing.userId !== session.userId) {
+        await this.recordAudit({
+          tenantId: session.tenantId,
+          userId: session.userId,
+          category: 'SECURITY',
+          severity: 'WARN',
+          action: 'ACCESS_DENIED',
+          resourceType: 'identity_provider_link',
+          resourceId: existing.id,
+          success: false,
+          reason: 'IdentityProviderAccountAlreadyLinked',
+          metadata: { provider: session.provider },
+        });
+        return {
+          redirectTo: this.redirectWithIdentityLinkError(
+            session.returnTo,
+            'idp_already_linked',
+          ),
+        };
+      }
+
+      const userLinks = await this.userIdentityRepo.listByUser(
+        session.tenantId,
+        session.userId,
+      );
+      const sameProviderLink = userLinks.find(
+        (identity) => identity.provider === session.provider,
+      );
+      if (sameProviderLink && sameProviderLink.providerSub !== userInfo.sub) {
+        return {
+          redirectTo: this.redirectWithIdentityLinkError(
+            session.returnTo,
+            'idp_provider_already_linked',
+          ),
+        };
+      }
+
+      if (!existing) {
+        await this.userIdentityRepo.save(
+          new UserIdentityModel({
+            tenantId: session.tenantId,
+            userId: session.userId,
+            provider: session.provider,
+            providerSub: userInfo.sub,
+            email: userInfo.email ?? null,
+            profileJson: userInfo.profile ?? null,
+            linkedAt: new Date(),
+          }),
+        );
+      }
+
+      await this.recordAudit({
+        tenantId: session.tenantId,
+        userId: session.userId,
+        category: 'SECURITY',
+        action: 'LINK_IDP',
+        resourceType: 'identity_provider_link',
+        resourceId: existing?.id ?? null,
+        metadata: {
+          provider: session.provider,
+          email: userInfo.email ?? null,
+          alreadyLinked: Boolean(existing),
+        },
+      });
+      return {
+        redirectTo: this.redirectWithIdentityLinkSuccess(
+          session.returnTo,
+          session.provider,
+        ),
+      };
+    } catch {
+      return {
+        redirectTo: this.redirectWithIdentityLinkError(
+          session.returnTo,
+          'idp_exchange_failed',
+        ),
+      };
+    }
+  }
+
   async unlinkIdentity(
     tenantId: string,
     userId: string,
@@ -691,6 +909,39 @@ export class AuthCommandHandler implements AuthCommandPort {
     return value?.trim() ? value.trim() : fallback;
   }
 
+  private normalizeReturnTo(returnTo: string | null | undefined): string {
+    if (!returnTo || !returnTo.startsWith('/') || returnTo.startsWith('//')) {
+      return '/admin/security';
+    }
+    return returnTo;
+  }
+
+  private redirectWithIdentityLinkSuccess(
+    returnTo: string | null | undefined,
+    provider: string,
+  ): string {
+    return this.addQueryParam(this.normalizeReturnTo(returnTo), {
+      identityLinked: provider,
+    });
+  }
+
+  private redirectWithIdentityLinkError(
+    returnTo: string | null | undefined,
+    error: string,
+  ): string {
+    return this.addQueryParam(this.normalizeReturnTo(returnTo), {
+      identityError: error,
+    });
+  }
+
+  private addQueryParam(path: string, params: Record<string, string>): string {
+    const url = new URL(path, 'http://localhost');
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
+    }
+    return `${url.pathname}${url.search}`;
+  }
+
   private async createRecoveryCodes(userId: string): Promise<string[]> {
     const codes: string[] = [];
     for (let i = 0; i < 10; i += 1) {
@@ -715,7 +966,7 @@ export class AuthCommandHandler implements AuthCommandPort {
     userId?: string | null;
     category: 'AUTH' | 'USER' | 'SECURITY';
     severity?: 'INFO' | 'WARN' | 'ERROR';
-    action: 'UPDATE' | 'UNLINK_IDP' | 'ACCESS_DENIED';
+    action: 'UPDATE' | 'LINK_IDP' | 'UNLINK_IDP' | 'ACCESS_DENIED';
     resourceType: string;
     resourceId?: string | null;
     success?: boolean;

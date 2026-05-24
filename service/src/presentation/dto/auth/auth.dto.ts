@@ -130,6 +130,31 @@ export class UpdateProfileDto {
   phone?: string;
 }
 
+export class StartIdentityLinkDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  returnTo?: string;
+}
+
+export class IdentityLinkCallbackQuery {
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  state?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  @MaskLog({ type: 'full' })
+  code?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  error?: string;
+}
+
 export class ProfileResponse {
   @Expose()
   id!: string;
