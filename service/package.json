@@ -107,7 +107,14 @@
       "node_modules/"
     ],
     "collectCoverageFrom": [
-      "src/**/*.(t|j)s"
+      "src/**/*.(t|j)s",
+      "!src/main.ts",
+      "!src/**/*.module.ts",
+      "!src/**/index.ts",
+      "!src/application/**/ports/**/*",
+      "!src/infrastructure/mikro-orm/entities/**/*",
+      "!src/infrastructure/mikro-orm/migrations/**/*",
+      "!src/presentation/dto/**/*"
     ],
     "coverageDirectory": "./coverage",
     "verbose": true,

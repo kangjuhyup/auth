@@ -23,10 +23,11 @@ import { AdminSessionController } from './controllers/admin/session.controller';
 import { AdminIdentityProviderController } from './controllers/admin/identity-provider.controller';
 import { InteractionController } from './controllers/interaction.controller';
 import { AdminGuard } from './http/admin.guard';
+import { AccessGuard } from './http/access.guard';
 
 @Module({
   imports: [ApplicationModule],
-  providers: [AdminGuard, OidcDelegateMiddleware],
+  providers: [AdminGuard, AccessGuard, OidcDelegateMiddleware],
   controllers: [
     HealthController,
     AuthController,

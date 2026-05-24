@@ -1,5 +1,6 @@
 import { IdentityProviderMapper } from '@infrastructure/repositories/mapper/identity-provider.mapper';
 import { IdentityProviderOrmEntity } from '@infrastructure/mikro-orm/entities';
+import { IdentityProviderModel } from '@domain/models/identity-provider';
 
 describe('IdentityProviderMapper', () => {
   it('ORM 엔티티를 도메인 모델로 변환한다', () => {
@@ -112,5 +113,79 @@ describe('IdentityProviderMapper', () => {
 
     expect(domain.protocol).toBe('saml2');
     expect(domain.samlConfig).toEqual(saml);
+  });
+
+  it('도메인 모델을 새 ORM 엔티티로 변환한다', () => {
+    const model = new IdentityProviderModel({
+      tenantId: 'tenant-1',
+      provider: 'google',
+      protocol: 'oauth2',
+      displayName: 'Google',
+      clientId: 'client-id',
+      clientSecret: null,
+      redirectUri: 'https://app.example.com/callback',
+      enabled: true,
+      oauthConfig: { authorizationUrl: 'https://idp.example.com/auth' },
+      samlConfig: null,
+    });
+
+    const entity = IdentityProviderMapper.toOrm(model);
+
+    expect(entity).toBeInstanceOf(IdentityProviderOrmEntity);
+    expect(entity.provider).toBe('google');
+    expect(entity.protocol).toBe('oauth2');
+    expect(entity.displayName).toBe('Google');
+    expect(entity.clientId).toBe('client-id');
+    expect(entity.clientSecret).toBeUndefined();
+    expect(entity.redirectUri).toBe('https://app.example.com/callback');
+    expect(entity.enabled).toBe(true);
+    expect(entity.oauthConfig).toEqual({
+      authorizationUrl: 'https://idp.example.com/auth',
+    });
+    expect(entity.samlConfig).toBeUndefined();
+  });
+
+  it('기존 ORM 엔티티가 있으면 값을 갱신한다', () => {
+    const existing = Object.assign(new IdentityProviderOrmEntity(), {
+      provider: 'okta',
+      protocol: 'oauth2',
+      displayName: 'Old',
+      clientId: 'old-client',
+      clientSecret: 'old-secret',
+      redirectUri: 'https://old.example.com/callback',
+      enabled: false,
+      oauthConfig: { authorizationUrl: 'https://old.example.com/auth' },
+      samlConfig: undefined,
+    });
+    const model = new IdentityProviderModel({
+      tenantId: 'tenant-1',
+      provider: 'okta',
+      protocol: 'saml2',
+      displayName: 'Okta',
+      clientId: 'metadata',
+      clientSecret: null,
+      redirectUri: 'https://app.example.com/saml/callback',
+      enabled: true,
+      oauthConfig: null,
+      samlConfig: {
+        entryPoint: 'https://okta.example.com/sso',
+        idpCerts: ['cert-1'],
+      },
+    });
+
+    const entity = IdentityProviderMapper.toOrm(model, existing);
+
+    expect(entity).toBe(existing);
+    expect(entity.protocol).toBe('saml2');
+    expect(entity.displayName).toBe('Okta');
+    expect(entity.clientId).toBe('metadata');
+    expect(entity.clientSecret).toBeUndefined();
+    expect(entity.redirectUri).toBe('https://app.example.com/saml/callback');
+    expect(entity.enabled).toBe(true);
+    expect(entity.oauthConfig).toBeUndefined();
+    expect(entity.samlConfig).toEqual({
+      entryPoint: 'https://okta.example.com/sso',
+      idpCerts: ['cert-1'],
+    });
   });
 });
