@@ -25,22 +25,37 @@ function createMockTenantRepo(): jest.Mocked<TenantRepository> {
 describe('TenantCommandHandler', () => {
   let handler: TenantCommandHandler;
   let tenantRepo: jest.Mocked<TenantRepository>;
+  let auditRecorder: { recordAdminAction: jest.Mock };
 
   beforeEach(() => {
     jest.clearAllMocks();
     tenantRepo = createMockTenantRepo();
-    handler = new TenantCommandHandler(tenantRepo);
+    auditRecorder = {
+      recordAdminAction: jest.fn().mockResolvedValue(undefined),
+    };
+    handler = new TenantCommandHandler(tenantRepo, auditRecorder as any);
   });
 
   describe('createTenant', () => {
     it('code 중복이 없으면 save를 호출하고 id를 반환한다', async () => {
       tenantRepo.findByCode.mockResolvedValue(null);
 
-      const result = await handler.createTenant({ code: 'new', name: 'New Corp' });
+      const result = await handler.createTenant({
+        code: 'new',
+        name: 'New Corp',
+      });
 
       expect(tenantRepo.findByCode).toHaveBeenCalledWith('new');
       expect(tenantRepo.save).toHaveBeenCalledTimes(1);
       expect(result.id).toBeDefined();
+      expect(auditRecorder.recordAdminAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: result.id,
+          action: 'CREATE',
+          resourceType: 'tenant',
+          resourceId: result.id,
+        }),
+      );
     });
 
     it('code가 이미 존재하면 ConflictException을 던진다', async () => {
@@ -60,6 +75,14 @@ describe('TenantCommandHandler', () => {
 
       expect(tenantRepo.findById).toHaveBeenCalledWith('tenant-1');
       expect(tenantRepo.save).toHaveBeenCalledTimes(1);
+      expect(auditRecorder.recordAdminAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          action: 'UPDATE',
+          resourceType: 'tenant',
+          resourceId: 'tenant-1',
+        }),
+      );
 
       expect(tenantRepo.findById.mock.invocationCallOrder[0]).toBeLessThan(
         tenantRepo.save.mock.invocationCallOrder[0],
@@ -89,6 +112,14 @@ describe('TenantCommandHandler', () => {
 
       expect(tenantRepo.findById).toHaveBeenCalledWith('tenant-1');
       expect(tenantRepo.delete).toHaveBeenCalledWith('tenant-1');
+      expect(auditRecorder.recordAdminAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          action: 'DELETE',
+          resourceType: 'tenant',
+          resourceId: 'tenant-1',
+        }),
+      );
 
       expect(tenantRepo.findById.mock.invocationCallOrder[0]).toBeLessThan(
         tenantRepo.delete.mock.invocationCallOrder[0],

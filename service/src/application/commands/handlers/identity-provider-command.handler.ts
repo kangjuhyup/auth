@@ -12,12 +12,16 @@ import {
 import { IdentityProviderRepository } from '@domain/repositories';
 import { IdentityProviderModel } from '@domain/models/identity-provider';
 import { orThrow } from '@domain/utils';
+import { AuditRecorder } from '@application/services/audit-recorder';
 
 @Injectable()
 export class IdentityProviderCommandHandler implements IdentityProviderCommandPort {
   private readonly logger = new Logger(IdentityProviderCommandHandler.name);
 
-  constructor(private readonly idpRepo: IdentityProviderRepository) {}
+  constructor(
+    private readonly idpRepo: IdentityProviderRepository,
+    private readonly auditRecorder?: AuditRecorder,
+  ) {}
 
   async createIdentityProvider(
     tenantId: string,
@@ -49,6 +53,17 @@ export class IdentityProviderCommandHandler implements IdentityProviderCommandPo
     });
 
     const saved = await this.idpRepo.save(model);
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      action: 'CREATE',
+      resourceType: 'identity-provider',
+      resourceId: saved.id,
+      metadata: {
+        provider: saved.provider,
+        protocol: saved.protocol,
+        enabled: saved.enabled,
+      },
+    });
     return { id: saved.id };
   }
 
@@ -96,6 +111,16 @@ export class IdentityProviderCommandHandler implements IdentityProviderCommandPo
     }
 
     await this.idpRepo.save(model);
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      action: 'UPDATE',
+      resourceType: 'identity-provider',
+      resourceId: id,
+      metadata: {
+        changedFields: Object.keys(dto).filter((key) => key !== 'clientSecret'),
+        clientSecretChanged: dto.clientSecret !== undefined,
+      },
+    });
   }
 
   async deleteIdentityProvider(tenantId: string, id: string): Promise<void> {
@@ -106,6 +131,12 @@ export class IdentityProviderCommandHandler implements IdentityProviderCommandPo
       new NotFoundException('Identity provider not found'),
     );
 
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      action: 'DELETE',
+      resourceType: 'identity-provider',
+      resourceId: id,
+    });
     await this.idpRepo.delete(id);
   }
 }

@@ -40,6 +40,7 @@ import { AdminSessionPort } from './ports/admin-session.port';
 import { AdminSessionHandler } from './commands/handlers/admin-session.handler';
 import { InteractionCommandPort } from './ports/interaction-command.port';
 import { InteractionCommandHandler } from './commands/handlers/interaction-command.handler';
+import { AuditRecorder } from './services/audit-recorder';
 
 // MFA Strategies
 import {
@@ -134,7 +135,7 @@ const queries = [
 
 @Module({
   imports: [InfrastructureModule],
-  providers: [...commands, ...queries],
-  exports: [...commands, ...queries],
+  providers: [AuditRecorder, ...commands, ...queries],
+  exports: [AuditRecorder, ...commands, ...queries],
 })
 export class ApplicationModule {}

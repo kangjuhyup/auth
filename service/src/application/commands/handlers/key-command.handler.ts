@@ -4,6 +4,7 @@ import { TenantRepository, JwksKeyRepository } from '@domain/repositories';
 import { JwksKeyCryptoPort } from '@application/ports/jwks-key-crypto.port';
 import { JwksKeyModel } from '@domain/models/jwks-key';
 import { orThrow } from '@domain/utils';
+import { AuditRecorder } from '@application/services/audit-recorder';
 
 @Injectable()
 export class KeyCommandHandler implements KeyCommandPort {
@@ -13,6 +14,7 @@ export class KeyCommandHandler implements KeyCommandPort {
     private readonly tenantRepo: TenantRepository,
     private readonly jwksKeyRepo: JwksKeyRepository,
     private readonly jwksKeyCrypto: JwksKeyCryptoPort,
+    private readonly auditRecorder?: AuditRecorder,
   ) {}
 
   async rotateKeys(tenantId: string): Promise<void> {
@@ -46,6 +48,17 @@ export class KeyCommandHandler implements KeyCommandPort {
 
     // 3. 기존 키 상태 업데이트 + 신규 키 저장을 한 트랜잭션에서 처리
     await this.jwksKeyRepo.saveMany([...activeKeys, newKey]);
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      action: 'CONFIG_CHANGE',
+      resourceType: 'jwks-key',
+      resourceId: kp.kid,
+      metadata: {
+        kid: kp.kid,
+        algorithm: kp.algorithm,
+        rotatedKeyCount: activeKeys.length,
+      },
+    });
 
     this.logger.log(
       `Rotated keys for tenant=${tenantId}: ${activeKeys.length} key(s) marked rotated, new kid=${kp.kid}`,

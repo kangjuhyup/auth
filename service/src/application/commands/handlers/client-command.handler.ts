@@ -19,6 +19,7 @@ import { ClientAuthPolicyModel } from '@domain/models/client-auth-policy';
 import type { AuthMethod, MfaMethod } from '@domain/models/client-auth-policy';
 import { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
 import { orThrow } from '@domain/utils';
+import { AuditRecorder } from '@application/services/audit-recorder';
 
 @Injectable()
 export class ClientCommandHandler implements ClientCommandPort {
@@ -28,6 +29,7 @@ export class ClientCommandHandler implements ClientCommandPort {
     private readonly clientRepo: ClientRepository,
     private readonly clientAuthPolicyRepo: ClientAuthPolicyRepository,
     private readonly symmetricCrypto: SymmetricCryptoPort,
+    private readonly auditRecorder?: AuditRecorder,
   ) {}
 
   async createClient(
@@ -74,6 +76,17 @@ export class ClientCommandHandler implements ClientCommandPort {
     await this.clientAuthPolicyRepo.save(
       this.createDefaultAuthPolicy(tenantId, saved.id),
     );
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      action: 'CREATE',
+      resourceType: 'client',
+      resourceId: saved.id,
+      metadata: {
+        clientId: saved.clientId,
+        type: saved.type,
+        tokenEndpointAuthMethod: saved.tokenEndpointAuthMethod,
+      },
+    });
     return { id: saved.id };
   }
 
@@ -122,6 +135,16 @@ export class ClientCommandHandler implements ClientCommandPort {
       client.changeRefreshTokenTtlSec(dto.refreshTokenTtlSec);
 
     await this.clientRepo.save(client);
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      action: 'UPDATE',
+      resourceType: 'client',
+      resourceId: id,
+      metadata: {
+        changedFields: Object.keys(dto).filter((key) => key !== 'secret'),
+        secretChanged: dto.secret !== undefined,
+      },
+    });
   }
 
   async updateClientAuthPolicy(
@@ -169,6 +192,15 @@ export class ClientCommandHandler implements ClientCommandPort {
     }
 
     await this.clientAuthPolicyRepo.save(policy);
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      action: 'CONFIG_CHANGE',
+      resourceType: 'client-auth-policy',
+      resourceId: id,
+      metadata: {
+        changedFields: Object.keys(dto),
+      },
+    });
   }
 
   async deleteClient(tenantId: string, id: string): Promise<void> {
@@ -180,6 +212,12 @@ export class ClientCommandHandler implements ClientCommandPort {
       (c) => c.tenantId === tenantId,
     );
 
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      action: 'DELETE',
+      resourceType: 'client',
+      resourceId: id,
+    });
     await this.clientRepo.delete(id);
   }
 

@@ -8,6 +8,7 @@ import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
 import { orThrow } from '@domain/utils';
 import { ulid } from 'ulid';
+import { AuditRecorder } from '@application/services/audit-recorder';
 
 @Injectable()
 export class UserCommandHandler implements UserCommandPort {
@@ -18,12 +19,19 @@ export class UserCommandHandler implements UserCommandPort {
     private readonly roleRepo: RoleRepository,
     private readonly roleAssignment: RoleAssignmentRepository,
     private readonly passwordHash: PasswordHashPort,
+    private readonly auditRecorder?: AuditRecorder,
   ) {}
 
-  async createUser(tenantId: string, dto: CreateUserDto): Promise<{ id: string }> {
+  async createUser(
+    tenantId: string,
+    dto: CreateUserDto,
+  ): Promise<{ id: string }> {
     this.logger.log(`Creating user in tenant=${tenantId}`);
 
-    const existing = await this.userWriteRepo.findByUsername(tenantId, dto.username);
+    const existing = await this.userWriteRepo.findByUsername(
+      tenantId,
+      dto.username,
+    );
     if (existing) throw new Error('UsernameAlreadyExists');
 
     const userId = ulid();
@@ -49,10 +57,21 @@ export class UserCommandHandler implements UserCommandPort {
     }
 
     await this.userWriteRepo.save(user);
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      category: 'USER',
+      action: 'CREATE',
+      resourceType: 'user',
+      resourceId: userId,
+    });
     return { id: userId };
   }
 
-  async updateUser(tenantId: string, id: string, dto: UpdateUserDto): Promise<void> {
+  async updateUser(
+    tenantId: string,
+    id: string,
+    dto: UpdateUserDto,
+  ): Promise<void> {
     this.logger.log(`Updating user=${id} in tenant=${tenantId}`);
 
     const user = orThrow(
@@ -72,6 +91,17 @@ export class UserCommandHandler implements UserCommandPort {
     }
 
     await this.userWriteRepo.save(user);
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      category: 'USER',
+      action: 'UPDATE',
+      resourceType: 'user',
+      resourceId: id,
+      metadata: {
+        changedFields: Object.keys(dto),
+        statusChanged: dto.status !== undefined,
+      },
+    });
   }
 
   async deleteUser(tenantId: string, id: string): Promise<void> {
@@ -85,10 +115,23 @@ export class UserCommandHandler implements UserCommandPort {
 
     user.withdraw();
     await this.userWriteRepo.save(user);
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      category: 'USER',
+      action: 'DELETE',
+      resourceType: 'user',
+      resourceId: id,
+    });
   }
 
-  async assignRole(tenantId: string, userId: string, roleId: string): Promise<void> {
-    this.logger.log(`Assigning role=${roleId} to user=${userId} in tenant=${tenantId}`);
+  async assignRole(
+    tenantId: string,
+    userId: string,
+    roleId: string,
+  ): Promise<void> {
+    this.logger.log(
+      `Assigning role=${roleId} to user=${userId} in tenant=${tenantId}`,
+    );
 
     orThrow(
       await this.userWriteRepo.findById(userId),
@@ -102,14 +145,23 @@ export class UserCommandHandler implements UserCommandPort {
       (r) => r.tenantId === tenantId,
     );
 
-    const alreadyAssigned = await this.roleAssignment.existsForUser({ userId, roleId });
+    const alreadyAssigned = await this.roleAssignment.existsForUser({
+      userId,
+      roleId,
+    });
     if (alreadyAssigned) return;
 
     await this.roleAssignment.assignToUser({ userId, roleId });
   }
 
-  async removeRole(tenantId: string, userId: string, roleId: string): Promise<void> {
-    this.logger.log(`Removing role=${roleId} from user=${userId} in tenant=${tenantId}`);
+  async removeRole(
+    tenantId: string,
+    userId: string,
+    roleId: string,
+  ): Promise<void> {
+    this.logger.log(
+      `Removing role=${roleId} from user=${userId} in tenant=${tenantId}`,
+    );
 
     orThrow(
       await this.userWriteRepo.findById(userId),
