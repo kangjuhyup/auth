@@ -10,6 +10,7 @@ export interface UpdateUserDto {
   email?: string;
   phone?: string;
   status?: 'ACTIVE' | 'LOCKED' | 'DISABLED';
+  mfaEnabled?: boolean;
 }
 
 export interface UserResponse {
@@ -20,6 +21,7 @@ export interface UserResponse {
   phone?: string | null;
   phoneVerified: boolean;
   status: string;
+  mfaEnabled: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

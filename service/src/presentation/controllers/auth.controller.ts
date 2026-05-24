@@ -18,6 +18,7 @@ import {
   PasswordResetDto,
   VerificationTokenDto,
   TotpConfirmationDto,
+  UpdateMfaPreferenceDto,
   UpdateProfileDto,
   ProfileResponse,
   ConsentResponse,
@@ -158,6 +159,17 @@ export class AuthController {
     @AuthUser() user: AuthenticatedUser,
   ): Promise<void> {
     return this.commandPort.disableTotp(tenant.id, user.userId);
+  }
+
+  @Put('mfa/preference')
+  @UseGuards(AccessGuard)
+  @ApiBearerAuth('access-token')
+  updateMfaPreference(
+    @Tenant() tenant: TenantContext,
+    @AuthUser() user: AuthenticatedUser,
+    @Body() dto: UpdateMfaPreferenceDto,
+  ): Promise<void> {
+    return this.commandPort.updateMfaPreference(tenant.id, user.userId, dto);
   }
 
   @Get('profile')

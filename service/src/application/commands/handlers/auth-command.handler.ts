@@ -7,6 +7,7 @@ import {
   TotpEnrollmentResponse,
   TotpConfirmationDto,
   TotpConfirmationResponse,
+  UpdateMfaPreferenceDto,
   UpdateProfileDto,
   SignupDto,
 } from '@application/dto';
@@ -439,7 +440,7 @@ export class AuthCommandHandler implements AuthCommandPort {
     userId: string,
     dto: TotpConfirmationDto,
   ): Promise<TotpConfirmationResponse> {
-    this.assertActiveTenantUser(
+    const user = this.assertActiveTenantUser(
       await this.userWriteRepo.findById(userId),
       tenantId,
     );
@@ -492,6 +493,9 @@ export class AuthCommandHandler implements AuthCommandPort {
     await this.userWriteRepo.saveCredential(pending);
 
     const recoveryCodes = await this.createRecoveryCodes(userId);
+    user.changeMfaEnabled(true);
+    await this.userWriteRepo.save(user);
+
     await this.recordAudit({
       tenantId,
       userId,
@@ -509,7 +513,7 @@ export class AuthCommandHandler implements AuthCommandPort {
   }
 
   async disableTotp(tenantId: string, userId: string): Promise<void> {
-    this.assertActiveTenantUser(
+    const user = this.assertActiveTenantUser(
       await this.userWriteRepo.findById(userId),
       tenantId,
     );
@@ -522,6 +526,8 @@ export class AuthCommandHandler implements AuthCommandPort {
       credential.disable();
       await this.userWriteRepo.saveCredential(credential);
     }
+    user.changeMfaEnabled(false);
+    await this.userWriteRepo.save(user);
     await this.recordAudit({
       tenantId,
       userId,
@@ -530,6 +536,39 @@ export class AuthCommandHandler implements AuthCommandPort {
       resourceType: 'mfa',
       resourceId: 'totp',
       metadata: { method: 'totp', enabled: false },
+    });
+  }
+
+  async updateMfaPreference(
+    tenantId: string,
+    userId: string,
+    dto: UpdateMfaPreferenceDto,
+  ): Promise<void> {
+    const user = this.assertActiveTenantUser(
+      await this.userWriteRepo.findById(userId),
+      tenantId,
+    );
+
+    if (dto.enabled) {
+      const credentials = await this.userWriteRepo.findCredentialsByType(
+        userId,
+        ['totp', 'webauthn', 'recovery_code'],
+      );
+      if (credentials.length === 0) {
+        throw new BadRequestException('MFA credential is required');
+      }
+    }
+
+    user.changeMfaEnabled(dto.enabled);
+    await this.userWriteRepo.save(user);
+    await this.recordAudit({
+      tenantId,
+      userId,
+      category: 'SECURITY',
+      action: 'UPDATE',
+      resourceType: 'mfa',
+      resourceId: 'preference',
+      metadata: { enabled: dto.enabled },
     });
   }
 

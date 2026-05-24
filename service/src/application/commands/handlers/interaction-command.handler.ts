@@ -164,26 +164,37 @@ export class InteractionCommandHandler
       tenant: params.tenant,
     });
 
-    if (details.mfaRequired) {
+    const shouldRequireMfa = details.mfaRequired || result.mfaEnabled;
+
+    if (shouldRequireMfa) {
       const methods = await this.userQuery.getMfaMethods(
         params.tenant.id,
         result.userId,
       );
-      if (methods.length > 0) {
-        this.mfaPendingSessions.set(params.uid, {
-          userId: result.userId,
-          tenantId: params.tenant.id,
-          expiresAt: Date.now() + this.mfaSessionTtlMs,
+      if (methods.length === 0) {
+        this.metrics.incrementCounter('login_failure_total', {
+          tenantCode: params.tenantCode,
+          reason: 'mfa_not_enrolled',
         });
-
         return {
-          body: {
-            success: true,
-            mfaRequired: true,
-            methods,
-          },
+          status: 403,
+          body: { error: 'mfa_required_but_not_enrolled' },
         };
       }
+
+      this.mfaPendingSessions.set(params.uid, {
+        userId: result.userId,
+        tenantId: params.tenant.id,
+        expiresAt: Date.now() + this.mfaSessionTtlMs,
+      });
+
+      return {
+        body: {
+          success: true,
+          mfaRequired: true,
+          methods,
+        },
+      };
     }
 
     const { redirectTo } = await this.oidcInteraction.completeLogin({

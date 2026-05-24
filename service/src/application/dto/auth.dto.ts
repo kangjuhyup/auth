@@ -41,6 +41,10 @@ export interface TotpConfirmationResponse {
   recoveryCodes: string[];
 }
 
+export interface UpdateMfaPreferenceDto {
+  enabled: boolean;
+}
+
 export interface UpdateProfileDto {
   email?: string;
   phone?: string;
@@ -54,6 +58,7 @@ export interface ProfileResponse {
   phone?: string | null;
   phoneVerified: boolean;
   status: string;
+  mfaEnabled: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }

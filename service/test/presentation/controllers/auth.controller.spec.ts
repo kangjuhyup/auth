@@ -20,6 +20,7 @@ function createMockCommandPort(): jest.Mocked<AuthCommandPort> {
     beginTotpEnrollment: jest.fn(),
     confirmTotpEnrollment: jest.fn(),
     disableTotp: jest.fn(),
+    updateMfaPreference: jest.fn(),
     unlinkIdentity: jest.fn(),
     updateProfile: jest.fn(),
     revokeConsent: jest.fn(),
@@ -205,6 +206,20 @@ describe('AuthController', () => {
     expect(commandPort.disableTotp).toHaveBeenCalledWith(
       tenant.id,
       authUser.userId,
+    );
+  });
+
+  it('updateMfaPreference는 tenant.id와 authUser.userId, dto를 commandPort에 전달한다', async () => {
+    const dto = { enabled: true };
+    commandPort.updateMfaPreference.mockResolvedValue(undefined);
+
+    await expect(
+      controller.updateMfaPreference(tenant, authUser, dto),
+    ).resolves.toBeUndefined();
+    expect(commandPort.updateMfaPreference).toHaveBeenCalledWith(
+      tenant.id,
+      authUser.userId,
+      dto,
     );
   });
 

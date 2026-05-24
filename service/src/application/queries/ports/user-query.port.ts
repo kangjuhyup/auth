@@ -20,7 +20,7 @@ export abstract class UserQueryPort {
     tenantId: string;
     username: string;
     password: string;
-  }): Promise<{ userId: string } | null>;
+  }): Promise<{ userId: string; mfaEnabled: boolean } | null>;
 
   abstract getMfaMethods(
     tenantId: string,
@@ -51,6 +51,7 @@ export type UserProfileView = Readonly<{
   phone?: string;
   phoneVerified: boolean;
   status: 'ACTIVE' | 'LOCKED' | 'DISABLED' | 'WITHDRAWN';
+  mfaEnabled: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }>;

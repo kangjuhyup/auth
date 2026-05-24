@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsEmail,
   IsIn,
+  IsBoolean,
   MinLength,
   MaxLength,
   Matches,
@@ -63,6 +64,10 @@ export class UpdateUserDto {
   @IsOptional()
   @IsIn(USER_STATUSES)
   status?: 'ACTIVE' | 'LOCKED' | 'DISABLED';
+
+  @IsOptional()
+  @IsBoolean()
+  mfaEnabled?: boolean;
 }
 
 export class UserResponse {
@@ -86,6 +91,9 @@ export class UserResponse {
 
   @Expose()
   status!: string;
+
+  @Expose()
+  mfaEnabled!: boolean;
 
   @Expose()
   @Transform(({ value }) =>

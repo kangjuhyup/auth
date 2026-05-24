@@ -42,6 +42,7 @@ export class UserQueryHandler implements UserQueryPort {
       phone: user.phone ?? undefined,
       phoneVerified: user.phoneVerified,
       status: user.status,
+      mfaEnabled: user.mfaEnabled,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
@@ -84,6 +85,7 @@ export class UserQueryHandler implements UserQueryPort {
       phone: user.phone ?? undefined,
       phoneVerified: user.phoneVerified,
       status: user.status,
+      mfaEnabled: user.mfaEnabled,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
@@ -94,7 +96,7 @@ export class UserQueryHandler implements UserQueryPort {
     tenantId: string;
     username: string;
     password: string;
-  }): Promise<{ userId: string } | null> {
+  }): Promise<{ userId: string; mfaEnabled: boolean } | null> {
     const user = await this.userWriteRepository.findByUsername(
       params.tenantId,
       params.username,
@@ -115,7 +117,7 @@ export class UserQueryHandler implements UserQueryPort {
     );
     if (!ok) return null;
 
-    return { userId: user.id };
+    return { userId: user.id, mfaEnabled: user.mfaEnabled };
   }
 
   async getMfaMethods(

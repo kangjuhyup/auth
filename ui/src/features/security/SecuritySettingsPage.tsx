@@ -11,6 +11,7 @@ import {
   List,
   Popconfirm,
   Space,
+  Switch,
   Tag,
   Typography,
   message,
@@ -149,7 +150,22 @@ export function SecuritySettingsPage() {
       if (!tenantCode) throw new Error('Tenant is required');
       return authApi.disableTotp(tenantCode);
     },
-    onSuccess: () => message.success('Authenticator app disabled'),
+    onSuccess: () => {
+      refreshSecurityData();
+      message.success('Authenticator app disabled');
+    },
+    onError: (error) => message.error(error.message),
+  });
+
+  const updateMfaPreference = useMutation({
+    mutationFn: (enabled: boolean) => {
+      if (!tenantCode) throw new Error('Tenant is required');
+      return authApi.updateMfaPreference(tenantCode, enabled);
+    },
+    onSuccess: (_, enabled) => {
+      refreshSecurityData();
+      message.success(enabled ? 'MFA login enabled' : 'MFA login disabled');
+    },
     onError: (error) => message.error(error.message),
   });
 
@@ -201,6 +217,13 @@ export function SecuritySettingsPage() {
             >
               {profileQuery.data?.status ?? '-'}
             </Tag>
+          </Descriptions.Item>
+          <Descriptions.Item label="MFA login">
+            <Switch
+              checked={Boolean(profileQuery.data?.mfaEnabled)}
+              loading={updateMfaPreference.isPending}
+              onChange={(checked) => updateMfaPreference.mutate(checked)}
+            />
           </Descriptions.Item>
         </Descriptions>
       </Card>

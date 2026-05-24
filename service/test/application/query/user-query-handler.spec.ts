@@ -96,6 +96,7 @@ describe('UserQueryHandler', () => {
         email: 'user@example.com',
         emailVerified: true,
         status: 'ACTIVE',
+        mfaEnabled: false,
       });
     });
   });
@@ -204,14 +205,16 @@ describe('UserQueryHandler', () => {
       ).toBeNull();
     });
 
-    it('성공 → { userId } 반환', async () => {
+    it('성공 → { userId, mfaEnabled } 반환', async () => {
+      userRepo.findByUsername.mockResolvedValue(makeUser({ mfaEnabled: true }));
+
       const result = await handler.authenticate({
         tenantId: 'tenant-1',
         username: 'u',
         password: 'correct',
       });
 
-      expect(result).toEqual({ userId: 'user-1' });
+      expect(result).toEqual({ userId: 'user-1', mfaEnabled: true });
     });
   });
 

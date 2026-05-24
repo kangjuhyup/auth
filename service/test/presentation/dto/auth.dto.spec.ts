@@ -8,6 +8,7 @@ import {
   PasswordResetDto,
   VerificationTokenDto,
   TotpConfirmationDto,
+  UpdateMfaPreferenceDto,
   UpdateProfileDto,
 } from '@presentation/dto/auth/auth.dto';
 
@@ -242,6 +243,21 @@ describe('TotpConfirmationDto', () => {
   it('code가 6자리 숫자가 아니면 에러', async () => {
     const errors = await getErrors(TotpConfirmationDto, { code: 'abc123' });
     expect(errors.some((e) => e.property === 'code')).toBe(true);
+  });
+});
+
+describe('UpdateMfaPreferenceDto', () => {
+  it('enabled가 boolean이면 에러 없음', async () => {
+    expect(
+      await getErrors(UpdateMfaPreferenceDto, { enabled: true }),
+    ).toHaveLength(0);
+  });
+
+  it('enabled가 boolean이 아니면 에러', async () => {
+    const errors = await getErrors(UpdateMfaPreferenceDto, {
+      enabled: 'true',
+    });
+    expect(errors.some((e) => e.property === 'enabled')).toBe(true);
   });
 });
 

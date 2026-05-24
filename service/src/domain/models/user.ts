@@ -12,6 +12,7 @@ interface UserProps {
   phone?: string | null;
   phoneVerified: boolean;
   status: UserStatus;
+  mfaEnabled: boolean;
   passwordCredential?: UserCredentialModel;
 }
 
@@ -41,6 +42,7 @@ export class UserModel extends PersistenceModel<string, UserProps> {
         phone: params.phone ?? null,
         phoneVerified: false,
         status: 'ACTIVE',
+        mfaEnabled: false,
         passwordCredential: params.passwordCredential,
       },
       params.id,
@@ -56,6 +58,7 @@ export class UserModel extends PersistenceModel<string, UserProps> {
     phone?: string | null;
     phoneVerified: boolean;
     status: UserStatus;
+    mfaEnabled?: boolean;
     passwordCredential?: UserCredentialModel;
   }): UserModel {
     return new UserModel(
@@ -67,6 +70,7 @@ export class UserModel extends PersistenceModel<string, UserProps> {
         phone: params.phone ?? null,
         phoneVerified: params.phoneVerified,
         status: params.status,
+        mfaEnabled: params.mfaEnabled ?? false,
         passwordCredential: params.passwordCredential,
       },
       params.id,
@@ -122,6 +126,11 @@ export class UserModel extends PersistenceModel<string, UserProps> {
     this.etc.status = status;
   }
 
+  changeMfaEnabled(enabled: boolean): void {
+    if (this.status === 'WITHDRAWN') throw new Error('UserAlreadyWithdrawn');
+    this.etc.mfaEnabled = enabled;
+  }
+
   /* ==============================
      Getters
   =============================== */
@@ -146,6 +155,9 @@ export class UserModel extends PersistenceModel<string, UserProps> {
 
   @Getter()
   declare readonly status: UserStatus;
+
+  @Getter()
+  declare readonly mfaEnabled: boolean;
 
   @Getter()
   declare readonly passwordCredential: UserCredentialModel | undefined;

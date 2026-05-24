@@ -18,6 +18,7 @@ function makeProfileView(status = 'ACTIVE'): UserProfileView {
     phone: undefined,
     phoneVerified: false,
     status: status as any,
+    mfaEnabled: false,
     createdAt: new Date('2024-01-01'),
     updatedAt: new Date('2024-01-01'),
   };
@@ -99,6 +100,7 @@ describe('AuthQueryHandler', () => {
         phone: null,
         phoneVerified: false,
         status: 'ACTIVE',
+        mfaEnabled: false,
       });
     });
   });

@@ -115,6 +115,7 @@ export class UserWriteRepositoryImpl implements UserWriteRepositoryPort {
           phone: user.phone ?? undefined,
           phoneVerified: user.phoneVerified,
           status: user.status,
+          mfaEnabled: user.mfaEnabled,
         });
         em.persist(entity);
       } else {
@@ -124,6 +125,7 @@ export class UserWriteRepositoryImpl implements UserWriteRepositoryPort {
         entity.emailVerified = user.emailVerified;
         entity.phone = user.phone ?? undefined;
         entity.phoneVerified = user.phoneVerified;
+        entity.mfaEnabled = user.mfaEnabled;
       }
 
       // credential 변경이 있는 경우 (signup / changePassword)

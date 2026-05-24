@@ -67,6 +67,7 @@ describe('UserModel', () => {
 
       expect(user.emailVerified).toBe(false);
       expect(user.phoneVerified).toBe(false);
+      expect(user.mfaEnabled).toBe(false);
     });
 
     it('username 앞뒤 공백을 제거한다', () => {
@@ -95,10 +96,31 @@ describe('UserModel', () => {
 
   describe('UserModel.of (DB 로드)', () => {
     it('지정한 속성 그대로 복원된다', () => {
-      const user = makeActiveUser({ status: 'LOCKED', emailVerified: true });
+      const user = makeActiveUser({
+        status: 'LOCKED',
+        emailVerified: true,
+        mfaEnabled: true,
+      });
 
       expect(user.status).toBe('LOCKED');
       expect(user.emailVerified).toBe(true);
+      expect(user.mfaEnabled).toBe(true);
+    });
+  });
+
+  describe('changeMfaEnabled', () => {
+    it('MFA 사용 여부를 변경한다', () => {
+      const user = makeActiveUser();
+
+      user.changeMfaEnabled(true);
+
+      expect(user.mfaEnabled).toBe(true);
+    });
+
+    it('WITHDRAWN 상태면 UserAlreadyWithdrawn을 던진다', () => {
+      const user = makeActiveUser({ status: 'WITHDRAWN' });
+
+      expect(() => user.changeMfaEnabled(true)).toThrow('UserAlreadyWithdrawn');
     });
   });
 

@@ -1,4 +1,4 @@
-import { Form, Input, Select } from 'antd';
+import { Form, Input, Select, Switch } from 'antd';
 import type { FormInstance } from 'antd';
 import type { CreateUserDto, UpdateUserDto } from '@/types/user.types';
 
@@ -71,6 +71,12 @@ export function UserForm({
           <Select.Option value="DISABLED">Disabled</Select.Option>
         </Select>
       </Form.Item>
+
+      {mode === 'edit' && (
+        <Form.Item name="mfaEnabled" label="MFA login" valuePropName="checked">
+          <Switch />
+        </Form.Item>
+      )}
     </Form>
   );
 }

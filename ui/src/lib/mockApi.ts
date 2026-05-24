@@ -280,6 +280,7 @@ const mockUsers: UserResponse[] = [
     phone: '+821012345678',
     phoneVerified: true,
     status: 'ACTIVE',
+    mfaEnabled: true,
     createdAt: new Date('2024-01-01'),
     updatedAt: new Date('2024-01-01'),
   },
@@ -291,6 +292,7 @@ const mockUsers: UserResponse[] = [
     phone: null,
     phoneVerified: false,
     status: 'ACTIVE',
+    mfaEnabled: false,
     createdAt: new Date('2024-01-10'),
     updatedAt: new Date('2024-01-10'),
   },
@@ -302,6 +304,7 @@ const mockUsers: UserResponse[] = [
     phone: '+821098765432',
     phoneVerified: true,
     status: 'ACTIVE',
+    mfaEnabled: false,
     createdAt: new Date('2024-01-15'),
     updatedAt: new Date('2024-01-15'),
   },
@@ -313,6 +316,7 @@ const mockUsers: UserResponse[] = [
     phone: null,
     phoneVerified: false,
     status: 'LOCKED',
+    mfaEnabled: false,
     createdAt: new Date('2024-02-01'),
     updatedAt: new Date('2024-02-10'),
   },
@@ -324,6 +328,7 @@ const mockUsers: UserResponse[] = [
     phone: null,
     phoneVerified: false,
     status: 'DISABLED',
+    mfaEnabled: false,
     createdAt: new Date('2024-02-05'),
     updatedAt: new Date('2024-02-15'),
   },
@@ -453,6 +458,7 @@ const mockProfileByTenant = new Map<string, ProfileResponse>([
       phone: '+821012345678',
       phoneVerified: false,
       status: 'active',
+      mfaEnabled: true,
       createdAt: new Date('2024-01-01'),
       updatedAt: new Date('2024-01-01'),
     },
@@ -561,17 +567,31 @@ export const mockAuthApi = {
     tenantCode: string,
     code: string,
   ): Promise<TotpConfirmationResponse> => {
-    void tenantCode;
     await delay(200);
     if (!/^\d{6}$/.test(code)) throw new Error('TOTP code must be 6 digits');
+    const profile = getMockProfile(tenantCode);
+    profile.mfaEnabled = true;
+    profile.updatedAt = new Date();
     return {
       recoveryCodes: ['RC-1234-5678', 'RC-2345-6789', 'RC-3456-7890'],
     };
   },
 
   disableTotp: async (tenantCode: string): Promise<void> => {
-    void tenantCode;
     await delay(200);
+    const profile = getMockProfile(tenantCode);
+    profile.mfaEnabled = false;
+    profile.updatedAt = new Date();
+  },
+
+  updateMfaPreference: async (
+    tenantCode: string,
+    enabled: boolean,
+  ): Promise<void> => {
+    await delay(200);
+    const profile = getMockProfile(tenantCode);
+    profile.mfaEnabled = enabled;
+    profile.updatedAt = new Date();
   },
 
   getIdentityLinks: async (
@@ -999,6 +1019,7 @@ export const mockUserApi = {
       phone: dto.phone ?? null,
       phoneVerified: false,
       status: dto.status ?? 'ACTIVE',
+      mfaEnabled: false,
       createdAt: new Date(),
       updatedAt: new Date(),
     });

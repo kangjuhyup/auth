@@ -320,6 +320,7 @@ export class AdminQueryHandler implements AdminQueryPort {
         phone: u.phone ?? null,
         phoneVerified: u.phoneVerified,
         status: u.status,
+        mfaEnabled: u.mfaEnabled,
         createdAt: u.createdAt,
         updatedAt: u.updatedAt,
       })),
@@ -344,6 +345,7 @@ export class AdminQueryHandler implements AdminQueryPort {
       phone: user.phone ?? null,
       phoneVerified: user.phoneVerified,
       status: user.status,
+      mfaEnabled: user.mfaEnabled,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

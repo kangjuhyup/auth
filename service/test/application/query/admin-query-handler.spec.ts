@@ -988,6 +988,7 @@ describe('AdminQueryHandler - Users', () => {
       expect(item.id).toBe('u-1');
       expect(item.username).toBe('testuser');
       expect(item.status).toBe('ACTIVE');
+      expect(item.mfaEnabled).toBe(false);
     });
   });
 

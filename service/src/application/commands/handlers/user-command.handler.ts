@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { UserCommandPort } from '../ports/user-command.port';
 import { AuditContext, CreateUserDto, UpdateUserDto } from '@application/dto';
 import { UserWriteRepositoryPort } from '../ports/user-write-repository.port';
@@ -92,6 +97,12 @@ export class UserCommandHandler implements UserCommandPort {
     if (dto.status !== undefined) {
       user.changeStatus(dto.status);
     }
+    if (dto.mfaEnabled !== undefined) {
+      if (dto.mfaEnabled) {
+        await this.assertMfaCredentialExists(id);
+      }
+      user.changeMfaEnabled(dto.mfaEnabled);
+    }
 
     await this.userWriteRepo.save(user);
     await this.auditRecorder?.recordAdminAction({
@@ -103,6 +114,7 @@ export class UserCommandHandler implements UserCommandPort {
       metadata: {
         changedFields: Object.keys(dto),
         statusChanged: dto.status !== undefined,
+        mfaEnabledChanged: dto.mfaEnabled !== undefined,
       },
       auditContext,
     });
@@ -199,5 +211,16 @@ export class UserCommandHandler implements UserCommandPort {
       metadata: { roleId },
       auditContext,
     });
+  }
+
+  private async assertMfaCredentialExists(userId: string): Promise<void> {
+    const credentials = await this.userWriteRepo.findCredentialsByType(userId, [
+      'totp',
+      'webauthn',
+      'recovery_code',
+    ]);
+    if (credentials.length === 0) {
+      throw new BadRequestException('MFA credential is required');
+    }
   }
 }

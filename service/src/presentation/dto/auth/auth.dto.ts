@@ -2,6 +2,7 @@ import {
   IsString,
   IsEmail,
   IsOptional,
+  IsBoolean,
   MinLength,
   MaxLength,
   Matches,
@@ -110,6 +111,11 @@ export class TotpConfirmationDto {
   code!: string;
 }
 
+export class UpdateMfaPreferenceDto {
+  @IsBoolean()
+  enabled!: boolean;
+}
+
 export class UpdateProfileDto {
   @IsOptional()
   @IsEmail()
@@ -145,6 +151,9 @@ export class ProfileResponse {
 
   @Expose()
   status!: string;
+
+  @Expose()
+  mfaEnabled!: boolean;
 
   @Expose()
   @Transform(({ value }) =>

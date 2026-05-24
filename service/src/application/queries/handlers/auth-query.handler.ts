@@ -38,6 +38,7 @@ export class AuthQueryHandler implements AuthQueryPort {
       phone: view.phone ?? null,
       phoneVerified: view.phoneVerified,
       status: view.status,
+      mfaEnabled: view.mfaEnabled,
       createdAt: view.createdAt,
       updatedAt: view.updatedAt,
     };

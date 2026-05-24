@@ -73,6 +73,17 @@ export function UserTable({
       ),
     },
     {
+      title: 'MFA',
+      dataIndex: 'mfaEnabled',
+      key: 'mfaEnabled',
+      width: 100,
+      render: (enabled: boolean) => (
+        <Tag color={enabled ? 'green' : 'default'}>
+          {enabled ? 'Enabled' : 'Off'}
+        </Tag>
+      ),
+    },
+    {
       title: 'Actions',
       key: 'actions',
       width: 220,

@@ -20,6 +20,7 @@ export interface ProfileResponse {
   phone?: string | null;
   phoneVerified: boolean;
   status: string;
+  mfaEnabled: boolean;
   createdAt?: string | Date;
   updatedAt?: string | Date;
 }

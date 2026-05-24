@@ -911,6 +911,9 @@ describe('AuthCommandHandler', () => {
       expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(active);
       expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(pending);
       expect(userWriteRepo.createCredential).toHaveBeenCalledTimes(10);
+      expect(userWriteRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ mfaEnabled: true }),
+      );
       expect(result.recoveryCodes).toHaveLength(10);
       expect(result.recoveryCodes).toEqual(
         Array.from({ length: 10 }, () => 'recovery-code'),
@@ -1043,6 +1046,9 @@ describe('AuthCommandHandler', () => {
       expect(recoveryCode.enabled).toBe(false);
       expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(totp);
       expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(recoveryCode);
+      expect(userWriteRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ mfaEnabled: false }),
+      );
       expect(eventRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
           tenantId: 'tenant-1',
@@ -1055,6 +1061,62 @@ describe('AuthCommandHandler', () => {
           metadata: { method: 'totp', enabled: false },
         }),
       );
+    });
+
+    it('updateMfaPreference는 등록된 MFA credential이 있으면 MFA 로그인을 활성화한다', async () => {
+      const user = makeActiveUser();
+      userWriteRepo.findById.mockResolvedValue(user);
+      userWriteRepo.findCredentialsByType.mockResolvedValue([
+        UserCredentialModel.of({
+          type: 'totp',
+          secretHash: 'JBSWY3DPEHPK3PXP',
+          hashAlg: 'totp-sha1',
+          enabled: true,
+        }),
+      ]);
+
+      await handler.updateMfaPreference('tenant-1', 'user-1', {
+        enabled: true,
+      });
+
+      expect(userWriteRepo.findCredentialsByType).toHaveBeenCalledWith(
+        'user-1',
+        ['totp', 'webauthn', 'recovery_code'],
+      );
+      expect(user.mfaEnabled).toBe(true);
+      expect(userWriteRepo.save).toHaveBeenCalledWith(user);
+      expect(eventRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          category: 'SECURITY',
+          action: 'UPDATE',
+          resourceType: 'mfa',
+          resourceId: 'preference',
+          metadata: { enabled: true },
+        }),
+      );
+    });
+
+    it('updateMfaPreference는 등록된 MFA credential이 없으면 활성화를 거부한다', async () => {
+      userWriteRepo.findCredentialsByType.mockResolvedValue([]);
+
+      await expect(
+        handler.updateMfaPreference('tenant-1', 'user-1', { enabled: true }),
+      ).rejects.toThrow('MFA credential is required');
+
+      expect(userWriteRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('updateMfaPreference는 MFA 로그인 비활성화 시 credential을 삭제하지 않는다', async () => {
+      const user = makeActiveUser({ mfaEnabled: true });
+      userWriteRepo.findById.mockResolvedValue(user);
+
+      await handler.updateMfaPreference('tenant-1', 'user-1', {
+        enabled: false,
+      });
+
+      expect(userWriteRepo.findCredentialsByType).not.toHaveBeenCalled();
+      expect(user.mfaEnabled).toBe(false);
+      expect(userWriteRepo.save).toHaveBeenCalledWith(user);
     });
   });
 

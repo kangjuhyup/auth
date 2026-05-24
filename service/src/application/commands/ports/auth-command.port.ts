@@ -8,6 +8,7 @@ import {
   TotpEnrollmentResponse,
   TotpConfirmationDto,
   TotpConfirmationResponse,
+  UpdateMfaPreferenceDto,
   UpdateProfileDto,
 } from '@application/dto';
 
@@ -122,6 +123,16 @@ export abstract class AuthCommandPort {
    * @description 현재 사용자 TOTP MFA 비활성화
    */
   abstract disableTotp(tenantId: string, userId: string): Promise<void>;
+
+  /**
+   * Update MFA login preference
+   * @description 등록된 MFA 수단을 로그인에 사용할지 선택
+   */
+  abstract updateMfaPreference(
+    tenantId: string,
+    userId: string,
+    dto: UpdateMfaPreferenceDto,
+  ): Promise<void>;
 
   /**
    * Unlink an external identity provider account

@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { UserCommandHandler } from '@application/commands/handlers/user-command.handler';
 import type { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
 import type {
@@ -11,6 +11,7 @@ import type {
   HashPolicy,
 } from '@application/ports/password-hash.port';
 import { UserModel } from '@domain/models/user';
+import { UserCredentialModel } from '@domain/models/user-credential';
 import { RoleModel } from '@domain/models/role';
 
 function makeUser(id = 'user-1', tenantId = 'tenant-1'): UserModel {
@@ -271,6 +272,58 @@ describe('UserCommandHandler', () => {
 
       expect(user.email).toBe('updated@ex.com');
       expect(user.status).toBe('LOCKED');
+      expect(userWriteRepo.save).toHaveBeenCalledWith(user);
+    });
+
+    it('MFA 활성화는 등록된 MFA credential이 있을 때만 허용한다', async () => {
+      const user = makeUser();
+      userWriteRepo.findById.mockResolvedValue(user);
+      userWriteRepo.findCredentialsByType.mockResolvedValue([
+        UserCredentialModel.of({
+          type: 'totp',
+          secretHash: 'totp-secret',
+          hashAlg: 'totp-sha1',
+          enabled: true,
+        }),
+      ]);
+
+      await handler.updateUser('tenant-1', 'user-1', {
+        mfaEnabled: true,
+      } as any);
+
+      expect(userWriteRepo.findCredentialsByType).toHaveBeenCalledWith(
+        'user-1',
+        ['totp', 'webauthn', 'recovery_code'],
+      );
+      expect(user.mfaEnabled).toBe(true);
+      expect(userWriteRepo.save).toHaveBeenCalledWith(user);
+    });
+
+    it('등록된 MFA credential이 없으면 MFA 활성화를 거부한다', async () => {
+      const user = makeUser();
+      userWriteRepo.findById.mockResolvedValue(user);
+      userWriteRepo.findCredentialsByType.mockResolvedValue([]);
+
+      await expect(
+        handler.updateUser('tenant-1', 'user-1', {
+          mfaEnabled: true,
+        } as any),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(userWriteRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('MFA 비활성화는 credential 조회 없이 저장한다', async () => {
+      const user = makeUser();
+      user.changeMfaEnabled(true);
+      userWriteRepo.findById.mockResolvedValue(user);
+
+      await handler.updateUser('tenant-1', 'user-1', {
+        mfaEnabled: false,
+      } as any);
+
+      expect(userWriteRepo.findCredentialsByType).not.toHaveBeenCalled();
+      expect(user.mfaEnabled).toBe(false);
       expect(userWriteRepo.save).toHaveBeenCalledWith(user);
     });
 

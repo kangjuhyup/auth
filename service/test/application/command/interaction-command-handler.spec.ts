@@ -231,6 +231,82 @@ describe('InteractionCommandHandler', () => {
     });
   });
 
+  it('사용자 MFA가 활성화되어 있으면 정책 MFA가 없어도 MFA를 요구한다', async () => {
+    userQuery.authenticate.mockResolvedValue({
+      userId: 'user-1',
+      mfaEnabled: true,
+    });
+    userQuery.getMfaMethods.mockResolvedValue(['totp']);
+    oidcInteraction.getDetails.mockResolvedValue({
+      uid: 'uid-1',
+      prompt: 'login',
+      clientId: 'web-app',
+      missingScopes: [],
+      mfaRequired: false,
+      idpList: [],
+    });
+
+    await expect(
+      handler.submitLogin({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        username: 'john',
+        password: 'secret',
+        req: {},
+        res: {},
+        tenant,
+      }),
+    ).resolves.toEqual({
+      body: {
+        success: true,
+        mfaRequired: true,
+        methods: ['totp'],
+      },
+    });
+
+    expect(oidcInteraction.completeLogin).not.toHaveBeenCalled();
+  });
+
+  it('MFA가 필요한데 등록된 수단이 없으면 로그인을 완료하지 않는다', async () => {
+    userQuery.authenticate.mockResolvedValue({
+      userId: 'user-1',
+      mfaEnabled: true,
+    });
+    userQuery.getMfaMethods.mockResolvedValue([]);
+    oidcInteraction.getDetails.mockResolvedValue({
+      uid: 'uid-1',
+      prompt: 'login',
+      clientId: 'web-app',
+      missingScopes: [],
+      mfaRequired: false,
+      idpList: [],
+    });
+
+    await expect(
+      handler.submitLogin({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        username: 'john',
+        password: 'secret',
+        req: {},
+        res: {},
+        tenant,
+      }),
+    ).resolves.toEqual({
+      status: 403,
+      body: { error: 'mfa_required_but_not_enrolled' },
+    });
+
+    expect(metrics.incrementCounter).toHaveBeenCalledWith(
+      'login_failure_total',
+      {
+        tenantCode: 'acme',
+        reason: 'mfa_not_enrolled',
+      },
+    );
+    expect(oidcInteraction.completeLogin).not.toHaveBeenCalled();
+  });
+
   it('MFA가 필요 없으면 OIDC login completion을 호출한다', async () => {
     const req = {};
     const res = {};

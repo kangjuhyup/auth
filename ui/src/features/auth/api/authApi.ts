@@ -103,6 +103,18 @@ export const authApi = {
     return apiClient.delete<void>('/auth/mfa/totp', tenantOptions(tenantCode));
   },
 
+  updateMfaPreference: (
+    tenantCode: string,
+    enabled: boolean,
+  ): Promise<void> => {
+    if (USE_MOCK) return mockApi.auth.updateMfaPreference(tenantCode, enabled);
+    return apiClient.put<void>(
+      '/auth/mfa/preference',
+      { enabled },
+      tenantOptions(tenantCode),
+    );
+  },
+
   getIdentityLinks: (tenantCode: string): Promise<IdentityLinkResponse[]> => {
     if (USE_MOCK) return mockApi.auth.getIdentityLinks(tenantCode);
     return apiClient.get<IdentityLinkResponse[]>(
