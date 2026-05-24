@@ -6,7 +6,11 @@ import { ConfigService } from '@nestjs/config';
 import { buildOidcAdapterFactory } from './adapters/oidc-apdater.factory';
 import { ClientQueryPort } from '@application/queries/ports/client-query.port';
 import { UserQueryPort } from '@application/queries/ports/user-query.port';
-import type { ClientRepository, TenantRepository } from '@domain/repositories';
+import type {
+  ClientAuthPolicyRepository,
+  ClientRepository,
+  TenantRepository,
+} from '@domain/repositories';
 import type { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
 
 export function buildOidcConfiguration(params: {
@@ -17,6 +21,7 @@ export function buildOidcConfiguration(params: {
   configService: ConfigService;
   tenantCode: string;
   clientRepository: ClientRepository;
+  clientAuthPolicyRepository: ClientAuthPolicyRepository;
   tenantRepository: TenantRepository;
   symmetricCrypto: SymmetricCryptoPort;
   jwksKeys: Record<string, unknown>[];
@@ -31,6 +36,7 @@ export function buildOidcConfiguration(params: {
     configService,
     tenantCode,
     clientRepository,
+    clientAuthPolicyRepository,
     tenantRepository,
     symmetricCrypto,
     tenantAccessTokenTtlSec,
@@ -42,6 +48,10 @@ export function buildOidcConfiguration(params: {
   const clientTtlCache = new Map<
     string,
     { access: number | null; refresh: number | null; cachedAt: number }
+  >();
+  const clientRefreshPolicyCache = new Map<
+    string,
+    { rotationEnabled: boolean; cachedAt: number }
   >();
 
   function warmClientTtlCache(tenantId: string, clientId: string): void {
@@ -67,6 +77,33 @@ export function buildOidcConfiguration(params: {
       return undefined;
     }
     return entry;
+  }
+
+  async function getRefreshTokenRotationEnabled(
+    tenantId: string,
+    clientId: string,
+  ): Promise<boolean> {
+    const cacheKey = `${tenantId}:${clientId}`;
+    const entry = clientRefreshPolicyCache.get(cacheKey);
+    if (entry && Date.now() - entry.cachedAt <= CLIENT_TTL_CACHE_TTL_MS) {
+      return entry.rotationEnabled;
+    }
+    if (entry) clientRefreshPolicyCache.delete(cacheKey);
+
+    const client = await clientRepository.findByClientId(tenantId, clientId);
+    if (!client?.id) {
+      return true;
+    }
+
+    const policy = await clientAuthPolicyRepository.findByClientRefId(
+      client.id,
+    );
+    const rotationEnabled = policy?.refreshTokenRotationEnabled ?? true;
+    clientRefreshPolicyCache.set(cacheKey, {
+      rotationEnabled,
+      cachedAt: Date.now(),
+    });
+    return rotationEnabled;
   }
 
   const accessTokenFormat = configService.getOrThrow<string>(
@@ -157,6 +194,12 @@ export function buildOidcConfiguration(params: {
     },
 
     pkce: { required: () => true },
+    rotateRefreshToken: async (ctx) => {
+      const tenantId = (ctx as any)?.req?.tenant?.id;
+      const clientId = ctx.oidc.client?.clientId;
+      if (!tenantId || !clientId) return true;
+      return getRefreshTokenRotationEnabled(tenantId, clientId);
+    },
     scopes: ['openid', 'profile', 'email'],
 
     cookies: { keys: getSecretKeys(configService, 'OIDC_COOKIE_KEYS') },

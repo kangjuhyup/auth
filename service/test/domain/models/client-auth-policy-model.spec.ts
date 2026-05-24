@@ -1,5 +1,9 @@
 import { ClientAuthPolicyModel } from '@domain/models/client-auth-policy';
-import type { AuthMethod, MfaMethod } from '@domain/models/client-auth-policy';
+import type {
+  AuthMethod,
+  MfaMethod,
+  RefreshTokenReuseAction,
+} from '@domain/models/client-auth-policy';
 
 function makePolicy(
   overrides: Partial<{
@@ -10,6 +14,8 @@ function makePolicy(
     maxSessionDurationSec: number | null;
     consentRequired: boolean;
     requireAuthTime: boolean;
+    refreshTokenRotationEnabled: boolean;
+    refreshTokenReuseAction: RefreshTokenReuseAction;
   }> = {},
 ): ClientAuthPolicyModel {
   return new ClientAuthPolicyModel({
@@ -22,6 +28,9 @@ function makePolicy(
     maxSessionDurationSec: overrides.maxSessionDurationSec ?? null,
     consentRequired: overrides.consentRequired ?? true,
     requireAuthTime: overrides.requireAuthTime ?? false,
+    refreshTokenRotationEnabled: overrides.refreshTokenRotationEnabled ?? true,
+    refreshTokenReuseAction:
+      overrides.refreshTokenReuseAction ?? 'revoke_grant',
   });
 }
 
@@ -38,6 +47,8 @@ describe('ClientAuthPolicyModel', () => {
     expect(policy.maxSessionDurationSec).toBeNull();
     expect(policy.consentRequired).toBe(true);
     expect(policy.requireAuthTime).toBe(false);
+    expect(policy.refreshTokenRotationEnabled).toBe(true);
+    expect(policy.refreshTokenReuseAction).toBe('revoke_grant');
   });
 
   it('id를 지정하여 생성할 수 있다', () => {
@@ -52,6 +63,8 @@ describe('ClientAuthPolicyModel', () => {
         maxSessionDurationSec: null,
         consentRequired: true,
         requireAuthTime: false,
+        refreshTokenRotationEnabled: true,
+        refreshTokenReuseAction: 'revoke_grant',
       },
       'policy-1',
     );
@@ -137,6 +150,22 @@ describe('ClientAuthPolicyModel', () => {
       policy.changeRequireAuthTime(true);
 
       expect(policy.requireAuthTime).toBe(true);
+    });
+
+    it('changeRefreshTokenRotationEnabled로 rotation 여부를 변경한다', () => {
+      const policy = makePolicy();
+
+      policy.changeRefreshTokenRotationEnabled(false);
+
+      expect(policy.refreshTokenRotationEnabled).toBe(false);
+    });
+
+    it('changeRefreshTokenReuseAction으로 재사용 대응 정책을 변경한다', () => {
+      const policy = makePolicy();
+
+      policy.changeRefreshTokenReuseAction('revoke_grant');
+
+      expect(policy.refreshTokenReuseAction).toBe('revoke_grant');
     });
   });
 });

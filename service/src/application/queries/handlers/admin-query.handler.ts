@@ -129,6 +129,8 @@ export class AdminQueryHandler implements AdminQueryPort {
         frontchannelLogoutUri: c.frontchannelLogoutUri ?? null,
         allowedResources: c.allowedResources,
         skipConsent: c.skipConsent,
+        accessTokenTtlSec: c.accessTokenTtlSec ?? null,
+        refreshTokenTtlSec: c.refreshTokenTtlSec ?? null,
         createdAt: c.createdAt,
         updatedAt: c.updatedAt,
       })),
@@ -162,6 +164,8 @@ export class AdminQueryHandler implements AdminQueryPort {
       frontchannelLogoutUri: client.frontchannelLogoutUri ?? null,
       allowedResources: client.allowedResources,
       skipConsent: client.skipConsent,
+      accessTokenTtlSec: client.accessTokenTtlSec ?? null,
+      refreshTokenTtlSec: client.refreshTokenTtlSec ?? null,
       createdAt: client.createdAt,
       updatedAt: client.updatedAt,
     };
@@ -191,6 +195,8 @@ export class AdminQueryHandler implements AdminQueryPort {
       maxSessionDurationSec: policy.maxSessionDurationSec,
       consentRequired: policy.consentRequired,
       requireAuthTime: policy.requireAuthTime,
+      refreshTokenRotationEnabled: policy.refreshTokenRotationEnabled,
+      refreshTokenReuseAction: policy.refreshTokenReuseAction,
     };
   }
 

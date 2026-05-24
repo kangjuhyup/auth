@@ -14,6 +14,8 @@ export interface CreateClientDto {
   frontchannelLogoutUri?: string;
   allowedResources?: string[];
   skipConsent?: boolean;
+  accessTokenTtlSec?: number | null;
+  refreshTokenTtlSec?: number | null;
 }
 
 export interface UpdateClientDto {
@@ -31,6 +33,8 @@ export interface UpdateClientDto {
   frontchannelLogoutUri?: string | null;
   allowedResources?: string[];
   skipConsent?: boolean;
+  accessTokenTtlSec?: number | null;
+  refreshTokenTtlSec?: number | null;
 }
 
 export interface ClientResponse {
@@ -50,8 +54,22 @@ export interface ClientResponse {
   frontchannelLogoutUri: string | null;
   allowedResources: string[];
   skipConsent: boolean;
+  accessTokenTtlSec: number | null;
+  refreshTokenTtlSec: number | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface UpdateClientAuthPolicyDto {
+  allowedAuthMethods?: string[];
+  defaultAcr?: string;
+  mfaRequired?: boolean;
+  allowedMfaMethods?: string[];
+  maxSessionDurationSec?: number | null;
+  consentRequired?: boolean;
+  requireAuthTime?: boolean;
+  refreshTokenRotationEnabled?: boolean;
+  refreshTokenReuseAction?: 'revoke_grant';
 }
 
 export interface ClientAuthPolicyResponse {
@@ -63,4 +81,6 @@ export interface ClientAuthPolicyResponse {
   maxSessionDurationSec: number | null;
   consentRequired: boolean;
   requireAuthTime: boolean;
+  refreshTokenRotationEnabled: boolean;
+  refreshTokenReuseAction: 'revoke_grant';
 }

@@ -14,6 +14,8 @@ function makeOrmEntity(): ClientAuthPolicyOrmEntity {
     maxSessionDurationSec: 3600,
     consentRequired: true,
     requireAuthTime: false,
+    refreshTokenRotationEnabled: true,
+    refreshTokenReuseAction: 'revoke_grant',
     createdAt: new Date('2025-01-01'),
     updatedAt: new Date('2025-01-02'),
   });
@@ -31,6 +33,8 @@ function makeDomainModel(id?: string): ClientAuthPolicyModel {
       maxSessionDurationSec: 3600,
       consentRequired: true,
       requireAuthTime: false,
+      refreshTokenRotationEnabled: true,
+      refreshTokenReuseAction: 'revoke_grant',
     },
     id,
   );
@@ -54,6 +58,8 @@ describe('ClientAuthPolicyMapper', () => {
       expect(domain.maxSessionDurationSec).toBe(3600);
       expect(domain.consentRequired).toBe(true);
       expect(domain.requireAuthTime).toBe(false);
+      expect(domain.refreshTokenRotationEnabled).toBe(true);
+      expect(domain.refreshTokenReuseAction).toBe('revoke_grant');
     });
 
     it('maxSessionDurationSec가 null이면 null로 매핑한다', () => {
@@ -87,6 +93,8 @@ describe('ClientAuthPolicyMapper', () => {
       expect(entity.maxSessionDurationSec).toBe(3600);
       expect(entity.consentRequired).toBe(true);
       expect(entity.requireAuthTime).toBe(false);
+      expect(entity.refreshTokenRotationEnabled).toBe(true);
+      expect(entity.refreshTokenReuseAction).toBe('revoke_grant');
     });
 
     it('기존 엔티티가 있으면 해당 엔티티를 업데이트한다', () => {
@@ -123,6 +131,8 @@ describe('ClientAuthPolicyMapper', () => {
           maxSessionDurationSec: null,
           consentRequired: false,
           requireAuthTime: true,
+          refreshTokenRotationEnabled: false,
+          refreshTokenReuseAction: 'revoke_grant',
         },
         '1',
       );
@@ -137,6 +147,8 @@ describe('ClientAuthPolicyMapper', () => {
       expect(entity.maxSessionDurationSec).toBeNull();
       expect(entity.consentRequired).toBe(false);
       expect(entity.requireAuthTime).toBe(true);
+      expect(entity.refreshTokenRotationEnabled).toBe(false);
+      expect(entity.refreshTokenReuseAction).toBe('revoke_grant');
     });
   });
 });

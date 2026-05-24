@@ -1,5 +1,9 @@
 import { ClientAuthPolicyModel } from '@domain/models/client-auth-policy';
-import type { AuthMethod, MfaMethod } from '@domain/models/client-auth-policy';
+import type {
+  AuthMethod,
+  MfaMethod,
+  RefreshTokenReuseAction,
+} from '@domain/models/client-auth-policy';
 import { ClientAuthPolicyOrmEntity } from '../../mikro-orm/entities/client-auth-policy';
 
 export class ClientAuthPolicyMapper {
@@ -15,6 +19,11 @@ export class ClientAuthPolicyMapper {
         maxSessionDurationSec: entity.maxSessionDurationSec ?? null,
         consentRequired: entity.consentRequired,
         requireAuthTime: entity.requireAuthTime,
+        refreshTokenRotationEnabled: entity.refreshTokenRotationEnabled ?? true,
+        refreshTokenReuseAction:
+          (entity.refreshTokenReuseAction as
+            | RefreshTokenReuseAction
+            | undefined) ?? 'revoke_grant',
       },
       entity.id,
     );
@@ -35,6 +44,8 @@ export class ClientAuthPolicyMapper {
     entity.maxSessionDurationSec = domain.maxSessionDurationSec;
     entity.consentRequired = domain.consentRequired;
     entity.requireAuthTime = domain.requireAuthTime;
+    entity.refreshTokenRotationEnabled = domain.refreshTokenRotationEnabled;
+    entity.refreshTokenReuseAction = domain.refreshTokenReuseAction;
 
     if (domain.id) {
       entity.id = domain.id;

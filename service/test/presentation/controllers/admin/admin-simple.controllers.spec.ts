@@ -17,9 +17,9 @@ describe('관리자 단순 컨트롤러', () => {
   describe('AdminAuditLogController', () => {
     it('list는 tenant.id와 query를 queryPort에 전달한다', async () => {
       const queryPort = {
-        getAuditLogs: jest.fn().mockResolvedValue(
-          makePaginatedResult([{ id: 'log-1' } as any], 1),
-        ),
+        getAuditLogs: jest
+          .fn()
+          .mockResolvedValue(makePaginatedResult([{ id: 'log-1' } as any], 1)),
       } as any;
       const controller = new AdminAuditLogController(queryPort);
 
@@ -39,11 +39,13 @@ describe('관리자 단순 컨트롤러', () => {
       commandPort = {
         createClient: jest.fn(),
         updateClient: jest.fn(),
+        updateClientAuthPolicy: jest.fn(),
         deleteClient: jest.fn(),
       };
       queryPort = {
         getClients: jest.fn(),
         getClient: jest.fn(),
+        getClientAuthPolicy: jest.fn(),
       };
       controller = new AdminClientController(commandPort, queryPort);
     });
@@ -87,10 +89,39 @@ describe('관리자 단순 컨트롤러', () => {
       );
     });
 
+    it('getAuthPolicy는 tenant.id와 id를 queryPort에 전달한다', async () => {
+      const result = { clientRefId: 'client-1' } as any;
+      queryPort.getClientAuthPolicy.mockResolvedValue(result);
+
+      await expect(controller.getAuthPolicy(tenant, 'client-1')).resolves.toBe(
+        result,
+      );
+      expect(queryPort.getClientAuthPolicy).toHaveBeenCalledWith(
+        tenant.id,
+        'client-1',
+      );
+    });
+
+    it('updateAuthPolicy는 tenant.id와 id, dto를 commandPort에 전달한다', async () => {
+      const dto = { refreshTokenRotationEnabled: true } as any;
+      commandPort.updateClientAuthPolicy.mockResolvedValue(undefined);
+
+      await expect(
+        controller.updateAuthPolicy(tenant, 'client-1', dto),
+      ).resolves.toBeUndefined();
+      expect(commandPort.updateClientAuthPolicy).toHaveBeenCalledWith(
+        tenant.id,
+        'client-1',
+        dto,
+      );
+    });
+
     it('delete는 tenant.id와 id를 commandPort에 전달한다', async () => {
       commandPort.deleteClient.mockResolvedValue(undefined);
 
-      await expect(controller.delete(tenant, 'client-1')).resolves.toBeUndefined();
+      await expect(
+        controller.delete(tenant, 'client-1'),
+      ).resolves.toBeUndefined();
       expect(commandPort.deleteClient).toHaveBeenCalledWith(
         tenant.id,
         'client-1',
@@ -106,12 +137,16 @@ describe('관리자 단순 컨트롤러', () => {
       } as any;
       const controller = new AdminKeyController(commandPort, queryPort);
 
-      await expect(controller.list(tenant)).resolves.toEqual([{ kid: 'key-1' }]);
+      await expect(controller.list(tenant)).resolves.toEqual([
+        { kid: 'key-1' },
+      ]);
       expect(queryPort.getKeys).toHaveBeenCalledWith(tenant.id);
     });
 
     it('rotate는 tenant.id를 commandPort에 전달한다', async () => {
-      const commandPort = { rotateKeys: jest.fn().mockResolvedValue(undefined) } as any;
+      const commandPort = {
+        rotateKeys: jest.fn().mockResolvedValue(undefined),
+      } as any;
       const queryPort = { getKeys: jest.fn() } as any;
       const controller = new AdminKeyController(commandPort, queryPort);
 
@@ -180,7 +215,9 @@ describe('관리자 단순 컨트롤러', () => {
     it('delete는 tenant.id와 id를 commandPort에 전달한다', async () => {
       commandPort.deletePermission.mockResolvedValue(undefined);
 
-      await expect(controller.delete(tenant, 'perm-1')).resolves.toBeUndefined();
+      await expect(
+        controller.delete(tenant, 'perm-1'),
+      ).resolves.toBeUndefined();
       expect(commandPort.deletePermission).toHaveBeenCalledWith(
         tenant.id,
         'perm-1',
@@ -210,7 +247,9 @@ describe('관리자 단순 컨트롤러', () => {
       const controller = new AdminPolicyController(commandPort, queryPort);
       const policies = { requireMfa: true };
 
-      await expect(controller.update(tenant, policies)).resolves.toBeUndefined();
+      await expect(
+        controller.update(tenant, policies),
+      ).resolves.toBeUndefined();
       expect(commandPort.updatePolicies).toHaveBeenCalledWith(
         tenant.id,
         policies,

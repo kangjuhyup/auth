@@ -328,6 +328,8 @@ export function createClientAuthPolicyEntity(
       maxSessionDurationSec: null,
       consentRequired: true,
       requireAuthTime: false,
+      refreshTokenRotationEnabled: true,
+      refreshTokenReuseAction: 'revoke_grant',
     }),
     overrides,
   );
@@ -644,6 +646,8 @@ export function createClientAuthPolicyModel(
       maxSessionDurationSec: null,
       consentRequired: true,
       requireAuthTime: false,
+      refreshTokenRotationEnabled: true,
+      refreshTokenReuseAction: 'revoke_grant',
       ...overrides,
     },
     id,

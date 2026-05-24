@@ -589,6 +589,8 @@ function makeClientAuthPolicy(clientRefId: string): ClientAuthPolicyModel {
     maxSessionDurationSec: 3600,
     consentRequired: true,
     requireAuthTime: false,
+    refreshTokenRotationEnabled: true,
+    refreshTokenReuseAction: 'revoke_grant',
   });
   p.setPersistence('policy-1', new Date('2024-01-01'), new Date('2024-01-01'));
   return p;
@@ -712,6 +714,8 @@ describe('AdminQueryHandler - ClientAuthPolicy', () => {
       expect(result.allowedAuthMethods).toEqual(['password']);
       expect(result.mfaRequired).toBe(false);
       expect(result.consentRequired).toBe(true);
+      expect(result.refreshTokenRotationEnabled).toBe(true);
+      expect(result.refreshTokenReuseAction).toBe('revoke_grant');
     });
   });
 });

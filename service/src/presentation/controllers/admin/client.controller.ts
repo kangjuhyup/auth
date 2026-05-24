@@ -15,7 +15,9 @@ import { AdminQueryPort } from '@application/queries/ports';
 import {
   CreateClientDto,
   UpdateClientDto,
+  UpdateClientAuthPolicyDto,
   ClientResponse,
+  ClientAuthPolicyResponse,
   PaginationQuery,
   PaginatedResult,
 } from '@presentation/dto';
@@ -54,6 +56,14 @@ export class AdminClientController {
     return this.commandPort.createClient(tenant.id, dto);
   }
 
+  @Get(':id/auth-policy')
+  getAuthPolicy(
+    @Tenant() tenant: TenantContext,
+    @Param('id') id: string,
+  ): Promise<ClientAuthPolicyResponse> {
+    return this.queryPort.getClientAuthPolicy(tenant.id, id);
+  }
+
   @Put(':id')
   update(
     @Tenant() tenant: TenantContext,
@@ -61,6 +71,15 @@ export class AdminClientController {
     @Body() dto: UpdateClientDto,
   ): Promise<void> {
     return this.commandPort.updateClient(tenant.id, id, dto);
+  }
+
+  @Put(':id/auth-policy')
+  updateAuthPolicy(
+    @Tenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @Body() dto: UpdateClientAuthPolicyDto,
+  ): Promise<void> {
+    return this.commandPort.updateClientAuthPolicy(tenant.id, id, dto);
   }
 
   @Delete(':id')

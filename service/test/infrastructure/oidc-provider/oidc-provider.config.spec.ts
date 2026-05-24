@@ -4,7 +4,11 @@ import { buildOidcConfiguration } from '@infrastructure/oidc-provider/oidc-provi
 import type { ClientQueryPort } from '@application/queries/ports/client-query.port';
 import { UserQueryPort } from '@application/queries/ports/user-query.port';
 import type { ConfigService } from '@nestjs/config';
-import type { ClientRepository, TenantRepository } from '@domain/repositories';
+import type {
+  ClientAuthPolicyRepository,
+  ClientRepository,
+  TenantRepository,
+} from '@domain/repositories';
 import type { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
 
 describe('buildOidcConfiguration', () => {
@@ -18,7 +22,9 @@ describe('buildOidcConfiguration', () => {
       clientId,
     }) as any;
 
-  const makeConfigService = (overrides: Record<string, string> = {}): jest.Mocked<ConfigService> => {
+  const makeConfigService = (
+    overrides: Record<string, string> = {},
+  ): jest.Mocked<ConfigService> => {
     const defaults: Record<string, string> = {
       OIDC_ACCESS_TOKEN_FORMAT: 'opaque',
       OIDC_COOKIE_KEYS: 'k1,k2',
@@ -57,6 +63,9 @@ describe('buildOidcConfiguration', () => {
     const configService = makeConfigService(configOverrides);
 
     const clientRepository = {} as ClientRepository;
+    const clientAuthPolicyRepository = {
+      findByClientRefId: jest.fn().mockResolvedValue(null),
+    } as any as jest.Mocked<ClientAuthPolicyRepository>;
     const tenantRepository = {} as TenantRepository;
     const symmetricCrypto = {} as SymmetricCryptoPort;
 
@@ -67,6 +76,7 @@ describe('buildOidcConfiguration', () => {
       clientQuery,
       configService,
       clientRepository,
+      clientAuthPolicyRepository,
       tenantRepository,
       symmetricCrypto,
       jwksKeys: [],
@@ -262,14 +272,16 @@ describe('buildOidcConfiguration', () => {
     const makeTtlCtx = (tenantId = 'tenant-1') =>
       ({ req: { tenant: { id: tenantId } } }) as any;
 
-    const makeTtlClient = (clientId = 'client-1') =>
-      ({ clientId }) as any;
+    const makeTtlClient = (clientId = 'client-1') => ({ clientId }) as any;
 
     it('AccessToken: client에 TTL이 없으면 tenantAccessTokenTtlSec를 반환한다', async () => {
       const deps = makeDeps();
       (deps.clientRepository as any).findByClientId = jest
         .fn()
-        .mockResolvedValue({ accessTokenTtlSec: null, refreshTokenTtlSec: null });
+        .mockResolvedValue({
+          accessTokenTtlSec: null,
+          refreshTokenTtlSec: null,
+        });
 
       const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
       const ttlFn = (cfg.ttl as any).AccessToken;
@@ -290,7 +302,10 @@ describe('buildOidcConfiguration', () => {
       const deps = makeDeps();
       (deps.clientRepository as any).findByClientId = jest
         .fn()
-        .mockResolvedValue({ accessTokenTtlSec: null, refreshTokenTtlSec: null });
+        .mockResolvedValue({
+          accessTokenTtlSec: null,
+          refreshTokenTtlSec: null,
+        });
 
       const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
       const ttlFn = (cfg.ttl as any).RefreshToken;
@@ -309,7 +324,10 @@ describe('buildOidcConfiguration', () => {
       const deps = makeDeps();
       (deps.clientRepository as any).findByClientId = jest
         .fn()
-        .mockResolvedValue({ accessTokenTtlSec: clientAccessTtl, refreshTokenTtlSec: null });
+        .mockResolvedValue({
+          accessTokenTtlSec: clientAccessTtl,
+          refreshTokenTtlSec: null,
+        });
 
       const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
       const ttlFn = (cfg.ttl as any).AccessToken;
@@ -330,7 +348,10 @@ describe('buildOidcConfiguration', () => {
       const deps = makeDeps();
       (deps.clientRepository as any).findByClientId = jest
         .fn()
-        .mockResolvedValue({ accessTokenTtlSec: null, refreshTokenTtlSec: clientRefreshTtl });
+        .mockResolvedValue({
+          accessTokenTtlSec: null,
+          refreshTokenTtlSec: clientRefreshTtl,
+        });
 
       const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
       const ttlFn = (cfg.ttl as any).RefreshToken;
@@ -347,8 +368,66 @@ describe('buildOidcConfiguration', () => {
       const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
       const ttlFn = (cfg.ttl as any).AccessToken;
 
-      const result = ttlFn({ req: { tenant: undefined } } as any, {}, makeTtlClient());
+      const result = ttlFn(
+        { req: { tenant: undefined } } as any,
+        {},
+        makeTtlClient(),
+      );
       expect(result).toBe(deps.tenantAccessTokenTtlSec);
+    });
+  });
+
+  describe('refresh token rotation policy', () => {
+    it('정책이 없으면 refresh token rotation을 활성화한다', async () => {
+      const deps = makeDeps();
+      (deps.clientRepository as any).findByClientId = jest
+        .fn()
+        .mockResolvedValue({ id: 'client-ref-1' });
+
+      const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
+
+      await expect(
+        (cfg.rotateRefreshToken as any)({
+          req: { tenant: { id: 'tenant-1' } },
+          oidc: { client: { clientId: 'client-1' } },
+        }),
+      ).resolves.toBe(true);
+    });
+
+    it('클라이언트 인증 정책의 rotation 비활성화를 반영한다', async () => {
+      const deps = makeDeps();
+      (deps.clientRepository as any).findByClientId = jest
+        .fn()
+        .mockResolvedValue({ id: 'client-ref-1' });
+      deps.clientAuthPolicyRepository.findByClientRefId.mockResolvedValue({
+        refreshTokenRotationEnabled: false,
+      } as any);
+
+      const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
+
+      await expect(
+        (cfg.rotateRefreshToken as any)({
+          req: { tenant: { id: 'tenant-1' } },
+          oidc: { client: { clientId: 'client-1' } },
+        }),
+      ).resolves.toBe(false);
+
+      expect(deps.clientRepository.findByClientId).toHaveBeenCalledWith(
+        'tenant-1',
+        'client-1',
+      );
+      expect(
+        deps.clientAuthPolicyRepository.findByClientRefId,
+      ).toHaveBeenCalledWith('client-ref-1');
+    });
+
+    it('tenant나 client가 없으면 보수적으로 rotation을 활성화한다', async () => {
+      const deps = makeDeps();
+      const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
+
+      await expect(
+        (cfg.rotateRefreshToken as any)({ req: {}, oidc: {} }),
+      ).resolves.toBe(true);
     });
   });
 });

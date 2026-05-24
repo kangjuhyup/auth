@@ -7,10 +7,18 @@ import { buildOidcConfiguration } from './oidc-provider.config';
 import { ClientQueryPort } from '@application/queries/ports/client-query.port';
 import { UserQueryPort } from '@application/queries/ports/user-query.port';
 import { loadOidcProviderConstructor } from './oidc-provider.loader';
-import type { ClientRepository, JwksKeyRepository, TenantRepository, TenantConfigRepository } from '@domain/repositories';
+import type {
+  ClientAuthPolicyRepository,
+  ClientRepository,
+  EventRepository,
+  JwksKeyRepository,
+  TenantRepository,
+  TenantConfigRepository,
+} from '@domain/repositories';
 import type { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
 import type { JwksKeyCryptoPort } from '@application/ports/jwks-key-crypto.port';
 import { JwksKeyModel } from '@domain/models/jwks-key';
+import { EventModel } from '@domain/models/event';
 
 export type CreateOidcProviderParams = {
   issuer: string;
@@ -21,9 +29,11 @@ export type CreateOidcProviderParams = {
   configService: ConfigService;
   tenantCode: string;
   clientRepository: ClientRepository;
+  clientAuthPolicyRepository: ClientAuthPolicyRepository;
   tenantRepository: TenantRepository;
   tenantConfigRepository: TenantConfigRepository;
   jwksKeyRepository: JwksKeyRepository;
+  eventRepository: EventRepository;
   jwksKeyCrypto: JwksKeyCryptoPort;
   symmetricCrypto: SymmetricCryptoPort;
 };
@@ -74,14 +84,67 @@ export async function createOidcProvider(
     configService: params.configService,
     tenantCode: params.tenantCode,
     clientRepository: params.clientRepository,
+    clientAuthPolicyRepository: params.clientAuthPolicyRepository,
     tenantRepository: params.tenantRepository,
     symmetricCrypto: params.symmetricCrypto,
     jwksKeys,
-    tenantAccessTokenTtlSec: tenantConfig?.accessTokenTtlSec ?? DEFAULT_ACCESS_TOKEN_TTL,
-    tenantRefreshTokenTtlSec: tenantConfig?.refreshTokenTtlSec ?? DEFAULT_REFRESH_TOKEN_TTL,
+    tenantAccessTokenTtlSec:
+      tenantConfig?.accessTokenTtlSec ?? DEFAULT_ACCESS_TOKEN_TTL,
+    tenantRefreshTokenTtlSec:
+      tenantConfig?.refreshTokenTtlSec ?? DEFAULT_REFRESH_TOKEN_TTL,
   });
 
   const Provider = await loadOidcProviderConstructor();
 
-  return new Provider(params.issuer, configuration);
+  const provider = new Provider(params.issuer, configuration);
+  provider.on('grant.revoked', (ctx, grantId) => {
+    if (!isRefreshTokenReuseRevocation(ctx)) return;
+    void auditRefreshTokenReuse(params.eventRepository, ctx, grantId).catch(
+      () => undefined,
+    );
+  });
+
+  return provider;
+}
+
+function isRefreshTokenReuseRevocation(ctx: any): boolean {
+  const refreshToken = ctx?.oidc?.entities?.RefreshToken;
+  return (
+    ctx?.oidc?.route === 'token' &&
+    ctx?.oidc?.params?.grant_type === 'refresh_token' &&
+    refreshToken?.consumed === true
+  );
+}
+
+async function auditRefreshTokenReuse(
+  eventRepository: EventRepository,
+  ctx: any,
+  grantId: string,
+): Promise<void> {
+  const tenantId = ctx?.req?.tenant?.id;
+  if (!tenantId) return;
+
+  const refreshToken = ctx?.oidc?.entities?.RefreshToken;
+  await eventRepository.save(
+    new EventModel({
+      tenantId,
+      userId: refreshToken?.accountId ?? null,
+      clientId: ctx?.oidc?.client?.clientId ?? refreshToken?.clientId ?? null,
+      category: 'SECURITY',
+      severity: 'WARN',
+      action: 'TOKEN_REVOKED',
+      resourceType: 'grant',
+      resourceId: grantId,
+      success: false,
+      reason: 'RefreshTokenReuseDetected',
+      ip: null,
+      userAgent: ctx?.get?.('user-agent') ?? null,
+      metadata: {
+        grantType: 'refresh_token',
+        action: 'revoke_grant',
+        rotations: refreshToken?.rotations ?? null,
+      },
+      occurredAt: new Date(),
+    }),
+  );
 }

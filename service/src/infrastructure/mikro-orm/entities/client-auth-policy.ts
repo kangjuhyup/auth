@@ -75,4 +75,19 @@ export class ClientAuthPolicyOrmEntity extends BaseEntity {
     default: false,
   })
   requireAuthTime!: boolean;
+
+  @Property({
+    fieldName: 'refresh_token_rotation_enabled',
+    type: 'boolean',
+    default: true,
+  })
+  refreshTokenRotationEnabled!: boolean;
+
+  @Property({
+    fieldName: 'refresh_token_reuse_action',
+    type: 'varchar',
+    length: 32,
+    default: 'revoke_grant',
+  })
+  refreshTokenReuseAction!: string;
 }

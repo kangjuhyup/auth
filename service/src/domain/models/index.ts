@@ -10,7 +10,11 @@ export type { SignupPolicy } from './tenant-config';
 export { JwksKeyModel } from './jwks-key';
 export type { KeyStatus, KeyAlgorithm } from './jwks-key';
 export { ClientAuthPolicyModel } from './client-auth-policy';
-export type { AuthMethod, MfaMethod } from './client-auth-policy';
+export type {
+  AuthMethod,
+  MfaMethod,
+  RefreshTokenReuseAction,
+} from './client-auth-policy';
 export { UserModel } from './user';
 export type { UserStatus } from './user';
 export { UserCredentialModel } from './user-credential';

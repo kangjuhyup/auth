@@ -1,8 +1,22 @@
-import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { ClientCommandPort } from '../ports/client-command.port';
-import { CreateClientDto, UpdateClientDto } from '@application/dto';
-import { ClientRepository } from '@domain/repositories';
+import {
+  CreateClientDto,
+  UpdateClientAuthPolicyDto,
+  UpdateClientDto,
+} from '@application/dto';
+import {
+  ClientAuthPolicyRepository,
+  ClientRepository,
+} from '@domain/repositories';
 import { ClientModel } from '@domain/models/client';
+import { ClientAuthPolicyModel } from '@domain/models/client-auth-policy';
+import type { AuthMethod, MfaMethod } from '@domain/models/client-auth-policy';
 import { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
 import { orThrow } from '@domain/utils';
 
@@ -12,6 +26,7 @@ export class ClientCommandHandler implements ClientCommandPort {
 
   constructor(
     private readonly clientRepo: ClientRepository,
+    private readonly clientAuthPolicyRepo: ClientAuthPolicyRepository,
     private readonly symmetricCrypto: SymmetricCryptoPort,
   ) {}
 
@@ -19,9 +34,14 @@ export class ClientCommandHandler implements ClientCommandPort {
     tenantId: string,
     dto: CreateClientDto,
   ): Promise<{ id: string }> {
-    this.logger.log(`Creating client clientId=${dto.clientId} in tenant=${tenantId}`);
+    this.logger.log(
+      `Creating client clientId=${dto.clientId} in tenant=${tenantId}`,
+    );
 
-    const existing = await this.clientRepo.findByClientId(tenantId, dto.clientId);
+    const existing = await this.clientRepo.findByClientId(
+      tenantId,
+      dto.clientId,
+    );
     if (existing) throw new ConflictException('Client ID already exists');
 
     const secretEnc = dto.secret
@@ -46,9 +66,14 @@ export class ClientCommandHandler implements ClientCommandPort {
       frontchannelLogoutUri: dto.frontchannelLogoutUri ?? null,
       allowedResources: dto.allowedResources ?? [],
       skipConsent: dto.skipConsent ?? false,
+      accessTokenTtlSec: dto.accessTokenTtlSec ?? null,
+      refreshTokenTtlSec: dto.refreshTokenTtlSec ?? null,
     });
 
     const saved = await this.clientRepo.save(client);
+    await this.clientAuthPolicyRepo.save(
+      this.createDefaultAuthPolicy(tenantId, saved.id),
+    );
     return { id: saved.id };
   }
 
@@ -72,9 +97,11 @@ export class ClientCommandHandler implements ClientCommandPort {
     }
     if (dto.name !== undefined) client.changeName(dto.name);
     if (dto.enabled !== undefined) client.setEnabled(dto.enabled);
-    if (dto.redirectUris !== undefined) client.changeRedirectUris(dto.redirectUris);
+    if (dto.redirectUris !== undefined)
+      client.changeRedirectUris(dto.redirectUris);
     if (dto.grantTypes !== undefined) client.changeGrantTypes(dto.grantTypes);
-    if (dto.responseTypes !== undefined) client.changeResponseTypes(dto.responseTypes);
+    if (dto.responseTypes !== undefined)
+      client.changeResponseTypes(dto.responseTypes);
     if (dto.tokenEndpointAuthMethod !== undefined)
       client.changeTokenEndpointAuthMethod(dto.tokenEndpointAuthMethod);
     if (dto.scope !== undefined) client.changeScope(dto.scope);
@@ -88,10 +115,60 @@ export class ClientCommandHandler implements ClientCommandPort {
       client.changeFrontchannelLogoutUri(dto.frontchannelLogoutUri ?? null);
     if (dto.allowedResources !== undefined)
       client.changeAllowedResources(dto.allowedResources);
-    if (dto.skipConsent !== undefined)
-      client.setSkipConsent(dto.skipConsent);
+    if (dto.skipConsent !== undefined) client.setSkipConsent(dto.skipConsent);
+    if (dto.accessTokenTtlSec !== undefined)
+      client.changeAccessTokenTtlSec(dto.accessTokenTtlSec);
+    if (dto.refreshTokenTtlSec !== undefined)
+      client.changeRefreshTokenTtlSec(dto.refreshTokenTtlSec);
 
     await this.clientRepo.save(client);
+  }
+
+  async updateClientAuthPolicy(
+    tenantId: string,
+    id: string,
+    dto: UpdateClientAuthPolicyDto,
+  ): Promise<void> {
+    this.logger.log(
+      `Updating client auth policy id=${id} in tenant=${tenantId}`,
+    );
+
+    const client = orThrow(
+      await this.clientRepo.findById(id),
+      new NotFoundException('Client not found'),
+      (c) => c.tenantId === tenantId,
+    );
+
+    const policy =
+      (await this.clientAuthPolicyRepo.findByClientRefId(id)) ??
+      this.createDefaultAuthPolicy(tenantId, client.id);
+
+    if (dto.allowedAuthMethods !== undefined) {
+      policy.changeAllowedAuthMethods(dto.allowedAuthMethods as AuthMethod[]);
+    }
+    if (dto.defaultAcr !== undefined) policy.changeDefaultAcr(dto.defaultAcr);
+    if (dto.mfaRequired !== undefined)
+      policy.changeMfaRequired(dto.mfaRequired);
+    if (dto.allowedMfaMethods !== undefined) {
+      policy.changeAllowedMfaMethods(dto.allowedMfaMethods as MfaMethod[]);
+    }
+    if (dto.maxSessionDurationSec !== undefined) {
+      policy.changeMaxSessionDurationSec(dto.maxSessionDurationSec);
+    }
+    if (dto.consentRequired !== undefined) {
+      policy.changeConsentRequired(dto.consentRequired);
+    }
+    if (dto.requireAuthTime !== undefined) {
+      policy.changeRequireAuthTime(dto.requireAuthTime);
+    }
+    if (dto.refreshTokenRotationEnabled !== undefined) {
+      policy.changeRefreshTokenRotationEnabled(dto.refreshTokenRotationEnabled);
+    }
+    if (dto.refreshTokenReuseAction !== undefined) {
+      policy.changeRefreshTokenReuseAction(dto.refreshTokenReuseAction);
+    }
+
+    await this.clientAuthPolicyRepo.save(policy);
   }
 
   async deleteClient(tenantId: string, id: string): Promise<void> {
@@ -104,5 +181,24 @@ export class ClientCommandHandler implements ClientCommandPort {
     );
 
     await this.clientRepo.delete(id);
+  }
+
+  private createDefaultAuthPolicy(
+    tenantId: string,
+    clientRefId: string,
+  ): ClientAuthPolicyModel {
+    return new ClientAuthPolicyModel({
+      tenantId,
+      clientRefId,
+      allowedAuthMethods: ['password'],
+      defaultAcr: 'urn:auth:pwd',
+      mfaRequired: false,
+      allowedMfaMethods: ['totp'],
+      maxSessionDurationSec: null,
+      consentRequired: true,
+      requireAuthTime: false,
+      refreshTokenRotationEnabled: true,
+      refreshTokenReuseAction: 'revoke_grant',
+    });
   }
 }

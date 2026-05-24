@@ -6,8 +6,10 @@ import {
   IsIn,
   IsArray,
   IsUrl,
+  IsInt,
   MinLength,
   MaxLength,
+  Min,
   Matches,
   ArrayMaxSize,
   ValidateIf,
@@ -16,7 +18,12 @@ import { Expose, Transform } from 'class-transformer';
 
 const CLIENT_TYPES = ['confidential', 'public', 'service'] as const;
 const APPLICATION_TYPES = ['web', 'native'] as const;
-const GRANT_TYPES = ['authorization_code', 'refresh_token', 'client_credentials', 'implicit'] as const;
+const GRANT_TYPES = [
+  'authorization_code',
+  'refresh_token',
+  'client_credentials',
+  'implicit',
+] as const;
 const RESPONSE_TYPES = ['code', 'token', 'id_token'] as const;
 const AUTH_METHODS = [
   'client_secret_basic',
@@ -24,6 +31,14 @@ const AUTH_METHODS = [
   'private_key_jwt',
   'none',
 ] as const;
+const USER_AUTH_METHODS = [
+  'password',
+  'totp',
+  'webauthn',
+  'magic_link',
+] as const;
+const MFA_METHODS = ['totp', 'webauthn', 'recovery_code'] as const;
+const REFRESH_TOKEN_REUSE_ACTIONS = ['revoke_grant'] as const;
 
 const URL_OPTIONS = { require_tld: false } as const;
 
@@ -31,7 +46,9 @@ export class CreateClientDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(128)
-  @Matches(/^[a-zA-Z0-9_.-]+$/, { message: 'clientId는 영문자, 숫자, _, ., - 만 허용됩니다' })
+  @Matches(/^[a-zA-Z0-9_.-]+$/, {
+    message: 'clientId는 영문자, 숫자, _, ., - 만 허용됩니다',
+  })
   clientId!: string;
 
   @IsOptional()
@@ -103,6 +120,18 @@ export class CreateClientDto {
   @IsOptional()
   @IsBoolean()
   skipConsent?: boolean;
+
+  @IsOptional()
+  @ValidateIf((o) => o.accessTokenTtlSec !== null)
+  @IsInt()
+  @Min(60)
+  accessTokenTtlSec?: number | null;
+
+  @IsOptional()
+  @ValidateIf((o) => o.refreshTokenTtlSec !== null)
+  @IsInt()
+  @Min(60)
+  refreshTokenTtlSec?: number | null;
 }
 
 export class UpdateClientDto {
@@ -179,6 +208,63 @@ export class UpdateClientDto {
   @IsOptional()
   @IsBoolean()
   skipConsent?: boolean;
+
+  @IsOptional()
+  @ValidateIf((o) => o.accessTokenTtlSec !== null)
+  @IsInt()
+  @Min(60)
+  accessTokenTtlSec?: number | null;
+
+  @IsOptional()
+  @ValidateIf((o) => o.refreshTokenTtlSec !== null)
+  @IsInt()
+  @Min(60)
+  refreshTokenTtlSec?: number | null;
+}
+
+export class UpdateClientAuthPolicyDto {
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(8)
+  @IsIn(USER_AUTH_METHODS, { each: true })
+  allowedAuthMethods?: string[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  defaultAcr?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  mfaRequired?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(8)
+  @IsIn(MFA_METHODS, { each: true })
+  allowedMfaMethods?: string[];
+
+  @IsOptional()
+  @ValidateIf((o) => o.maxSessionDurationSec !== null)
+  @IsInt()
+  @Min(60)
+  maxSessionDurationSec?: number | null;
+
+  @IsOptional()
+  @IsBoolean()
+  consentRequired?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  requireAuthTime?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  refreshTokenRotationEnabled?: boolean;
+
+  @IsOptional()
+  @IsIn(REFRESH_TOKEN_REUSE_ACTIONS)
+  refreshTokenReuseAction?: 'revoke_grant';
 }
 
 export class ClientResponse {
@@ -231,10 +317,52 @@ export class ClientResponse {
   skipConsent!: boolean;
 
   @Expose()
-  @Transform(({ value }) => (value instanceof Date ? value.toISOString() : value))
+  accessTokenTtlSec!: number | null;
+
+  @Expose()
+  refreshTokenTtlSec!: number | null;
+
+  @Expose()
+  @Transform(({ value }) =>
+    value instanceof Date ? value.toISOString() : value,
+  )
   createdAt!: Date;
 
   @Expose()
-  @Transform(({ value }) => (value instanceof Date ? value.toISOString() : value))
+  @Transform(({ value }) =>
+    value instanceof Date ? value.toISOString() : value,
+  )
   updatedAt!: Date;
+}
+
+export class ClientAuthPolicyResponse {
+  @Expose()
+  clientRefId!: string;
+
+  @Expose()
+  allowedAuthMethods!: string[];
+
+  @Expose()
+  defaultAcr!: string;
+
+  @Expose()
+  mfaRequired!: boolean;
+
+  @Expose()
+  allowedMfaMethods!: string[];
+
+  @Expose()
+  maxSessionDurationSec!: number | null;
+
+  @Expose()
+  consentRequired!: boolean;
+
+  @Expose()
+  requireAuthTime!: boolean;
+
+  @Expose()
+  refreshTokenRotationEnabled!: boolean;
+
+  @Expose()
+  refreshTokenReuseAction!: 'revoke_grant';
 }
