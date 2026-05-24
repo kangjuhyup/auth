@@ -61,6 +61,17 @@ function readBooleanEnv(key: string, defaultValue: boolean): boolean {
   return value === 'true';
 }
 
+function readLogLevelEnv(key: string, defaultValue: LogLevel): LogLevel {
+  const value = readEnvValue(key)?.toUpperCase();
+  if (!value) {
+    return defaultValue;
+  }
+
+  return Object.values(LogLevel).includes(value as LogLevel)
+    ? (value as LogLevel)
+    : defaultValue;
+}
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -69,7 +80,7 @@ function readBooleanEnv(key: string, defaultValue: boolean): boolean {
     }),
     RvlogNestModule.forRoot({
       logger: {
-        minLevel: LogLevel.INFO,
+        minLevel: readLogLevelEnv('RVLOG_MIN_LEVEL', LogLevel.DEBUG),
         pretty: readBooleanEnv(
           'RVLOG_PRETTY',
           process.env.NODE_ENV !== 'production',

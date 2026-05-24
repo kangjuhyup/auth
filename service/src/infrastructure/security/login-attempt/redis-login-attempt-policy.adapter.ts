@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Logging, NoLog } from '@kangjuhyup/rvlog';
+import { Logging, LogLevel, NoLog } from '@kangjuhyup/rvlog';
 import { ConfigService } from '@nestjs/config';
 import {
   LoginAttemptPolicyPort,
@@ -10,7 +10,7 @@ import {
 import { RedisLoginAttemptStore } from '@infrastructure/stores/redis/redis-login-attempt.store';
 
 @Injectable()
-@Logging()
+@Logging({ level: LogLevel.DEBUG })
 export class RedisLoginAttemptPolicyAdapter extends LoginAttemptPolicyPort {
   private readonly ipLimit: number;
   private readonly ipWindowSec: number;

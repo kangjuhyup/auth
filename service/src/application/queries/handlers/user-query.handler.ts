@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { Logging, NoLog } from '@kangjuhyup/rvlog';
+import { Logging, LogLevel, NoLog } from '@kangjuhyup/rvlog';
 import { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
 import type {
   UserClaimsView,
@@ -12,7 +12,7 @@ import { MFA_STRATEGIES } from '@application/queries/strategies';
 import type { MfaStrategy } from '@application/queries/strategies';
 
 @Injectable()
-@Logging()
+@Logging({ level: LogLevel.DEBUG })
 export class UserQueryHandler implements UserQueryPort {
   private readonly mfaStrategies: Map<MfaMethodType, MfaStrategy>;
 

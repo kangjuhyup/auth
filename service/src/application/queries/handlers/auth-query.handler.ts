@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Logging } from '@kangjuhyup/rvlog';
+import { Logging, LogLevel } from '@kangjuhyup/rvlog';
 import type {
   ConsentResponse,
   IdentityLinkResponse,
@@ -12,7 +12,7 @@ import { UserIdentityRepository } from '@domain/repositories/user-identity.repos
 import { orThrow } from '@domain/utils';
 
 @Injectable()
-@Logging()
+@Logging({ level: LogLevel.DEBUG })
 export class AuthQueryHandler implements AuthQueryPort {
   constructor(
     private readonly userQuery: UserQueryPort,

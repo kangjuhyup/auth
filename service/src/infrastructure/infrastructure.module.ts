@@ -73,7 +73,6 @@ import { RedisLoginAttemptStore } from './stores/redis/redis-login-attempt.store
 import { RedisSamlCacheProviderFactory } from './stores/redis/redis-saml-cache-provider.factory';
 import { RedisSamlRelayStateStore } from './stores/redis/redis-saml-relay-state.store';
 import { ReadinessCheckPort } from '@application/ports/readiness-check.port';
-import { OperationalMetricsPort } from '@application/ports/operational-metrics.port';
 import { InfrastructureReadinessAdapter } from './observability/infrastructure-readiness.adapter';
 
 // Password Hash Implementations
@@ -264,7 +263,6 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     JwksKeyCryptoPort,
     SymmetricCryptoPort,
     ReadinessCheckPort,
-    OperationalMetricsPort,
   ],
 })
 export class InfrastructureModule {}

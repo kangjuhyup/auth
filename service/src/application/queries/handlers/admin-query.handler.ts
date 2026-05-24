@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Logging, NoLog } from '@kangjuhyup/rvlog';
+import { Logging, LogLevel, NoLog } from '@kangjuhyup/rvlog';
 import { orThrow } from '@domain/utils';
 import { AdminQueryPort } from '../ports/admin-query.port';
 import {
@@ -41,7 +41,7 @@ import { ConsentModel } from '@domain/models/consent';
 import { TenantConfigModel } from '@domain/models/tenant-config';
 
 @Injectable()
-@Logging()
+@Logging({ level: LogLevel.DEBUG })
 export class AdminQueryHandler implements AdminQueryPort {
   constructor(
     private readonly tenantRepo: TenantRepository,

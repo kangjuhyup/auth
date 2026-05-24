@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { Logging, NoLog } from '@kangjuhyup/rvlog';
+import { Logging, LogLevel, NoLog } from '@kangjuhyup/rvlog';
 import { ConfigService } from '@nestjs/config';
 import { MikroORM } from '@mikro-orm/core';
 import type Redis from 'ioredis';
@@ -15,7 +15,7 @@ type ReadinessCheck = Readonly<{
 }>;
 
 @Injectable()
-@Logging()
+@Logging({ level: LogLevel.DEBUG })
 export class InfrastructureReadinessAdapter extends ReadinessCheckPort {
   constructor(
     private readonly orm: MikroORM,

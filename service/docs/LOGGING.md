@@ -23,7 +23,7 @@
 ```ts
 RvlogNestModule.forRoot({
   logger: {
-    minLevel: LogLevel.INFO,
+    minLevel: LogLevel.DEBUG,
     pretty: process.env.NODE_ENV !== 'production',
   },
   http: {
@@ -42,6 +42,7 @@ RvlogNestModule.forRoot({
 ```
 
 `RVLOG_PRETTY=true|false`를 설정하면 pretty 출력 여부를 명시적으로 제어할 수 있다.
+`RVLOG_MIN_LEVEL=DEBUG|INFO|WARN|ERROR`를 설정하면 전역 최소 로그 레벨을 제어할 수 있다.
 
 ---
 
@@ -129,7 +130,9 @@ HTTP 로그는 운영 관측성 신호이고, 감사 로그는 보안 이벤트 
 
 # 6. Service And Infrastructure Flow Logging
 
-application/infrastructure 내부 흐름 추적은 `@kangjuhyup/rvlog`의 `@Logging`을 사용한다.
+application/infrastructure 내부 흐름 추적은 `@kangjuhyup/rvlog`의 `@Logging({ level: LogLevel.DEBUG })`을 사용한다.
+
+HTTP 요청 로그는 운영 관측성을 위해 `INFO`를 유지하고, 내부 service/infrastructure 흐름 로그만 `DEBUG`로 기록한다.
 
 현재 적용 대상:
 

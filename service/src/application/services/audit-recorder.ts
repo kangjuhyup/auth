@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Logging, NoLog } from '@kangjuhyup/rvlog';
+import { Logging, LogLevel, NoLog } from '@kangjuhyup/rvlog';
 import { ulid } from 'ulid';
 import type { AuditContext } from '@application/dto';
 import { EventModel } from '@domain/models/event';
@@ -25,7 +25,7 @@ export interface AdminAuditParams {
 }
 
 @Injectable()
-@Logging()
+@Logging({ level: LogLevel.DEBUG })
 export class AuditRecorder {
   constructor(private readonly eventRepo: EventRepository) {}
 
