@@ -1,7 +1,9 @@
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import request from 'supertest';
 import { ConsentModel } from '@domain/models/consent';
+import { UserIdentityModel } from '@domain/models/user-identity';
 import { ApiE2eFixture, createApiE2eFixture } from './support/api-test-app';
+import { MockOidcIdpServer } from './support/mock-oidc-idp';
 
 jest.setTimeout(180_000);
 
@@ -28,18 +30,24 @@ jest.setTimeout(180_000);
  */
 describe('API E2E', () => {
   let fixture!: ApiE2eFixture;
+  let mockIdp!: MockOidcIdpServer;
 
   beforeAll(async () => {
+    mockIdp = await MockOidcIdpServer.start();
     fixture = await createApiE2eFixture();
   });
 
   beforeEach(async () => {
+    mockIdp.reset();
     await fixture.resetPersistence();
   });
 
   afterAll(async () => {
     if (fixture) {
       await fixture.close();
+    }
+    if (mockIdp) {
+      await mockIdp.close();
     }
   });
 
@@ -49,6 +57,53 @@ describe('API E2E', () => {
     const challenge = createHash('sha256').update(verifier).digest('base64url');
 
     return { verifier, challenge };
+  }
+
+  function decodeBase32(encoded: string): Buffer {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    const cleaned = encoded.replace(/=+$/, '').toUpperCase();
+    let bits = '';
+
+    for (const char of cleaned) {
+      const value = alphabet.indexOf(char);
+      if (value === -1) continue;
+      bits += value.toString(2).padStart(5, '0');
+    }
+
+    const bytes: number[] = [];
+    for (let index = 0; index + 8 <= bits.length; index += 8) {
+      bytes.push(parseInt(bits.slice(index, index + 8), 2));
+    }
+
+    return Buffer.from(bytes);
+  }
+
+  function generateTotpCode(secret: string, now = Date.now()): string {
+    const counter = Math.floor(now / 30000);
+    const counterBuffer = Buffer.alloc(8);
+    let value = counter;
+
+    for (let index = 7; index >= 0; index -= 1) {
+      counterBuffer[index] = value & 0xff;
+      value = Math.floor(value / 256);
+    }
+
+    const hmac = createHmac('sha1', decodeBase32(secret) as unknown as string)
+      .update(counterBuffer as unknown as string)
+      .digest();
+    const offset = hmac[hmac.length - 1] & 0xf;
+    const code =
+      (((hmac[offset] & 0x7f) << 24) |
+        ((hmac[offset + 1] & 0xff) << 16) |
+        ((hmac[offset + 2] & 0xff) << 8) |
+        (hmac[offset + 3] & 0xff)) %
+      1000000;
+
+    return code.toString().padStart(6, '0');
+  }
+
+  function buildInvalidTotpCode(validCode: string): string {
+    return validCode === '000000' ? '000001' : '000000';
   }
 
   function toAppPath(urlOrPath: string): string {
@@ -70,11 +125,20 @@ describe('API E2E', () => {
       .expect(201);
 
     expect(response.body).toEqual({
-      token: expect.any(String),
       username: fixture.env.adminUsername,
     });
 
-    return response.body.token as string;
+    const setCookie = response.headers['set-cookie'];
+    const adminSessionCookie = (
+      Array.isArray(setCookie) ? setCookie : [setCookie]
+    ).find((cookie): cookie is string => {
+      return typeof cookie === 'string' && cookie.startsWith('admin_session=');
+    });
+    expect(adminSessionCookie).toBeDefined();
+
+    return decodeURIComponent(
+      adminSessionCookie!.split(';')[0]!.replace('admin_session=', ''),
+    );
   }
 
   async function createTenant(
@@ -133,15 +197,15 @@ describe('API E2E', () => {
       redirectUris: overrides?.redirectUris ?? [redirectUri],
       grantTypes: overrides?.grantTypes ?? ['authorization_code'],
       responseTypes: overrides?.responseTypes ?? ['code'],
-      tokenEndpointAuthMethod:
-        overrides?.tokenEndpointAuthMethod ?? 'none',
+      tokenEndpointAuthMethod: overrides?.tokenEndpointAuthMethod ?? 'none',
       scope: overrides?.scope ?? 'openid profile email',
       postLogoutRedirectUris: overrides?.postLogoutRedirectUris ?? [
         `https://${tenantCode}.example.test/logout`,
       ],
       applicationType: overrides?.applicationType ?? 'web',
-      allowedResources:
-        overrides?.allowedResources ?? ['https://resource.example.test'],
+      allowedResources: overrides?.allowedResources ?? [
+        'https://resource.example.test',
+      ],
       skipConsent: overrides?.skipConsent ?? true,
     };
 
@@ -318,7 +382,7 @@ describe('API E2E', () => {
         username: params.username,
         password: params.password,
       })
-      .expect(201);
+      .expect(200);
 
     expect(loginResponse.body).toMatchObject({
       success: true,
@@ -326,8 +390,25 @@ describe('API E2E', () => {
       redirectTo: expect.any(String),
     });
 
+    const code = await resolveAuthorizationCode(
+      agent,
+      loginResponse.body.redirectTo,
+    );
+
+    return {
+      agent,
+      code: code as string,
+      verifier,
+      uid,
+    };
+  }
+
+  async function resolveAuthorizationCode(
+    agent: ReturnType<typeof request.agent>,
+    redirectTo: string,
+  ): Promise<string> {
     const resumeResponse = await agent
-      .get(toAppPath(loginResponse.body.redirectTo))
+      .get(toAppPath(redirectTo))
       .expect((response) => {
         expect([302, 303]).toContain(response.status);
       });
@@ -336,13 +417,7 @@ describe('API E2E', () => {
     const code = callbackLocation.searchParams.get('code');
 
     expect(code).toBeTruthy();
-
-    return {
-      agent,
-      code: code as string,
-      verifier,
-      uid,
-    };
+    return code as string;
   }
 
   async function loginUserViaOidc(params: {
@@ -395,11 +470,116 @@ describe('API E2E', () => {
       });
   }
 
-  it('헬스 체크 요청 시 서비스 상태를 반환한다', async () => {
+  async function enrollTotp(params: {
+    tenantCode: string;
+    accessToken: string;
+  }): Promise<{ secret: string; recoveryCodes: string[] }> {
+    const enrollResponse = await request(fixture.app.getHttpServer())
+      .post('/auth/mfa/totp/enroll')
+      .query({ tenantCode: params.tenantCode })
+      .set('Authorization', `Bearer ${params.accessToken}`)
+      .expect(201);
+
+    expect(enrollResponse.body).toMatchObject({
+      secret: expect.any(String),
+      otpauthUrl: expect.stringContaining('otpauth://totp/'),
+    });
+
+    const secret = enrollResponse.body.secret as string;
+    const confirmResponse = await request(fixture.app.getHttpServer())
+      .post('/auth/mfa/totp/confirm')
+      .query({ tenantCode: params.tenantCode })
+      .set('Authorization', `Bearer ${params.accessToken}`)
+      .send({ code: generateTotpCode(secret) })
+      .expect(201);
+
+    expect(confirmResponse.body.recoveryCodes).toHaveLength(10);
+
+    return {
+      secret,
+      recoveryCodes: confirmResponse.body.recoveryCodes as string[],
+    };
+  }
+
+  async function createMockOidcIdentityProvider(params: {
+    adminToken: string;
+    tenantCode: string;
+    provider?: string;
+  }): Promise<void> {
     await request(fixture.app.getHttpServer())
+      .post(`/t/${params.tenantCode}/admin/identity-providers`)
+      .set('Authorization', `Bearer ${params.adminToken}`)
+      .send({
+        provider: params.provider ?? 'mock_oidc',
+        displayName: 'Mock OIDC',
+        clientId: mockIdp.clientId,
+        clientSecret: mockIdp.clientSecret,
+        redirectUri: `${mockIdp.origin}/callback-placeholder`,
+        enabled: true,
+        oauthConfig: {
+          authorizationUrl: `${mockIdp.origin}/authorize`,
+          tokenUrl: `${mockIdp.origin}/token`,
+          userinfoUrl: `${mockIdp.origin}/userinfo`,
+          scopes: ['openid', 'email'],
+          subField: 'sub',
+          emailField: 'email',
+        },
+      })
+      .expect(201);
+  }
+
+  async function linkUserIdentity(params: {
+    tenantId: string;
+    userId: string;
+    provider: string;
+    providerSub: string;
+    email?: string;
+  }): Promise<void> {
+    await fixture.runInRequestContext(async () => {
+      await fixture.userIdentityRepository.save(
+        new UserIdentityModel({
+          tenantId: params.tenantId,
+          userId: params.userId,
+          provider: params.provider,
+          providerSub: params.providerSub,
+          email: params.email,
+          profileJson: params.email ? { email: params.email } : null,
+          linkedAt: new Date(),
+        }),
+      );
+    });
+  }
+
+  async function fetchMockIdpRedirect(authorizationUrl: URL): Promise<URL> {
+    const nodeFetch = (
+      globalThis as unknown as {
+        fetch(
+          input: URL,
+          init: { redirect: 'manual' },
+        ): Promise<{
+          status: number;
+          headers: { get(name: string): string | null };
+        }>;
+      }
+    ).fetch;
+    const response = await nodeFetch(authorizationUrl, { redirect: 'manual' });
+    expect(response.status).toBe(302);
+
+    const location = response.headers.get('location');
+    expect(location).toBeTruthy();
+
+    return new URL(location as string);
+  }
+
+  it('헬스 체크 요청 시 서비스 상태를 반환한다', async () => {
+    const response = await request(fixture.app.getHttpServer())
       .get('/health')
-      .expect(200)
-      .expect({ status: 'ok' });
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      status: 'ok',
+      uptimeSec: expect.any(Number),
+    });
   });
 
   describe('관리자 시나리오', () => {
@@ -750,7 +930,7 @@ describe('API E2E', () => {
       await request(fixture.app.getHttpServer())
         .delete(`/t/acme/admin/groups/${childGroup.id}`)
         .set('Authorization', `Bearer ${adminToken}`)
-        .expect(200);
+        .expect(204);
 
       await request(fixture.app.getHttpServer())
         .get(`/t/acme/admin/groups/${childGroup.id}`)
@@ -892,7 +1072,9 @@ describe('API E2E', () => {
         .expect(409);
 
       await request(fixture.app.getHttpServer())
-        .delete(`/t/acme/admin/roles/${role.id}/permissions/${anotherPermission.id}`)
+        .delete(
+          `/t/acme/admin/roles/${role.id}/permissions/${anotherPermission.id}`,
+        )
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
 
@@ -1114,7 +1296,7 @@ describe('API E2E', () => {
           username: signup.username,
           password: signup.password,
         })
-        .expect(201);
+        .expect(200);
 
       const resumeResponse = await agent
         .get(toAppPath(loginResponse.body.redirectTo))
@@ -1186,8 +1368,7 @@ describe('API E2E', () => {
         'acme-confidential',
         {
           type: 'confidential',
-          secret:
-            'super-secret-value-1234567890-abcdefghijklmnopqrstuvwxyz',
+          secret: 'super-secret-value-1234567890-abcdefghijklmnopqrstuvwxyz',
           tokenEndpointAuthMethod: 'client_secret_post',
         },
       );
@@ -1248,8 +1429,7 @@ describe('API E2E', () => {
           redirect_uri: client.redirectUri,
           response_type: 'code',
           scope: 'openid profile email',
-          code_challenge:
-            '7f3mSJB9V3bE2yUjSQAjhI1SMfS3R8Lez06dfvJLzyY',
+          code_challenge: '7f3mSJB9V3bE2yUjSQAjhI1SMfS3R8Lez06dfvJLzyY',
           code_challenge_method: 'S256',
           nonce: 'nonce-disabled',
           state: 'state-disabled',
@@ -1272,8 +1452,7 @@ describe('API E2E', () => {
           redirect_uri: 'https://evil.example.test/callback',
           response_type: 'code',
           scope: 'openid profile email',
-          code_challenge:
-            '7f3mSJB9V3bE2yUjSQAjhI1SMfS3R8Lez06dfvJLzyY',
+          code_challenge: '7f3mSJB9V3bE2yUjSQAjhI1SMfS3R8Lez06dfvJLzyY',
           code_challenge_method: 'S256',
           nonce: 'nonce-invalid-redirect',
           state: 'state-invalid-redirect',
@@ -1548,6 +1727,422 @@ describe('API E2E', () => {
         .expect(200);
 
       expect(afterRevokeResponse.body).toEqual([]);
+    });
+
+    it('mock OIDC IdP로 연결된 사용자는 외부 인증만으로 OIDC 토큰을 발급받는다', async () => {
+      const adminToken = await loginAsAdmin();
+      const tenant = await createTenant(adminToken, 'acme', 'Acme Corp');
+      const client = await createClient(adminToken, 'acme', 'mock-idp-web');
+      const signup = await signupUser('acme', {
+        username: 'idp-linked-user',
+        password: 'Password123!',
+      });
+      const provider = 'mock_oidc';
+      const providerSub = 'mock-sub-linked-user';
+      const providerEmail = 'linked-user@mock-idp.test';
+      mockIdp.setProfile({
+        sub: providerSub,
+        email: providerEmail,
+        name: 'Linked User',
+      });
+      await createMockOidcIdentityProvider({
+        adminToken,
+        tenantCode: 'acme',
+        provider,
+      });
+      await linkUserIdentity({
+        tenantId: tenant.id,
+        userId: signup.userId,
+        provider,
+        providerSub,
+        email: providerEmail,
+      });
+
+      const interaction = await beginOidcInteraction({
+        tenantCode: 'acme',
+        clientId: client.clientId,
+        redirectUri: client.redirectUri,
+      });
+
+      const detailsResponse = await interaction.agent
+        .get(`/t/acme/interaction/${interaction.uid}/api/details`)
+        .expect(200);
+
+      expect(detailsResponse.body.idpList).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            provider,
+            name: 'Mock OIDC',
+            protocol: 'oauth2',
+          }),
+        ]),
+      );
+
+      const idpRedirectResponse = await interaction.agent
+        .get(`/t/acme/interaction/${interaction.uid}/idp/${provider}`)
+        .set('host', 'auth.e2e.test')
+        .expect(302);
+      const authorizationUrl = new URL(
+        idpRedirectResponse.headers.location as string,
+      );
+
+      expect(authorizationUrl.origin).toBe(mockIdp.origin);
+      expect(authorizationUrl.searchParams.get('client_id')).toBe(
+        mockIdp.clientId,
+      );
+      expect(authorizationUrl.searchParams.get('state')).toContain(
+        `${interaction.uid}:`,
+      );
+
+      const idpCallbackUrl = await fetchMockIdpRedirect(authorizationUrl);
+
+      expect(idpCallbackUrl.pathname).toBe(
+        `/t/acme/interaction/${interaction.uid}/idp/${provider}/callback`,
+      );
+      expect(idpCallbackUrl.searchParams.get('code')).toBeTruthy();
+
+      const callbackResponse = await interaction.agent
+        .get(toAppPath(idpCallbackUrl.toString()))
+        .set('host', 'auth.e2e.test')
+        .expect((response) => {
+          expect([302, 303]).toContain(response.status);
+        });
+      const code = await resolveAuthorizationCode(
+        interaction.agent,
+        callbackResponse.headers.location as string,
+      );
+
+      const tokenResponse = await exchangeAuthorizationCode({
+        agent: interaction.agent,
+        tenantCode: 'acme',
+        clientId: client.clientId,
+        redirectUri: client.redirectUri,
+        code,
+        codeVerifier: interaction.verifier,
+      }).expect(200);
+
+      const profileResponse = await request(fixture.app.getHttpServer())
+        .get('/auth/profile')
+        .query({ tenantCode: 'acme' })
+        .set('Authorization', `Bearer ${tokenResponse.body.access_token}`)
+        .expect(200);
+
+      expect(profileResponse.body).toMatchObject({
+        id: signup.userId,
+        username: signup.username,
+        email: signup.username + '@acme.test',
+      });
+    });
+
+    it('mock OIDC IdP 사용자가 연결되지 않았으면 interaction 오류로 되돌린다', async () => {
+      const adminToken = await loginAsAdmin();
+      await createTenant(adminToken, 'acme', 'Acme Corp');
+      const client = await createClient(
+        adminToken,
+        'acme',
+        'mock-idp-unlinked-web',
+      );
+      const provider = 'mock_oidc';
+      mockIdp.setProfile({
+        sub: 'mock-sub-unlinked-user',
+        email: 'unlinked-user@mock-idp.test',
+      });
+      await createMockOidcIdentityProvider({
+        adminToken,
+        tenantCode: 'acme',
+        provider,
+      });
+
+      const interaction = await beginOidcInteraction({
+        tenantCode: 'acme',
+        clientId: client.clientId,
+        redirectUri: client.redirectUri,
+      });
+      const idpRedirectResponse = await interaction.agent
+        .get(`/t/acme/interaction/${interaction.uid}/idp/${provider}`)
+        .set('host', 'auth.e2e.test')
+        .expect(302);
+      const authorizationUrl = new URL(
+        idpRedirectResponse.headers.location as string,
+      );
+      const idpCallbackUrl = await fetchMockIdpRedirect(authorizationUrl);
+
+      const callbackResponse = await interaction.agent
+        .get(toAppPath(idpCallbackUrl.toString()))
+        .set('host', 'auth.e2e.test')
+        .expect(302);
+      const callbackLocation = new URL(
+        callbackResponse.headers.location as string,
+        'http://127.0.0.1',
+      );
+
+      expect(callbackLocation.pathname).toBe(
+        `/t/acme/interaction/${interaction.uid}`,
+      );
+      expect(callbackLocation.searchParams.get('error')).toBe(
+        'idp_user_not_linked',
+      );
+    });
+
+    it('TOTP MFA 등록 후 OIDC 로그인은 MFA 검증을 거쳐 토큰 교환에 성공한다', async () => {
+      const adminToken = await loginAsAdmin();
+      await createTenant(adminToken, 'acme', 'Acme Corp');
+      const client = await createClient(adminToken, 'acme', 'mfa-totp-web');
+      const signup = await signupUser('acme', {
+        username: 'mfa-user',
+        password: 'Password123!',
+      });
+
+      const initialLogin = await loginUserViaOidc({
+        tenantCode: 'acme',
+        clientId: client.clientId,
+        redirectUri: client.redirectUri,
+        username: signup.username,
+        password: signup.password,
+      });
+      const { secret } = await enrollTotp({
+        tenantCode: 'acme',
+        accessToken: initialLogin.accessToken,
+      });
+
+      const profileResponse = await request(fixture.app.getHttpServer())
+        .get('/auth/profile')
+        .query({ tenantCode: 'acme' })
+        .set('Authorization', `Bearer ${initialLogin.accessToken}`)
+        .expect(200);
+
+      expect(profileResponse.body).toMatchObject({
+        username: signup.username,
+        mfaEnabled: true,
+      });
+
+      const mfaLogin = await beginOidcInteraction({
+        tenantCode: 'acme',
+        clientId: client.clientId,
+        redirectUri: client.redirectUri,
+      });
+
+      const loginResponse = await mfaLogin.agent
+        .post(`/t/acme/interaction/${mfaLogin.uid}/api/login`)
+        .send({
+          username: signup.username,
+          password: signup.password,
+        })
+        .expect(200);
+
+      expect(loginResponse.body).toMatchObject({
+        success: true,
+        mfaRequired: true,
+        methods: expect.arrayContaining(['totp', 'recovery_code']),
+      });
+
+      const invalidCode = buildInvalidTotpCode(generateTotpCode(secret));
+      await mfaLogin.agent
+        .post(`/t/acme/interaction/${mfaLogin.uid}/api/mfa`)
+        .send({
+          method: 'totp',
+          code: invalidCode,
+        })
+        .expect(401);
+
+      const mfaResponse = await mfaLogin.agent
+        .post(`/t/acme/interaction/${mfaLogin.uid}/api/mfa`)
+        .send({
+          method: 'totp',
+          code: generateTotpCode(secret),
+        })
+        .expect(200);
+
+      expect(mfaResponse.body).toMatchObject({
+        success: true,
+        redirectTo: expect.any(String),
+      });
+
+      const code = await resolveAuthorizationCode(
+        mfaLogin.agent,
+        mfaResponse.body.redirectTo,
+      );
+      const tokenResponse = await exchangeAuthorizationCode({
+        agent: mfaLogin.agent,
+        tenantCode: 'acme',
+        clientId: client.clientId,
+        redirectUri: client.redirectUri,
+        code,
+        codeVerifier: mfaLogin.verifier,
+      }).expect(200);
+
+      expect(tokenResponse.body.access_token).toEqual(expect.any(String));
+    });
+
+    it('MFA 선호도를 비활성화하면 등록된 TOTP가 있어도 정책 없는 OIDC 로그인은 MFA를 생략한다', async () => {
+      const adminToken = await loginAsAdmin();
+      await createTenant(adminToken, 'acme', 'Acme Corp');
+      const client = await createClient(
+        adminToken,
+        'acme',
+        'mfa-preference-web',
+      );
+      const signup = await signupUser('acme', {
+        username: 'mfa-preference-user',
+        password: 'Password123!',
+      });
+
+      const initialLogin = await loginUserViaOidc({
+        tenantCode: 'acme',
+        clientId: client.clientId,
+        redirectUri: client.redirectUri,
+        username: signup.username,
+        password: signup.password,
+      });
+      await enrollTotp({
+        tenantCode: 'acme',
+        accessToken: initialLogin.accessToken,
+      });
+
+      await request(fixture.app.getHttpServer())
+        .put('/auth/mfa/preference')
+        .query({ tenantCode: 'acme' })
+        .set('Authorization', `Bearer ${initialLogin.accessToken}`)
+        .send({ enabled: false })
+        .expect(200);
+
+      const profileResponse = await request(fixture.app.getHttpServer())
+        .get('/auth/profile')
+        .query({ tenantCode: 'acme' })
+        .set('Authorization', `Bearer ${initialLogin.accessToken}`)
+        .expect(200);
+
+      expect(profileResponse.body.mfaEnabled).toBe(false);
+
+      const login = await authorizeUserViaOidc({
+        tenantCode: 'acme',
+        clientId: client.clientId,
+        redirectUri: client.redirectUri,
+        username: signup.username,
+        password: signup.password,
+      });
+
+      const tokenResponse = await exchangeAuthorizationCode({
+        agent: login.agent,
+        tenantCode: 'acme',
+        clientId: client.clientId,
+        redirectUri: client.redirectUri,
+        code: login.code,
+        codeVerifier: login.verifier,
+      }).expect(200);
+
+      expect(tokenResponse.body.access_token).toEqual(expect.any(String));
+    });
+
+    it('MFA credential이 없는 사용자는 MFA 선호도 활성화가 거부된다', async () => {
+      const adminToken = await loginAsAdmin();
+      await createTenant(adminToken, 'acme', 'Acme Corp');
+      const client = await createClient(
+        adminToken,
+        'acme',
+        'mfa-no-credential-web',
+      );
+      const signup = await signupUser('acme', {
+        username: 'mfa-no-credential-user',
+        password: 'Password123!',
+      });
+
+      const login = await loginUserViaOidc({
+        tenantCode: 'acme',
+        clientId: client.clientId,
+        redirectUri: client.redirectUri,
+        username: signup.username,
+        password: signup.password,
+      });
+
+      const response = await request(fixture.app.getHttpServer())
+        .put('/auth/mfa/preference')
+        .query({ tenantCode: 'acme' })
+        .set('Authorization', `Bearer ${login.accessToken}`)
+        .send({ enabled: true })
+        .expect(400);
+
+      expect(response.body.message).toBe('MFA credential is required');
+    });
+
+    it('복구 코드는 MFA 로그인에 한 번만 사용할 수 있다', async () => {
+      const adminToken = await loginAsAdmin();
+      await createTenant(adminToken, 'acme', 'Acme Corp');
+      const client = await createClient(adminToken, 'acme', 'mfa-recovery-web');
+      const signup = await signupUser('acme', {
+        username: 'mfa-recovery-user',
+        password: 'Password123!',
+      });
+
+      const initialLogin = await loginUserViaOidc({
+        tenantCode: 'acme',
+        clientId: client.clientId,
+        redirectUri: client.redirectUri,
+        username: signup.username,
+        password: signup.password,
+      });
+      const { recoveryCodes } = await enrollTotp({
+        tenantCode: 'acme',
+        accessToken: initialLogin.accessToken,
+      });
+      const recoveryCode = recoveryCodes[0];
+
+      const firstMfaLogin = await beginOidcInteraction({
+        tenantCode: 'acme',
+        clientId: client.clientId,
+        redirectUri: client.redirectUri,
+      });
+      await firstMfaLogin.agent
+        .post(`/t/acme/interaction/${firstMfaLogin.uid}/api/login`)
+        .send({
+          username: signup.username,
+          password: signup.password,
+        })
+        .expect(200);
+
+      const firstMfaResponse = await firstMfaLogin.agent
+        .post(`/t/acme/interaction/${firstMfaLogin.uid}/api/mfa`)
+        .send({
+          method: 'recovery_code',
+          code: recoveryCode,
+        })
+        .expect(200);
+
+      const firstCode = await resolveAuthorizationCode(
+        firstMfaLogin.agent,
+        firstMfaResponse.body.redirectTo,
+      );
+      await exchangeAuthorizationCode({
+        agent: firstMfaLogin.agent,
+        tenantCode: 'acme',
+        clientId: client.clientId,
+        redirectUri: client.redirectUri,
+        code: firstCode,
+        codeVerifier: firstMfaLogin.verifier,
+      }).expect(200);
+
+      const secondMfaLogin = await beginOidcInteraction({
+        tenantCode: 'acme',
+        clientId: client.clientId,
+        redirectUri: client.redirectUri,
+      });
+      await secondMfaLogin.agent
+        .post(`/t/acme/interaction/${secondMfaLogin.uid}/api/login`)
+        .send({
+          username: signup.username,
+          password: signup.password,
+        })
+        .expect(200);
+
+      const reuseResponse = await secondMfaLogin.agent
+        .post(`/t/acme/interaction/${secondMfaLogin.uid}/api/mfa`)
+        .send({
+          method: 'recovery_code',
+          code: recoveryCode,
+        })
+        .expect(401);
+
+      expect(reuseResponse.body).toMatchObject({ error: 'mfa_failed' });
     });
 
     it('회원 탈퇴 후 같은 계정으로 다시 로그인할 수 없다', async () => {

@@ -13,6 +13,7 @@ import { OIDC_PROVIDER } from '@infrastructure/oidc-provider/oidc-provider.const
 import { OidcProviderRegistry } from '@infrastructure/oidc-provider/oidc-provider.registry';
 import { TenantRepository, ClientRepository } from '@domain/repositories';
 import { ConsentRepository } from '@domain/repositories/consent.repository';
+import { UserIdentityRepository } from '@domain/repositories/user-identity.repository';
 import { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
 import { configureBodyParsers } from '@presentation/http/body-parser';
 
@@ -38,6 +39,7 @@ export type ApiE2eFixture = {
   tenantRepository: TenantRepository;
   clientRepository: ClientRepository;
   consentRepository: ConsentRepository;
+  userIdentityRepository: UserIdentityRepository;
   userWriteRepository: UserWriteRepositoryPort;
   env: TestEnvironment;
   runInRequestContext<T>(cb: () => Promise<T>): Promise<T>;
@@ -105,7 +107,7 @@ function formatNestedError(error: unknown): string {
   if (error instanceof AggregateError) {
     return error.errors
       .map((entry) =>
-        entry instanceof Error ? entry.stack ?? entry.message : String(entry),
+        entry instanceof Error ? (entry.stack ?? entry.message) : String(entry),
       )
       .join('\n');
   }
@@ -124,16 +126,14 @@ function loadTestEnvironment(): TestEnvironment {
 
   const pick = (key: string, fallback: string): string =>
     preferEnvFile
-      ? process.env[`E2E_OVERRIDE_${key}`] ??
+      ? (process.env[`E2E_OVERRIDE_${key}`] ??
         envFile[key] ??
         process.env[key] ??
-        fallback
-      : process.env[key] ?? envFile[key] ?? fallback;
+        fallback)
+      : (process.env[key] ?? envFile[key] ?? fallback);
 
   const dbDriver = pick('DB_DRIVER', 'postgresql');
-  const dbHost = normalizeLoopbackHost(
-    pick('DB_HOST', 'localhost'),
-  );
+  const dbHost = normalizeLoopbackHost(pick('DB_HOST', 'localhost'));
   const dbPort = Number(pick('DB_PORT', '5432'));
   const dbUser = pick('DB_USER', 'postgres');
   const dbPassword = pick('DB_PASSWORD', '');
@@ -155,7 +155,9 @@ function loadTestEnvironment(): TestEnvironment {
 
 async function ensurePostgresDatabase(env: TestEnvironment): Promise<void> {
   if (env.dbDriver !== 'postgresql') {
-    throw new Error(`Real E2E helper currently supports only PostgreSQL, got ${env.dbDriver}`);
+    throw new Error(
+      `Real E2E helper currently supports only PostgreSQL, got ${env.dbDriver}`,
+    );
   }
 
   const client = new PgClient({
@@ -195,7 +197,9 @@ function applyTestEnvironment(env: TestEnvironment): void {
 }
 
 function clearOidcRegistryCache(registry: OidcProviderRegistry): void {
-  const providers = (registry as any).providers as Map<string, Promise<unknown>> | undefined;
+  const providers = (registry as any).providers as
+    | Map<string, Promise<unknown>>
+    | undefined;
   providers?.clear();
 }
 
@@ -228,6 +232,7 @@ export async function createApiE2eFixture(): Promise<ApiE2eFixture> {
   const tenantRepository = app.get(TenantRepository);
   const clientRepository = app.get(ClientRepository);
   const consentRepository = app.get(ConsentRepository);
+  const userIdentityRepository = app.get(UserIdentityRepository);
   const userWriteRepository = app.get(UserWriteRepositoryPort);
 
   const resetPersistence = async (): Promise<void> => {
@@ -244,7 +249,6 @@ export async function createApiE2eFixture(): Promise<ApiE2eFixture> {
 
       step = 'run migrations';
       await (orm.migrator as any).up();
-
     } catch (error) {
       throw new Error(
         `Failed to reset E2E persistence at step "${step}": ${formatNestedError(error)}`,
@@ -260,6 +264,7 @@ export async function createApiE2eFixture(): Promise<ApiE2eFixture> {
     tenantRepository,
     clientRepository,
     consentRepository,
+    userIdentityRepository,
     userWriteRepository,
     env,
     runInRequestContext<T>(cb: () => Promise<T>): Promise<T> {
