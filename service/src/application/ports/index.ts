@@ -11,6 +11,10 @@ export type {
 } from './mfa-verification.port';
 export { TenantContextPort } from './tenant-context.port';
 export { AdminSessionPort } from './admin-session.port';
+export {
+  IdentityLinkSessionPort,
+  type IdentityLinkSession,
+} from './identity-link-session.port';
 export { LoginAttemptPolicyPort } from './login-attempt-policy.port';
 export type {
   LoginAttemptBlockReason,

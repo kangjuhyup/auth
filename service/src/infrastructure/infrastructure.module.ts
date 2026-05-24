@@ -74,6 +74,8 @@ import { RedisSamlCacheProviderFactory } from './stores/redis/redis-saml-cache-p
 import { RedisSamlRelayStateStore } from './stores/redis/redis-saml-relay-state.store';
 import { ReadinessCheckPort } from '@application/ports/readiness-check.port';
 import { InfrastructureReadinessAdapter } from './observability/infrastructure-readiness.adapter';
+import { IdentityLinkSessionPort } from '@application/ports/identity-link-session.port';
+import { RedisIdentityLinkSessionRepository } from './repositories/redis-identity-link-session.repository';
 
 // Password Hash Implementations
 import { Argon2idHash } from './crypto/password/impl/argon2-hash';
@@ -159,6 +161,10 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
       provide: LoginAttemptPolicyPort,
       useClass: RedisLoginAttemptPolicyAdapter,
     },
+    {
+      provide: IdentityLinkSessionPort,
+      useClass: RedisIdentityLinkSessionRepository,
+    },
     RedisLoginAttemptStore,
     {
       provide: OidcInteractionPort,
@@ -237,6 +243,7 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     TenantContextPort,
     AdminSessionTokenPort,
     LoginAttemptPolicyPort,
+    IdentityLinkSessionPort,
     OidcInteractionPort,
     TenantRepository,
     GroupRepository,
