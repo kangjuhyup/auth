@@ -1,9 +1,22 @@
 import type { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { applyEndpointReference } from './openapi-endpoints';
 
 const OPENAPI_JSON_PATH = '/openapi.json';
-const REDOC_PATH = '/redoc';
+const LOCAL_DOCS_ORIGINS = ['http://localhost:3100', 'http://127.0.0.1:3100'];
+
+type RequestLike = {
+  headers?: {
+    origin?: string | string[];
+  };
+};
+
+type ResponseLike = {
+  setHeader?: (name: string, value: string) => void;
+  header?: (name: string, value: string) => void;
+  json: (body: unknown) => void;
+};
 
 export function shouldEnableOpenApiDocs(config: ConfigService): boolean {
   const explicit = config.get<string>('OPENAPI_DOCS_ENABLED');
@@ -14,23 +27,48 @@ export function shouldEnableOpenApiDocs(config: ConfigService): boolean {
   return config.get<string>('NODE_ENV') !== 'production';
 }
 
-export function createRedocHtml(specUrl = OPENAPI_JSON_PATH): string {
-  return `<!doctype html>
-<html lang="ko">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Auth API Reference</title>
-    <style>
-      body { margin: 0; padding: 0; }
-      redoc { display: block; min-height: 100vh; }
-    </style>
-  </head>
-  <body>
-    <redoc spec-url="${specUrl}"></redoc>
-    <script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>
-  </body>
-</html>`;
+function csv(value?: string): string[] {
+  return (value ?? '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item !== '' && item !== '*');
+}
+
+export function resolveOpenApiCorsOrigin(
+  config: ConfigService,
+  requestOrigin?: string | string[],
+): string | undefined {
+  const origin = Array.isArray(requestOrigin)
+    ? requestOrigin[0]
+    : requestOrigin;
+  if (!origin) {
+    return undefined;
+  }
+
+  const configuredOrigins = csv(config.get<string>('OPENAPI_CORS_ORIGINS'));
+  const allowedOrigins =
+    configuredOrigins.length > 0
+      ? configuredOrigins
+      : config.get<string>('NODE_ENV') === 'production'
+        ? []
+        : LOCAL_DOCS_ORIGINS;
+
+  return allowedOrigins.includes(origin) ? origin : undefined;
+}
+
+function applyOpenApiCorsHeaders(
+  config: ConfigService,
+  request: RequestLike,
+  response: ResponseLike,
+): void {
+  const origin = resolveOpenApiCorsOrigin(config, request.headers?.origin);
+  if (!origin) {
+    return;
+  }
+
+  const setHeader = response.setHeader ?? response.header;
+  setHeader?.call(response, 'Access-Control-Allow-Origin', origin);
+  setHeader?.call(response, 'Vary', 'Origin');
 }
 
 export function configureOpenApiDocs(app: INestApplication): void {
@@ -61,13 +99,11 @@ export function configureOpenApiDocs(app: INestApplication): void {
     .build();
 
   const document = SwaggerModule.createDocument(app, openApiConfig);
+  applyEndpointReference(document);
   const adapter = app.getHttpAdapter();
 
-  adapter.get(OPENAPI_JSON_PATH, (_request, response) => {
+  adapter.get(OPENAPI_JSON_PATH, (request, response: ResponseLike) => {
+    applyOpenApiCorsHeaders(config, request, response);
     response.json(document);
-  });
-
-  adapter.get(REDOC_PATH, (_request, response) => {
-    response.type('html').send(createRedocHtml(OPENAPI_JSON_PATH));
   });
 }
