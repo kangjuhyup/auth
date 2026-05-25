@@ -1,12 +1,12 @@
-import { Form, Input, Select, Switch } from 'antd';
+import { Divider, Form, Input, InputNumber, Select, Switch } from 'antd';
 import type { FormInstance } from 'antd';
-import type { CreateTenantDto, UpdateTenantDto } from '@/types/tenant.types';
+import type { TenantFormValues } from '../tenantPolicyFormPayload';
 
 interface TenantFormProps {
-  initialValues?: Partial<CreateTenantDto | UpdateTenantDto>;
-  onFinish: (values: CreateTenantDto | UpdateTenantDto) => void;
+  initialValues?: Partial<TenantFormValues>;
+  onFinish: (values: TenantFormValues) => void;
   mode: 'create' | 'edit';
-  form: FormInstance<CreateTenantDto | UpdateTenantDto>;
+  form: FormInstance<TenantFormValues>;
 }
 
 export function TenantForm({
@@ -65,6 +65,146 @@ export function TenantForm({
       >
         <Switch />
       </Form.Item>
+
+      {mode === 'edit' && (
+        <>
+          <Divider orientation="left">비밀번호 정책</Divider>
+
+          <Form.Item name="passwordMinLength" label="최소 비밀번호 길이">
+            <InputNumber min={8} max={128} style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Form.Item
+            name="passwordRequireUppercase"
+            label="대문자 필수"
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+
+          <Form.Item
+            name="passwordRequireLowercase"
+            label="소문자 필수"
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+
+          <Form.Item
+            name="passwordRequireNumber"
+            label="숫자 필수"
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+
+          <Form.Item
+            name="passwordRequireSymbol"
+            label="특수문자 필수"
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+
+          <Form.Item
+            name="passwordPreventReuseCount"
+            label="비밀번호 재사용 제한 개수"
+          >
+            <InputNumber min={0} max={50} style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Form.Item name="passwordExpiresInDays" label="비밀번호 만료일">
+            <InputNumber min={1} max={3650} style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Form.Item
+            name="lockoutFailureThreshold"
+            label="계정 잠금 실패 횟수"
+          >
+            <InputNumber min={1} max={100} style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Form.Item name="lockoutDurationSec" label="계정 잠금 시간(초)">
+            <InputNumber min={60} max={86400} style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Divider orientation="left">MFA 정책</Divider>
+
+          <Form.Item
+            name="mfaRequired"
+            label="tenant 사용자 MFA 필수"
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+
+          <Form.Item
+            name="adminMfaRequired"
+            label="관리자 MFA 필수"
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+
+          <Divider orientation="left">IdP 정책</Divider>
+
+          <Form.Item
+            name="allowedIdpProviderKeys"
+            label="허용 IdP provider key"
+          >
+            <Select
+              mode="tags"
+              placeholder="비워두면 모든 provider를 허용합니다"
+              tokenSeparators={[',', ' ']}
+            />
+          </Form.Item>
+
+          <Divider orientation="left">세션 정책</Divider>
+
+          <Form.Item name="sessionMaxAgeSec" label="세션 최대 수명(초)">
+            <InputNumber min={60} max={31536000} style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Form.Item
+            name="sessionRequireAuthTime"
+            label="auth_time 요구"
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+
+          <Form.Item
+            name="reauthenticationIntervalSec"
+            label="재인증 주기(초)"
+          >
+            <InputNumber min={60} max={31536000} style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Divider orientation="left">Refresh token 정책</Divider>
+
+          <Form.Item name="refreshTokenTtlSec" label="Refresh token TTL(초)">
+            <InputNumber min={60} max={31536000} style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Form.Item
+            name="refreshTokenRotationEnabled"
+            label="Refresh token rotation 사용"
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+
+          <Divider orientation="left">가입 정책</Divider>
+
+          <Form.Item name="allowedEmailDomains" label="허용 이메일 도메인">
+            <Select
+              mode="tags"
+              placeholder="비워두면 모든 도메인을 허용합니다"
+              tokenSeparators={[',', ' ']}
+            />
+          </Form.Item>
+        </>
+      )}
     </Form>
   );
 }

@@ -9,7 +9,7 @@
 | [관리자 UI 개요](../../docs/docs/ui/overview.md)               | 공통 화면 구조와 실행 방식    |
 | [Tenants](../../docs/docs/ui/tenants.md)                       | tenant 생성, 선택, 설정       |
 | [Clients](../../docs/docs/ui/clients.md)                       | OIDC/OAuth client 관리        |
-| [Tenant Policies](../../docs/docs/ui/policies.md)              | tenant 정책 화면 사용법       |
+| [Tenant Policies](../../docs/docs/ui/policies.md)              | tenant 수정 화면의 정책 설정  |
 | [Identity Providers](../../docs/docs/ui/identity-providers.md) | OAuth2/SAML IdP 연결          |
 | [Access](../../docs/docs/ui/access.md)                         | 사용자, 그룹, 역할, 권한 관리 |
 | [Consent](../../docs/docs/ui/consent.md)                       | 사용자 consent 관리           |
