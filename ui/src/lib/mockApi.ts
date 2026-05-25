@@ -540,7 +540,6 @@ export const mockAuthApi = {
   login: async (dto: LoginDto): Promise<LoginResponse> => {
     await delay(500);
 
-    // Mock credentials: admin/admin
     if (dto.username === 'admin' && dto.password === 'admin') {
       return {
         username: dto.username,
@@ -561,7 +560,8 @@ export const mockAuthApi = {
     // Nothing to do for mock
   },
 
-  changeAdminPassword: async (_dto: ChangePasswordDto): Promise<void> => {
+  changeAdminPassword: async (dto: ChangePasswordDto): Promise<void> => {
+    void dto;
     await delay(200);
   },
 
