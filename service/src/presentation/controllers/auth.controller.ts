@@ -30,7 +30,20 @@ import {
   ConsentResponse,
   RecoveryCodeStatusResponse,
 } from '@presentation/dto';
-import { TenantContext } from '@application/dto';
+import {
+  ChangePasswordDto as AppChangePasswordDto,
+  CompleteIdentityLinkDto as AppCompleteIdentityLinkDto,
+  PasswordResetDto as AppPasswordResetDto,
+  PasswordResetRequestDto as AppPasswordResetRequestDto,
+  SignupDto as AppSignupDto,
+  StartIdentityLinkDto as AppStartIdentityLinkDto,
+  TenantContext,
+  TotpConfirmationDto as AppTotpConfirmationDto,
+  UpdateMfaPreferenceDto as AppUpdateMfaPreferenceDto,
+  UpdateProfileDto as AppUpdateProfileDto,
+  VerificationTokenDto as AppVerificationTokenDto,
+  WithdrawDto as AppWithdrawDto,
+} from '@application/dto';
 import { Tenant } from '../http/tenant.decorator';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AccessGuard } from '@presentation/http/access.guard';
@@ -58,7 +71,7 @@ export class AuthController {
     @Tenant() tenant: TenantContext,
     @Body() dto: SignupDto,
   ): Promise<{ userId: string }> {
-    return this.commandPort.signup(tenant.id, dto);
+    return this.commandPort.signup(tenant.id, AppSignupDto.of(dto));
   }
 
   @Post('withdraw')
@@ -70,7 +83,11 @@ export class AuthController {
     @AuthUser() user: AuthenticatedUser,
     @Body() dto: WithdrawDto,
   ): Promise<void> {
-    return this.commandPort.withdraw(tenant.id, user.userId, dto);
+    return this.commandPort.withdraw(
+      tenant.id,
+      user.userId,
+      AppWithdrawDto.of(dto),
+    );
   }
 
   @Put('password')
@@ -82,7 +99,11 @@ export class AuthController {
     @AuthUser() user: AuthenticatedUser,
     @Body() dto: ChangePasswordDto,
   ): Promise<void> {
-    return this.commandPort.changePassword(tenant.id, user.userId, dto);
+    return this.commandPort.changePassword(
+      tenant.id,
+      user.userId,
+      AppChangePasswordDto.of(dto),
+    );
   }
 
   @Post('password/reset-request')
@@ -93,7 +114,10 @@ export class AuthController {
     @Tenant() tenant: TenantContext,
     @Body() dto: PasswordResetRequestDto,
   ): Promise<void> {
-    return this.commandPort.requestPasswordReset(tenant.id, dto);
+    return this.commandPort.requestPasswordReset(
+      tenant.id,
+      AppPasswordResetRequestDto.of(dto),
+    );
   }
 
   @Post('password/reset')
@@ -105,7 +129,11 @@ export class AuthController {
     @AuthUser() user: AuthenticatedUser,
     @Body() dto: PasswordResetDto,
   ): Promise<void> {
-    return this.commandPort.resetPassword(tenant.id, user.userId, dto);
+    return this.commandPort.resetPassword(
+      tenant.id,
+      user.userId,
+      AppPasswordResetDto.of(dto),
+    );
   }
 
   @Post('email/verification-request')
@@ -128,7 +156,11 @@ export class AuthController {
     @AuthUser() user: AuthenticatedUser,
     @Body() dto: VerificationTokenDto,
   ): Promise<void> {
-    return this.commandPort.verifyEmail(tenant.id, user.userId, dto);
+    return this.commandPort.verifyEmail(
+      tenant.id,
+      user.userId,
+      AppVerificationTokenDto.of(dto),
+    );
   }
 
   @Post('phone/verification-request')
@@ -151,7 +183,11 @@ export class AuthController {
     @AuthUser() user: AuthenticatedUser,
     @Body() dto: VerificationTokenDto,
   ): Promise<void> {
-    return this.commandPort.verifyPhone(tenant.id, user.userId, dto);
+    return this.commandPort.verifyPhone(
+      tenant.id,
+      user.userId,
+      AppVerificationTokenDto.of(dto),
+    );
   }
 
   @Post('mfa/totp/enroll')
@@ -174,7 +210,11 @@ export class AuthController {
     @AuthUser() user: AuthenticatedUser,
     @Body() dto: TotpConfirmationDto,
   ): Promise<{ recoveryCodes: string[] }> {
-    return this.commandPort.confirmTotpEnrollment(tenant.id, user.userId, dto);
+    return this.commandPort.confirmTotpEnrollment(
+      tenant.id,
+      user.userId,
+      AppTotpConfirmationDto.of(dto),
+    );
   }
 
   @Delete('mfa/totp')
@@ -222,7 +262,11 @@ export class AuthController {
     @AuthUser() user: AuthenticatedUser,
     @Body() dto: UpdateMfaPreferenceDto,
   ): Promise<void> {
-    return this.commandPort.updateMfaPreference(tenant.id, user.userId, dto);
+    return this.commandPort.updateMfaPreference(
+      tenant.id,
+      user.userId,
+      AppUpdateMfaPreferenceDto.of(dto),
+    );
   }
 
   @Get('profile')
@@ -245,13 +289,20 @@ export class AuthController {
     @AuthUser() user: AuthenticatedUser,
     @Body() dto: UpdateProfileDto,
   ): Promise<void> {
-    return this.commandPort.updateProfile(tenant.id, user.userId, dto);
+    return this.commandPort.updateProfile(
+      tenant.id,
+      user.userId,
+      AppUpdateProfileDto.of(dto),
+    );
   }
 
   @Get('consents')
   @UseGuards(AccessGuard)
   @ApiBearerAuth('access-token')
-  @ApiOkArraySchema('List current user consents', OpenApiResponseSchemas.consent)
+  @ApiOkArraySchema(
+    'List current user consents',
+    OpenApiResponseSchemas.consent,
+  )
   getConsents(
     @Tenant() tenant: TenantContext,
     @AuthUser() user: AuthenticatedUser,
@@ -290,12 +341,16 @@ export class AuthController {
     @Req() req: Request,
   ): Promise<{ authorizationUrl: string }> {
     const redirectUri = `${req.protocol}://${req.get('host')}/auth/identity-links/${provider}/callback?tenantCode=${encodeURIComponent(tenant.code)}`;
-    return this.commandPort.startIdentityLink(tenant.id, user.userId, {
-      provider,
-      tenantCode: tenant.code,
-      redirectUri,
-      returnTo: dto.returnTo,
-    });
+    return this.commandPort.startIdentityLink(
+      tenant.id,
+      user.userId,
+      AppStartIdentityLinkDto.of({
+        provider,
+        tenantCode: tenant.code,
+        redirectUri,
+        returnTo: dto.returnTo,
+      }),
+    );
   }
 
   @Get('identity-links/:provider/callback')
@@ -305,12 +360,14 @@ export class AuthController {
     @Query() query: IdentityLinkCallbackQuery,
     @Res() res: Response,
   ): Promise<void> {
-    const result = await this.commandPort.completeIdentityLink({
-      provider,
-      state: query.state,
-      code: query.code,
-      error: query.error,
-    });
+    const result = await this.commandPort.completeIdentityLink(
+      AppCompleteIdentityLinkDto.of({
+        provider,
+        state: query.state,
+        code: query.code,
+        error: query.error,
+      }),
+    );
     res.redirect(result.redirectTo);
   }
 

@@ -12,14 +12,20 @@ import {
 import { AdminGuard } from '@presentation/http/admin.guard';
 import { IdentityProviderCommandPort } from '@application/commands/ports/identity-provider-command.port';
 import { AdminQueryPort } from '@application/queries/ports';
-import type { IdentityProviderResponse } from '@application/dto';
+import {
+  AuditContext,
+  CreateIdentityProviderDto as AppCreateIdentityProviderDto,
+  IdentityProviderResponse,
+  PaginationQuery as AppPaginationQuery,
+  TenantContext,
+  UpdateIdentityProviderDto as AppUpdateIdentityProviderDto,
+} from '@application/dto';
 import {
   CreateIdentityProviderDto,
   UpdateIdentityProviderDto,
   PaginationQuery,
   PaginatedResult,
 } from '@presentation/dto';
-import { AuditContext, TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
 import {
@@ -49,7 +55,10 @@ export class AdminIdentityProviderController {
     @Tenant() tenant: TenantContext,
     @Query() query: PaginationQuery,
   ): Promise<PaginatedResult<IdentityProviderResponse>> {
-    return this.queryPort.getIdentityProviders(tenant.id, query);
+    return this.queryPort.getIdentityProviders(
+      tenant.id,
+      AppPaginationQuery.of(query),
+    );
   }
 
   @Get(':id')
@@ -68,12 +77,13 @@ export class AdminIdentityProviderController {
     @Body() dto: CreateIdentityProviderDto,
     @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<{ id: string }> {
+    const command = AppCreateIdentityProviderDto.of(dto);
     if (!auditContext) {
-      return this.commandPort.createIdentityProvider(tenant.id, dto);
+      return this.commandPort.createIdentityProvider(tenant.id, command);
     }
     return this.commandPort.createIdentityProvider(
       tenant.id,
-      dto,
+      command,
       auditContext,
     );
   }
@@ -86,13 +96,14 @@ export class AdminIdentityProviderController {
     @Body() dto: UpdateIdentityProviderDto,
     @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
+    const command = AppUpdateIdentityProviderDto.of(dto);
     if (!auditContext) {
-      return this.commandPort.updateIdentityProvider(tenant.id, id, dto);
+      return this.commandPort.updateIdentityProvider(tenant.id, id, command);
     }
     return this.commandPort.updateIdentityProvider(
       tenant.id,
       id,
-      dto,
+      command,
       auditContext,
     );
   }

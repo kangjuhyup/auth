@@ -9,8 +9,8 @@ export type OperationalMetricLabels = Readonly<
 
 export class HealthStatusDto {
   private constructor(
-    readonly status: HealthState,
-    readonly uptimeSec: number,
+    public readonly status: HealthState,
+    public readonly uptimeSec: number,
   ) {}
 
   static of(params: {
@@ -23,10 +23,10 @@ export class HealthStatusDto {
 
 export class ReadinessComponentDto {
   private constructor(
-    readonly name: string,
-    readonly status: ReadinessComponentState,
-    readonly latencyMs: number,
-    readonly reason: string | null,
+    public readonly name: string,
+    public readonly status: ReadinessComponentState,
+    public readonly latencyMs: number,
+    public readonly reason: string | null,
   ) {}
 
   static of(params: {
@@ -46,8 +46,8 @@ export class ReadinessComponentDto {
 
 export class ReadinessStatusDto {
   private constructor(
-    readonly status: ReadinessState,
-    readonly components: ReadinessComponentDto[],
+    public readonly status: ReadinessState,
+    public readonly components: ReadinessComponentDto[],
   ) {}
 
   static of(params: {
@@ -60,9 +60,9 @@ export class ReadinessStatusDto {
 
 export class OperationalCounterDto {
   private constructor(
-    readonly name: string,
-    readonly value: number,
-    readonly labels: OperationalMetricLabels,
+    public readonly name: string,
+    public readonly value: number,
+    public readonly labels: OperationalMetricLabels,
   ) {}
 
   static of(params: {
@@ -80,12 +80,12 @@ export class OperationalCounterDto {
 
 export class OperationalLatencyDto {
   private constructor(
-    readonly name: string,
-    readonly count: number,
-    readonly sumMs: number,
-    readonly avgMs: number,
-    readonly maxMs: number,
-    readonly labels: OperationalMetricLabels,
+    public readonly name: string,
+    public readonly count: number,
+    public readonly sumMs: number,
+    public readonly avgMs: number,
+    public readonly maxMs: number,
+    public readonly labels: OperationalMetricLabels,
   ) {}
 
   static of(params: {
@@ -109,8 +109,8 @@ export class OperationalLatencyDto {
 
 export class OperationalMetricsSnapshotDto {
   private constructor(
-    readonly counters: OperationalCounterDto[],
-    readonly latencies: OperationalLatencyDto[],
+    public readonly counters: OperationalCounterDto[],
+    public readonly latencies: OperationalLatencyDto[],
   ) {}
 
   static of(params: {

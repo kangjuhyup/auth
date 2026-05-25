@@ -1,6 +1,6 @@
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 import type { Request } from 'express';
-import type { AuditContext } from '@application/dto';
+import { AuditContext } from '@application/dto';
 
 function pickFirst(value: unknown): string | undefined {
   if (Array.isArray(value)) {
@@ -17,7 +17,7 @@ export const AdminAuditContext = createParamDecorator(
       | { userId?: string; username?: string }
       | undefined;
 
-    return {
+    return AuditContext.of({
       actorUserId: adminSession?.userId ?? null,
       actorUsername: adminSession?.username ?? null,
       ipAddress: request.ip ?? null,
@@ -27,6 +27,6 @@ export const AdminAuditContext = createParamDecorator(
         pickFirst(request.headers['x-correlation-id']) ??
         pickFirst(request.headers['x-request-id']) ??
         null,
-    };
+    });
   },
 );

@@ -21,7 +21,13 @@ import {
   PaginationQuery,
   PaginatedResult,
 } from '@presentation/dto';
-import { AuditContext, TenantContext } from '@application/dto';
+import {
+  AuditContext,
+  TenantContext,
+  CreateUserDto as AppCreateUserDto,
+  PaginationQuery as AppPaginationQuery,
+  UpdateUserDto as AppUpdateUserDto,
+} from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
 import {
@@ -49,7 +55,7 @@ export class AdminUserController {
     @Tenant() tenant: TenantContext,
     @Query() query: PaginationQuery,
   ): Promise<PaginatedResult<UserResponse>> {
-    return this.queryPort.getUsers(tenant.id, query);
+    return this.queryPort.getUsers(tenant.id, AppPaginationQuery.of(query));
   }
 
   @Get(':id')
@@ -68,7 +74,11 @@ export class AdminUserController {
     @Param('id') id: string,
     @Query() query: PaginationQuery,
   ): Promise<PaginatedResult<UserConsentResponse>> {
-    return this.queryPort.getUserConsents(tenant.id, id, query);
+    return this.queryPort.getUserConsents(
+      tenant.id,
+      id,
+      AppPaginationQuery.of(query),
+    );
   }
 
   @Get(':id/consents/history')
@@ -81,7 +91,11 @@ export class AdminUserController {
     @Param('id') id: string,
     @Query() query: PaginationQuery,
   ): Promise<PaginatedResult<UserConsentResponse>> {
-    return this.queryPort.getUserConsentHistory(tenant.id, id, query);
+    return this.queryPort.getUserConsentHistory(
+      tenant.id,
+      id,
+      AppPaginationQuery.of(query),
+    );
   }
 
   @Post()
@@ -91,8 +105,9 @@ export class AdminUserController {
     @Body() dto: CreateUserDto,
     @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<{ id: string }> {
-    if (!auditContext) return this.commandPort.createUser(tenant.id, dto);
-    return this.commandPort.createUser(tenant.id, dto, auditContext);
+    const command = AppCreateUserDto.of(dto);
+    if (!auditContext) return this.commandPort.createUser(tenant.id, command);
+    return this.commandPort.createUser(tenant.id, command, auditContext);
   }
 
   @Put(':id')
@@ -103,8 +118,11 @@ export class AdminUserController {
     @Body() dto: UpdateUserDto,
     @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    if (!auditContext) return this.commandPort.updateUser(tenant.id, id, dto);
-    return this.commandPort.updateUser(tenant.id, id, dto, auditContext);
+    const command = AppUpdateUserDto.of(dto);
+    if (!auditContext) {
+      return this.commandPort.updateUser(tenant.id, id, command);
+    }
+    return this.commandPort.updateUser(tenant.id, id, command, auditContext);
   }
 
   @Delete(':id')

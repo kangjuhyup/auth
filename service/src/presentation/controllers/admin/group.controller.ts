@@ -22,7 +22,13 @@ import {
   PaginationQuery,
   PaginatedResult,
 } from '@presentation/dto';
-import { AuditContext, TenantContext } from '@application/dto';
+import {
+  AuditContext,
+  TenantContext,
+  CreateGroupDto as AppCreateGroupDto,
+  PaginationQuery as AppPaginationQuery,
+  UpdateGroupDto as AppUpdateGroupDto,
+} from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
 import {
@@ -50,7 +56,7 @@ export class AdminGroupController {
     @Tenant() tenant: TenantContext,
     @Query() query: PaginationQuery,
   ): Promise<PaginatedResult<GroupResponse>> {
-    return this.queryPort.getGroups(tenant.id, query);
+    return this.queryPort.getGroups(tenant.id, AppPaginationQuery.of(query));
   }
 
   @Get(':id')
@@ -69,8 +75,9 @@ export class AdminGroupController {
     @Body() dto: CreateGroupDto,
     @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<{ id: string }> {
-    if (!auditContext) return this.commandPort.createGroup(tenant.id, dto);
-    return this.commandPort.createGroup(tenant.id, dto, auditContext);
+    const command = AppCreateGroupDto.of(dto);
+    if (!auditContext) return this.commandPort.createGroup(tenant.id, command);
+    return this.commandPort.createGroup(tenant.id, command, auditContext);
   }
 
   @Put(':id')
@@ -81,8 +88,11 @@ export class AdminGroupController {
     @Body() dto: UpdateGroupDto,
     @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    if (!auditContext) return this.commandPort.updateGroup(tenant.id, id, dto);
-    return this.commandPort.updateGroup(tenant.id, id, dto, auditContext);
+    const command = AppUpdateGroupDto.of(dto);
+    if (!auditContext) {
+      return this.commandPort.updateGroup(tenant.id, id, command);
+    }
+    return this.commandPort.updateGroup(tenant.id, id, command, auditContext);
   }
 
   @Delete(':id')

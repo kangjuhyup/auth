@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { TenantContext } from '@application/dto';
+import { TenantContext } from '@application/dto';
 import { TenantContextPort } from '@application/ports/tenant-context.port';
 import { TenantRepository } from '@domain/repositories';
 
@@ -15,10 +15,10 @@ export class TenantContextAdapter extends TenantContextPort {
       return null;
     }
 
-    return {
+    return TenantContext.of({
       id: tenant.id,
       code: tenant.code,
       name: tenant.name,
-    };
+    });
   }
 }

@@ -22,7 +22,13 @@ import {
   PaginationQuery,
   PaginatedResult,
 } from '@presentation/dto';
-import { AuditContext, TenantContext } from '@application/dto';
+import {
+  AuditContext,
+  TenantContext,
+  CreateRoleDto as AppCreateRoleDto,
+  PaginationQuery as AppPaginationQuery,
+  UpdateRoleDto as AppUpdateRoleDto,
+} from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
 import {
@@ -49,7 +55,7 @@ export class AdminRoleController {
     @Tenant() tenant: TenantContext,
     @Query() query: PaginationQuery,
   ): Promise<PaginatedResult<RoleResponse>> {
-    return this.queryPort.getRoles(tenant.id, query);
+    return this.queryPort.getRoles(tenant.id, AppPaginationQuery.of(query));
   }
 
   @Get(':id')
@@ -68,8 +74,9 @@ export class AdminRoleController {
     @Body() dto: CreateRoleDto,
     @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<{ id: string }> {
-    if (!auditContext) return this.commandPort.createRole(tenant.id, dto);
-    return this.commandPort.createRole(tenant.id, dto, auditContext);
+    const command = AppCreateRoleDto.of(dto);
+    if (!auditContext) return this.commandPort.createRole(tenant.id, command);
+    return this.commandPort.createRole(tenant.id, command, auditContext);
   }
 
   @Put(':id')
@@ -80,8 +87,11 @@ export class AdminRoleController {
     @Body() dto: UpdateRoleDto,
     @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    if (!auditContext) return this.commandPort.updateRole(tenant.id, id, dto);
-    return this.commandPort.updateRole(tenant.id, id, dto, auditContext);
+    const command = AppUpdateRoleDto.of(dto);
+    if (!auditContext) {
+      return this.commandPort.updateRole(tenant.id, id, command);
+    }
+    return this.commandPort.updateRole(tenant.id, id, command, auditContext);
   }
 
   @Delete(':id')
@@ -98,13 +108,20 @@ export class AdminRoleController {
   // ── Role-Permission ───────────────────────────────────────────────────────
 
   @Get(':id/permissions')
-  @ApiPaginatedSchema('List role permissions', OpenApiResponseSchemas.permission)
+  @ApiPaginatedSchema(
+    'List role permissions',
+    OpenApiResponseSchemas.permission,
+  )
   listPermissions(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
     @Query() query: PaginationQuery,
   ): Promise<PaginatedResult<PermissionResponse>> {
-    return this.queryPort.getRolePermissions(tenant.id, id, query);
+    return this.queryPort.getRolePermissions(
+      tenant.id,
+      id,
+      AppPaginationQuery.of(query),
+    );
   }
 
   @Post(':id/permissions')

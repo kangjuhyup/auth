@@ -19,7 +19,13 @@ import {
   PaginationQuery,
   PaginatedResult,
 } from '@presentation/dto';
-import { AuditContext, TenantContext } from '@application/dto';
+import {
+  AuditContext,
+  TenantContext,
+  CreatePermissionDto as AppCreatePermissionDto,
+  PaginationQuery as AppPaginationQuery,
+  UpdatePermissionDto as AppUpdatePermissionDto,
+} from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
 import {
@@ -46,7 +52,10 @@ export class AdminPermissionController {
     @Tenant() tenant: TenantContext,
     @Query() query: PaginationQuery,
   ): Promise<PaginatedResult<PermissionResponse>> {
-    return this.queryPort.getPermissions(tenant.id, query);
+    return this.queryPort.getPermissions(
+      tenant.id,
+      AppPaginationQuery.of(query),
+    );
   }
 
   @Get(':id')
@@ -65,8 +74,11 @@ export class AdminPermissionController {
     @Body() dto: CreatePermissionDto,
     @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<{ id: string }> {
-    if (!auditContext) return this.commandPort.createPermission(tenant.id, dto);
-    return this.commandPort.createPermission(tenant.id, dto, auditContext);
+    const command = AppCreatePermissionDto.of(dto);
+    if (!auditContext) {
+      return this.commandPort.createPermission(tenant.id, command);
+    }
+    return this.commandPort.createPermission(tenant.id, command, auditContext);
   }
 
   @Put(':id')
@@ -77,10 +89,16 @@ export class AdminPermissionController {
     @Body() dto: UpdatePermissionDto,
     @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
+    const command = AppUpdatePermissionDto.of(dto);
     if (!auditContext) {
-      return this.commandPort.updatePermission(tenant.id, id, dto);
+      return this.commandPort.updatePermission(tenant.id, id, command);
     }
-    return this.commandPort.updatePermission(tenant.id, id, dto, auditContext);
+    return this.commandPort.updatePermission(
+      tenant.id,
+      id,
+      command,
+      auditContext,
+    );
   }
 
   @Delete(':id')

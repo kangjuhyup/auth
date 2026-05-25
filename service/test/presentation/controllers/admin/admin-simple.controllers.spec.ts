@@ -9,6 +9,7 @@ import {
   makePaginationQuery,
   makeTenantContext,
 } from '../support/controller-test-helpers';
+import { UpdateTenantPoliciesDto } from '@application/dto';
 
 describe('관리자 단순 컨트롤러', () => {
   const tenant = makeTenantContext();
@@ -245,14 +246,14 @@ describe('관리자 단순 컨트롤러', () => {
       } as any;
       const queryPort = { getPolicies: jest.fn() } as any;
       const controller = new AdminPolicyController(commandPort, queryPort);
-      const policies = { requireMfa: true };
+      const policies = { mfa: { required: true } };
 
       await expect(
         controller.update(tenant, policies),
       ).resolves.toBeUndefined();
       expect(commandPort.updatePolicies).toHaveBeenCalledWith(
         tenant.id,
-        policies,
+        UpdateTenantPoliciesDto.of(policies),
       );
     });
   });

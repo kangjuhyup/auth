@@ -21,7 +21,14 @@ import {
   PaginationQuery,
   PaginatedResult,
 } from '@presentation/dto';
-import { AuditContext, TenantContext } from '@application/dto';
+import {
+  AuditContext,
+  TenantContext,
+  CreateClientDto as AppCreateClientDto,
+  UpdateClientDto as AppUpdateClientDto,
+  UpdateClientAuthPolicyDto as AppUpdateClientAuthPolicyDto,
+  PaginationQuery as AppPaginationQuery,
+} from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
 import {
@@ -48,7 +55,7 @@ export class AdminClientController {
     @Tenant() tenant: TenantContext,
     @Query() query: PaginationQuery,
   ): Promise<PaginatedResult<ClientResponse>> {
-    return this.queryPort.getClients(tenant.id, query);
+    return this.queryPort.getClients(tenant.id, AppPaginationQuery.of(query));
   }
 
   @Get(':id')
@@ -67,12 +74,16 @@ export class AdminClientController {
     @Body() dto: CreateClientDto,
     @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<{ id: string }> {
-    if (!auditContext) return this.commandPort.createClient(tenant.id, dto);
-    return this.commandPort.createClient(tenant.id, dto, auditContext);
+    const command = AppCreateClientDto.of(dto);
+    if (!auditContext) return this.commandPort.createClient(tenant.id, command);
+    return this.commandPort.createClient(tenant.id, command, auditContext);
   }
 
   @Get(':id/auth-policy')
-  @ApiOkSchema('Get client auth policy', OpenApiResponseSchemas.clientAuthPolicy)
+  @ApiOkSchema(
+    'Get client auth policy',
+    OpenApiResponseSchemas.clientAuthPolicy,
+  )
   getAuthPolicy(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -88,8 +99,11 @@ export class AdminClientController {
     @Body() dto: UpdateClientDto,
     @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    if (!auditContext) return this.commandPort.updateClient(tenant.id, id, dto);
-    return this.commandPort.updateClient(tenant.id, id, dto, auditContext);
+    const command = AppUpdateClientDto.of(dto);
+    if (!auditContext) {
+      return this.commandPort.updateClient(tenant.id, id, command);
+    }
+    return this.commandPort.updateClient(tenant.id, id, command, auditContext);
   }
 
   @Put(':id/auth-policy')
@@ -100,13 +114,14 @@ export class AdminClientController {
     @Body() dto: UpdateClientAuthPolicyDto,
     @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
+    const command = AppUpdateClientAuthPolicyDto.of(dto);
     if (!auditContext) {
-      return this.commandPort.updateClientAuthPolicy(tenant.id, id, dto);
+      return this.commandPort.updateClientAuthPolicy(tenant.id, id, command);
     }
     return this.commandPort.updateClientAuthPolicy(
       tenant.id,
       id,
-      dto,
+      command,
       auditContext,
     );
   }

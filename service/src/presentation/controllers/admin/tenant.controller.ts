@@ -20,7 +20,12 @@ import {
   PaginatedResult,
 } from '@presentation/dto';
 import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
-import type { AuditContext } from '@application/dto';
+import {
+  AuditContext,
+  CreateTenantDto as AppCreateTenantDto,
+  PaginationQuery as AppPaginationQuery,
+  UpdateTenantDto as AppUpdateTenantDto,
+} from '@application/dto';
 import {
   ApiAdminResource,
   ApiCreatedIdSchema,
@@ -44,7 +49,7 @@ export class AdminTenantController {
   list(
     @Query() query: PaginationQuery,
   ): Promise<PaginatedResult<TenantResponse>> {
-    return this.queryPort.getTenants(query);
+    return this.queryPort.getTenants(AppPaginationQuery.of(query));
   }
 
   @Get(':id')
@@ -59,8 +64,9 @@ export class AdminTenantController {
     @Body() dto: CreateTenantDto,
     @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<{ id: string }> {
-    if (!auditContext) return this.commandPort.createTenant(dto);
-    return this.commandPort.createTenant(dto, auditContext);
+    const command = AppCreateTenantDto.of(dto);
+    if (!auditContext) return this.commandPort.createTenant(command);
+    return this.commandPort.createTenant(command, auditContext);
   }
 
   @Put(':id')
@@ -70,8 +76,9 @@ export class AdminTenantController {
     @Body() dto: UpdateTenantDto,
     @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    if (!auditContext) return this.commandPort.updateTenant(id, dto);
-    return this.commandPort.updateTenant(id, dto, auditContext);
+    const command = AppUpdateTenantDto.of(dto);
+    if (!auditContext) return this.commandPort.updateTenant(id, command);
+    return this.commandPort.updateTenant(id, command, auditContext);
   }
 
   @Delete(':id')

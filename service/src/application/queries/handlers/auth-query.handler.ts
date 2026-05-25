@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Logging, LogLevel } from '@kangjuhyup/rvlog';
-import type {
+import {
   ConsentResponse,
   IdentityLinkResponse,
   ProfileResponse,
@@ -31,7 +31,7 @@ export class AuthQueryHandler implements AuthQueryPort {
       throw new Error('UserWithdrawn');
     }
 
-    return {
+    return ProfileResponse.of({
       id: view.userId,
       username: view.username,
       email: view.email ?? null,
@@ -42,7 +42,7 @@ export class AuthQueryHandler implements AuthQueryPort {
       mfaEnabled: view.mfaEnabled,
       createdAt: view.createdAt,
       updatedAt: view.updatedAt,
-    };
+    });
   }
 
   async getConsents(
@@ -51,12 +51,14 @@ export class AuthQueryHandler implements AuthQueryPort {
   ): Promise<ConsentResponse[]> {
     const consents = await this.consentRepo.listAllByUser(tenantId, userId);
 
-    return consents.map((consent) => ({
-      clientId: consent.clientId ?? consent.clientRefId,
-      clientName: consent.clientName ?? 'Unknown',
-      grantedScopes: consent.grantedScopes,
-      grantedAt: consent.grantedAt,
-    }));
+    return consents.map((consent) =>
+      ConsentResponse.of({
+        clientId: consent.clientId ?? consent.clientRefId,
+        clientName: consent.clientName ?? 'Unknown',
+        grantedScopes: consent.grantedScopes,
+        grantedAt: consent.grantedAt,
+      }),
+    );
   }
 
   async getIdentityLinks(
@@ -64,12 +66,14 @@ export class AuthQueryHandler implements AuthQueryPort {
     userId: string,
   ): Promise<IdentityLinkResponse[]> {
     const identities = await this.userIdentityRepo.listByUser(tenantId, userId);
-    return identities.map((identity) => ({
-      id: identity.id,
-      provider: identity.provider,
-      email: identity.email ?? null,
-      linkedAt: identity.linkedAt,
-    }));
+    return identities.map((identity) =>
+      IdentityLinkResponse.of({
+        id: identity.id,
+        provider: identity.provider,
+        email: identity.email ?? null,
+        linkedAt: identity.linkedAt,
+      }),
+    );
   }
 
   async getRecoveryCodeStatus(
@@ -85,6 +89,8 @@ export class AuthQueryHandler implements AuthQueryPort {
       throw new Error('UserWithdrawn');
     }
 
-    return this.userQuery.getRecoveryCodeStatus(tenantId, userId);
+    return RecoveryCodeStatusResponse.of(
+      await this.userQuery.getRecoveryCodeStatus(tenantId, userId),
+    );
   }
 }

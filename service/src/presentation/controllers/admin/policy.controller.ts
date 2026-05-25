@@ -5,6 +5,7 @@ import { AdminQueryPort } from '@application/queries/ports';
 import {
   AuditContext,
   TenantContext,
+  UpdateTenantPoliciesDto as AppUpdateTenantPoliciesDto,
   type TenantPolicyResponse,
 } from '@application/dto';
 import { UpdateTenantPoliciesDto } from '@presentation/dto';
@@ -39,16 +40,12 @@ export class AdminPolicyController {
     @Body() policies: UpdateTenantPoliciesDto | Record<string, unknown>,
     @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    if (!auditContext) {
-      return this.commandPort.updatePolicies(
-        tenant.id,
-        policies as UpdateTenantPoliciesDto,
-      );
-    }
-    return this.commandPort.updatePolicies(
-      tenant.id,
+    const command = AppUpdateTenantPoliciesDto.of(
       policies as UpdateTenantPoliciesDto,
-      auditContext,
     );
+    if (!auditContext) {
+      return this.commandPort.updatePolicies(tenant.id, command);
+    }
+    return this.commandPort.updatePolicies(tenant.id, command, auditContext);
   }
 }

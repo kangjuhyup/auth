@@ -6,7 +6,10 @@ import {
   AuditLogQuery,
   AuditLogResponse,
 } from '@presentation/dto/admin/audit-log.dto';
-import { TenantContext } from '@application/dto';
+import {
+  AuditLogQuery as AppAuditLogQuery,
+  TenantContext,
+} from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 import {
   ApiAdminResource,
@@ -26,6 +29,6 @@ export class AdminAuditLogController {
     @Tenant() tenant: TenantContext,
     @Query() query: AuditLogQuery,
   ): Promise<PaginatedResult<AuditLogResponse>> {
-    return this.queryPort.getAuditLogs(tenant.id, query);
+    return this.queryPort.getAuditLogs(tenant.id, AppAuditLogQuery.of(query));
   }
 }

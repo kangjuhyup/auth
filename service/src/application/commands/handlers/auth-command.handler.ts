@@ -441,14 +441,14 @@ export class AuthCommandHandler implements AuthCommandPort {
 
     await this.userWriteRepo.createCredential(user.id, credential);
 
-    return {
+    return TotpEnrollmentResponse.of({
       secret,
       otpauthUrl: this.mfaVerification.buildTotpUri({
         issuer,
         accountName,
         secret,
       }),
-    };
+    });
   }
 
   async confirmTotpEnrollment(
@@ -525,7 +525,7 @@ export class AuthCommandHandler implements AuthCommandPort {
         recoveryCodeCount: recoveryCodes.length,
       },
     });
-    return { recoveryCodes };
+    return TotpConfirmationResponse.of({ recoveryCodes });
   }
 
   async disableTotp(tenantId: string, userId: string): Promise<void> {
@@ -606,7 +606,7 @@ export class AuthCommandHandler implements AuthCommandPort {
       },
     });
 
-    return { recoveryCodes };
+    return RotateRecoveryCodesResponse.of({ recoveryCodes });
   }
 
   async updateMfaPreference(
@@ -681,7 +681,7 @@ export class AuthCommandHandler implements AuthCommandPort {
       this.getTtlSec('IDENTITY_LINK_STATE_TTL_SEC', 300),
     );
 
-    return {
+    return StartIdentityLinkResponse.of({
       authorizationUrl: this.idpPort.getAuthorizationUrl(
         idpConfig.provider,
         idpConfig.oauthConfig,
@@ -689,47 +689,47 @@ export class AuthCommandHandler implements AuthCommandPort {
         dto.redirectUri,
         state,
       ),
-    };
+    });
   }
 
   async completeIdentityLink(
     dto: CompleteIdentityLinkDto,
   ): Promise<CompleteIdentityLinkResponse> {
     if (!dto.state) {
-      return {
+      return CompleteIdentityLinkResponse.of({
         redirectTo: this.redirectWithIdentityLinkError(null, 'invalid_state'),
-      };
+      });
     }
 
     const session = await this.identityLinkSession.consume(dto.state);
     if (!session) {
-      return {
+      return CompleteIdentityLinkResponse.of({
         redirectTo: this.redirectWithIdentityLinkError(null, 'invalid_state'),
-      };
+      });
     }
     if (dto.provider && dto.provider !== session.provider) {
-      return {
+      return CompleteIdentityLinkResponse.of({
         redirectTo: this.redirectWithIdentityLinkError(
           session.returnTo,
           'idp_provider_mismatch',
         ),
-      };
+      });
     }
     if (dto.error) {
-      return {
+      return CompleteIdentityLinkResponse.of({
         redirectTo: this.redirectWithIdentityLinkError(
           session.returnTo,
           dto.error,
         ),
-      };
+      });
     }
     if (!dto.code) {
-      return {
+      return CompleteIdentityLinkResponse.of({
         redirectTo: this.redirectWithIdentityLinkError(
           session.returnTo,
           'idp_no_code',
         ),
-      };
+      });
     }
 
     const idpConfig = await this.identityProviderRepo.findByTenantAndProvider(
@@ -737,12 +737,12 @@ export class AuthCommandHandler implements AuthCommandPort {
       session.provider,
     );
     if (!idpConfig || !idpConfig.enabled || idpConfig.protocol !== 'oauth2') {
-      return {
+      return CompleteIdentityLinkResponse.of({
         redirectTo: this.redirectWithIdentityLinkError(
           session.returnTo,
           'idp_not_found',
         ),
-      };
+      });
     }
 
     try {
@@ -755,12 +755,12 @@ export class AuthCommandHandler implements AuthCommandPort {
         session.redirectUri,
       );
       if (!userInfo.sub) {
-        return {
+        return CompleteIdentityLinkResponse.of({
           redirectTo: this.redirectWithIdentityLinkError(
             session.returnTo,
             'idp_missing_subject',
           ),
-        };
+        });
       }
 
       const existing = await this.userIdentityRepo.findByProviderSub(
@@ -781,12 +781,12 @@ export class AuthCommandHandler implements AuthCommandPort {
           reason: 'IdentityProviderAccountAlreadyLinked',
           metadata: { provider: session.provider },
         });
-        return {
+        return CompleteIdentityLinkResponse.of({
           redirectTo: this.redirectWithIdentityLinkError(
             session.returnTo,
             'idp_already_linked',
           ),
-        };
+        });
       }
 
       const userLinks = await this.userIdentityRepo.listByUser(
@@ -797,12 +797,12 @@ export class AuthCommandHandler implements AuthCommandPort {
         (identity) => identity.provider === session.provider,
       );
       if (sameProviderLink && sameProviderLink.providerSub !== userInfo.sub) {
-        return {
+        return CompleteIdentityLinkResponse.of({
           redirectTo: this.redirectWithIdentityLinkError(
             session.returnTo,
             'idp_provider_already_linked',
           ),
-        };
+        });
       }
 
       if (!existing) {
@@ -832,19 +832,19 @@ export class AuthCommandHandler implements AuthCommandPort {
           alreadyLinked: Boolean(existing),
         },
       });
-      return {
+      return CompleteIdentityLinkResponse.of({
         redirectTo: this.redirectWithIdentityLinkSuccess(
           session.returnTo,
           session.provider,
         ),
-      };
+      });
     } catch {
-      return {
+      return CompleteIdentityLinkResponse.of({
         redirectTo: this.redirectWithIdentityLinkError(
           session.returnTo,
           'idp_exchange_failed',
         ),
-      };
+      });
     }
   }
 
