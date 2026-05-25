@@ -7,9 +7,7 @@ import {
   ClusterOutlined,
   LogoutOutlined,
   ApiOutlined,
-  LockOutlined,
   FileSearchOutlined,
-  ControlOutlined,
   KeyOutlined,
   ProfileOutlined,
 } from '@ant-design/icons';
@@ -73,16 +71,6 @@ export function AdminLayout() {
       key: '/admin/audit-logs',
       icon: <FileSearchOutlined />,
       label: 'Audit logs',
-    },
-    {
-      key: '/admin/policies',
-      icon: <ControlOutlined />,
-      label: 'Policies',
-    },
-    {
-      key: '/admin/security',
-      icon: <LockOutlined />,
-      label: 'Security',
     },
   ];
 

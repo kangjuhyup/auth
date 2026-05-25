@@ -12,8 +12,6 @@ import { GroupsPage } from '@/features/groups/GroupsPage';
 import { UsersPage } from '@/features/users/UsersPage';
 import { AuditLogsPage } from '@/features/audit-logs/AuditLogsPage';
 import { IdentityProvidersPage } from '@/features/identity-providers/IdentityProvidersPage';
-import { SecuritySettingsPage } from '@/features/security/SecuritySettingsPage';
-import { TenantPoliciesPage } from '@/features/policies/TenantPoliciesPage';
 import { AdminLayout } from '@/components/AdminLayout';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 
@@ -54,8 +52,6 @@ export function App() {
             <Route path="groups" element={<GroupsPage />} />
             <Route path="users" element={<UsersPage />} />
             <Route path="audit-logs" element={<AuditLogsPage />} />
-            <Route path="policies" element={<TenantPoliciesPage />} />
-            <Route path="security" element={<SecuritySettingsPage />} />
           </Route>
 
           <Route path="*" element={<NotFoundPage />} />

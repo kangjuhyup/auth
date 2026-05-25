@@ -757,7 +757,7 @@ export const mockAuthApi = {
     const redirectTo =
       returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')
         ? returnTo
-        : '/admin/security';
+        : '/admin/users';
     return {
       authorizationUrl: `${redirectTo}?identityLinked=${encodeURIComponent(provider)}`,
     };
