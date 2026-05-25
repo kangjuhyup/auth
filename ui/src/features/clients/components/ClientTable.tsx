@@ -1,5 +1,9 @@
 import { Table, Button, Space, Tag } from 'antd';
-import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import {
+  EditOutlined,
+  DeleteOutlined,
+  SettingOutlined,
+} from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { ClientResponse } from '@/types/client.types';
 import { useAdminUiStore } from '@/stores/adminUi.store';
@@ -11,6 +15,7 @@ interface ClientTableProps {
   currentPage: number;
   pageSize: number;
   onPageChange: (page: number, pageSize: number) => void;
+  onOpenPolicy: (clientId: string) => void;
 }
 
 export function ClientTable({
@@ -20,6 +25,7 @@ export function ClientTable({
   currentPage,
   pageSize,
   onPageChange,
+  onOpenPolicy,
 }: ClientTableProps) {
   const { openEditModal, openDeleteModal } = useAdminUiStore();
 
@@ -79,6 +85,11 @@ export function ClientTable({
       width: 120,
       render: (_, record) => (
         <Space>
+          <Button
+            type="link"
+            icon={<SettingOutlined />}
+            onClick={() => onOpenPolicy(record.id)}
+          />
           <Button
             type="link"
             icon={<EditOutlined />}

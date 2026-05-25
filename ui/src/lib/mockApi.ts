@@ -33,6 +33,7 @@ import type {
 } from '@/types/user.types';
 import type {
   IdentityLinkResponse,
+  ChangePasswordDto,
   LoginDto,
   LoginResponse,
   ProfileResponse,
@@ -543,6 +544,7 @@ export const mockAuthApi = {
     if (dto.username === 'admin' && dto.password === 'admin') {
       return {
         username: dto.username,
+        passwordChangeRequired: false,
       };
     }
 
@@ -551,12 +553,16 @@ export const mockAuthApi = {
 
   getSession: async (): Promise<LoginResponse> => {
     await delay(100);
-    return { username: 'admin' };
+    return { username: 'admin', passwordChangeRequired: false };
   },
 
   logout: async (): Promise<void> => {
     await delay(200);
     // Nothing to do for mock
+  },
+
+  changeAdminPassword: async (_dto: ChangePasswordDto): Promise<void> => {
+    await delay(200);
   },
 
   getProfile: async (tenantCode: string): Promise<ProfileResponse> => {

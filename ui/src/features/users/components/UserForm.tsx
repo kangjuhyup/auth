@@ -19,7 +19,11 @@ export function UserForm({
     <Form
       form={form}
       layout="vertical"
-      initialValues={initialValues}
+      initialValues={
+        mode === 'create'
+          ? { temporaryPassword: true, ...initialValues }
+          : initialValues
+      }
       onFinish={onFinish}
     >
       {mode === 'create' && (
@@ -48,6 +52,14 @@ export function UserForm({
             ]}
           >
             <Input.Password placeholder="Min 8 characters" />
+          </Form.Item>
+
+          <Form.Item
+            name="temporaryPassword"
+            label="Temporary password"
+            valuePropName="checked"
+          >
+            <Switch />
           </Form.Item>
         </>
       )}

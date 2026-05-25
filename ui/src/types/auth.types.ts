@@ -10,6 +10,12 @@ export interface LoginDto {
 
 export interface LoginResponse {
   username: string;
+  passwordChangeRequired: boolean;
+}
+
+export interface ChangePasswordDto {
+  currentPassword: string;
+  newPassword: string;
 }
 
 export interface ProfileResponse {

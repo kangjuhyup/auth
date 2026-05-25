@@ -7,14 +7,17 @@ describe('useAuthStore', () => {
     useAuthStore.setState({
       isAuthenticated: false,
       username: null,
+      passwordChangeRequired: false,
     });
   });
 
   describe('초기 상태', () => {
     it('인증되지 않은 상태로 시작한다', () => {
-      const { isAuthenticated, username } = useAuthStore.getState();
+      const { isAuthenticated, username, passwordChangeRequired } =
+        useAuthStore.getState();
       expect(isAuthenticated).toBe(false);
       expect(username).toBeNull();
+      expect(passwordChangeRequired).toBe(false);
     });
   });
 
@@ -26,6 +29,22 @@ describe('useAuthStore', () => {
       expect(isAuthenticated).toBe(true);
       expect(username).toBe('alice');
     });
+
+    it('passwordChangeRequired 상태를 설정한다', () => {
+      useAuthStore.getState().login('alice', true);
+
+      expect(useAuthStore.getState().passwordChangeRequired).toBe(true);
+    });
+  });
+
+  describe('completePasswordChange()', () => {
+    it('passwordChangeRequired 상태를 해제한다', () => {
+      useAuthStore.getState().login('alice', true);
+
+      useAuthStore.getState().completePasswordChange();
+
+      expect(useAuthStore.getState().passwordChangeRequired).toBe(false);
+    });
   });
 
   describe('clearAuth()', () => {
@@ -33,9 +52,11 @@ describe('useAuthStore', () => {
       useAuthStore.getState().login('alice');
       useAuthStore.getState().clearAuth();
 
-      const { isAuthenticated, username } = useAuthStore.getState();
+      const { isAuthenticated, username, passwordChangeRequired } =
+        useAuthStore.getState();
       expect(isAuthenticated).toBe(false);
       expect(username).toBeNull();
+      expect(passwordChangeRequired).toBe(false);
     });
   });
 

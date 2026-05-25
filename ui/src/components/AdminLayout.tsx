@@ -9,6 +9,7 @@ import {
   ApiOutlined,
   LockOutlined,
   FileSearchOutlined,
+  ControlOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useUiStore } from '@/stores/ui.store';
@@ -60,6 +61,11 @@ export function AdminLayout() {
       key: '/admin/audit-logs',
       icon: <FileSearchOutlined />,
       label: 'Audit logs',
+    },
+    {
+      key: '/admin/policies',
+      icon: <ControlOutlined />,
+      label: 'Policies',
     },
     {
       key: '/admin/security',

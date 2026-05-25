@@ -2,6 +2,7 @@ import { apiClient } from '@/lib/apiClient';
 import { mockApi } from '@/lib/mockApi';
 import type {
   IdentityLinkResponse,
+  ChangePasswordDto,
   LoginDto,
   LoginResponse,
   ProfileResponse,
@@ -31,6 +32,11 @@ export const authApi = {
   logout: (): Promise<void> => {
     if (USE_MOCK) return mockApi.auth.logout();
     return apiClient.delete<void>('/admin/session').catch(() => {});
+  },
+
+  changeAdminPassword: (dto: ChangePasswordDto): Promise<void> => {
+    if (USE_MOCK) return mockApi.auth.changeAdminPassword(dto);
+    return apiClient.put<void>('/admin/session/password', dto);
   },
 
   getProfile: (tenantCode: string): Promise<ProfileResponse> => {

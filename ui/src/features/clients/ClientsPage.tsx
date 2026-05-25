@@ -3,6 +3,7 @@ import { Button, Space, Alert } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { ClientTable } from './components/ClientTable';
 import { ClientFormModal } from './components/ClientFormModal';
+import { ClientAuthPolicyModal } from './components/ClientAuthPolicyModal';
 import { useClients } from './hooks/useClients';
 import { useAdminUiStore } from '@/stores/adminUi.store';
 import { useTenantStore } from '@/stores/tenant.store';
@@ -10,6 +11,7 @@ import { useTenantStore } from '@/stores/tenant.store';
 export function ClientsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [policyClientId, setPolicyClientId] = useState<string | null>(null);
 
   const selectedTenant = useTenantStore((state) => state.selectedTenant);
   const { data, isLoading } = useClients({ page, limit: pageSize });
@@ -57,9 +59,15 @@ export function ClientsPage() {
         currentPage={page}
         pageSize={pageSize}
         onPageChange={handlePageChange}
+        onOpenPolicy={setPolicyClientId}
       />
 
       <ClientFormModal />
+      <ClientAuthPolicyModal
+        clientId={policyClientId}
+        open={Boolean(policyClientId)}
+        onClose={() => setPolicyClientId(null)}
+      />
     </Space>
   );
 }

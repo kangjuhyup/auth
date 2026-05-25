@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Spin } from 'antd';
 import { useQuery } from '@tanstack/react-query';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { authApi } from '@/features/auth/api/authApi';
 import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/stores/auth.store';
@@ -11,7 +11,9 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { clearAuth, isAuthenticated, login } = useAuthStore();
+  const location = useLocation();
+  const { clearAuth, isAuthenticated, login, passwordChangeRequired } =
+    useAuthStore();
   const sessionQuery = useQuery({
     queryKey: queryKeys.auth.adminSession,
     queryFn: authApi.getSession,
@@ -21,7 +23,10 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   useEffect(() => {
     if (sessionQuery.data) {
-      login(sessionQuery.data.username);
+      login(
+        sessionQuery.data.username,
+        sessionQuery.data.passwordChangeRequired,
+      );
     }
   }, [login, sessionQuery.data]);
 
@@ -37,6 +42,10 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     }
 
     return <Navigate to="/login" replace />;
+  }
+
+  if (passwordChangeRequired && location.pathname !== '/password-change') {
+    return <Navigate to="/password-change" replace />;
   }
 
   return <>{children}</>;

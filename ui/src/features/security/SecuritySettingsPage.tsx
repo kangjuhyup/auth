@@ -40,6 +40,7 @@ import {
   canSubmitTotpCode,
   formatProviderLabel,
   getContactVerificationItems,
+  hasConfiguredMfaCredential,
   hasLinkedIdentities,
 } from './securitySettingsUtils';
 
@@ -234,6 +235,21 @@ export function SecuritySettingsPage() {
     onError: (error) => message.error(error.message),
   });
 
+  const handleMfaPreferenceChange = (checked: boolean) => {
+    if (!checked) {
+      updateMfaPreference.mutate(false);
+      return;
+    }
+
+    if (!hasConfiguredMfaCredential(recoveryCodeStatusQuery.data)) {
+      message.warning('Register an authenticator app before enabling MFA login');
+      beginTotp.mutate();
+      return;
+    }
+
+    updateMfaPreference.mutate(true);
+  };
+
   const unlinkIdentity = useMutation({
     mutationFn: (identityId: string) => {
       if (!tenantCode) throw new Error('Tenant is required');
@@ -305,8 +321,11 @@ export function SecuritySettingsPage() {
           <Descriptions.Item label="MFA login">
             <Switch
               checked={Boolean(profileQuery.data?.mfaEnabled)}
-              loading={updateMfaPreference.isPending}
-              onChange={(checked) => updateMfaPreference.mutate(checked)}
+              loading={updateMfaPreference.isPending || beginTotp.isPending}
+              disabled={
+                profileQuery.isLoading || recoveryCodeStatusQuery.isLoading
+              }
+              onChange={handleMfaPreferenceChange}
             />
           </Descriptions.Item>
         </Descriptions>

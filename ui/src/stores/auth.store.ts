@@ -17,7 +17,9 @@ const removeLegacyAuthStorage = () => {
 interface AuthState {
   isAuthenticated: boolean;
   username: string | null;
-  login: (username: string) => void;
+  passwordChangeRequired: boolean;
+  login: (username: string, passwordChangeRequired?: boolean) => void;
+  completePasswordChange: () => void;
   clearAuth: () => void;
 }
 
@@ -26,6 +28,14 @@ removeLegacyAuthStorage();
 export const useAuthStore = create<AuthState>((set) => ({
   isAuthenticated: false,
   username: null,
-  login: (username) => set({ isAuthenticated: true, username }),
-  clearAuth: () => set({ isAuthenticated: false, username: null }),
+  passwordChangeRequired: false,
+  login: (username, passwordChangeRequired = false) =>
+    set({ isAuthenticated: true, username, passwordChangeRequired }),
+  completePasswordChange: () => set({ passwordChangeRequired: false }),
+  clearAuth: () =>
+    set({
+      isAuthenticated: false,
+      username: null,
+      passwordChangeRequired: false,
+    }),
 }));

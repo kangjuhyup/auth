@@ -16,6 +16,8 @@ export function ClientForm({
   mode,
   form,
 }: ClientFormProps) {
+  const clientTypeLabel = formatClientType(getClientType(initialValues));
+
   return (
     <Form
       form={form}
@@ -48,15 +50,23 @@ export function ClientForm({
         <Input placeholder="e.g. My Web Application" />
       </Form.Item>
 
-      <Form.Item name="type" label="Client Type">
-        <Select placeholder="Select client type">
-          <Select.Option value="public">Public (Web/Mobile Apps)</Select.Option>
-          <Select.Option value="confidential">
-            Confidential (Server-side Apps)
-          </Select.Option>
-          <Select.Option value="service">Service (M2M)</Select.Option>
-        </Select>
-      </Form.Item>
+      {mode === 'create' ? (
+        <Form.Item name="type" label="Client Type">
+          <Select placeholder="Select client type">
+            <Select.Option value="public">
+              Public (Web/Mobile Apps)
+            </Select.Option>
+            <Select.Option value="confidential">
+              Confidential (Server-side Apps)
+            </Select.Option>
+            <Select.Option value="service">Service (M2M)</Select.Option>
+          </Select>
+        </Form.Item>
+      ) : (
+        <Form.Item label="Client Type">
+          <Input value={clientTypeLabel} disabled />
+        </Form.Item>
+      )}
 
       {mode === 'edit' && (
         <Form.Item name="enabled" label="Enabled" valuePropName="checked">
@@ -168,4 +178,18 @@ export function ClientForm({
       </Form.Item>
     </Form>
   );
+}
+
+function formatClientType(type: unknown): string {
+  if (type === 'public') return 'Public (Web/Mobile Apps)';
+  if (type === 'confidential') return 'Confidential (Server-side Apps)';
+  if (type === 'service') return 'Service (M2M)';
+  return 'Unknown';
+}
+
+function getClientType(
+  values?: Partial<CreateClientDto | UpdateClientDto>,
+): unknown {
+  if (!values || !('type' in values)) return undefined;
+  return values.type;
 }

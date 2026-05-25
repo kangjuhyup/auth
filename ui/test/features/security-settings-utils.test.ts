@@ -3,6 +3,7 @@ import {
   canSubmitTotpCode,
   formatProviderLabel,
   getContactVerificationItems,
+  hasConfiguredMfaCredential,
   hasLinkedIdentities,
 } from '../../src/features/security/securitySettingsUtils';
 
@@ -56,5 +57,25 @@ describe('security settings utilities', () => {
     expect(canSubmitTotpCode(' 123456 ')).toBe(true);
     expect(canSubmitTotpCode('12345')).toBe(false);
     expect(canSubmitTotpCode('abcdef')).toBe(false);
+  });
+
+  it('detects whether MFA credential exists from recovery code status', () => {
+    expect(hasConfiguredMfaCredential()).toBe(false);
+    expect(
+      hasConfiguredMfaCredential({
+        remaining: 0,
+        total: 0,
+        used: 0,
+        low: false,
+      }),
+    ).toBe(false);
+    expect(
+      hasConfiguredMfaCredential({
+        remaining: 8,
+        total: 10,
+        used: 2,
+        low: false,
+      }),
+    ).toBe(true);
   });
 });

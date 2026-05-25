@@ -1,4 +1,8 @@
-import type { IdentityLinkResponse, ProfileResponse } from '@/types/auth.types';
+import type {
+  IdentityLinkResponse,
+  ProfileResponse,
+  RecoveryCodeStatusResponse,
+} from '@/types/auth.types';
 
 export type ContactVerificationItem = Readonly<{
   key: 'email' | 'phone';
@@ -43,4 +47,10 @@ export function hasLinkedIdentities(links?: IdentityLinkResponse[]): boolean {
 
 export function canSubmitTotpCode(code: string): boolean {
   return /^\d{6}$/.test(code.trim());
+}
+
+export function hasConfiguredMfaCredential(
+  recoveryCodeStatus?: RecoveryCodeStatusResponse,
+): boolean {
+  return (recoveryCodeStatus?.total ?? 0) > 0;
 }

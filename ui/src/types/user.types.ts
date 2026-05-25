@@ -1,6 +1,7 @@
 export interface CreateUserDto {
   username: string;
   password: string;
+  temporaryPassword?: boolean;
   email?: string;
   phone?: string;
   status?: 'ACTIVE' | 'LOCKED' | 'DISABLED';
