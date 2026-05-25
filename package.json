@@ -9,11 +9,15 @@
   },
   "workspaces": [
     "ui",
+    "docs",
     "service",
     "service/interaction-ui",
     "packages/*"
   ],
   "scripts": {
+    "docs:dev": "yarn workspace @auth/docs start",
+    "docs:build": "yarn workspace @auth/docs build",
+    "docs:serve": "yarn workspace @auth/docs serve",
     "service:dev": "yarn workspace @auth/service start:dev",
     "service:build": "yarn workspace @auth/service build",
     "service:test": "yarn workspace @auth/service test",
