@@ -13,6 +13,10 @@ import type {
 } from '@domain/repositories';
 import type { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
 
+type OidcConfiguration = Configuration & {
+  grantTypes: string[];
+};
+
 export function buildOidcConfiguration(params: {
   em: EntityManager;
   redis: Redis;
@@ -25,9 +29,10 @@ export function buildOidcConfiguration(params: {
   tenantRepository: TenantRepository;
   symmetricCrypto: SymmetricCryptoPort;
   jwksKeys: Record<string, unknown>[];
+  supportedGrantTypes: string[];
   tenantAccessTokenTtlSec: number;
   tenantRefreshTokenTtlSec: number;
-}): Configuration {
+}): OidcConfiguration {
   const {
     em,
     redis,
@@ -39,6 +44,7 @@ export function buildOidcConfiguration(params: {
     clientAuthPolicyRepository,
     tenantRepository,
     symmetricCrypto,
+    supportedGrantTypes,
     tenantAccessTokenTtlSec,
     tenantRefreshTokenTtlSec,
   } = params;
@@ -111,6 +117,8 @@ export function buildOidcConfiguration(params: {
   ) as 'opaque' | 'jwt';
 
   return {
+    grantTypes: [...supportedGrantTypes],
+
     interactions: {
       url(_ctx, interaction) {
         return `/t/${tenantCode}/interaction/${interaction.uid}`;

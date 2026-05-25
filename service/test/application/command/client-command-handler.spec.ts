@@ -1,10 +1,15 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { ClientCommandHandler } from '@application/commands/handlers/client-command.handler';
 import type {
   ClientAuthPolicyRepository,
   ClientRepository,
 } from '@domain/repositories';
 import type { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
+import type { GrantTypeRegistryPort } from '@application/ports/grant-type-registry.port';
 import { ClientModel } from '@domain/models/client';
 import { ClientAuthPolicyModel } from '@domain/models/client-auth-policy';
 
@@ -82,21 +87,37 @@ function createMockCrypto(): jest.Mocked<SymmetricCryptoPort> {
   };
 }
 
+function createMockGrantTypeRegistry(): jest.Mocked<GrantTypeRegistryPort> {
+  return {
+    listSupportedGrantTypes: jest.fn().mockResolvedValue([
+      'authorization_code',
+      'refresh_token',
+      'client_credentials',
+      'implicit',
+    ]),
+    listDefinitions: jest.fn(),
+    validateClientGrantTypes: jest.fn().mockResolvedValue([]),
+  };
+}
+
 describe('ClientCommandHandler', () => {
   let handler: ClientCommandHandler;
   let clientRepo: jest.Mocked<ClientRepository>;
   let clientAuthPolicyRepo: jest.Mocked<ClientAuthPolicyRepository>;
   let crypto: jest.Mocked<SymmetricCryptoPort>;
+  let grantTypeRegistry: jest.Mocked<GrantTypeRegistryPort>;
 
   beforeEach(() => {
     jest.clearAllMocks();
     clientRepo = createMockClientRepo();
     clientAuthPolicyRepo = createMockClientAuthPolicyRepo();
     crypto = createMockCrypto();
+    grantTypeRegistry = createMockGrantTypeRegistry();
     handler = new ClientCommandHandler(
       clientRepo,
       clientAuthPolicyRepo,
       crypto,
+      grantTypeRegistry,
     );
   });
 
@@ -113,6 +134,13 @@ describe('ClientCommandHandler', () => {
       );
       expect(clientRepo.save).toHaveBeenCalledTimes(1);
       expect(clientAuthPolicyRepo.save).toHaveBeenCalledTimes(1);
+      expect(grantTypeRegistry.validateClientGrantTypes).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        clientType: 'public',
+        applicationType: 'web',
+        tokenEndpointAuthMethod: 'none',
+        grantTypes: ['authorization_code'],
+      });
       expect(result.id).toBeDefined();
     });
 
@@ -188,6 +216,23 @@ describe('ClientCommandHandler', () => {
       expect(saved.allowedResources).toEqual(['https://api.example.com']);
       expect(saved.accessTokenTtlSec).toBe(900);
       expect(saved.refreshTokenTtlSec).toBe(86400);
+    });
+
+    it('허용되지 않은 grant type 정책이면 BadRequestException을 던진다', async () => {
+      grantTypeRegistry.validateClientGrantTypes.mockResolvedValue([
+        { grantType: 'client_credentials', reason: 'client_auth_required' },
+      ]);
+
+      await expect(
+        handler.createClient('tenant-1', {
+          clientId: 'bad-client',
+          name: 'Bad Client',
+          grantTypes: ['client_credentials'],
+          tokenEndpointAuthMethod: 'none',
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(clientRepo.save).not.toHaveBeenCalled();
     });
   });
 
@@ -292,6 +337,38 @@ describe('ClientCommandHandler', () => {
       expect(saved.skipConsent).toBe(true);
       expect(saved.accessTokenTtlSec).toBe(1200);
       expect(saved.refreshTokenTtlSec).toBeNull();
+    });
+
+    it('grantTypes 변경 시 최종 client 정책을 검증한다', async () => {
+      await handler.updateClient('tenant-1', 'client-1', {
+        grantTypes: ['authorization_code', 'refresh_token'],
+      });
+
+      expect(grantTypeRegistry.validateClientGrantTypes).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        clientType: 'public',
+        applicationType: 'web',
+        tokenEndpointAuthMethod: 'none',
+        grantTypes: ['authorization_code', 'refresh_token'],
+      });
+    });
+
+    it('grantTypes 변경이 정책에 맞지 않으면 저장하지 않는다', async () => {
+      grantTypeRegistry.validateClientGrantTypes.mockResolvedValue([
+        {
+          grantType: 'refresh_token',
+          reason: 'required_grant_missing',
+          requiredGrantType: 'authorization_code',
+        },
+      ]);
+
+      await expect(
+        handler.updateClient('tenant-1', 'client-1', {
+          grantTypes: ['refresh_token'],
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(clientRepo.save).not.toHaveBeenCalled();
     });
   });
 

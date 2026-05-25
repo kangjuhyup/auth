@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
@@ -21,6 +22,8 @@ import type { AuthMethod, MfaMethod } from '@domain/models/client-auth-policy';
 import { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
 import { orThrow } from '@domain/utils';
 import { AuditRecorder } from '@application/services/audit-recorder';
+import { GrantTypeRegistryPort } from '@application/ports/grant-type-registry.port';
+import type { GrantTypeValidationIssue } from '@application/ports/grant-type-registry.port';
 
 @Injectable()
 export class ClientCommandHandler implements ClientCommandPort {
@@ -30,6 +33,7 @@ export class ClientCommandHandler implements ClientCommandPort {
     private readonly clientRepo: ClientRepository,
     private readonly clientAuthPolicyRepo: ClientAuthPolicyRepository,
     private readonly symmetricCrypto: SymmetricCryptoPort,
+    private readonly grantTypeRegistry: GrantTypeRegistryPort,
     private readonly auditRecorder?: AuditRecorder,
   ) {}
 
@@ -48,6 +52,19 @@ export class ClientCommandHandler implements ClientCommandPort {
     );
     if (existing) throw new ConflictException('Client ID already exists');
 
+    const clientType = dto.type ?? 'public';
+    const applicationType = dto.applicationType ?? 'web';
+    const grantTypes = dto.grantTypes ?? ['authorization_code'];
+    const tokenEndpointAuthMethod = dto.tokenEndpointAuthMethod ?? 'none';
+
+    await this.assertGrantTypesAllowed({
+      tenantId,
+      clientType,
+      applicationType,
+      tokenEndpointAuthMethod,
+      grantTypes,
+    });
+
     const secretEnc = dto.secret
       ? this.symmetricCrypto.encrypt(dto.secret)
       : null;
@@ -57,15 +74,15 @@ export class ClientCommandHandler implements ClientCommandPort {
       clientId: dto.clientId,
       secretEnc,
       name: dto.name,
-      type: dto.type ?? 'public',
+      type: clientType,
       enabled: true,
       redirectUris: dto.redirectUris ?? [],
-      grantTypes: dto.grantTypes ?? ['authorization_code'],
+      grantTypes,
       responseTypes: dto.responseTypes ?? ['code'],
-      tokenEndpointAuthMethod: dto.tokenEndpointAuthMethod ?? 'none',
+      tokenEndpointAuthMethod,
       scope: dto.scope ?? 'openid',
       postLogoutRedirectUris: dto.postLogoutRedirectUris ?? [],
-      applicationType: dto.applicationType ?? 'web',
+      applicationType,
       backchannelLogoutUri: dto.backchannelLogoutUri ?? null,
       frontchannelLogoutUri: dto.frontchannelLogoutUri ?? null,
       allowedResources: dto.allowedResources ?? [],
@@ -106,6 +123,21 @@ export class ClientCommandHandler implements ClientCommandPort {
       new NotFoundException('Client not found'),
       (c) => c.tenantId === tenantId,
     );
+
+    if (
+      dto.grantTypes !== undefined ||
+      dto.applicationType !== undefined ||
+      dto.tokenEndpointAuthMethod !== undefined
+    ) {
+      await this.assertGrantTypesAllowed({
+        tenantId,
+        clientType: client.type,
+        applicationType: dto.applicationType ?? client.applicationType,
+        tokenEndpointAuthMethod:
+          dto.tokenEndpointAuthMethod ?? client.tokenEndpointAuthMethod,
+        grantTypes: dto.grantTypes ?? client.grantTypes,
+      });
+    }
 
     if (dto.secret !== undefined) {
       client.changeSecretEnc(
@@ -259,4 +291,27 @@ export class ClientCommandHandler implements ClientCommandPort {
       refreshTokenReuseAction: 'revoke_grant',
     });
   }
+
+  private async assertGrantTypesAllowed(params: {
+    tenantId: string;
+    clientType: ClientModel['type'];
+    applicationType: ClientModel['applicationType'];
+    tokenEndpointAuthMethod: string;
+    grantTypes: string[];
+  }): Promise<void> {
+    const issues = await this.grantTypeRegistry.validateClientGrantTypes(params);
+    if (issues.length === 0) return;
+
+    throw new BadRequestException({
+      message: 'Invalid client grant type policy',
+      issues: issues.map(formatGrantTypeIssue),
+    });
+  }
+}
+
+function formatGrantTypeIssue(issue: GrantTypeValidationIssue): string {
+  if (issue.reason === 'required_grant_missing') {
+    return `${issue.grantType}: ${issue.reason}:${issue.requiredGrantType}`;
+  }
+  return `${issue.grantType}: ${issue.reason}`;
 }

@@ -24,6 +24,14 @@ export type {
   LoginAttemptScope,
 } from './login-attempt-policy.port';
 export { OidcInteractionPort } from './oidc-interaction.port';
+export { GrantTypeRegistryPort } from './grant-type-registry.port';
+export type {
+  GrantTypeDefinition,
+  GrantTypeName,
+  GrantTypeValidationIssue,
+  GrantTypeValidationIssueReason,
+  GrantTypeValidationParams,
+} from './grant-type-registry.port';
 export type {
   InteractionCompletionResult,
   InteractionDetailsResult,

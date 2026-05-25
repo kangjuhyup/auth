@@ -19,6 +19,7 @@ import type { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.po
 import type { JwksKeyCryptoPort } from '@application/ports/jwks-key-crypto.port';
 import { JwksKeyModel } from '@domain/models/jwks-key';
 import { EventModel } from '@domain/models/event';
+import { GrantTypeRegistryPort } from '@application/ports/grant-type-registry.port';
 
 export type CreateOidcProviderParams = {
   issuer: string;
@@ -36,6 +37,7 @@ export type CreateOidcProviderParams = {
   eventRepository: EventRepository;
   jwksKeyCrypto: JwksKeyCryptoPort;
   symmetricCrypto: SymmetricCryptoPort;
+  grantTypeRegistry: GrantTypeRegistryPort;
 };
 
 const DEFAULT_ACCESS_TOKEN_TTL = 60 * 60;
@@ -88,6 +90,8 @@ export async function createOidcProvider(
     tenantRepository: params.tenantRepository,
     symmetricCrypto: params.symmetricCrypto,
     jwksKeys,
+    supportedGrantTypes:
+      await params.grantTypeRegistry.listSupportedGrantTypes(),
     tenantAccessTokenTtlSec:
       tenantConfig?.accessTokenTtlSec ?? DEFAULT_ACCESS_TOKEN_TTL,
     tenantRefreshTokenTtlSec:

@@ -24,6 +24,8 @@ import { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
 import { JwksKeyCryptoPort } from '@application/ports/jwks-key-crypto.port';
 import { OperationalMetricsPort } from '@application/ports/operational-metrics.port';
 import { InMemoryOperationalMetricsAdapter } from '@infrastructure/observability/in-memory-operational-metrics.adapter';
+import { GrantTypeRegistryPort } from '@application/ports/grant-type-registry.port';
+import { OidcGrantTypeRegistryAdapter } from './grant-type-registry.adapter';
 
 @Module({
   imports: [
@@ -50,6 +52,7 @@ import { InMemoryOperationalMetricsAdapter } from '@infrastructure/observability
         jwksKeyCrypto: JwksKeyCryptoPort,
         symmetricCrypto: SymmetricCryptoPort,
         metrics: OperationalMetricsPort,
+        grantTypeRegistry: GrantTypeRegistryPort,
       ) => {
         const base = configService.getOrThrow<string>('OIDC_ISSUER');
 
@@ -72,6 +75,7 @@ import { InMemoryOperationalMetricsAdapter } from '@infrastructure/observability
             eventRepository,
             jwksKeyCrypto,
             symmetricCrypto,
+            grantTypeRegistry,
           });
         }, metrics);
 
@@ -92,7 +96,12 @@ import { InMemoryOperationalMetricsAdapter } from '@infrastructure/observability
         JwksKeyCryptoPort,
         SymmetricCryptoPort,
         OperationalMetricsPort,
+        GrantTypeRegistryPort,
       ],
+    },
+    {
+      provide: GrantTypeRegistryPort,
+      useClass: OidcGrantTypeRegistryAdapter,
     },
     {
       provide: OperationalMetricsPort,
@@ -103,6 +112,11 @@ import { InMemoryOperationalMetricsAdapter } from '@infrastructure/observability
       useClass: AccessVerifierAdapter,
     },
   ],
-  exports: [OIDC_PROVIDER, AccessVerifierPort, OperationalMetricsPort],
+  exports: [
+    OIDC_PROVIDER,
+    AccessVerifierPort,
+    OperationalMetricsPort,
+    GrantTypeRegistryPort,
+  ],
 })
 export class OidcProviderModule {}

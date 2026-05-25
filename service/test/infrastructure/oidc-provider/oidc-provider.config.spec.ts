@@ -80,6 +80,12 @@ describe('buildOidcConfiguration', () => {
       tenantRepository,
       symmetricCrypto,
       jwksKeys: [],
+      supportedGrantTypes: [
+        'authorization_code',
+        'refresh_token',
+        'client_credentials',
+        'implicit',
+      ],
       tenantAccessTokenTtlSec: 3600,
       tenantRefreshTokenTtlSec: 86400,
     };
@@ -96,6 +102,21 @@ describe('buildOidcConfiguration', () => {
     expect(
       typeof (cfg.features?.resourceIndicators as any).getResourceServerInfo,
     ).toBe('function');
+  });
+
+  it('refresh_token과 client_credentials grant를 provider 지원 목록에 포함한다', () => {
+    const deps = makeDeps();
+    const cfg = buildOidcConfiguration({
+      ...deps,
+      tenantCode: 'acme',
+    });
+
+    expect((cfg as any).grantTypes).toEqual([
+      'authorization_code',
+      'refresh_token',
+      'client_credentials',
+      'implicit',
+    ]);
   });
 
   it('tenant가 없으면 getResourceServerInfo에서 에러(missing_tenant)를 던진다', async () => {

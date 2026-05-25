@@ -76,6 +76,8 @@ import { ReadinessCheckPort } from '@application/ports/readiness-check.port';
 import { InfrastructureReadinessAdapter } from './observability/infrastructure-readiness.adapter';
 import { IdentityLinkSessionPort } from '@application/ports/identity-link-session.port';
 import { RedisIdentityLinkSessionRepository } from './repositories/redis-identity-link-session.repository';
+import { GrantTypeRegistryPort } from '@application/ports/grant-type-registry.port';
+import { OidcGrantTypeRegistryAdapter } from './oidc-provider/grant-type-registry.adapter';
 
 // Password Hash Implementations
 import { Argon2idHash } from './crypto/password/impl/argon2-hash';
@@ -171,6 +173,10 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
       useClass: OidcInteractionAdapter,
     },
     {
+      provide: GrantTypeRegistryPort,
+      useClass: OidcGrantTypeRegistryAdapter,
+    },
+    {
       provide: IdpPort,
       useClass: OAuth2IdpAdapter,
     },
@@ -245,6 +251,7 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     LoginAttemptPolicyPort,
     IdentityLinkSessionPort,
     OidcInteractionPort,
+    GrantTypeRegistryPort,
     TenantRepository,
     GroupRepository,
     RoleRepository,

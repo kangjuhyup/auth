@@ -96,6 +96,14 @@ function createParams(): CreateOidcProviderParams {
       decrypt: jest.fn().mockReturnValue('decrypted-private-key-pem'),
       encrypt: jest.fn(),
     } as any,
+    grantTypeRegistry: {
+      listSupportedGrantTypes: jest.fn().mockResolvedValue([
+        'authorization_code',
+        'refresh_token',
+        'client_credentials',
+        'implicit',
+      ]),
+    } as any,
   };
 }
 
@@ -148,6 +156,12 @@ describe('createOidcProvider', () => {
     expect(buildOidcConfiguration).toHaveBeenCalledWith(
       expect.objectContaining({
         tenantCode: 'acme',
+        supportedGrantTypes: [
+          'authorization_code',
+          'refresh_token',
+          'client_credentials',
+          'implicit',
+        ],
         tenantAccessTokenTtlSec: 120,
         tenantRefreshTokenTtlSec: 240,
         jwksKeys: [
