@@ -133,6 +133,7 @@ export class InteractionController {
         req.get('x-request-id'),
       req,
       res,
+      tenant: this.getTenant(req),
       rpId: host.split(':')[0],
       expectedOrigin: `${req.protocol}://${host}`,
     });

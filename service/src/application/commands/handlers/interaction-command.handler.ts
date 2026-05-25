@@ -251,6 +251,7 @@ export class InteractionCommandHandler
     correlationId?: string;
     req: unknown;
     res: unknown;
+    tenant?: TenantContext;
     rpId: string;
     expectedOrigin: string;
   }): Promise<InteractionResponse> {
@@ -299,17 +300,19 @@ export class InteractionCommandHandler
       });
     }
 
-    const { redirectTo } = await this.oidcInteraction.completeLogin({
+    const loginResult = await this.oidcInteraction.completeLogin({
       tenantCode: params.tenantCode,
       req: params.req,
       res: params.res,
       userId: pending.userId,
+      tenant: params.tenant,
     });
+    if ('body' in loginResult) return loginResult;
 
     return {
       body: {
         success: true,
-        redirectTo,
+        redirectTo: loginResult.redirectTo,
       },
     };
   }
@@ -372,18 +375,20 @@ export class InteractionCommandHandler
 
     this.mfaPendingSessions.delete(params.uid);
 
-    const { redirectTo } = await this.oidcInteraction.completeLogin({
+    const loginResult = await this.oidcInteraction.completeLogin({
       tenantCode: params.tenantCode,
       req: params.req,
       res: params.res,
       userId: pending.userId,
+      tenant: params.tenant,
     });
+    if ('body' in loginResult) return loginResult;
 
     return {
       body: {
         success: true,
         recoveryCodes: confirmation.recoveryCodes,
-        redirectTo,
+        redirectTo: loginResult.redirectTo,
       },
     };
   }
@@ -518,18 +523,20 @@ export class InteractionCommandHandler
       };
     }
 
-    const { redirectTo } = await this.oidcInteraction.completeLogin({
+    const loginResult = await this.oidcInteraction.completeLogin({
       tenantCode: params.tenantCode,
       req: params.req,
       res: params.res,
       userId: params.userId,
+      tenant: params.tenant,
     });
+    if ('body' in loginResult) return loginResult;
 
     return {
       body: {
         success: true,
         mfaRequired: false,
-        redirectTo,
+        redirectTo: loginResult.redirectTo,
       },
     };
   }

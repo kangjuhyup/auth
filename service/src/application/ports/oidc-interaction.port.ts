@@ -22,6 +22,10 @@ export type InteractionJsonResult = Readonly<{
   body: unknown;
 }>;
 
+export type InteractionLoginResult =
+  | InteractionCompletionResult
+  | InteractionJsonResult;
+
 export type InteractionRedirectResult = Readonly<{
   redirectTo: string;
 }>;
@@ -51,7 +55,8 @@ export abstract class OidcInteractionPort {
     req: unknown;
     res: unknown;
     userId: string;
-  }): Promise<InteractionCompletionResult>;
+    tenant?: TenantContext;
+  }): Promise<InteractionLoginResult>;
 
   abstract completeConsent(params: {
     tenantCode: string;

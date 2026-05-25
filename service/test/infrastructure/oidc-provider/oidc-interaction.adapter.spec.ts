@@ -10,6 +10,7 @@ function makeProvider(clientId = 'web-app') {
       prompt: { name: 'login', details: {} },
       params: { client_id: clientId },
     }),
+    interactionResult: jest.fn().mockResolvedValue('/callback'),
     callback: jest.fn().mockReturnValue(jest.fn().mockResolvedValue(undefined)),
   };
 }
@@ -31,7 +32,12 @@ function makeTenantConfig(providerKeys: string[] | null): TenantConfigModel {
   return config;
 }
 
-function makePolicy(providerKeys: string[] | null): ClientAuthPolicyModel {
+function makePolicy(
+  providerKeys: string[] | null,
+  overrides: Partial<
+    ConstructorParameters<typeof ClientAuthPolicyModel>[0]
+  > = {},
+): ClientAuthPolicyModel {
   return new ClientAuthPolicyModel({
     tenantId: 'tenant-1',
     clientRefId: 'client-ref-1',
@@ -46,6 +52,7 @@ function makePolicy(providerKeys: string[] | null): ClientAuthPolicyModel {
     reauthenticationIntervalSec: null,
     refreshTokenRotationEnabled: true,
     refreshTokenReuseAction: 'revoke_grant',
+    ...overrides,
   });
 }
 
@@ -53,7 +60,9 @@ function createAdapter(overrides: Record<string, unknown> = {}) {
   const provider = makeProvider();
   const registry = { get: jest.fn().mockResolvedValue(provider) };
   const clientAuthPolicyRepo = {
-    findByClientRefId: jest.fn().mockResolvedValue(makePolicy(['google'])),
+    findByClientRefId: jest
+      .fn()
+      .mockResolvedValue((overrides.policy as any) ?? makePolicy(['google'])),
   };
   const clientRepo = {
     findByClientId: jest.fn().mockResolvedValue(
@@ -93,6 +102,11 @@ function createAdapter(overrides: Record<string, unknown> = {}) {
   const eventRepo = {
     save: jest.fn().mockResolvedValue(undefined),
   };
+  const sessionControl = {
+    listActiveSessions: jest.fn().mockResolvedValue([]),
+    revokeSessions: jest.fn().mockResolvedValue(undefined),
+    ...(overrides.sessionControl as any),
+  };
 
   return {
     adapter: new OidcInteractionAdapter(
@@ -106,6 +120,7 @@ function createAdapter(overrides: Record<string, unknown> = {}) {
       {} as any,
       metrics as any,
       eventRepo as any,
+      sessionControl as any,
     ),
     provider,
     registry,
@@ -116,6 +131,7 @@ function createAdapter(overrides: Record<string, unknown> = {}) {
     idpPort,
     metrics,
     eventRepo,
+    sessionControl,
   };
 }
 
@@ -275,5 +291,94 @@ describe('OidcInteractionAdapter policy resolution', () => {
     const event = eventRepo.save.mock.calls[0][0];
     expect(event.clientId).toBe('web-app');
     expect(event.reason).toBe('InactiveClient');
+  });
+
+  it('deny_new_login 정책이면 기존 세션이 limit 이상일 때 login 완료를 막는다', async () => {
+    const { adapter, provider, sessionControl, eventRepo } = createAdapter({
+      policy: makePolicy(['google'], {
+        loginSessionMode: 'single',
+        maxConcurrentSessions: 1,
+        sessionConflictAction: 'deny_new_login',
+      }),
+      sessionControl: {
+        listActiveSessions: jest.fn().mockResolvedValue([
+          {
+            sessionId: 'session-1',
+            tenantId: 'tenant-1',
+            clientId: 'web-app',
+            accountId: 'user-1',
+            grantId: 'grant-1',
+            createdAt: new Date('2026-05-25T00:00:00.000Z'),
+            expiresAt: null,
+          },
+        ]),
+        revokeSessions: jest.fn(),
+      },
+    });
+
+    const result = await adapter.completeLogin({
+      tenantCode: 'acme',
+      req: makeTokenRequest({ url: '/interaction/uid' }),
+      res: {},
+      tenant,
+      userId: 'user-1',
+    });
+
+    expect(result).toEqual({
+      status: 409,
+      body: {
+        error: 'session_limit_exceeded',
+        message: 'Concurrent session limit exceeded',
+      },
+    });
+    expect(provider.interactionResult).not.toHaveBeenCalled();
+    expect(sessionControl.revokeSessions).not.toHaveBeenCalled();
+    expect(eventRepo.save.mock.calls[0][0].reason).toBe(
+      'ConcurrentSessionLimitExceeded',
+    );
+  });
+
+  it('revoke_previous_sessions 정책이면 기존 세션을 폐기하고 login을 완료한다', async () => {
+    const existingSession = {
+      sessionId: 'session-1',
+      tenantId: 'tenant-1',
+      clientId: 'web-app',
+      accountId: 'user-1',
+      grantId: 'grant-1',
+      createdAt: new Date('2026-05-25T00:00:00.000Z'),
+      expiresAt: null,
+    };
+    const { adapter, provider, sessionControl, eventRepo } = createAdapter({
+      policy: makePolicy(['google'], {
+        loginSessionMode: 'single',
+        maxConcurrentSessions: 1,
+        sessionConflictAction: 'revoke_previous_sessions',
+      }),
+      sessionControl: {
+        listActiveSessions: jest.fn().mockResolvedValue([existingSession]),
+        revokeSessions: jest.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const result = await adapter.completeLogin({
+      tenantCode: 'acme',
+      req: makeTokenRequest({ url: '/interaction/uid' }),
+      res: {},
+      tenant,
+      userId: 'user-1',
+    });
+
+    expect(result).toEqual({ redirectTo: '/callback' });
+    expect(sessionControl.revokeSessions).toHaveBeenCalledWith([
+      existingSession,
+    ]);
+    expect(provider.interactionResult).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      { login: { accountId: 'user-1' } },
+    );
+    expect(eventRepo.save.mock.calls[0][0].reason).toBe(
+      'PreviousSessionsRevokedByPolicy',
+    );
   });
 });

@@ -8,6 +8,10 @@ import { ClientOidcAdapter } from './client-oidc.adapter';
 import type { OidcAdapterDriver } from './oidc-adapter.constants';
 import type { ClientRepository, TenantRepository } from '@domain/repositories';
 import type { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
+import {
+  RdbOidcSessionIndexStore,
+  RedisOidcSessionIndexStore,
+} from '../session/oidc-session-index.store';
 
 export function buildOidcAdapterFactory(params: {
   driver: OidcAdapterDriver;
@@ -35,23 +39,33 @@ export function buildOidcAdapterFactory(params: {
   } = params;
 
   const buildDefault = (kind: string) => {
+    const rdbSessionIndex =
+      em && kind === 'Session'
+        ? new RdbOidcSessionIndexStore(em, tenantCode, tenantRepository)
+        : undefined;
+    const redisSessionIndex =
+      redis && kind === 'Session'
+        ? new RedisOidcSessionIndexStore(redis, tenantCode, tenantRepository)
+        : undefined;
+
     if (driver === 'rdb') {
       if (!em) throw new Error('EntityManager is required for rdb adapter');
-      return new RdbOidcAdapter(kind, em);
+      return new RdbOidcAdapter(kind, em, rdbSessionIndex);
     }
 
     if (driver === 'redis') {
       if (!redis) throw new Error('Redis client is required for redis adapter');
-      return new RedisAdapter(kind, redis);
+      return new RedisAdapter(kind, redis, redisSessionIndex);
     }
 
     if (driver === 'hybrid') {
       if (!em) throw new Error('EntityManager is required for hybrid adapter');
-      if (!redis) throw new Error('Redis client is required for hybrid adapter');
+      if (!redis)
+        throw new Error('Redis client is required for hybrid adapter');
       return new HybridAdapter({
         kind,
-        rdb: new RdbOidcAdapter(kind, em),
-        cache: new RedisAdapter(kind, redis),
+        rdb: new RdbOidcAdapter(kind, em, rdbSessionIndex),
+        cache: new RedisAdapter(kind, redis, redisSessionIndex),
         cacheTtlMarginSec,
         negativeTtlSec,
         backfillTtlSec,

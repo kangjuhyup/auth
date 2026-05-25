@@ -574,6 +574,7 @@ describe('InteractionCommandHandler', () => {
       req,
       res,
       userId: 'user-1',
+      tenant,
     });
   });
 
@@ -661,6 +662,7 @@ describe('InteractionCommandHandler', () => {
       req,
       res,
       userId: 'user-1',
+      tenant,
     });
     expect(loginAttemptPolicy.recordSuccess).toHaveBeenCalledWith({
       tenantId: 'tenant-1',

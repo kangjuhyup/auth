@@ -48,6 +48,7 @@ export abstract class InteractionCommandPort {
     correlationId?: string;
     req: unknown;
     res: unknown;
+    tenant?: TenantContext;
     rpId: string;
     expectedOrigin: string;
   }): Promise<InteractionResponse>;

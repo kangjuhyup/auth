@@ -7,6 +7,7 @@ import type {
   InteractionIdpCallbackResult,
   InteractionIdpRedirectResult,
   InteractionJsonResult,
+  InteractionLoginResult,
   InteractionRedirectResult,
   InteractionXmlResult,
 } from '@application/ports/oidc-interaction.port';
@@ -27,6 +28,8 @@ import { TenantConfigModel } from '@domain/models/tenant-config';
 import { OIDC_PROVIDER } from './oidc-provider.constants';
 import { OidcProviderRegistry } from './oidc-provider.registry';
 import { OperationalMetricsPort } from '@application/ports/operational-metrics.port';
+import { OidcSessionControlService } from './session/oidc-session-control.service';
+import type { OidcSessionRecord } from './session/oidc-session-index.store';
 
 @Injectable()
 export class OidcInteractionAdapter extends OidcInteractionPort {
@@ -41,6 +44,7 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
     private readonly samlSpPort: SamlSpPort,
     private readonly metrics: OperationalMetricsPort,
     private readonly eventRepo: EventRepository,
+    private readonly sessionControl: OidcSessionControlService,
   ) {
     super();
   }
@@ -127,8 +131,18 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
     req: unknown;
     res: unknown;
     userId: string;
-  }): Promise<InteractionCompletionResult> {
+    tenant?: TenantContext;
+  }): Promise<InteractionLoginResult> {
     const provider = await this.registry.get(params.tenantCode);
+    const conflict = await this.enforceSessionPolicy({
+      tenantCode: params.tenantCode,
+      req: params.req,
+      res: params.res,
+      tenant: params.tenant,
+      userId: params.userId,
+    });
+    if (conflict) return conflict;
+
     const redirectTo = await provider.interactionResult(
       params.req as any,
       params.res as any,
@@ -402,6 +416,21 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
       }
 
       const provider = await this.registry.get(params.tenantCode);
+      const conflict = await this.enforceSessionPolicy({
+        tenantCode: params.tenantCode,
+        req: params.req,
+        res: params.res,
+        tenant: params.tenant,
+        userId: identity.userId,
+      });
+      if (conflict) {
+        return this.interactionRedirect(
+          params.tenantCode,
+          params.uid,
+          'session_limit_exceeded',
+        );
+      }
+
       await provider.interactionFinished(params.req as any, params.res as any, {
         login: { accountId: identity.userId },
       });
@@ -531,6 +560,21 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
       }
 
       const provider = await this.registry.get(params.tenantCode);
+      const conflict = await this.enforceSessionPolicy({
+        tenantCode: params.tenantCode,
+        req: params.req,
+        res: params.res,
+        tenant: params.tenant,
+        userId: identity.userId,
+      });
+      if (conflict) {
+        return this.interactionRedirect(
+          params.tenantCode,
+          parsedRelay.uid,
+          'session_limit_exceeded',
+        );
+      }
+
       await provider.interactionFinished(params.req as any, params.res as any, {
         login: { accountId: identity.userId },
       });
@@ -636,6 +680,152 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
     return {
       redirectTo: `/t/${tenantCode}/interaction/${uid}?error=${error}`,
     };
+  }
+
+  private async enforceSessionPolicy(params: {
+    tenantCode: string;
+    req: unknown;
+    res: unknown;
+    tenant?: TenantContext;
+    userId: string;
+  }): Promise<InteractionJsonResult | null> {
+    const tenant =
+      params.tenant ??
+      ((params.req as any)?.tenant as TenantContext | undefined);
+    if (!tenant) return null;
+
+    const provider = await this.registry.get(params.tenantCode);
+    const details = await provider.interactionDetails(
+      params.req as any,
+      params.res as any,
+    );
+    const clientId = String(details.params?.client_id ?? '');
+    if (!clientId) return null;
+
+    const tenantPolicies = (
+      (await this.tenantConfigRepo.findByTenantId(tenant.id)) ??
+      this.createDefaultTenantConfig(tenant.id)
+    ).getPolicies();
+    const client = await this.clientRepo.findByClientId(tenant.id, clientId);
+    const policy = client?.id
+      ? await this.clientAuthPolicyRepo.findByClientRefId(client.id)
+      : null;
+    const effective = policy?.resolveEffectivePolicy(
+      tenantPolicies,
+      client?.refreshTokenTtlSec,
+    ) ?? {
+      loginSessionMode: tenantPolicies.session.loginSessionMode,
+      maxConcurrentSessions: tenantPolicies.session.maxConcurrentSessions,
+      sessionConflictAction: tenantPolicies.session.sessionConflictAction,
+    };
+    const limit =
+      effective.loginSessionMode === 'single'
+        ? 1
+        : effective.maxConcurrentSessions;
+    if (limit === null || limit < 1) return null;
+
+    const activeSessions = await this.sessionControl.listActiveSessions({
+      tenantId: tenant.id,
+      clientId,
+      accountId: params.userId,
+    });
+    if (activeSessions.length < limit) return null;
+
+    if (effective.sessionConflictAction === 'deny_new_login') {
+      await this.recordSessionPolicyAudit({
+        tenantId: tenant.id,
+        userId: params.userId,
+        clientId,
+        action: 'ACCESS_DENIED',
+        success: false,
+        reason: 'ConcurrentSessionLimitExceeded',
+        affectedSessions: activeSessions.length,
+        limit,
+        req: params.req,
+      });
+      return {
+        status: 409,
+        body: {
+          error: 'session_limit_exceeded',
+          message: 'Concurrent session limit exceeded',
+        },
+      };
+    }
+
+    const targets = this.selectSessionsToRevoke(
+      activeSessions,
+      limit,
+      effective.sessionConflictAction,
+    );
+    await this.sessionControl.revokeSessions(targets);
+    await this.recordSessionPolicyAudit({
+      tenantId: tenant.id,
+      userId: params.userId,
+      clientId,
+      action: 'TOKEN_REVOKED',
+      success: true,
+      reason: 'PreviousSessionsRevokedByPolicy',
+      affectedSessions: targets.length,
+      limit,
+      req: params.req,
+    });
+
+    return null;
+  }
+
+  private selectSessionsToRevoke(
+    sessions: readonly OidcSessionRecord[],
+    limit: number,
+    action:
+      | 'deny_new_login'
+      | 'revoke_previous_sessions'
+      | 'revoke_oldest_session',
+  ): readonly OidcSessionRecord[] {
+    if (action === 'revoke_oldest_session') {
+      return sessions.slice(0, Math.max(1, sessions.length - limit + 1));
+    }
+
+    return sessions;
+  }
+
+  private async recordSessionPolicyAudit(params: {
+    tenantId: string;
+    userId: string;
+    clientId: string;
+    action: 'ACCESS_DENIED' | 'TOKEN_REVOKED';
+    success: boolean;
+    reason: string;
+    affectedSessions: number;
+    limit: number;
+    req: unknown;
+  }): Promise<void> {
+    const req = params.req as Request;
+    await this.eventRepo.save(
+      new EventModel({
+        tenantId: params.tenantId,
+        userId: params.userId,
+        clientId: params.clientId,
+        category: 'SECURITY',
+        severity: params.success ? 'INFO' : 'WARN',
+        action: params.action,
+        resourceType: 'oidc-session',
+        resourceId: params.userId,
+        success: params.success,
+        reason: params.reason,
+        ip: null,
+        userAgent: req.get?.('user-agent') ?? null,
+        correlationId:
+          (req as any).correlationId ??
+          req.get?.('x-correlation-id') ??
+          req.get?.('x-request-id') ??
+          null,
+        metadata: {
+          affectedSessions: params.affectedSessions,
+          limit: params.limit,
+        },
+        occurredAt: new Date(),
+      }),
+    );
   }
 
   private async auditClientAuthenticationFailure(
