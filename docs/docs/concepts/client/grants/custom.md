@@ -14,7 +14,7 @@ description: node-oidc-provider 기반 커스텀 OAuth grant_type 추가 절차
 
 ## 개요
 
-이 서비스는 OAuth/OIDC 프로토콜 엔진으로 `node-oidc-provider`를 사용합니다. 커스텀 grant는 provider 인스턴스 생성 직후 `Provider#registerGrantType`으로 등록하며, client 등록 정책은 `GrantTypeRegistryPort`를 통해 별도로 검증합니다.
+이 서비스는 OAuth/OIDC 프로토콜 엔진으로 `node-oidc-provider`를 사용합니다. 커스텀 grant는 `CustomGrantStrategy`로 정의한 뒤 provider 인스턴스 생성 직후 `Provider#registerGrantType`으로 등록하며, client 등록 정책은 `GrantTypeValidationStrategy`들을 통해 별도로 검증합니다.
 
 :::caution
 토큰 발급, client 인증, replay 방어 같은 핵심 보안 동작은 `node-oidc-provider`의 흐름을 우회하지 않아야 합니다.
@@ -36,23 +36,25 @@ description: node-oidc-provider 기반 커스텀 OAuth grant_type 추가 절차
 | 파일                             | 책임                                          |
 | -------------------------------- | --------------------------------------------- |
 | `custom-grants/index.ts`         | 커스텀 grant 정의 목록                        |
-| `custom-grant-type.ts`           | 커스텀 grant 정의 타입                        |
+| `custom-grant-type.ts`           | `CustomGrantStrategy` 타입                    |
 | `register-custom-grant-types.ts` | `Provider#registerGrantType` 호출             |
 | `grant-type-registry.adapter.ts` | 지원 grant 목록과 client 정책 검증            |
+| `grant-type-strategies/*`        | client grant 정책 검증 strategy               |
 | `oidc-provider.factory.ts`       | tenant별 Provider 생성 직후 커스텀 grant 등록 |
 | `client.dto.ts`                  | 내장 grant 또는 `urn:...` 형식 입력 허용      |
 
 ## 추가 절차
 
-1. `CUSTOM_GRANT_TYPES`에 정의를 추가합니다.
+1. `CUSTOM_GRANT_TYPES`에 `CustomGrantStrategy` 정의를 추가합니다.
 2. `grantType`은 내장 grant와 충돌하지 않는 `urn:...` 형식으로 지정합니다.
 3. `parameters`에 token endpoint에서 받을 파라미터 이름을 명시합니다.
 4. `createHandler(context)`에서 provider grant handler를 반환합니다.
 5. client의 `grantTypes` 배열에 동일한 grant type을 등록합니다.
-6. registry 검증, provider 등록, DTO 검증 테스트를 추가합니다.
+6. 기본 정책으로 표현하기 어려운 client 검증이 있으면 `GrantTypeValidationStrategy`를 추가합니다.
+7. registry 검증, provider 등록, DTO 검증 테스트를 추가합니다.
 
 ```ts
-export const CUSTOM_GRANT_TYPES: CustomGrantTypeDefinition[] = [
+export const CUSTOM_GRANT_TYPES: CustomGrantStrategy[] = [
   {
     grantType: 'urn:auth:grant-type:magic_link',
     displayName: 'Magic Link',
@@ -74,15 +76,39 @@ export const CUSTOM_GRANT_TYPES: CustomGrantTypeDefinition[] = [
 ];
 ```
 
+## Grant 정책 Strategy 확장
+
+`allowedClientTypes`, `allowedApplicationTypes`, `requiresClientAuthentication`, `requiresGrantTypes`로 표현되는 정책은 기본 `GrantTypeValidationStrategy`가 검증합니다.
+
+특정 custom grant에만 추가 조건이 필요하면 `service/src/infrastructure/oidc-provider/grant-type-strategies`에 strategy를 추가하고 `BUILT_IN_GRANT_TYPE_VALIDATION_STRATEGIES`에 포함합니다.
+
+```ts
+import type { GrantTypeValidationStrategy } from './grant-type-validation-strategy';
+
+export class MagicLinkGrantTenantStrategy implements GrantTypeValidationStrategy {
+  validate({ definition, params }) {
+    if (definition.grantType !== 'urn:auth:grant-type:magic_link') {
+      return [];
+    }
+
+    return params.tenantId.startsWith('partner-')
+      ? []
+      : [{ grantType: definition.grantType, reason: 'disabled' }];
+  }
+}
+```
+
+표준 grant의 발급, 서명, replay 방어는 strategy에서 구현하지 않습니다. strategy는 client가 해당 grant를 등록하거나 사용할 수 있는 정책만 검증합니다.
+
 ## 보안 기준
 
-| 기준          | 설명                                                                                         |
-| ------------- | -------------------------------------------------------------------------------------------- |
-| Client 인증   | `requiresClientAuthentication`이 필요한 grant는 `none` 인증 방식을 허용하지 않습니다.        |
-| 파라미터 제한 | `parameters`에 선언되지 않은 입력을 grant handler에서 사용하지 않습니다.                     |
-| 로그 마스킹   | token, authorization code, secret, one-time token 원문은 기록하지 않습니다.                  |
-| 정책 검증     | client `grantTypes` 등록 외에 registry 정책으로 client type과 application type을 검증합니다. |
-| 테스트        | 지원 목록, disabled grant, client 인증 요구, DTO 입력을 테스트합니다.                        |
+| 기준          | 설명                                                                                  |
+| ------------- | ------------------------------------------------------------------------------------- |
+| Client 인증   | `requiresClientAuthentication`이 필요한 grant는 `none` 인증 방식을 허용하지 않습니다. |
+| 파라미터 제한 | `parameters`에 선언되지 않은 입력을 grant handler에서 사용하지 않습니다.              |
+| 로그 마스킹   | token, authorization code, secret, one-time token 원문은 기록하지 않습니다.           |
+| 정책 검증     | client `grantTypes` 등록 외에 `GrantTypeValidationStrategy`로 정책을 검증합니다.      |
+| 테스트        | 지원 목록, disabled grant, client 인증 요구, DTO 입력을 테스트합니다.                 |
 
 ## 검증 체크리스트
 

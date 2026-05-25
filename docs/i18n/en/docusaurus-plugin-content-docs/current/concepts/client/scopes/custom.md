@@ -9,18 +9,18 @@ Custom scopes represent service API access ranges or domain-specific permission 
 
 ## Addition Flow
 
-Add a custom scope by defining it in the DB, connecting claim resolver code when claims are needed, and then allowing clients to request it.
+Add a custom scope by defining it in the DB, connecting `ScopeClaimStrategy` code when claims are needed, and then allowing clients to request it.
 
 1. Choose the scope name and user-facing description.
 2. Decide whether the requested scope should return additional claims.
-3. Check whether existing resolver keys can express those claims.
-4. Add a resolver key in service code when the existing keys are not enough.
+3. Check whether existing strategy keys can express those claims.
+4. Add a `ScopeClaimStrategy` in service code when the existing strategies are not enough.
 5. Register the scope definition for the tenant through the admin API.
 6. Add the scope to each client that may request it.
 7. Verify the authorization request and token/userinfo claim results.
 
 :::warning
-Do not store executable functions or dynamic scripts in the DB. The DB stores only the scope name, description, enabled state, and `claimKeys`; actual claim generation logic belongs in the service-side resolver registry.
+Do not store executable functions or dynamic scripts in the DB. The DB stores only the scope name, description, enabled state, and `claimKeys`; actual claim generation logic belongs in service-side `ScopeClaimStrategy` code.
 :::
 
 ## Definition Rules
@@ -78,7 +78,7 @@ Field meanings:
 | `name`        | Scope name requested by clients. Do not rename it casually after deployment. |
 | `displayName` | Display name for admin UI and consent UI.                                    |
 | `description` | Human-readable explanation for users and operators.                          |
-| `claimKeys`   | Claim resolver keys executed when this scope is requested.                   |
+| `claimKeys`   | Claim strategy keys executed when this scope is requested.                   |
 | `enabled`     | Disabled scopes are excluded from client validation and provider support.    |
 
 After registration, add the same value to the client's allowed scopes.
@@ -89,34 +89,34 @@ openid profile email orders:read
 
 ## Relationship With Claims
 
-Custom scopes are managed as DB-backed scope definitions. A scope definition stores the display name, description, enabled state, and `claimKeys` used by the claim resolver. The service-side resolver code decides which claims are included in tokens or userinfo responses.
+Custom scopes are managed as DB-backed scope definitions. A scope definition stores the display name, description, enabled state, and `claimKeys` used by claim strategies. Service-side `ScopeClaimStrategy` code decides which claims are included in tokens or userinfo responses.
 
 | Item         | Role                                                                         |
 | ------------ | ---------------------------------------------------------------------------- |
 | custom scope | DB-backed range that a client may request                                    |
-| claimKeys    | Claim resolver keys executed when the scope is requested                     |
+| claimKeys    | Claim strategy keys executed when the scope is requested                     |
 | custom claim | User or policy information included in token/userinfo                        |
 | policy       | Issuance conditions such as scope request, consent skip, and MFA requirement |
 
 Sensitive information, credentials, and internal policy state must not be exposed as custom claims either.
 
 :::info
-The DB does not store executable functions. It stores scopes such as `orders:read` and their `claimKeys`; the actual claim generation functions are registered in the service code resolver registry.
+The DB does not store executable functions. It stores scopes such as `orders:read` and their `claimKeys`; the actual claim generation functions are registered in service-side strategies.
 :::
 
-## Claim Resolver Guidelines
+## Claim Strategy Guidelines
 
-Before adding a new claim, check whether an existing resolver key already covers it.
+Before adding a new claim, check whether an existing strategy key already covers it.
 
-Default resolver keys:
+Default strategy keys:
 
-| Resolver key | Example returned claims                 |
+| Strategy key | Example returned claims                 |
 | ------------ | --------------------------------------- |
 | `profile`    | `preferred_username`                    |
 | `email`      | `email`, `email_verified`               |
 | `phone`      | `phone_number`, `phone_number_verified` |
 
-Add a resolver key when:
+Add a strategy key when:
 
 - The claim value is derived from user, tenant, or client policy data.
 - The claim group can be reused by multiple scopes.
@@ -128,7 +128,25 @@ Do not add one for:
 - Internal DB ids, infrastructure state, cache keys, or operator-only policy values.
 - Fine-grained checks for a single API endpoint. Handle those in the resource server authorization layer.
 
-Register resolver code in `service/src/infrastructure/oidc-provider/scope-claim-resolver.adapter.ts`. Provider callbacks pass only the requested scope's `claimKeys` to the resolver, so scopes and claims must always be explicitly connected.
+Register strategy code under `service/src/infrastructure/oidc-provider/scope-claim-strategies`. Add the new strategy to `BUILT_IN_SCOPE_CLAIM_STRATEGIES`; `scope-claim-resolver.adapter.ts` then finds strategies by `claimKeys` and merges their claims.
+
+```ts
+import type { ScopeClaimStrategy } from './scope-claim-strategy';
+
+export class DepartmentScopeClaimStrategy implements ScopeClaimStrategy {
+  supports(claimKey: string): boolean {
+    return claimKey === 'department';
+  }
+
+  resolve({ tenantId, subject }): Record<string, unknown> {
+    return {
+      department: `${tenantId}:${subject}:engineering`,
+    };
+  }
+}
+```
+
+Provider callbacks pass only the requested scope's `claimKeys` to the resolver, so scopes and claims must always be explicitly connected.
 
 ## Consent Operations
 
@@ -146,7 +164,7 @@ Check before operating:
 - Is the scope registered only for tenants that need it?
 - Has the new scope been added to the allowed scopes of each client?
 - Are the consent display name and description user-friendly?
-- Do all `claimKeys` exist in the resolver registry?
+- Do all `claimKeys` exist in a `ScopeClaimStrategy`?
 - Are sensitive information and implementation details excluded from claims?
 - Have disabled scope requests been tested as rejected?
 - Does OIDC discovery expose only the intended `scopes_supported` values?
