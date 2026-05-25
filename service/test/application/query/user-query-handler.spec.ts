@@ -97,6 +97,25 @@ describe('UserQueryHandler', () => {
         emailVerified: true,
         status: 'ACTIVE',
         mfaEnabled: false,
+        passwordChangeRequired: false,
+      });
+    });
+
+    it('임시 비밀번호 credential이면 passwordChangeRequired를 반환한다', async () => {
+      userRepo.findById.mockResolvedValue(
+        makeUser({
+          passwordCredential: UserCredentialModel.password({
+            secretHash: 'hashed-pw',
+            hashAlg: 'argon2id',
+            passwordChangeRequired: true,
+          }),
+        }),
+      );
+
+      await expect(
+        handler.findProfile({ tenantId: 'tenant-1', userId: 'user-1' }),
+      ).resolves.toMatchObject({
+        passwordChangeRequired: true,
       });
     });
   });
@@ -151,6 +170,7 @@ describe('UserQueryHandler', () => {
       });
 
       expect(result?.username).toBe('testuser');
+      expect(result?.passwordChangeRequired).toBe(false);
     });
   });
 
@@ -205,7 +225,7 @@ describe('UserQueryHandler', () => {
       ).toBeNull();
     });
 
-    it('성공 → { userId, mfaEnabled } 반환', async () => {
+    it('성공 → { userId, mfaEnabled, passwordChangeRequired } 반환', async () => {
       userRepo.findByUsername.mockResolvedValue(makeUser({ mfaEnabled: true }));
 
       const result = await handler.authenticate({
@@ -214,7 +234,35 @@ describe('UserQueryHandler', () => {
         password: 'correct',
       });
 
-      expect(result).toEqual({ userId: 'user-1', mfaEnabled: true });
+      expect(result).toEqual({
+        userId: 'user-1',
+        mfaEnabled: true,
+        passwordChangeRequired: false,
+      });
+    });
+
+    it('임시 비밀번호 credential이면 passwordChangeRequired를 반환한다', async () => {
+      userRepo.findByUsername.mockResolvedValue(
+        makeUser({
+          passwordCredential: UserCredentialModel.password({
+            secretHash: 'hashed-pw',
+            hashAlg: 'argon2id',
+            passwordChangeRequired: true,
+          }),
+        }),
+      );
+
+      const result = await handler.authenticate({
+        tenantId: 'tenant-1',
+        username: 'u',
+        password: 'correct',
+      });
+
+      expect(result).toEqual({
+        userId: 'user-1',
+        mfaEnabled: false,
+        passwordChangeRequired: true,
+      });
     });
   });
 

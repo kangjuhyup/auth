@@ -45,6 +45,30 @@ describe('UserCredentialModel', () => {
       expect(cred.hashVersion).toBeUndefined();
     });
 
+    it('임시 비밀번호면 passwordChangeRequired 메타데이터를 저장한다', () => {
+      const cred = UserCredentialModel.password({
+        secretHash: 'hashed-value',
+        hashAlg: 'argon2id',
+        hashParams: { timeCost: 3 },
+        passwordChangeRequired: true,
+      });
+
+      expect(cred.hashParams).toEqual({
+        timeCost: 3,
+        passwordChangeRequired: true,
+      });
+      expect(cred.requiresPasswordChange()).toBe(true);
+    });
+
+    it('일반 비밀번호는 passwordChangeRequired가 false이다', () => {
+      const cred = UserCredentialModel.password({
+        secretHash: 'hashed-value',
+        hashAlg: 'argon2id',
+      });
+
+      expect(cred.requiresPasswordChange()).toBe(false);
+    });
+
     it('secretHash가 비어있으면 에러를 던진다', () => {
       expect(() =>
         UserCredentialModel.password({

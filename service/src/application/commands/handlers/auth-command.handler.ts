@@ -133,6 +133,9 @@ export class AuthCommandHandler implements AuthCommandPort {
       currentCred.hashAlg,
     );
     if (!ok) throw new Error('InvalidPassword');
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException('New password must be different');
+    }
 
     const hashResult = await this.passwordHash.hash(dto.newPassword);
     const newCred = UserCredentialModel.password({

@@ -7,6 +7,7 @@ describe('AdminSessionHandler', () => {
   let adminQuery: any;
   let tokenPort: any;
   let loginAttemptPolicy: any;
+  let authCommand: any;
   let auditRecorder: any;
 
   beforeEach(() => {
@@ -14,10 +15,14 @@ describe('AdminSessionHandler', () => {
       findByCode: jest.fn().mockResolvedValue({ id: 'tenant-1' }),
     };
     userQuery = {
-      authenticate: jest.fn().mockResolvedValue({ userId: 'user-1' }),
+      authenticate: jest.fn().mockResolvedValue({
+        userId: 'user-1',
+        passwordChangeRequired: false,
+      }),
       findProfile: jest.fn().mockResolvedValue({
         userId: 'user-1',
         username: 'admin',
+        passwordChangeRequired: false,
       }),
     };
     adminQuery = {
@@ -35,6 +40,9 @@ describe('AdminSessionHandler', () => {
       }),
       recordSuccess: jest.fn().mockResolvedValue(undefined),
     };
+    authCommand = {
+      changePassword: jest.fn().mockResolvedValue(undefined),
+    };
     auditRecorder = {
       recordAdminAction: jest.fn().mockResolvedValue(undefined),
     };
@@ -45,6 +53,7 @@ describe('AdminSessionHandler', () => {
       adminQuery,
       tokenPort,
       loginAttemptPolicy,
+      authCommand,
       auditRecorder,
     );
   });
@@ -76,6 +85,7 @@ describe('AdminSessionHandler', () => {
     expect(result).toEqual({
       token: 'access-token',
       username: 'admin',
+      passwordChangeRequired: false,
     });
     expect(loginAttemptPolicy.recordSuccess).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
@@ -94,6 +104,21 @@ describe('AdminSessionHandler', () => {
         success: true,
       }),
     );
+  });
+
+  it('임시 비밀번호 관리자 로그인은 passwordChangeRequired를 반환한다', async () => {
+    userQuery.authenticate.mockResolvedValue({
+      userId: 'user-1',
+      passwordChangeRequired: true,
+    });
+
+    await expect(
+      handler.issueAdminToken({ username: 'admin', password: 'secret' }),
+    ).resolves.toEqual({
+      token: 'access-token',
+      username: 'admin',
+      passwordChangeRequired: true,
+    });
   });
 
   it('master tenant가 없으면 관리자 토큰을 발급하지 않는다', async () => {
@@ -178,6 +203,7 @@ describe('AdminSessionHandler', () => {
       adminQuery,
       tokenPort,
       loginAttemptPolicy,
+      authCommand,
       auditRecorder as any,
     );
     userQuery.authenticate.mockResolvedValue(null);
@@ -293,12 +319,43 @@ describe('AdminSessionHandler', () => {
     await expect(handler.getAdminSession('valid-token')).resolves.toEqual({
       userId: 'user-1',
       username: 'admin',
+      passwordChangeRequired: false,
     });
 
     expect(userQuery.findProfile).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
       userId: 'user-1',
     });
+  });
+
+  it('관리자 세션 조회 시 비밀번호 변경 요구 상태를 반환한다', async () => {
+    userQuery.findProfile.mockResolvedValue({
+      userId: 'user-1',
+      username: 'admin',
+      passwordChangeRequired: true,
+    });
+
+    await expect(handler.getAdminSession('valid-token')).resolves.toEqual({
+      userId: 'user-1',
+      username: 'admin',
+      passwordChangeRequired: true,
+    });
+  });
+
+  it('관리자 세션 비밀번호 변경을 AuthCommandPort에 위임한다', async () => {
+    await handler.changePassword('valid-token', {
+      currentPassword: 'temporary123',
+      newPassword: 'changed123',
+    });
+
+    expect(authCommand.changePassword).toHaveBeenCalledWith(
+      'tenant-1',
+      'user-1',
+      {
+        currentPassword: 'temporary123',
+        newPassword: 'changed123',
+      },
+    );
   });
 
   it('토큰 검증 실패 시 false를 반환한다', async () => {

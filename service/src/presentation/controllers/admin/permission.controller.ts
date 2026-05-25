@@ -22,8 +22,17 @@ import {
 import { AuditContext, TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
+import {
+  ApiAdminResource,
+  ApiCreatedIdSchema,
+  ApiNoContentSchema,
+  ApiOkSchema,
+  ApiPaginatedSchema,
+  OpenApiResponseSchemas,
+} from '@presentation/openapi-response';
 
 @UseGuards(AdminGuard)
+@ApiAdminResource('Admin Permissions')
 @Controller('t/:tenantCode/admin/permissions')
 export class AdminPermissionController {
   constructor(
@@ -32,6 +41,7 @@ export class AdminPermissionController {
   ) {}
 
   @Get()
+  @ApiPaginatedSchema('List permissions', OpenApiResponseSchemas.permission)
   list(
     @Tenant() tenant: TenantContext,
     @Query() query: PaginationQuery,
@@ -40,6 +50,7 @@ export class AdminPermissionController {
   }
 
   @Get(':id')
+  @ApiOkSchema('Get permission', OpenApiResponseSchemas.permission)
   get(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -48,6 +59,7 @@ export class AdminPermissionController {
   }
 
   @Post()
+  @ApiCreatedIdSchema('Create permission')
   create(
     @Tenant() tenant: TenantContext,
     @Body() dto: CreatePermissionDto,
@@ -58,6 +70,7 @@ export class AdminPermissionController {
   }
 
   @Put(':id')
+  @ApiNoContentSchema('Update permission')
   update(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -71,6 +84,7 @@ export class AdminPermissionController {
   }
 
   @Delete(':id')
+  @ApiNoContentSchema('Delete permission')
   delete(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,

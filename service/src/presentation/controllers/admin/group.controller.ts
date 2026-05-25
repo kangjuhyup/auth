@@ -25,8 +25,18 @@ import {
 import { AuditContext, TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
+import {
+  ApiAdminResource,
+  ApiCreatedIdSchema,
+  ApiNoContentSchema,
+  ApiOkArraySchema,
+  ApiOkSchema,
+  ApiPaginatedSchema,
+  OpenApiResponseSchemas,
+} from '@presentation/openapi-response';
 
 @UseGuards(AdminGuard)
+@ApiAdminResource('Admin Groups')
 @Controller('t/:tenantCode/admin/groups')
 export class AdminGroupController {
   constructor(
@@ -35,6 +45,7 @@ export class AdminGroupController {
   ) {}
 
   @Get()
+  @ApiPaginatedSchema('List groups', OpenApiResponseSchemas.group)
   list(
     @Tenant() tenant: TenantContext,
     @Query() query: PaginationQuery,
@@ -43,6 +54,7 @@ export class AdminGroupController {
   }
 
   @Get(':id')
+  @ApiOkSchema('Get group', OpenApiResponseSchemas.group)
   get(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -51,6 +63,7 @@ export class AdminGroupController {
   }
 
   @Post()
+  @ApiCreatedIdSchema('Create group')
   create(
     @Tenant() tenant: TenantContext,
     @Body() dto: CreateGroupDto,
@@ -61,6 +74,7 @@ export class AdminGroupController {
   }
 
   @Put(':id')
+  @ApiNoContentSchema('Update group')
   update(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -73,6 +87,7 @@ export class AdminGroupController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiNoContentSchema('Delete group')
   delete(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -83,6 +98,7 @@ export class AdminGroupController {
   }
 
   @Get(':id/roles')
+  @ApiOkArraySchema('List group roles', OpenApiResponseSchemas.role)
   getRoles(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -91,6 +107,7 @@ export class AdminGroupController {
   }
 
   @Post(':id/roles/:roleId')
+  @ApiNoContentSchema('Assign role to group')
   assignRole(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -104,6 +121,7 @@ export class AdminGroupController {
   }
 
   @Delete(':id/roles/:roleId')
+  @ApiNoContentSchema('Remove role from group')
   removeRole(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,

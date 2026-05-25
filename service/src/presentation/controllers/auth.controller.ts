@@ -32,11 +32,19 @@ import {
 } from '@presentation/dto';
 import { TenantContext } from '@application/dto';
 import { Tenant } from '../http/tenant.decorator';
-import { ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AccessGuard } from '@presentation/http/access.guard';
 import { AuthenticatedUser } from '@application/ports/access-verifier.port';
 import { AuthUser } from '@presentation/http/auth-user.decorator';
+import {
+  ApiNoContentSchema,
+  ApiOkArraySchema,
+  ApiOkSchema,
+  ApiRedirectSchema,
+  OpenApiResponseSchemas,
+} from '@presentation/openapi-response';
 
+@ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -45,6 +53,7 @@ export class AuthController {
   ) {}
 
   @Post('signup')
+  @ApiOkSchema('Sign up user', OpenApiResponseSchemas.signup)
   signup(
     @Tenant() tenant: TenantContext,
     @Body() dto: SignupDto,
@@ -55,6 +64,7 @@ export class AuthController {
   @Post('withdraw')
   @UseGuards(AccessGuard)
   @ApiBearerAuth('access-token')
+  @ApiNoContentSchema('Withdraw current user')
   withdraw(
     @Tenant() tenant: TenantContext,
     @AuthUser() user: AuthenticatedUser,
@@ -66,6 +76,7 @@ export class AuthController {
   @Put('password')
   @UseGuards(AccessGuard)
   @ApiBearerAuth('access-token')
+  @ApiNoContentSchema('Change current user password')
   changePassword(
     @Tenant() tenant: TenantContext,
     @AuthUser() user: AuthenticatedUser,
@@ -77,6 +88,7 @@ export class AuthController {
   @Post('password/reset-request')
   @UseGuards(AccessGuard)
   @ApiBearerAuth('access-token')
+  @ApiNoContentSchema('Request password reset')
   requestPasswordReset(
     @Tenant() tenant: TenantContext,
     @Body() dto: PasswordResetRequestDto,
@@ -87,6 +99,7 @@ export class AuthController {
   @Post('password/reset')
   @UseGuards(AccessGuard)
   @ApiBearerAuth('access-token')
+  @ApiNoContentSchema('Reset password')
   resetPassword(
     @Tenant() tenant: TenantContext,
     @AuthUser() user: AuthenticatedUser,
@@ -98,6 +111,7 @@ export class AuthController {
   @Post('email/verification-request')
   @UseGuards(AccessGuard)
   @ApiBearerAuth('access-token')
+  @ApiNoContentSchema('Request email verification')
   requestEmailVerification(
     @Tenant() tenant: TenantContext,
     @AuthUser() user: AuthenticatedUser,
@@ -108,6 +122,7 @@ export class AuthController {
   @Post('email/verify')
   @UseGuards(AccessGuard)
   @ApiBearerAuth('access-token')
+  @ApiNoContentSchema('Verify email')
   verifyEmail(
     @Tenant() tenant: TenantContext,
     @AuthUser() user: AuthenticatedUser,
@@ -119,6 +134,7 @@ export class AuthController {
   @Post('phone/verification-request')
   @UseGuards(AccessGuard)
   @ApiBearerAuth('access-token')
+  @ApiNoContentSchema('Request phone verification')
   requestPhoneVerification(
     @Tenant() tenant: TenantContext,
     @AuthUser() user: AuthenticatedUser,
@@ -129,6 +145,7 @@ export class AuthController {
   @Post('phone/verify')
   @UseGuards(AccessGuard)
   @ApiBearerAuth('access-token')
+  @ApiNoContentSchema('Verify phone')
   verifyPhone(
     @Tenant() tenant: TenantContext,
     @AuthUser() user: AuthenticatedUser,
@@ -140,6 +157,7 @@ export class AuthController {
   @Post('mfa/totp/enroll')
   @UseGuards(AccessGuard)
   @ApiBearerAuth('access-token')
+  @ApiOkSchema('Begin TOTP enrollment', OpenApiResponseSchemas.totpEnrollment)
   beginTotpEnrollment(
     @Tenant() tenant: TenantContext,
     @AuthUser() user: AuthenticatedUser,
@@ -150,6 +168,7 @@ export class AuthController {
   @Post('mfa/totp/confirm')
   @UseGuards(AccessGuard)
   @ApiBearerAuth('access-token')
+  @ApiOkSchema('Confirm TOTP enrollment', OpenApiResponseSchemas.recoveryCodes)
   confirmTotpEnrollment(
     @Tenant() tenant: TenantContext,
     @AuthUser() user: AuthenticatedUser,
@@ -161,6 +180,7 @@ export class AuthController {
   @Delete('mfa/totp')
   @UseGuards(AccessGuard)
   @ApiBearerAuth('access-token')
+  @ApiNoContentSchema('Disable TOTP')
   disableTotp(
     @Tenant() tenant: TenantContext,
     @AuthUser() user: AuthenticatedUser,
@@ -171,6 +191,10 @@ export class AuthController {
   @Get('mfa/recovery-codes/status')
   @UseGuards(AccessGuard)
   @ApiBearerAuth('access-token')
+  @ApiOkSchema(
+    'Get recovery code status',
+    OpenApiResponseSchemas.recoveryCodeStatus,
+  )
   getRecoveryCodeStatus(
     @Tenant() tenant: TenantContext,
     @AuthUser() user: AuthenticatedUser,
@@ -181,6 +205,7 @@ export class AuthController {
   @Post('mfa/recovery-codes/rotate')
   @UseGuards(AccessGuard)
   @ApiBearerAuth('access-token')
+  @ApiOkSchema('Rotate recovery codes', OpenApiResponseSchemas.recoveryCodes)
   rotateRecoveryCodes(
     @Tenant() tenant: TenantContext,
     @AuthUser() user: AuthenticatedUser,
@@ -191,6 +216,7 @@ export class AuthController {
   @Put('mfa/preference')
   @UseGuards(AccessGuard)
   @ApiBearerAuth('access-token')
+  @ApiNoContentSchema('Update MFA preference')
   updateMfaPreference(
     @Tenant() tenant: TenantContext,
     @AuthUser() user: AuthenticatedUser,
@@ -202,6 +228,7 @@ export class AuthController {
   @Get('profile')
   @UseGuards(AccessGuard)
   @ApiBearerAuth('access-token')
+  @ApiOkSchema('Get current user profile', OpenApiResponseSchemas.user)
   getProfile(
     @Tenant() tenant: TenantContext,
     @AuthUser() user: AuthenticatedUser,
@@ -212,6 +239,7 @@ export class AuthController {
   @Put('profile')
   @UseGuards(AccessGuard)
   @ApiBearerAuth('access-token')
+  @ApiNoContentSchema('Update current user profile')
   updateProfile(
     @Tenant() tenant: TenantContext,
     @AuthUser() user: AuthenticatedUser,
@@ -223,6 +251,7 @@ export class AuthController {
   @Get('consents')
   @UseGuards(AccessGuard)
   @ApiBearerAuth('access-token')
+  @ApiOkArraySchema('List current user consents', OpenApiResponseSchemas.consent)
   getConsents(
     @Tenant() tenant: TenantContext,
     @AuthUser() user: AuthenticatedUser,
@@ -233,6 +262,10 @@ export class AuthController {
   @Get('identity-links')
   @UseGuards(AccessGuard)
   @ApiBearerAuth('access-token')
+  @ApiOkArraySchema(
+    'List current user identity links',
+    OpenApiResponseSchemas.identityLink,
+  )
   getIdentityLinks(
     @Tenant() tenant: TenantContext,
     @AuthUser() user: AuthenticatedUser,
@@ -245,6 +278,10 @@ export class AuthController {
   @Post('identity-links/:provider/start')
   @UseGuards(AccessGuard)
   @ApiBearerAuth('access-token')
+  @ApiOkSchema(
+    'Start identity provider link',
+    OpenApiResponseSchemas.authorizationUrl,
+  )
   startIdentityLink(
     @Tenant() tenant: TenantContext,
     @AuthUser() user: AuthenticatedUser,
@@ -262,6 +299,7 @@ export class AuthController {
   }
 
   @Get('identity-links/:provider/callback')
+  @ApiRedirectSchema('Complete identity provider link')
   async completeIdentityLink(
     @Param('provider') provider: string,
     @Query() query: IdentityLinkCallbackQuery,
@@ -279,6 +317,7 @@ export class AuthController {
   @Delete('identity-links/:identityId')
   @UseGuards(AccessGuard)
   @ApiBearerAuth('access-token')
+  @ApiNoContentSchema('Unlink identity provider')
   unlinkIdentity(
     @Tenant() tenant: TenantContext,
     @AuthUser() user: AuthenticatedUser,
@@ -290,6 +329,7 @@ export class AuthController {
   @Delete('consents/:clientId')
   @UseGuards(AccessGuard)
   @ApiBearerAuth('access-token')
+  @ApiNoContentSchema('Revoke consent')
   revokeConsent(
     @Tenant() tenant: TenantContext,
     @AuthUser() user: AuthenticatedUser,

@@ -25,8 +25,17 @@ import {
 import { AuditContext, TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
+import {
+  ApiAdminResource,
+  ApiCreatedIdSchema,
+  ApiNoContentSchema,
+  ApiOkSchema,
+  ApiPaginatedSchema,
+  OpenApiResponseSchemas,
+} from '@presentation/openapi-response';
 
 @UseGuards(AdminGuard)
+@ApiAdminResource('Admin Roles')
 @Controller('t/:tenantCode/admin/roles')
 export class AdminRoleController {
   constructor(
@@ -35,6 +44,7 @@ export class AdminRoleController {
   ) {}
 
   @Get()
+  @ApiPaginatedSchema('List roles', OpenApiResponseSchemas.role)
   list(
     @Tenant() tenant: TenantContext,
     @Query() query: PaginationQuery,
@@ -43,6 +53,7 @@ export class AdminRoleController {
   }
 
   @Get(':id')
+  @ApiOkSchema('Get role', OpenApiResponseSchemas.role)
   get(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -51,6 +62,7 @@ export class AdminRoleController {
   }
 
   @Post()
+  @ApiCreatedIdSchema('Create role')
   create(
     @Tenant() tenant: TenantContext,
     @Body() dto: CreateRoleDto,
@@ -61,6 +73,7 @@ export class AdminRoleController {
   }
 
   @Put(':id')
+  @ApiNoContentSchema('Update role')
   update(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -72,6 +85,7 @@ export class AdminRoleController {
   }
 
   @Delete(':id')
+  @ApiNoContentSchema('Delete role')
   delete(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -84,6 +98,7 @@ export class AdminRoleController {
   // ── Role-Permission ───────────────────────────────────────────────────────
 
   @Get(':id/permissions')
+  @ApiPaginatedSchema('List role permissions', OpenApiResponseSchemas.permission)
   listPermissions(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -94,6 +109,7 @@ export class AdminRoleController {
 
   @Post(':id/permissions')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiNoContentSchema('Add permission to role')
   addPermission(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -113,6 +129,7 @@ export class AdminRoleController {
 
   @Delete(':id/permissions/:permissionId')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiNoContentSchema('Remove permission from role')
   removePermission(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,

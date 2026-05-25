@@ -19,6 +19,7 @@ function makeProfileView(status = 'ACTIVE'): UserProfileView {
     phoneVerified: false,
     status: status as any,
     mfaEnabled: false,
+    passwordChangeRequired: false,
     createdAt: new Date('2024-01-01'),
     updatedAt: new Date('2024-01-01'),
   };

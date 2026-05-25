@@ -28,15 +28,23 @@ export class UserCredentialModel extends PersistenceModel<
     hashAlg: string;
     hashParams?: Record<string, unknown> | null;
     hashVersion?: number | null;
+    passwordChangeRequired?: boolean;
   }): UserCredentialModel {
     if (!params.secretHash) throw new Error('SecretHashRequired');
     if (!params.hashAlg) throw new Error('HashAlgRequired');
+
+    const hashParams = {
+      ...(params.hashParams ?? {}),
+      ...(params.passwordChangeRequired
+        ? { passwordChangeRequired: true }
+        : {}),
+    };
 
     return new UserCredentialModel({
       type: 'password',
       secretHash: params.secretHash,
       hashAlg: params.hashAlg,
-      hashParams: params.hashParams,
+      hashParams: Object.keys(hashParams).length > 0 ? hashParams : undefined,
       hashVersion: params.hashVersion,
       enabled: true,
     });
@@ -67,6 +75,13 @@ export class UserCredentialModel extends PersistenceModel<
 
   updateHashParams(params: Record<string, unknown>): void {
     this.etc.hashParams = params;
+  }
+
+  requiresPasswordChange(): boolean {
+    return (
+      this.type === 'password' &&
+      this.hashParams?.passwordChangeRequired === true
+    );
   }
 
   @Getter()

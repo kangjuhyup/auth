@@ -6,6 +6,7 @@ describe('InteractionCommandHandler', () => {
   let oidcInteraction: any;
   let loginAttemptPolicy: any;
   let metrics: any;
+  let authCommand: any;
   let auditRecorder: any;
   const tenant = { id: 'tenant-1', code: 'acme', name: 'ACME' };
 
@@ -32,6 +33,16 @@ describe('InteractionCommandHandler', () => {
       observeLatency: jest.fn(),
       snapshot: jest.fn(),
     };
+    authCommand = {
+      changePassword: jest.fn().mockResolvedValue(undefined),
+      beginTotpEnrollment: jest.fn().mockResolvedValue({
+        secret: 'totp-secret',
+        otpauthUrl: 'otpauth://totp/Auth:john',
+      }),
+      confirmTotpEnrollment: jest.fn().mockResolvedValue({
+        recoveryCodes: ['code-1', 'code-2'],
+      }),
+    };
     auditRecorder = {
       recordAdminAction: jest.fn().mockResolvedValue(undefined),
     };
@@ -40,6 +51,7 @@ describe('InteractionCommandHandler', () => {
       oidcInteraction,
       loginAttemptPolicy,
       metrics,
+      authCommand,
       auditRecorder,
     );
   });
@@ -231,6 +243,155 @@ describe('InteractionCommandHandler', () => {
     });
   });
 
+  it('임시 비밀번호 로그인은 토큰 발급 전에 비밀번호 변경을 요구한다', async () => {
+    userQuery.authenticate.mockResolvedValue({
+      userId: 'user-1',
+      mfaEnabled: false,
+      passwordChangeRequired: true,
+    });
+
+    await expect(
+      handler.submitLogin({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        username: 'john',
+        password: 'temporary123',
+        req: {},
+        res: {},
+        tenant,
+      }),
+    ).resolves.toEqual({
+      body: {
+        success: true,
+        passwordChangeRequired: true,
+      },
+    });
+
+    expect(oidcInteraction.completeLogin).not.toHaveBeenCalled();
+  });
+
+  it('임시 비밀번호 변경 후 MFA가 필요 없으면 login completion을 호출한다', async () => {
+    const req = {};
+    const res = {};
+    userQuery.authenticate.mockResolvedValue({
+      userId: 'user-1',
+      mfaEnabled: false,
+      passwordChangeRequired: true,
+    });
+    oidcInteraction.getDetails.mockResolvedValue({
+      uid: 'uid-1',
+      prompt: 'login',
+      clientId: 'web-app',
+      missingScopes: [],
+      mfaRequired: false,
+      idpList: [],
+    });
+    oidcInteraction.completeLogin.mockResolvedValue({
+      redirectTo: '/interaction/done',
+    });
+
+    await handler.submitLogin({
+      tenantCode: 'acme',
+      uid: 'uid-1',
+      username: 'john',
+      password: 'temporary123',
+      req,
+      res,
+      tenant,
+    });
+
+    await expect(
+      handler.submitPasswordChange({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        currentPassword: 'temporary123',
+        newPassword: 'new-password123',
+        req,
+        res,
+        tenant,
+      }),
+    ).resolves.toEqual({
+      body: {
+        success: true,
+        mfaRequired: false,
+        redirectTo: '/interaction/done',
+      },
+    });
+
+    expect(authCommand.changePassword).toHaveBeenCalledWith(
+      'tenant-1',
+      'user-1',
+      {
+        currentPassword: 'temporary123',
+        newPassword: 'new-password123',
+      },
+    );
+  });
+
+  it('임시 비밀번호 변경 후 MFA가 필요하면 MFA 단계로 전환한다', async () => {
+    userQuery.authenticate.mockResolvedValue({
+      userId: 'user-1',
+      mfaEnabled: true,
+      passwordChangeRequired: true,
+    });
+    userQuery.getMfaMethods.mockResolvedValue(['totp']);
+    oidcInteraction.getDetails.mockResolvedValue({
+      uid: 'uid-1',
+      prompt: 'login',
+      clientId: 'web-app',
+      missingScopes: [],
+      mfaRequired: false,
+      idpList: [],
+    });
+
+    await handler.submitLogin({
+      tenantCode: 'acme',
+      uid: 'uid-1',
+      username: 'john',
+      password: 'temporary123',
+      req: {},
+      res: {},
+      tenant,
+    });
+
+    await expect(
+      handler.submitPasswordChange({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        currentPassword: 'temporary123',
+        newPassword: 'new-password123',
+        req: {},
+        res: {},
+        tenant,
+      }),
+    ).resolves.toEqual({
+      body: {
+        success: true,
+        mfaRequired: true,
+        methods: ['totp'],
+      },
+    });
+
+    expect(oidcInteraction.completeLogin).not.toHaveBeenCalled();
+  });
+
+  it('임시 비밀번호 변경 세션이 없으면 400 응답을 반환한다', async () => {
+    await expect(
+      handler.submitPasswordChange({
+        tenantCode: 'acme',
+        uid: 'missing',
+        currentPassword: 'temporary123',
+        newPassword: 'new-password123',
+        req: {},
+        res: {},
+        tenant,
+      }),
+    ).resolves.toEqual({
+      status: 400,
+      body: { error: 'no_pending_password_change' },
+    });
+  });
+
   it('사용자 MFA가 활성화되어 있으면 정책 MFA가 없어도 MFA를 요구한다', async () => {
     userQuery.authenticate.mockResolvedValue({
       userId: 'user-1',
@@ -267,7 +428,7 @@ describe('InteractionCommandHandler', () => {
     expect(oidcInteraction.completeLogin).not.toHaveBeenCalled();
   });
 
-  it('MFA가 필요한데 등록된 수단이 없으면 로그인을 완료하지 않는다', async () => {
+  it('MFA가 필요한데 등록된 수단이 없으면 토큰 발급 전에 MFA 등록을 요구한다', async () => {
     userQuery.authenticate.mockResolvedValue({
       userId: 'user-1',
       mfaEnabled: true,
@@ -293,17 +454,171 @@ describe('InteractionCommandHandler', () => {
         tenant,
       }),
     ).resolves.toEqual({
-      status: 403,
-      body: { error: 'mfa_required_but_not_enrolled' },
+      body: {
+        success: true,
+        mfaEnrollmentRequired: true,
+        methods: ['totp'],
+      },
     });
 
     expect(metrics.incrementCounter).toHaveBeenCalledWith(
-      'login_failure_total',
+      'mfa_enrollment_required_total',
       {
         tenantCode: 'acme',
-        reason: 'mfa_not_enrolled',
+        method: 'totp',
       },
     );
+    expect(oidcInteraction.completeLogin).not.toHaveBeenCalled();
+  });
+
+  it('pending MFA 등록 세션에서 TOTP 등록을 시작한다', async () => {
+    userQuery.authenticate.mockResolvedValue({
+      userId: 'user-1',
+      mfaEnabled: true,
+    });
+    userQuery.getMfaMethods.mockResolvedValue([]);
+    oidcInteraction.getDetails.mockResolvedValue({
+      uid: 'uid-1',
+      prompt: 'login',
+      clientId: 'web-app',
+      missingScopes: [],
+      mfaRequired: false,
+      idpList: [],
+    });
+
+    await handler.submitLogin({
+      tenantCode: 'acme',
+      uid: 'uid-1',
+      username: 'john',
+      password: 'secret',
+      req: {},
+      res: {},
+      tenant,
+    });
+
+    await expect(
+      handler.beginTotpEnrollment({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        tenant,
+      }),
+    ).resolves.toEqual({
+      body: {
+        success: true,
+        secret: 'totp-secret',
+        otpauthUrl: 'otpauth://totp/Auth:john',
+      },
+    });
+
+    expect(authCommand.beginTotpEnrollment).toHaveBeenCalledWith(
+      'tenant-1',
+      'user-1',
+    );
+    expect(oidcInteraction.completeLogin).not.toHaveBeenCalled();
+  });
+
+  it('TOTP 등록 확인이 성공하면 복구 코드를 반환하고 OIDC login completion을 호출한다', async () => {
+    const req = {};
+    const res = {};
+    userQuery.authenticate.mockResolvedValue({
+      userId: 'user-1',
+      mfaEnabled: true,
+    });
+    userQuery.getMfaMethods.mockResolvedValue([]);
+    oidcInteraction.getDetails.mockResolvedValue({
+      uid: 'uid-1',
+      prompt: 'login',
+      clientId: 'web-app',
+      missingScopes: [],
+      mfaRequired: false,
+      idpList: [],
+    });
+    oidcInteraction.completeLogin.mockResolvedValue({
+      redirectTo: '/interaction/done',
+    });
+
+    await handler.submitLogin({
+      tenantCode: 'acme',
+      uid: 'uid-1',
+      username: 'john',
+      password: 'secret',
+      req,
+      res,
+      tenant,
+    });
+
+    await expect(
+      handler.confirmTotpEnrollment({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        code: '123456',
+        req,
+        res,
+        tenant,
+      }),
+    ).resolves.toEqual({
+      body: {
+        success: true,
+        recoveryCodes: ['code-1', 'code-2'],
+        redirectTo: '/interaction/done',
+      },
+    });
+
+    expect(authCommand.confirmTotpEnrollment).toHaveBeenCalledWith(
+      'tenant-1',
+      'user-1',
+      { code: '123456' },
+    );
+    expect(oidcInteraction.completeLogin).toHaveBeenCalledWith({
+      tenantCode: 'acme',
+      req,
+      res,
+      userId: 'user-1',
+    });
+  });
+
+  it('TOTP 등록 확인 코드가 틀리면 login completion을 호출하지 않는다', async () => {
+    userQuery.authenticate.mockResolvedValue({
+      userId: 'user-1',
+      mfaEnabled: true,
+    });
+    userQuery.getMfaMethods.mockResolvedValue([]);
+    authCommand.confirmTotpEnrollment.mockRejectedValue(
+      new Error('InvalidTotpCode'),
+    );
+    oidcInteraction.getDetails.mockResolvedValue({
+      uid: 'uid-1',
+      prompt: 'login',
+      clientId: 'web-app',
+      missingScopes: [],
+      mfaRequired: false,
+      idpList: [],
+    });
+
+    await handler.submitLogin({
+      tenantCode: 'acme',
+      uid: 'uid-1',
+      username: 'john',
+      password: 'secret',
+      req: {},
+      res: {},
+      tenant,
+    });
+
+    await expect(
+      handler.confirmTotpEnrollment({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        code: '000000',
+        req: {},
+        res: {},
+        tenant,
+      }),
+    ).resolves.toEqual({
+      status: 401,
+      body: { error: 'invalid_totp_code' },
+    });
+
     expect(oidcInteraction.completeLogin).not.toHaveBeenCalled();
   });
 

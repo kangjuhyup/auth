@@ -1,7 +1,13 @@
 import type { LoginAttemptBlockReason } from './login-attempt-policy.port';
 
+export type AdminSessionView = {
+  userId: string;
+  username: string;
+  passwordChangeRequired: boolean;
+};
+
 export type AdminSessionIssueResult =
-  | { token: string; username: string }
+  | { token: string; username: string; passwordChangeRequired: boolean }
   | {
       blocked: true;
       reason: LoginAttemptBlockReason;
@@ -22,5 +28,10 @@ export abstract class AdminSessionPort {
 
   abstract getAdminSession(
     token: string,
-  ): Promise<{ userId: string; username: string } | null>;
+  ): Promise<AdminSessionView | null>;
+
+  abstract changePassword(
+    token: string,
+    dto: { currentPassword: string; newPassword: string },
+  ): Promise<void>;
 }

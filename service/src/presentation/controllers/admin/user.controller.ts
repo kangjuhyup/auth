@@ -24,8 +24,18 @@ import {
 import { AuditContext, TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
+import {
+  ApiAdminResource,
+  ApiCreatedIdSchema,
+  ApiNoContentSchema,
+  ApiOkArraySchema,
+  ApiOkSchema,
+  ApiPaginatedSchema,
+  OpenApiResponseSchemas,
+} from '@presentation/openapi-response';
 
 @UseGuards(AdminGuard)
+@ApiAdminResource('Admin Users')
 @Controller('t/:tenantCode/admin/users')
 export class AdminUserController {
   constructor(
@@ -34,6 +44,7 @@ export class AdminUserController {
   ) {}
 
   @Get()
+  @ApiPaginatedSchema('List users', OpenApiResponseSchemas.user)
   list(
     @Tenant() tenant: TenantContext,
     @Query() query: PaginationQuery,
@@ -42,6 +53,7 @@ export class AdminUserController {
   }
 
   @Get(':id')
+  @ApiOkSchema('Get user', OpenApiResponseSchemas.user)
   get(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -50,6 +62,7 @@ export class AdminUserController {
   }
 
   @Get(':id/consents')
+  @ApiPaginatedSchema('List user consents', OpenApiResponseSchemas.userConsent)
   getConsents(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -59,6 +72,10 @@ export class AdminUserController {
   }
 
   @Get(':id/consents/history')
+  @ApiPaginatedSchema(
+    'List user consent history',
+    OpenApiResponseSchemas.userConsent,
+  )
   getConsentHistory(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -68,6 +85,7 @@ export class AdminUserController {
   }
 
   @Post()
+  @ApiCreatedIdSchema('Create user')
   create(
     @Tenant() tenant: TenantContext,
     @Body() dto: CreateUserDto,
@@ -78,6 +96,7 @@ export class AdminUserController {
   }
 
   @Put(':id')
+  @ApiNoContentSchema('Update user')
   update(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -89,6 +108,7 @@ export class AdminUserController {
   }
 
   @Delete(':id')
+  @ApiNoContentSchema('Delete user')
   delete(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -99,6 +119,7 @@ export class AdminUserController {
   }
 
   @Get(':id/roles')
+  @ApiOkArraySchema('List user roles', OpenApiResponseSchemas.role)
   getRoles(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -107,6 +128,7 @@ export class AdminUserController {
   }
 
   @Post(':id/roles/:roleId')
+  @ApiNoContentSchema('Assign role to user')
   assignRole(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -120,6 +142,7 @@ export class AdminUserController {
   }
 
   @Delete(':id/roles/:roleId')
+  @ApiNoContentSchema('Remove role from user')
   removeRole(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,

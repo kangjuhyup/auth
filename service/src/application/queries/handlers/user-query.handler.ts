@@ -44,6 +44,7 @@ export class UserQueryHandler implements UserQueryPort {
       phoneVerified: user.phoneVerified,
       status: user.status,
       mfaEnabled: user.mfaEnabled,
+      passwordChangeRequired: this.getPasswordChangeRequired(user),
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
@@ -87,6 +88,7 @@ export class UserQueryHandler implements UserQueryPort {
       phoneVerified: user.phoneVerified,
       status: user.status,
       mfaEnabled: user.mfaEnabled,
+      passwordChangeRequired: this.getPasswordChangeRequired(user),
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
@@ -97,7 +99,11 @@ export class UserQueryHandler implements UserQueryPort {
     tenantId: string;
     username: string;
     password: string;
-  }): Promise<{ userId: string; mfaEnabled: boolean } | null> {
+  }): Promise<{
+    userId: string;
+    mfaEnabled: boolean;
+    passwordChangeRequired: boolean;
+  } | null> {
     const user = await this.userWriteRepository.findByUsername(
       params.tenantId,
       params.username,
@@ -118,7 +124,11 @@ export class UserQueryHandler implements UserQueryPort {
     );
     if (!ok) return null;
 
-    return { userId: user.id, mfaEnabled: user.mfaEnabled };
+    return {
+      userId: user.id,
+      mfaEnabled: user.mfaEnabled,
+      passwordChangeRequired: credential.requiresPasswordChange(),
+    };
   }
 
   async getMfaMethods(
@@ -199,5 +209,16 @@ export class UserQueryHandler implements UserQueryPort {
       rpId: params.rpId,
       expectedOrigin: params.expectedOrigin,
     });
+  }
+
+  @NoLog
+  private getPasswordChangeRequired(user: {
+    getPasswordCredential: () => { requiresPasswordChange: () => boolean };
+  }): boolean {
+    try {
+      return user.getPasswordCredential().requiresPasswordChange();
+    } catch {
+      return false;
+    }
   }
 }

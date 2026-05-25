@@ -10,8 +10,15 @@ import {
 import { UpdateTenantPoliciesDto } from '@presentation/dto';
 import { Tenant } from '../../http/tenant.decorator';
 import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
+import {
+  ApiAdminResource,
+  ApiNoContentSchema,
+  ApiOkSchema,
+  OpenApiResponseSchemas,
+} from '@presentation/openapi-response';
 
 @UseGuards(AdminGuard)
+@ApiAdminResource('Admin Policies')
 @Controller('t/:tenantCode/admin/policies')
 export class AdminPolicyController {
   constructor(
@@ -20,11 +27,13 @@ export class AdminPolicyController {
   ) {}
 
   @Get()
+  @ApiOkSchema('Get tenant policies', OpenApiResponseSchemas.tenantPolicy)
   list(@Tenant() tenant: TenantContext): Promise<TenantPolicyResponse> {
     return this.queryPort.getPolicies(tenant.id);
   }
 
   @Put()
+  @ApiNoContentSchema('Update tenant policies')
   update(
     @Tenant() tenant: TenantContext,
     @Body() policies: UpdateTenantPoliciesDto | Record<string, unknown>,

@@ -42,11 +42,13 @@ export class UserCommandHandler implements UserCommandPort {
 
     const userId = ulid();
     const hashResult = await this.passwordHash.hash(dto.password);
+    const temporaryPassword = dto.temporaryPassword !== false;
     const credential = UserCredentialModel.password({
       secretHash: hashResult.hash,
       hashAlg: hashResult.alg,
       hashParams: hashResult.params,
       hashVersion: hashResult.version,
+      passwordChangeRequired: temporaryPassword,
     });
 
     const user = UserModel.create({
@@ -69,6 +71,9 @@ export class UserCommandHandler implements UserCommandPort {
       action: 'CREATE',
       resourceType: 'user',
       resourceId: userId,
+      metadata: {
+        temporaryPassword,
+      },
       auditContext,
     });
     return { id: userId };

@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 import { configureBodyParsers } from '@presentation/http/body-parser';
 import { applyHttpSecurityMiddleware } from '@presentation/http/http-security';
+import { configureOpenApiDocs } from '@presentation/openapi';
 
 function configureCors(
   app: NestExpressApplication,
@@ -52,6 +53,8 @@ async function bootstrap() {
       transformOptions: { excludeExtraneousValues: false },
     }),
   );
+
+  configureOpenApiDocs(app);
 
   await app.listen(3000);
 }

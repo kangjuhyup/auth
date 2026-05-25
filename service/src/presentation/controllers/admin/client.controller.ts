@@ -24,8 +24,17 @@ import {
 import { AuditContext, TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
+import {
+  ApiAdminResource,
+  ApiCreatedIdSchema,
+  ApiNoContentSchema,
+  ApiOkSchema,
+  ApiPaginatedSchema,
+  OpenApiResponseSchemas,
+} from '@presentation/openapi-response';
 
 @UseGuards(AdminGuard)
+@ApiAdminResource('Admin Clients')
 @Controller('t/:tenantCode/admin/clients')
 export class AdminClientController {
   constructor(
@@ -34,6 +43,7 @@ export class AdminClientController {
   ) {}
 
   @Get()
+  @ApiPaginatedSchema('List clients', OpenApiResponseSchemas.client)
   list(
     @Tenant() tenant: TenantContext,
     @Query() query: PaginationQuery,
@@ -42,6 +52,7 @@ export class AdminClientController {
   }
 
   @Get(':id')
+  @ApiOkSchema('Get client', OpenApiResponseSchemas.client)
   get(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -50,6 +61,7 @@ export class AdminClientController {
   }
 
   @Post()
+  @ApiCreatedIdSchema('Create client')
   create(
     @Tenant() tenant: TenantContext,
     @Body() dto: CreateClientDto,
@@ -60,6 +72,7 @@ export class AdminClientController {
   }
 
   @Get(':id/auth-policy')
+  @ApiOkSchema('Get client auth policy', OpenApiResponseSchemas.clientAuthPolicy)
   getAuthPolicy(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -68,6 +81,7 @@ export class AdminClientController {
   }
 
   @Put(':id')
+  @ApiNoContentSchema('Update client')
   update(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -79,6 +93,7 @@ export class AdminClientController {
   }
 
   @Put(':id/auth-policy')
+  @ApiNoContentSchema('Update client auth policy')
   updateAuthPolicy(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -97,6 +112,7 @@ export class AdminClientController {
   }
 
   @Delete(':id')
+  @ApiNoContentSchema('Delete client')
   delete(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,

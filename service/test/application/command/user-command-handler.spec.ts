@@ -228,6 +228,46 @@ describe('UserCommandHandler', () => {
       expect(result.id).toBeTruthy();
     });
 
+    it('temporaryPassword가 true면 비밀번호 변경 요구 credential로 저장한다', async () => {
+      userWriteRepo.findByUsername.mockResolvedValue(undefined);
+
+      await handler.createUser('tenant-1', {
+        username: 'newuser',
+        password: 'secure123',
+        temporaryPassword: true,
+      } as any);
+
+      const savedUser = userWriteRepo.save.mock.calls[0][0] as UserModel;
+      expect(savedUser.passwordCredential?.requiresPasswordChange()).toBe(true);
+    });
+
+    it('temporaryPassword를 생략하면 임시 비밀번호로 저장한다', async () => {
+      userWriteRepo.findByUsername.mockResolvedValue(undefined);
+
+      await handler.createUser('tenant-1', {
+        username: 'newuser',
+        password: 'secure123',
+      } as any);
+
+      const savedUser = userWriteRepo.save.mock.calls[0][0] as UserModel;
+      expect(savedUser.passwordCredential?.requiresPasswordChange()).toBe(true);
+    });
+
+    it('temporaryPassword가 false면 비밀번호 변경을 요구하지 않는다', async () => {
+      userWriteRepo.findByUsername.mockResolvedValue(undefined);
+
+      await handler.createUser('tenant-1', {
+        username: 'newuser',
+        password: 'secure123',
+        temporaryPassword: false,
+      } as any);
+
+      const savedUser = userWriteRepo.save.mock.calls[0][0] as UserModel;
+      expect(savedUser.passwordCredential?.requiresPasswordChange()).toBe(
+        false,
+      );
+    });
+
     it('ACTIVE가 아닌 status를 주면 생성 직후 상태를 변경한다', async () => {
       userWriteRepo.findByUsername.mockResolvedValue(undefined);
 

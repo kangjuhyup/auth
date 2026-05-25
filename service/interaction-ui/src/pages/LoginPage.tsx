@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { submitLogin, abortInteraction, getIdpUrl } from '../api/client';
 import type { InteractionDetails } from '../api/client';
 import IdpButton from '../components/IdpButton';
+import { debugInteraction } from '../lib/debug';
 
 interface Props {
   details: InteractionDetails;
   onSuccess: (result: {
-    mfaRequired: boolean;
+    mfaRequired?: boolean;
+    passwordChangeRequired?: boolean;
     methods?: string[];
     redirectTo?: string;
   }) => void;
@@ -23,6 +25,11 @@ export default function LoginPage({ details, onSuccess, onError }: Props) {
     e.preventDefault();
     setLoading(true);
     setError('');
+    debugInteraction('login.submit', {
+      hasUsername: username.trim().length > 0,
+      hasPassword: password.length > 0,
+      idpCount: details.idpList.length,
+    });
 
     try {
       const result = await submitLogin(username, password);
@@ -37,6 +44,9 @@ export default function LoginPage({ details, onSuccess, onError }: Props) {
       } else {
         setError(msg);
       }
+      debugInteraction('login.failed', {
+        reason: msg,
+      });
     } finally {
       setLoading(false);
     }
@@ -44,6 +54,9 @@ export default function LoginPage({ details, onSuccess, onError }: Props) {
 
   const handleAbort = async () => {
     try {
+      debugInteraction('interaction.abort', {
+        source: 'login',
+      });
       const result = await abortInteraction();
       window.location.href = result.redirectTo;
     } catch (err: unknown) {

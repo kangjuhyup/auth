@@ -6,6 +6,7 @@ import { AdminSessionPort } from '@application/ports/admin-session.port';
 import { AdminSessionTokenPort } from '@application/ports/admin-session-token.port';
 import { LoginAttemptPolicyPort } from '@application/ports/login-attempt-policy.port';
 import { AuditRecorder } from '@application/services/audit-recorder';
+import { AuthCommandPort } from '../ports/auth-command.port';
 
 const MASTER_TENANT = 'master';
 const ADMIN_ROLE = 'SUPER_ADMIN';
@@ -18,6 +19,7 @@ export class AdminSessionHandler extends AdminSessionPort {
     private readonly adminQuery: AdminQueryPort,
     private readonly tokenPort: AdminSessionTokenPort,
     private readonly loginAttemptPolicy: LoginAttemptPolicyPort,
+    private readonly authCommand: AuthCommandPort,
     private readonly auditRecorder?: AuditRecorder,
   ) {
     super();
@@ -178,7 +180,11 @@ export class AdminSessionHandler extends AdminSessionPort {
       correlationId: params.correlationId,
     });
 
-    return { token, username: params.username };
+    return {
+      token,
+      username: params.username,
+      passwordChangeRequired: result.passwordChangeRequired,
+    };
   }
 
   async verifyAdminToken(token: string): Promise<boolean> {
@@ -186,9 +192,7 @@ export class AdminSessionHandler extends AdminSessionPort {
     return session !== null;
   }
 
-  async getAdminSession(
-    token: string,
-  ): Promise<{ userId: string; username: string } | null> {
+  async getAdminSession(token: string) {
     const session = await this.getVerifiedSession(token);
     if (!session) {
       return null;
@@ -197,9 +201,28 @@ export class AdminSessionHandler extends AdminSessionPort {
     return session;
   }
 
-  private async getVerifiedSession(
+  async changePassword(
     token: string,
-  ): Promise<{ userId: string; username: string } | null> {
+    dto: { currentPassword: string; newPassword: string },
+  ): Promise<void> {
+    const tenant = await this.tenantRepo.findByCode(MASTER_TENANT);
+    if (!tenant) {
+      return;
+    }
+
+    const session = await this.getVerifiedSession(token);
+    if (!session) {
+      return;
+    }
+
+    await this.authCommand.changePassword(tenant.id, session.userId, dto);
+  }
+
+  private async getVerifiedSession(token: string): Promise<{
+    userId: string;
+    username: string;
+    passwordChangeRequired: boolean;
+  } | null> {
     const tenant = await this.tenantRepo.findByCode(MASTER_TENANT);
     if (!tenant) {
       return null;
@@ -229,7 +252,11 @@ export class AdminSessionHandler extends AdminSessionPort {
       return null;
     }
 
-    return { userId: verified.userId, username: profile.username };
+    return {
+      userId: verified.userId,
+      username: profile.username,
+      passwordChangeRequired: profile.passwordChangeRequired === true,
+    };
   }
 
   private async recordAdminLoginAudit(params: {

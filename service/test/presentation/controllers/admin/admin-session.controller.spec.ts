@@ -15,11 +15,14 @@ describe('AdminSessionController', () => {
       issueAdminToken: jest.fn().mockResolvedValue({
         token: 'access-token',
         username: 'admin',
+        passwordChangeRequired: false,
       }),
       getAdminSession: jest.fn().mockResolvedValue({
         userId: 'user-1',
         username: 'admin',
+        passwordChangeRequired: false,
       }),
+      changePassword: jest.fn().mockResolvedValue(undefined),
     };
     config = {
       get: jest.fn((key: string) => {
@@ -80,6 +83,26 @@ describe('AdminSessionController', () => {
     );
     expect(result).toEqual({
       username: 'admin',
+      passwordChangeRequired: false,
+    });
+  });
+
+  it('임시 비밀번호 관리자 로그인 시 passwordChangeRequired를 반환한다', async () => {
+    adminSession.issueAdminToken.mockResolvedValue({
+      token: 'access-token',
+      username: 'admin',
+      passwordChangeRequired: true,
+    });
+
+    await expect(
+      controller.login(
+        { username: 'admin', password: 'temporary123' },
+        request,
+        response,
+      ),
+    ).resolves.toEqual({
+      username: 'admin',
+      passwordChangeRequired: true,
     });
   });
 
@@ -123,7 +146,29 @@ describe('AdminSessionController', () => {
     } as any);
 
     expect(adminSession.getAdminSession).toHaveBeenCalledWith('access-token');
-    expect(result).toEqual({ username: 'admin' });
+    expect(result).toEqual({
+      username: 'admin',
+      passwordChangeRequired: false,
+    });
+  });
+
+  it('관리자 세션 비밀번호 변경을 port에 위임한다', async () => {
+    await expect(
+      controller.changePassword(
+        {
+          headers: { cookie: `${ADMIN_SESSION_COOKIE_NAME}=access-token` },
+        } as any,
+        {
+          currentPassword: 'temporary123',
+          newPassword: 'changed123',
+        },
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(adminSession.changePassword).toHaveBeenCalledWith('access-token', {
+      currentPassword: 'temporary123',
+      newPassword: 'changed123',
+    });
   });
 
   it('logout은 정상 종료한다', async () => {

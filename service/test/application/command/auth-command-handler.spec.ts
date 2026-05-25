@@ -353,6 +353,18 @@ describe('AuthCommandHandler', () => {
       expect(userWriteRepo.save).not.toHaveBeenCalled();
     });
 
+    it('새 비밀번호가 현재 비밀번호와 같으면 변경을 거부한다', async () => {
+      await expect(
+        handler.changePassword('tenant-1', 'user-1', {
+          currentPassword: 'same-password',
+          newPassword: 'same-password',
+        } as any),
+      ).rejects.toThrow('New password must be different');
+
+      expect(passwordHash.hash).not.toHaveBeenCalled();
+      expect(userWriteRepo.save).not.toHaveBeenCalled();
+    });
+
     it('유저가 없으면(UserNotFound) verify/save를 호출하지 않는다', async () => {
       userWriteRepo.findById.mockResolvedValue(undefined);
 

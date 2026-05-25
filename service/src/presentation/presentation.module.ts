@@ -4,6 +4,7 @@ import {
   NestModule,
   RequestMethod,
 } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { ApplicationModule } from '@application/application.module';
 import { TenantMiddleware } from './http/tenant.middleware';
 import { OidcDelegateMiddleware } from './http/oidc.middleware';
@@ -26,7 +27,7 @@ import { AdminGuard } from './http/admin.guard';
 import { AccessGuard } from './http/access.guard';
 
 @Module({
-  imports: [ApplicationModule],
+  imports: [ConfigModule, ApplicationModule],
   providers: [AdminGuard, AccessGuard, OidcDelegateMiddleware],
   controllers: [
     HealthController,

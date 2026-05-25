@@ -7,6 +7,7 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Put,
   Req,
   Res,
   UnauthorizedException,
@@ -21,7 +22,13 @@ import {
   resolveAdminSessionToken,
   setAdminSessionCookie,
 } from '@presentation/http/admin-session-cookie';
-import { AdminLoginDto } from '@presentation/dto';
+import { AdminLoginDto, ChangePasswordDto } from '@presentation/dto';
+import {
+  ApiAdminResource,
+  ApiNoContentSchema,
+  ApiOkSchema,
+  OpenApiResponseSchemas,
+} from '@presentation/openapi-response';
 
 function pickFirst(value: unknown): string | undefined {
   if (Array.isArray(value)) {
@@ -31,6 +38,7 @@ function pickFirst(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+@ApiAdminResource('Admin Session')
 @Controller('admin/session')
 export class AdminSessionController {
   constructor(
@@ -39,11 +47,12 @@ export class AdminSessionController {
   ) {}
 
   @Post()
+  @ApiOkSchema('Issue admin session cookie', OpenApiResponseSchemas.adminSession)
   async login(
     @Body() dto: AdminLoginDto,
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
-  ): Promise<{ username: string }> {
+  ): Promise<{ username: string; passwordChangeRequired: boolean }> {
     const result = await this.adminSession.issueAdminToken({
       ...dto,
       ipAddress: request.ip,
@@ -68,12 +77,18 @@ export class AdminSessionController {
 
     setAdminSessionCookie(response, this.config, result.token);
 
-    return { username: result.username };
+    return {
+      username: result.username,
+      passwordChangeRequired: result.passwordChangeRequired,
+    };
   }
 
   @Get()
   @UseGuards(AdminGuard)
-  async current(@Req() request: Request): Promise<{ username: string }> {
+  @ApiOkSchema('Get current admin session', OpenApiResponseSchemas.adminSession)
+  async current(
+    @Req() request: Request,
+  ): Promise<{ username: string; passwordChangeRequired: boolean }> {
     const token = resolveAdminSessionToken(request);
     if (!token) {
       throw new UnauthorizedException('Invalid session');
@@ -84,12 +99,32 @@ export class AdminSessionController {
       throw new UnauthorizedException('Invalid session');
     }
 
-    return { username: session.username };
+    return {
+      username: session.username,
+      passwordChangeRequired: session.passwordChangeRequired,
+    };
+  }
+
+  @Put('password')
+  @UseGuards(AdminGuard)
+  @HttpCode(204)
+  @ApiNoContentSchema('Change admin password')
+  async changePassword(
+    @Req() request: Request,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<void> {
+    const token = resolveAdminSessionToken(request);
+    if (!token) {
+      throw new UnauthorizedException('Invalid session');
+    }
+
+    await this.adminSession.changePassword(token, dto);
   }
 
   @Delete()
   @UseGuards(AdminGuard)
   @HttpCode(204)
+  @ApiNoContentSchema('Clear admin session')
   async logout(@Res({ passthrough: true }) response: Response): Promise<void> {
     clearAdminSessionCookie(response, this.config);
   }

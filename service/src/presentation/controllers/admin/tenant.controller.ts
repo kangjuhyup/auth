@@ -21,8 +21,17 @@ import {
 } from '@presentation/dto';
 import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
 import type { AuditContext } from '@application/dto';
+import {
+  ApiAdminResource,
+  ApiCreatedIdSchema,
+  ApiNoContentSchema,
+  ApiOkSchema,
+  ApiPaginatedSchema,
+  OpenApiResponseSchemas,
+} from '@presentation/openapi-response';
 
 @UseGuards(AdminGuard)
+@ApiAdminResource('Admin Tenants')
 @Controller('admin/tenants')
 export class AdminTenantController {
   constructor(
@@ -31,6 +40,7 @@ export class AdminTenantController {
   ) {}
 
   @Get()
+  @ApiPaginatedSchema('List tenants', OpenApiResponseSchemas.tenant)
   list(
     @Query() query: PaginationQuery,
   ): Promise<PaginatedResult<TenantResponse>> {
@@ -38,11 +48,13 @@ export class AdminTenantController {
   }
 
   @Get(':id')
+  @ApiOkSchema('Get tenant', OpenApiResponseSchemas.tenant)
   get(@Param('id') id: string): Promise<TenantResponse> {
     return this.queryPort.getTenant(id);
   }
 
   @Post()
+  @ApiCreatedIdSchema('Create tenant')
   create(
     @Body() dto: CreateTenantDto,
     @AdminAuditContext() auditContext?: AuditContext,
@@ -52,6 +64,7 @@ export class AdminTenantController {
   }
 
   @Put(':id')
+  @ApiNoContentSchema('Update tenant')
   update(
     @Param('id') id: string,
     @Body() dto: UpdateTenantDto,
@@ -62,6 +75,7 @@ export class AdminTenantController {
   }
 
   @Delete(':id')
+  @ApiNoContentSchema('Delete tenant')
   delete(
     @Param('id') id: string,
     @AdminAuditContext() auditContext?: AuditContext,

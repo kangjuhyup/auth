@@ -32,6 +32,10 @@ export class CreateUserDto {
   password!: string;
 
   @IsOptional()
+  @IsBoolean()
+  temporaryPassword?: boolean;
+
+  @IsOptional()
   @IsEmail()
   @MaxLength(254)
   @MaskLog({ type: 'email' })

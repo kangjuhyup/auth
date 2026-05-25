@@ -1,5 +1,13 @@
 import { MaskLog } from '@kangjuhyup/rvlog';
-import { IsIn, IsObject, IsOptional, IsString } from 'class-validator';
+import {
+  IsIn,
+  IsNotEmpty,
+  IsObject,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class InteractionLoginDto {
   @IsOptional()
@@ -25,6 +33,29 @@ export class InteractionMfaDto {
   @IsObject()
   @MaskLog({ type: 'full' })
   webauthnResponse?: Record<string, unknown>;
+}
+
+export class InteractionTotpConfirmationDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaskLog({ type: 'full' })
+  code!: string;
+}
+
+export class InteractionPasswordChangeDto {
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(8)
+  @MaxLength(128)
+  @MaskLog({ type: 'full' })
+  currentPassword!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(8)
+  @MaxLength(128)
+  @MaskLog({ type: 'full' })
+  newPassword!: string;
 }
 
 export class SamlCallbackDto {

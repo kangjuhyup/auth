@@ -52,6 +52,31 @@ export abstract class InteractionCommandPort {
     expectedOrigin: string;
   }): Promise<InteractionResponse>;
 
+  abstract beginTotpEnrollment(params: {
+    tenantCode: string;
+    uid: string;
+    tenant?: TenantContext;
+  }): Promise<InteractionResponse>;
+
+  abstract confirmTotpEnrollment(params: {
+    tenantCode: string;
+    uid: string;
+    code: string;
+    req: unknown;
+    res: unknown;
+    tenant?: TenantContext;
+  }): Promise<InteractionResponse>;
+
+  abstract submitPasswordChange(params: {
+    tenantCode: string;
+    uid: string;
+    currentPassword: string;
+    newPassword: string;
+    req: unknown;
+    res: unknown;
+    tenant?: TenantContext;
+  }): Promise<InteractionResponse>;
+
   abstract submitConsent(params: {
     tenantCode: string;
     req: unknown;

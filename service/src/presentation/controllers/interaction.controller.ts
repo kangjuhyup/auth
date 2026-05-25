@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post, Req, Res } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
 import { resolve } from 'node:path';
 import { readFileSync, existsSync } from 'node:fs';
@@ -7,32 +8,57 @@ import type { TenantContext } from '@application/dto';
 import {
   InteractionLoginDto,
   InteractionMfaDto,
+  InteractionPasswordChangeDto,
+  InteractionTotpConfirmationDto,
   SamlCallbackDto,
 } from '@presentation/dto';
+import { ApiProduces, ApiTags } from '@nestjs/swagger';
+import {
+  ApiOkSchema,
+  ApiRedirectSchema,
+  OpenApiResponseSchemas,
+} from '@presentation/openapi-response';
 
 const SPA_INDEX_PATH = resolve(
   __dirname,
   '../../../interaction-ui/dist/index.html',
 );
 
+@ApiTags('Interaction')
 @Controller('t/:tenantCode/interaction')
 export class InteractionController {
   private cachedSpaHtml: string | null = null;
 
-  constructor(private readonly interactionCommand: InteractionCommandPort) {}
+  constructor(
+    private readonly interactionCommand: InteractionCommandPort,
+    private readonly config: ConfigService,
+  ) {}
 
   @Get(':uid')
+  @ApiProduces('text/html')
+  @ApiOkSchema('Serve interaction UI', { type: 'string', format: 'html' })
   serveSpa(@Res() res: Response) {
-    if (!this.cachedSpaHtml) {
-      if (!existsSync(SPA_INDEX_PATH)) {
-        return res.status(404).json({ error: 'Interaction UI not built' });
-      }
-      this.cachedSpaHtml = readFileSync(SPA_INDEX_PATH, 'utf-8');
+    if (!existsSync(SPA_INDEX_PATH)) {
+      return res.status(404).json({ error: 'Interaction UI not built' });
     }
-    return res.type('html').send(this.cachedSpaHtml);
+
+    const shouldCache = this.shouldCacheSpaHtml();
+    const spaHtml = shouldCache
+      ? (this.cachedSpaHtml ??= readFileSync(SPA_INDEX_PATH, 'utf-8'))
+      : readFileSync(SPA_INDEX_PATH, 'utf-8');
+
+    if (!shouldCache) {
+      res.setHeader('Cache-Control', 'no-store');
+    }
+
+    return res.type('html').send(spaHtml);
   }
 
   @Get(':uid/api/details')
+  @ApiOkSchema(
+    'Get interaction details',
+    OpenApiResponseSchemas.interactionDetails,
+  )
   async getDetails(
     @Param('tenantCode') tenantCode: string,
     @Param('uid') uid: string,
@@ -51,6 +77,10 @@ export class InteractionController {
   }
 
   @Post(':uid/api/login')
+  @ApiOkSchema(
+    'Submit interaction login',
+    OpenApiResponseSchemas.interactionResponse,
+  )
   async submitLogin(
     @Param('tenantCode') tenantCode: string,
     @Param('uid') uid: string,
@@ -77,6 +107,10 @@ export class InteractionController {
   }
 
   @Post(':uid/api/mfa')
+  @ApiOkSchema(
+    'Submit interaction MFA',
+    OpenApiResponseSchemas.interactionResponse,
+  )
   async submitMfa(
     @Param('tenantCode') tenantCode: string,
     @Param('uid') uid: string,
@@ -105,7 +139,74 @@ export class InteractionController {
     return res.status(result.status ?? 200).json(result.body);
   }
 
+  @Post(':uid/api/mfa/totp/enroll')
+  @ApiOkSchema(
+    'Begin interaction TOTP enrollment',
+    OpenApiResponseSchemas.totpEnrollment,
+  )
+  async beginTotpEnrollment(
+    @Param('tenantCode') tenantCode: string,
+    @Param('uid') uid: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const result = await this.interactionCommand.beginTotpEnrollment({
+      tenantCode,
+      uid,
+      tenant: this.getTenant(req),
+    });
+    return res.status(result.status ?? 200).json(result.body);
+  }
+
+  @Post(':uid/api/mfa/totp/confirm')
+  @ApiOkSchema(
+    'Confirm interaction TOTP enrollment',
+    OpenApiResponseSchemas.interactionResponse,
+  )
+  async confirmTotpEnrollment(
+    @Param('tenantCode') tenantCode: string,
+    @Param('uid') uid: string,
+    @Body() body: InteractionTotpConfirmationDto,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const result = await this.interactionCommand.confirmTotpEnrollment({
+      tenantCode,
+      uid,
+      code: body.code,
+      req,
+      res,
+      tenant: this.getTenant(req),
+    });
+    return res.status(result.status ?? 200).json(result.body);
+  }
+
+  @Post(':uid/api/password-change')
+  @ApiOkSchema(
+    'Submit required password change',
+    OpenApiResponseSchemas.interactionResponse,
+  )
+  async submitPasswordChange(
+    @Param('tenantCode') tenantCode: string,
+    @Param('uid') uid: string,
+    @Body() body: InteractionPasswordChangeDto,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const result = await this.interactionCommand.submitPasswordChange({
+      tenantCode,
+      uid,
+      currentPassword: body.currentPassword ?? '',
+      newPassword: body.newPassword ?? '',
+      req,
+      res,
+      tenant: this.getTenant(req),
+    });
+    return res.status(result.status ?? 200).json(result.body);
+  }
+
   @Post(':uid/api/consent')
+  @ApiOkSchema('Submit interaction consent', OpenApiResponseSchemas.redirectTo)
   async submitConsent(
     @Param('tenantCode') tenantCode: string,
     @Param('uid') _uid: string,
@@ -125,6 +226,7 @@ export class InteractionController {
   }
 
   @Get(':uid/api/abort')
+  @ApiOkSchema('Abort interaction', OpenApiResponseSchemas.redirectTo)
   async abortInteraction(
     @Param('tenantCode') tenantCode: string,
     @Param('uid') _uid: string,
@@ -141,6 +243,10 @@ export class InteractionController {
   }
 
   @Get(':uid/api/mfa/webauthn-options')
+  @ApiOkSchema(
+    'Get WebAuthn authentication options',
+    OpenApiResponseSchemas.webauthnOptions,
+  )
   async getWebAuthnOptions(
     @Param('uid') uid: string,
     @Req() req: Request,
@@ -156,6 +262,7 @@ export class InteractionController {
   }
 
   @Get(':uid/idp/:provider')
+  @ApiRedirectSchema('Redirect to external identity provider')
   async redirectToIdp(
     @Param('tenantCode') tenantCode: string,
     @Param('uid') uid: string,
@@ -179,6 +286,7 @@ export class InteractionController {
   }
 
   @Get(':uid/idp/:provider/callback')
+  @ApiRedirectSchema('Handle external identity provider callback')
   async idpCallback(
     @Param('tenantCode') tenantCode: string,
     @Param('uid') uid: string,
@@ -200,6 +308,8 @@ export class InteractionController {
   }
 
   @Get('saml/:provider/metadata')
+  @ApiProduces('application/samlmetadata+xml', 'application/json')
+  @ApiOkSchema('Get SAML SP metadata', { type: 'string', format: 'xml' })
   async samlMetadata(
     @Param('tenantCode') tenantCode: string,
     @Param('provider') providerName: string,
@@ -220,6 +330,7 @@ export class InteractionController {
   }
 
   @Post('saml/:provider/callback')
+  @ApiRedirectSchema('Handle SAML identity provider callback')
   async samlCallback(
     @Param('tenantCode') tenantCode: string,
     @Param('provider') providerName: string,
@@ -247,5 +358,9 @@ export class InteractionController {
 
   private getTenant(req: Request): TenantContext | undefined {
     return (req as any).tenant as TenantContext | undefined;
+  }
+
+  private shouldCacheSpaHtml(): boolean {
+    return this.config.get<string>('NODE_ENV') === 'production';
   }
 }

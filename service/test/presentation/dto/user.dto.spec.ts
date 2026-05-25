@@ -86,6 +86,20 @@ describe('CreateUserDto', () => {
     ).toHaveLength(0);
   });
 
+  it('temporaryPassword boolean이면 허용', async () => {
+    expect(
+      await getErrors(CreateUserDto, { ...valid, temporaryPassword: true }),
+    ).toHaveLength(0);
+  });
+
+  it('temporaryPassword가 boolean이 아니면 에러', async () => {
+    const errors = await getErrors(CreateUserDto, {
+      ...valid,
+      temporaryPassword: 'true',
+    });
+    expect(errors.some((e) => e.property === 'temporaryPassword')).toBe(true);
+  });
+
   it('status 허용되지 않는 값이면 에러', async () => {
     const errors = await getErrors(CreateUserDto, {
       ...valid,

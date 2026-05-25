@@ -9,10 +9,18 @@ import { LoginAttemptPolicyPort } from '@application/ports/login-attempt-policy.
 import { OperationalMetricsPort } from '@application/ports/operational-metrics.port';
 import type { TenantContext } from '@application/dto';
 import { AuditRecorder } from '@application/services/audit-recorder';
+import { AuthCommandPort } from '../ports/auth-command.port';
 
 type PendingMfaSession = Readonly<{
   userId: string;
   tenantId: string;
+  expiresAt: number;
+}>;
+
+type PendingPasswordChangeSession = Readonly<{
+  userId: string;
+  tenantId: string;
+  mfaEnabled: boolean;
   expiresAt: number;
 }>;
 
@@ -22,8 +30,13 @@ export class InteractionCommandHandler
   implements OnModuleInit, OnModuleDestroy
 {
   private readonly mfaSessionTtlMs = 10 * 60 * 1000;
+  private readonly passwordChangeSessionTtlMs = 10 * 60 * 1000;
   private readonly mfaCleanupIntervalMs = 5 * 60 * 1000;
   private readonly mfaPendingSessions = new Map<string, PendingMfaSession>();
+  private readonly passwordChangePendingSessions = new Map<
+    string,
+    PendingPasswordChangeSession
+  >();
   private mfaCleanupTimer: NodeJS.Timeout | undefined;
 
   constructor(
@@ -31,6 +44,7 @@ export class InteractionCommandHandler
     private readonly oidcInteraction: OidcInteractionPort,
     private readonly loginAttemptPolicy: LoginAttemptPolicyPort,
     private readonly metrics: OperationalMetricsPort,
+    private readonly authCommand: AuthCommandPort,
     private readonly auditRecorder?: AuditRecorder,
   ) {
     super();
@@ -156,61 +170,74 @@ export class InteractionCommandHandler
       tenantCode: params.tenantCode,
     });
 
-    const details = await this.oidcInteraction.getDetails({
-      tenantCode: params.tenantCode,
-      uid: params.uid,
-      req: params.req,
-      res: params.res,
-      tenant: params.tenant,
-    });
-
-    const shouldRequireMfa = details.mfaRequired || result.mfaEnabled;
-
-    if (shouldRequireMfa) {
-      const methods = await this.userQuery.getMfaMethods(
-        params.tenant.id,
-        result.userId,
-      );
-      if (methods.length === 0) {
-        this.metrics.incrementCounter('login_failure_total', {
-          tenantCode: params.tenantCode,
-          reason: 'mfa_not_enrolled',
-        });
-        return {
-          status: 403,
-          body: { error: 'mfa_required_but_not_enrolled' },
-        };
-      }
-
-      this.mfaPendingSessions.set(params.uid, {
+    if (result.passwordChangeRequired) {
+      this.passwordChangePendingSessions.set(params.uid, {
         userId: result.userId,
         tenantId: params.tenant.id,
-        expiresAt: Date.now() + this.mfaSessionTtlMs,
+        mfaEnabled: result.mfaEnabled,
+        expiresAt: Date.now() + this.passwordChangeSessionTtlMs,
       });
 
       return {
         body: {
           success: true,
-          mfaRequired: true,
-          methods,
+          passwordChangeRequired: true,
         },
       };
     }
 
-    const { redirectTo } = await this.oidcInteraction.completeLogin({
+    return this.continueAuthenticatedLogin({
       tenantCode: params.tenantCode,
+      uid: params.uid,
+      tenant: params.tenant,
+      userId: result.userId,
+      mfaEnabled: result.mfaEnabled,
       req: params.req,
       res: params.res,
-      userId: result.userId,
     });
+  }
 
-    return {
-      body: {
-        success: true,
-        mfaRequired: false,
-        redirectTo,
-      },
-    };
+  async submitPasswordChange(params: {
+    tenantCode: string;
+    uid: string;
+    currentPassword: string;
+    newPassword: string;
+    req: unknown;
+    res: unknown;
+    tenant?: TenantContext;
+  }): Promise<InteractionResponse> {
+    const pending = this.getPendingPasswordChangeSession(params.uid);
+    if (!pending || !params.tenant || pending.tenantId !== params.tenant.id) {
+      return { status: 400, body: { error: 'no_pending_password_change' } };
+    }
+
+    if (params.currentPassword === params.newPassword) {
+      return { status: 400, body: { error: 'new_password_must_be_different' } };
+    }
+
+    try {
+      await this.authCommand.changePassword(pending.tenantId, pending.userId, {
+        currentPassword: params.currentPassword,
+        newPassword: params.newPassword,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'InvalidPassword') {
+        return { status: 401, body: { error: 'invalid_current_password' } };
+      }
+      throw error;
+    }
+
+    this.passwordChangePendingSessions.delete(params.uid);
+
+    return this.continueAuthenticatedLogin({
+      tenantCode: params.tenantCode,
+      uid: params.uid,
+      tenant: params.tenant,
+      userId: pending.userId,
+      mfaEnabled: pending.mfaEnabled,
+      req: params.req,
+      res: params.res,
+    });
   }
 
   async submitMfa(params: {
@@ -282,6 +309,80 @@ export class InteractionCommandHandler
     return {
       body: {
         success: true,
+        redirectTo,
+      },
+    };
+  }
+
+  async beginTotpEnrollment(params: {
+    tenantCode: string;
+    uid: string;
+    tenant?: TenantContext;
+  }): Promise<InteractionResponse> {
+    const pending = this.getPendingSession(params.uid);
+    if (!pending || !params.tenant || pending.tenantId !== params.tenant.id) {
+      return { status: 400, body: { error: 'no_pending_mfa_enrollment' } };
+    }
+
+    const enrollment = await this.authCommand.beginTotpEnrollment(
+      pending.tenantId,
+      pending.userId,
+    );
+
+    return {
+      body: {
+        success: true,
+        ...enrollment,
+      },
+    };
+  }
+
+  async confirmTotpEnrollment(params: {
+    tenantCode: string;
+    uid: string;
+    code: string;
+    req: unknown;
+    res: unknown;
+    tenant?: TenantContext;
+  }): Promise<InteractionResponse> {
+    const pending = this.getPendingSession(params.uid);
+    if (!pending || !params.tenant || pending.tenantId !== params.tenant.id) {
+      return { status: 400, body: { error: 'no_pending_mfa_enrollment' } };
+    }
+
+    let confirmation: { recoveryCodes: string[] };
+    try {
+      confirmation = await this.authCommand.confirmTotpEnrollment(
+        pending.tenantId,
+        pending.userId,
+        { code: params.code },
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === 'InvalidTotpCode') {
+        return { status: 401, body: { error: 'invalid_totp_code' } };
+      }
+      if (
+        error instanceof Error &&
+        error.message === 'TotpEnrollmentNotFound'
+      ) {
+        return { status: 400, body: { error: 'totp_enrollment_not_found' } };
+      }
+      throw error;
+    }
+
+    this.mfaPendingSessions.delete(params.uid);
+
+    const { redirectTo } = await this.oidcInteraction.completeLogin({
+      tenantCode: params.tenantCode,
+      req: params.req,
+      res: params.res,
+      userId: pending.userId,
+    });
+
+    return {
+      body: {
+        success: true,
+        recoveryCodes: confirmation.recoveryCodes,
         redirectTo,
       },
     };
@@ -359,10 +460,95 @@ export class InteractionCommandHandler
     return this.oidcInteraction.handleSamlCallback(params);
   }
 
+  private async continueAuthenticatedLogin(params: {
+    tenantCode: string;
+    uid: string;
+    tenant: TenantContext;
+    userId: string;
+    mfaEnabled: boolean;
+    req: unknown;
+    res: unknown;
+  }): Promise<InteractionResponse> {
+    const details = await this.oidcInteraction.getDetails({
+      tenantCode: params.tenantCode,
+      uid: params.uid,
+      req: params.req,
+      res: params.res,
+      tenant: params.tenant,
+    });
+
+    const shouldRequireMfa = details.mfaRequired || params.mfaEnabled;
+
+    if (shouldRequireMfa) {
+      const methods = await this.userQuery.getMfaMethods(
+        params.tenant.id,
+        params.userId,
+      );
+      if (methods.length === 0) {
+        this.metrics.incrementCounter('mfa_enrollment_required_total', {
+          tenantCode: params.tenantCode,
+          method: 'totp',
+        });
+        this.mfaPendingSessions.set(params.uid, {
+          userId: params.userId,
+          tenantId: params.tenant.id,
+          expiresAt: Date.now() + this.mfaSessionTtlMs,
+        });
+        return {
+          body: {
+            success: true,
+            mfaEnrollmentRequired: true,
+            methods: ['totp'],
+          },
+        };
+      }
+
+      this.mfaPendingSessions.set(params.uid, {
+        userId: params.userId,
+        tenantId: params.tenant.id,
+        expiresAt: Date.now() + this.mfaSessionTtlMs,
+      });
+
+      return {
+        body: {
+          success: true,
+          mfaRequired: true,
+          methods,
+        },
+      };
+    }
+
+    const { redirectTo } = await this.oidcInteraction.completeLogin({
+      tenantCode: params.tenantCode,
+      req: params.req,
+      res: params.res,
+      userId: params.userId,
+    });
+
+    return {
+      body: {
+        success: true,
+        mfaRequired: false,
+        redirectTo,
+      },
+    };
+  }
+
   private getPendingSession(uid: string): PendingMfaSession | null {
     const pending = this.mfaPendingSessions.get(uid);
     if (!pending || pending.expiresAt <= Date.now()) {
       this.mfaPendingSessions.delete(uid);
+      return null;
+    }
+    return pending;
+  }
+
+  private getPendingPasswordChangeSession(
+    uid: string,
+  ): PendingPasswordChangeSession | null {
+    const pending = this.passwordChangePendingSessions.get(uid);
+    if (!pending || pending.expiresAt <= Date.now()) {
+      this.passwordChangePendingSessions.delete(uid);
       return null;
     }
     return pending;
@@ -373,6 +559,11 @@ export class InteractionCommandHandler
     for (const [uid, session] of this.mfaPendingSessions) {
       if (session.expiresAt <= now) {
         this.mfaPendingSessions.delete(uid);
+      }
+    }
+    for (const [uid, session] of this.passwordChangePendingSessions) {
+      if (session.expiresAt <= now) {
+        this.passwordChangePendingSessions.delete(uid);
       }
     }
   }

@@ -14,13 +14,20 @@ import {
 describe('InteractionController', () => {
   let controller: InteractionController;
   let interactionCommand: any;
+  let config: { get: jest.Mock };
 
   beforeEach(() => {
     jest.clearAllMocks();
+    config = {
+      get: jest.fn(),
+    };
     interactionCommand = {
       getDetails: jest.fn(),
       submitLogin: jest.fn(),
       submitMfa: jest.fn(),
+      beginTotpEnrollment: jest.fn(),
+      confirmTotpEnrollment: jest.fn(),
+      submitPasswordChange: jest.fn(),
       submitConsent: jest.fn(),
       abort: jest.fn(),
       getWebAuthnOptions: jest.fn(),
@@ -30,7 +37,7 @@ describe('InteractionController', () => {
       handleSamlCallback: jest.fn(),
     };
 
-    controller = new InteractionController(interactionCommand);
+    controller = new InteractionController(interactionCommand, config as any);
   });
 
   describe('serveSpa', () => {
@@ -48,10 +55,11 @@ describe('InteractionController', () => {
       });
     });
 
-    it('빌드된 UI가 있으면 HTML을 읽어 캐시하고 반환한다', () => {
+    it('production에서는 빌드된 UI HTML을 읽어 캐시하고 반환한다', () => {
       const html = '<html><body>interaction-ui</body></html>';
       const res1 = createMockResponse();
       const res2 = createMockResponse();
+      config.get.mockReturnValue('production');
       (existsSync as jest.MockedFunction<typeof existsSync>).mockReturnValue(
         true,
       );
@@ -66,6 +74,33 @@ describe('InteractionController', () => {
       expect(res1.type).toHaveBeenCalledWith('html');
       expect(res1.send).toHaveBeenCalledWith(html);
       expect(res2.send).toHaveBeenCalledWith(html);
+      expect(res1.setHeader).not.toHaveBeenCalledWith(
+        'Cache-Control',
+        'no-store',
+      );
+    });
+
+    it('development에서는 최신 UI HTML을 매 요청마다 읽고 no-store로 반환한다', () => {
+      const html1 = '<html><body>interaction-ui-v1</body></html>';
+      const html2 = '<html><body>interaction-ui-v2</body></html>';
+      const res1 = createMockResponse();
+      const res2 = createMockResponse();
+      config.get.mockReturnValue('development');
+      (existsSync as jest.MockedFunction<typeof existsSync>).mockReturnValue(
+        true,
+      );
+      (readFileSync as jest.MockedFunction<typeof readFileSync>)
+        .mockReturnValueOnce(html1)
+        .mockReturnValueOnce(html2);
+
+      controller.serveSpa(res1);
+      controller.serveSpa(res2);
+
+      expect(readFileSync).toHaveBeenCalledTimes(2);
+      expect(res1.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
+      expect(res2.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
+      expect(res1.send).toHaveBeenCalledWith(html1);
+      expect(res2.send).toHaveBeenCalledWith(html2);
     });
   });
 
@@ -354,6 +389,106 @@ describe('InteractionController', () => {
         res,
         rpId: 'localhost',
         expectedOrigin: 'http://localhost',
+      });
+    });
+  });
+
+  describe('interaction TOTP enrollment', () => {
+    it('beginTotpEnrollment은 tenant context와 함께 command port에 위임한다', async () => {
+      const tenant = makeTenantContext();
+      const req = createMockRequest({ tenant }) as any;
+      const res = createMockResponse();
+      interactionCommand.beginTotpEnrollment.mockResolvedValue({
+        body: {
+          success: true,
+          secret: 'totp-secret',
+          otpauthUrl: 'otpauth://totp/Auth:john',
+        },
+      });
+
+      await controller.beginTotpEnrollment('acme', 'uid-1', req, res);
+
+      expect(interactionCommand.beginTotpEnrollment).toHaveBeenCalledWith({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        tenant,
+      });
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        secret: 'totp-secret',
+        otpauthUrl: 'otpauth://totp/Auth:john',
+      });
+    });
+
+    it('confirmTotpEnrollment은 검증 코드를 command port에 위임한다', async () => {
+      const tenant = makeTenantContext();
+      const req = createMockRequest({ tenant }) as any;
+      const res = createMockResponse();
+      interactionCommand.confirmTotpEnrollment.mockResolvedValue({
+        body: {
+          success: true,
+          recoveryCodes: ['code-1'],
+          redirectTo: '/interaction/done',
+        },
+      });
+
+      await controller.confirmTotpEnrollment(
+        'acme',
+        'uid-1',
+        { code: '123456' },
+        req,
+        res,
+      );
+
+      expect(interactionCommand.confirmTotpEnrollment).toHaveBeenCalledWith({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        code: '123456',
+        req,
+        res,
+        tenant,
+      });
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        recoveryCodes: ['code-1'],
+        redirectTo: '/interaction/done',
+      });
+    });
+  });
+
+  describe('submitPasswordChange', () => {
+    it('password-change 요청을 command port에 위임한다', async () => {
+      const req = createMockRequest() as any;
+      const res = createMockResponse();
+      interactionCommand.submitPasswordChange.mockResolvedValue({
+        body: { success: true, redirectTo: '/interaction/done' },
+      });
+
+      await controller.submitPasswordChange(
+        'acme',
+        'uid-1',
+        {
+          currentPassword: 'temporary123',
+          newPassword: 'new-password123',
+        },
+        req,
+        res,
+      );
+
+      expect(interactionCommand.submitPasswordChange).toHaveBeenCalledWith({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        currentPassword: 'temporary123',
+        newPassword: 'new-password123',
+        req,
+        res,
+        tenant: undefined,
+      });
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        redirectTo: '/interaction/done',
       });
     });
   });

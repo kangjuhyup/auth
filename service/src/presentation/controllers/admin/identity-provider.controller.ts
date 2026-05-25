@@ -22,8 +22,17 @@ import {
 import { AuditContext, TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
+import {
+  ApiAdminResource,
+  ApiCreatedIdSchema,
+  ApiNoContentSchema,
+  ApiOkSchema,
+  ApiPaginatedSchema,
+  OpenApiResponseSchemas,
+} from '@presentation/openapi-response';
 
 @UseGuards(AdminGuard)
+@ApiAdminResource('Admin Identity Providers')
 @Controller('t/:tenantCode/admin/identity-providers')
 export class AdminIdentityProviderController {
   constructor(
@@ -32,6 +41,10 @@ export class AdminIdentityProviderController {
   ) {}
 
   @Get()
+  @ApiPaginatedSchema(
+    'List identity providers',
+    OpenApiResponseSchemas.identityProvider,
+  )
   list(
     @Tenant() tenant: TenantContext,
     @Query() query: PaginationQuery,
@@ -40,6 +53,7 @@ export class AdminIdentityProviderController {
   }
 
   @Get(':id')
+  @ApiOkSchema('Get identity provider', OpenApiResponseSchemas.identityProvider)
   get(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -48,6 +62,7 @@ export class AdminIdentityProviderController {
   }
 
   @Post()
+  @ApiCreatedIdSchema('Create identity provider')
   create(
     @Tenant() tenant: TenantContext,
     @Body() dto: CreateIdentityProviderDto,
@@ -64,6 +79,7 @@ export class AdminIdentityProviderController {
   }
 
   @Put(':id')
+  @ApiNoContentSchema('Update identity provider')
   update(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -82,6 +98,7 @@ export class AdminIdentityProviderController {
   }
 
   @Delete(':id')
+  @ApiNoContentSchema('Delete identity provider')
   delete(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
