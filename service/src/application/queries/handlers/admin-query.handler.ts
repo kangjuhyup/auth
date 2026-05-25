@@ -14,6 +14,7 @@ import {
   RoleResponse,
   PermissionResponse,
   ScopeResponse,
+  CustomGrantResponse,
   GroupResponse,
   IdentityProviderResponse,
   TenantPolicyResponse,
@@ -26,6 +27,7 @@ import {
   RoleRepository,
   PermissionRepository,
   ScopeRepository,
+  CustomGrantRepository,
   RolePermissionRepository,
   RoleAssignmentRepository,
   ClientRepository,
@@ -41,6 +43,7 @@ import { IdentityProviderModel } from '@domain/models/identity-provider';
 import { ConsentModel } from '@domain/models/consent';
 import { TenantConfigModel } from '@domain/models/tenant-config';
 import { ScopeModel } from '@domain/models/scope';
+import { CustomGrantModel } from '@domain/models/custom-grant';
 import { RoleModel } from '@domain/models/role';
 import { PermissionModel } from '@domain/models/permission';
 import { GroupModel } from '@domain/models/group';
@@ -54,6 +57,7 @@ export class AdminQueryHandler implements AdminQueryPort {
     private readonly roleRepo: RoleRepository,
     private readonly permissionRepo: PermissionRepository,
     private readonly scopeRepo: ScopeRepository,
+    private readonly customGrantRepo: CustomGrantRepository,
     private readonly rolePermissionRepo: RolePermissionRepository,
     private readonly roleAssignmentRepo: RoleAssignmentRepository,
     private readonly clientRepo: ClientRepository,
@@ -567,6 +571,40 @@ export class AdminQueryHandler implements AdminQueryPort {
     return this.toScopeResponse(scope);
   }
 
+  async getCustomGrants(
+    tenantId: string,
+    query: PaginationQuery,
+  ): Promise<PaginatedResult<CustomGrantResponse>> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+
+    const { items, total } = await this.customGrantRepo.list({
+      tenantId,
+      page,
+      limit,
+    });
+
+    return PaginatedResult.of({
+      items: items.map((grant) => this.toCustomGrantResponse(grant)),
+      total,
+      page,
+      limit,
+    });
+  }
+
+  async getCustomGrant(
+    tenantId: string,
+    id: string,
+  ): Promise<CustomGrantResponse> {
+    const grant = orThrow(
+      await this.customGrantRepo.findById(id),
+      new NotFoundException('Custom grant not found'),
+      (g) => g.tenantId === tenantId,
+    );
+
+    return this.toCustomGrantResponse(grant);
+  }
+
   async getGroups(
     tenantId: string,
     query: PaginationQuery,
@@ -671,6 +709,24 @@ export class AdminQueryHandler implements AdminQueryPort {
       builtIn: scope.builtIn,
       createdAt: scope.createdAt,
       updatedAt: scope.updatedAt,
+    });
+  }
+
+  @NoLog
+  private toCustomGrantResponse(grant: CustomGrantModel): CustomGrantResponse {
+    return CustomGrantResponse.of({
+      id: grant.id,
+      grantType: grant.grantType,
+      displayName: grant.displayName,
+      description: grant.description ?? null,
+      enabled: grant.enabled,
+      allowedClientTypes: grant.allowedClientTypes,
+      allowedApplicationTypes: grant.allowedApplicationTypes,
+      requiresClientAuthentication: grant.requiresClientAuthentication,
+      requiresGrantTypes: grant.requiresGrantTypes,
+      builtIn: grant.builtIn,
+      createdAt: grant.createdAt,
+      updatedAt: grant.updatedAt,
     });
   }
 

@@ -6,6 +6,7 @@ import type {
   RoleRepository,
   PermissionRepository,
   ScopeRepository,
+  CustomGrantRepository,
   RolePermissionRepository,
   RoleAssignmentRepository,
   ClientRepository,
@@ -24,6 +25,7 @@ import { ClientModel } from '@domain/models/client';
 import { ClientAuthPolicyModel } from '@domain/models/client-auth-policy';
 import { PermissionModel } from '@domain/models/permission';
 import { ScopeModel } from '@domain/models/scope';
+import { CustomGrantModel } from '@domain/models/custom-grant';
 import { JwksKeyModel } from '@domain/models/jwks-key';
 import { EventModel } from '@domain/models/event';
 import { UserModel } from '@domain/models/user';
@@ -77,6 +79,23 @@ function makeClient(id: string, tenantId: string): ClientModel {
   return c;
 }
 
+function makeCustomGrant(id: string, tenantId: string): CustomGrantModel {
+  const grant = new CustomGrantModel({
+    tenantId,
+    grantType: 'urn:auth:grant-type:magic_link',
+    displayName: 'Magic Link',
+    description: null,
+    enabled: true,
+    allowedClientTypes: ['confidential'],
+    allowedApplicationTypes: ['web'],
+    requiresClientAuthentication: true,
+    requiresGrantTypes: [],
+    builtIn: false,
+  });
+  grant.setPersistence(id, new Date('2024-01-01'), new Date('2024-01-01'));
+  return grant;
+}
+
 function createMockTenantRepo(): jest.Mocked<TenantRepository> {
   return {
     findByCode: jest.fn(),
@@ -123,6 +142,18 @@ function createMockScopeRepo(): jest.Mocked<ScopeRepository> {
     findByName: jest.fn(),
     findByNames: jest.fn(),
     list: jest.fn(),
+    listEnabledByTenantId: jest.fn(),
+    save: jest.fn(),
+    delete: jest.fn(),
+  };
+}
+
+function createMockCustomGrantRepo(): jest.Mocked<CustomGrantRepository> {
+  return {
+    findById: jest.fn(),
+    findByGrantType: jest.fn(),
+    list: jest.fn(),
+    listByTenantId: jest.fn(),
     listEnabledByTenantId: jest.fn(),
     save: jest.fn(),
     delete: jest.fn(),
@@ -228,6 +259,7 @@ function createHandler() {
   const roleRepo = createMockRoleRepo();
   const permissionRepo = createMockPermissionRepo();
   const scopeRepo = createMockScopeRepo();
+  const customGrantRepo = createMockCustomGrantRepo();
   const rolePermissionRepo = createMockRolePermissionRepo();
   const roleAssignmentRepo = createMockRoleAssignmentRepo();
   const clientRepo = createMockClientRepo();
@@ -245,6 +277,7 @@ function createHandler() {
     roleRepo,
     permissionRepo,
     scopeRepo,
+    customGrantRepo,
     rolePermissionRepo,
     roleAssignmentRepo,
     clientRepo,
@@ -264,6 +297,7 @@ function createHandler() {
     roleRepo,
     permissionRepo,
     scopeRepo,
+    customGrantRepo,
     rolePermissionRepo,
     roleAssignmentRepo,
     clientRepo,
@@ -1271,6 +1305,51 @@ describe('AdminQueryHandler - Scopes', () => {
     scopeRepo.findById.mockResolvedValue(makeScope('scope-1', 'other-tenant'));
 
     await expect(handler.getScope('tenant-1', 'scope-1')).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+});
+
+describe('AdminQueryHandler - Custom Grants', () => {
+  let handler: AdminQueryHandler;
+  let customGrantRepo: jest.Mocked<CustomGrantRepository>;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    const deps = createHandler();
+    handler = deps.handler;
+    customGrantRepo = deps.customGrantRepo;
+  });
+
+  it('페이지네이션된 custom grant 목록을 반환한다', async () => {
+    customGrantRepo.list.mockResolvedValue({
+      items: [makeCustomGrant('grant-1', 'tenant-1')],
+      total: 1,
+    });
+
+    const result = await handler.getCustomGrants('tenant-1', {
+      page: 1,
+      limit: 10,
+    });
+
+    expect(customGrantRepo.list).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      page: 1,
+      limit: 10,
+    });
+    expect(result.items[0]).toMatchObject({
+      id: 'grant-1',
+      grantType: 'urn:auth:grant-type:magic_link',
+      allowedClientTypes: ['confidential'],
+    });
+  });
+
+  it('tenantId 불일치 custom grant 조회는 NotFoundException을 던진다', async () => {
+    customGrantRepo.findById.mockResolvedValue(
+      makeCustomGrant('grant-1', 'other-tenant'),
+    );
+
+    await expect(handler.getCustomGrant('tenant-1', 'grant-1')).rejects.toThrow(
       NotFoundException,
     );
   });

@@ -14,6 +14,7 @@ import { UserResponse, UserConsentResponse } from '@application/dto';
 import { RoleResponse } from '@application/dto';
 import { PermissionResponse } from '@application/dto';
 import { ScopeResponse } from '@application/dto';
+import { CustomGrantResponse } from '@application/dto';
 import { GroupResponse } from '@application/dto';
 
 export abstract class AdminQueryPort {
@@ -91,6 +92,16 @@ export abstract class AdminQueryPort {
     query: PaginationQuery,
   ): Promise<PaginatedResult<ScopeResponse>>;
   abstract getScope(tenantId: string, id: string): Promise<ScopeResponse>;
+
+  // Custom Grant
+  abstract getCustomGrants(
+    tenantId: string,
+    query: PaginationQuery,
+  ): Promise<PaginatedResult<CustomGrantResponse>>;
+  abstract getCustomGrant(
+    tenantId: string,
+    id: string,
+  ): Promise<CustomGrantResponse>;
 
   // Group
   abstract getGroups(

@@ -7,6 +7,10 @@ export {
 } from './permission.repository';
 export { ScopeRepository, ScopeListQuery } from './scope.repository';
 export {
+  CustomGrantRepository,
+  CustomGrantListQuery,
+} from './custom-grant.repository';
+export {
   RolePermissionRepository,
   RolePermissionListQuery,
 } from './role-permission.repository';

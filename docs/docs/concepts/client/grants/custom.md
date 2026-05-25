@@ -14,7 +14,7 @@ description: node-oidc-provider 기반 커스텀 OAuth grant_type 추가 절차
 
 ## 개요
 
-이 서비스는 OAuth/OIDC 프로토콜 엔진으로 `node-oidc-provider`를 사용합니다. 커스텀 grant는 `CustomGrantStrategy`로 정의한 뒤 provider 인스턴스 생성 직후 `Provider#registerGrantType`으로 등록하며, client 등록 정책은 `GrantTypeValidationStrategy`들을 통해 별도로 검증합니다.
+이 서비스는 OAuth/OIDC 프로토콜 엔진으로 `node-oidc-provider`를 사용합니다. 커스텀 grant의 실행 로직은 `CustomGrantStrategy` 코드로 정의하고, tenant별 활성화와 client 정책 metadata는 DB에 저장합니다. provider 인스턴스 생성 직후 DB metadata와 코드 strategy가 모두 존재하는 grant만 `Provider#registerGrantType`으로 등록합니다.
 
 :::caution
 토큰 발급, client 인증, replay 방어 같은 핵심 보안 동작은 `node-oidc-provider`의 흐름을 우회하지 않아야 합니다.
@@ -35,23 +35,25 @@ description: node-oidc-provider 기반 커스텀 OAuth grant_type 추가 절차
 
 | 파일                             | 책임                                          |
 | -------------------------------- | --------------------------------------------- |
-| `custom-grants/index.ts`         | 커스텀 grant 정의 목록                        |
+| `custom-grants/index.ts`         | 커스텀 grant handler strategy 목록            |
 | `custom-grant-type.ts`           | `CustomGrantStrategy` 타입                    |
 | `register-custom-grant-types.ts` | `Provider#registerGrantType` 호출             |
-| `grant-type-registry.adapter.ts` | 지원 grant 목록과 client 정책 검증            |
+| `custom_grant` DB table          | tenant별 custom grant metadata                |
+| `grant-type-registry.adapter.ts` | DB metadata와 코드 strategy 합성, 정책 검증   |
 | `grant-type-strategies/*`        | client grant 정책 검증 strategy               |
 | `oidc-provider.factory.ts`       | tenant별 Provider 생성 직후 커스텀 grant 등록 |
 | `client.dto.ts`                  | 내장 grant 또는 `urn:...` 형식 입력 허용      |
 
 ## 추가 절차
 
-1. `CUSTOM_GRANT_TYPES`에 `CustomGrantStrategy` 정의를 추가합니다.
+1. `CUSTOM_GRANT_TYPES`에 `CustomGrantStrategy` handler를 추가합니다.
 2. `grantType`은 내장 grant와 충돌하지 않는 `urn:...` 형식으로 지정합니다.
 3. `parameters`에 token endpoint에서 받을 파라미터 이름을 명시합니다.
 4. `createHandler(context)`에서 provider grant handler를 반환합니다.
-5. client의 `grantTypes` 배열에 동일한 grant type을 등록합니다.
-6. 기본 정책으로 표현하기 어려운 client 검증이 있으면 `GrantTypeValidationStrategy`를 추가합니다.
-7. registry 검증, provider 등록, DTO 검증 테스트를 추가합니다.
+5. Admin API로 tenant에 같은 `grantType` metadata를 등록합니다.
+6. client의 `grantTypes` 배열에 동일한 grant type을 등록합니다.
+7. 기본 정책으로 표현하기 어려운 client 검증이 있으면 `GrantTypeValidationStrategy`를 추가합니다.
+8. registry 검증, provider 등록, DTO 검증 테스트를 추가합니다.
 
 ```ts
 export const CUSTOM_GRANT_TYPES: CustomGrantStrategy[] = [
@@ -75,6 +77,35 @@ export const CUSTOM_GRANT_TYPES: CustomGrantStrategy[] = [
   },
 ];
 ```
+
+## DB Metadata 등록
+
+코드 strategy만 추가하면 grant는 아직 노출되지 않습니다. tenant별 DB metadata가 있어야 discovery의 `grant_types_supported`, client `grantTypes` 검증, provider 등록 대상에 포함됩니다.
+
+```http
+POST /t/acme/admin/custom-grants
+Content-Type: application/json
+
+{
+  "grantType": "urn:auth:grant-type:magic_link",
+  "displayName": "Magic Link",
+  "description": "Issue tokens from a verified magic link.",
+  "enabled": true,
+  "allowedClientTypes": ["confidential"],
+  "allowedApplicationTypes": ["web"],
+  "requiresClientAuthentication": true,
+  "requiresGrantTypes": []
+}
+```
+
+DB에는 실행 코드나 검증 스크립트를 저장하지 않습니다. DB metadata는 tenant별 활성화와 client 정책만 표현하고, 실제 token endpoint handler는 항상 배포된 코드 strategy가 담당합니다.
+
+| 상태                  | 결과                          |
+| --------------------- | ----------------------------- |
+| 코드 strategy만 있음  | tenant에서 지원하지 않음      |
+| DB metadata만 있음    | handler가 없어 지원하지 않음  |
+| 둘 다 있고 enabled    | provider에 등록되고 사용 가능 |
+| 둘 다 있지만 disabled | client 정책 검증에서 거부     |
 
 ## Grant 정책 Strategy 확장
 

@@ -97,6 +97,9 @@ function createParams(): CreateOidcProviderParams {
       save: jest.fn().mockResolvedValue(undefined),
       list: jest.fn(),
     } as any,
+    customGrantRepository: {
+      listByTenantId: jest.fn().mockResolvedValue([]),
+    } as any,
     jwksKeyCrypto: {
       generateKeyPair: jest.fn(),
     } as any,
@@ -167,6 +170,9 @@ describe('createOidcProvider', () => {
     expect(params.jwksKeyRepository.findActiveByTenantId).toHaveBeenCalledWith(
       'tenant-1',
     );
+    expect(
+      params.grantTypeRegistry.listSupportedGrantTypes,
+    ).toHaveBeenCalledWith('tenant-1');
     expect(params.symmetricCrypto.decrypt).toHaveBeenCalledWith(
       'encrypted-private-key',
     );
@@ -207,6 +213,7 @@ describe('createOidcProvider', () => {
         clientQuery: params.clientQuery,
         eventRepository: params.eventRepository,
       }),
+      [],
     );
     expect(provider).toEqual({
       issuer: 'https://auth.example.com/t/acme/oidc',

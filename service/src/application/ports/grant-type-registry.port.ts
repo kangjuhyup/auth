@@ -41,8 +41,8 @@ export interface GrantTypeValidationIssue {
 }
 
 export abstract class GrantTypeRegistryPort {
-  abstract listSupportedGrantTypes(): Promise<string[]>;
-  abstract listDefinitions(): Promise<GrantTypeDefinition[]>;
+  abstract listSupportedGrantTypes(tenantId?: string): Promise<string[]>;
+  abstract listDefinitions(tenantId?: string): Promise<GrantTypeDefinition[]>;
   abstract validateClientGrantTypes(
     params: GrantTypeValidationParams,
   ): Promise<GrantTypeValidationIssue[]>;

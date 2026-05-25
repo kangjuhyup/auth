@@ -14,7 +14,7 @@ description: How to add a custom OAuth grant_type with node-oidc-provider
 
 ## Overview
 
-This service uses `node-oidc-provider` as the OAuth/OIDC protocol engine. Custom grants are defined as `CustomGrantStrategy` entries and registered through `Provider#registerGrantType` immediately after a provider instance is created. Client registration policy is validated separately through `GrantTypeValidationStrategy` entries.
+This service uses `node-oidc-provider` as the OAuth/OIDC protocol engine. Custom grant execution logic is defined as `CustomGrantStrategy` code, while tenant-specific enablement and client policy metadata are stored in the DB. Immediately after a provider instance is created, only grants that have both DB metadata and a code strategy are registered through `Provider#registerGrantType`.
 
 :::caution
 Core security behavior such as token issuance, client authentication, and replay protection must not bypass the provider flow.
@@ -31,25 +31,27 @@ Core security behavior such as token issuance, client authentication, and replay
 
 ## Components
 
-| File                             | Responsibility                                         |
-| -------------------------------- | ------------------------------------------------------ |
-| `custom-grants/index.ts`         | List of custom grant definitions                       |
-| `custom-grant-type.ts`           | `CustomGrantStrategy` type                             |
-| `register-custom-grant-types.ts` | Calls `Provider#registerGrantType`                     |
-| `grant-type-registry.adapter.ts` | Supported grant list and client policy validation      |
-| `grant-type-strategies/*`        | Client grant policy validation strategies              |
-| `oidc-provider.factory.ts`       | Registers custom grants after tenant provider creation |
-| `client.dto.ts`                  | Allows built-in grants or `urn:...` custom grant input |
+| File                             | Responsibility                                               |
+| -------------------------------- | ------------------------------------------------------------ |
+| `custom-grants/index.ts`         | List of custom grant handler strategies                      |
+| `custom-grant-type.ts`           | `CustomGrantStrategy` type                                   |
+| `register-custom-grant-types.ts` | Calls `Provider#registerGrantType`                           |
+| `custom_grant` DB table          | Tenant-specific custom grant metadata                        |
+| `grant-type-registry.adapter.ts` | Merges DB metadata with code strategies and validates policy |
+| `grant-type-strategies/*`        | Client grant policy validation strategies                    |
+| `oidc-provider.factory.ts`       | Registers custom grants after tenant provider creation       |
+| `client.dto.ts`                  | Allows built-in grants or `urn:...` custom grant input       |
 
 ## Add a Custom Grant
 
-1. Add a `CustomGrantStrategy` definition to `CUSTOM_GRANT_TYPES`.
+1. Add a `CustomGrantStrategy` handler to `CUSTOM_GRANT_TYPES`.
 2. Use a `urn:...` grant type that does not conflict with built-in grants.
 3. List accepted token endpoint parameters in `parameters`.
 4. Return a provider grant handler from `createHandler(context)`.
-5. Add the same grant type to the client's `grantTypes`.
-6. Add a `GrantTypeValidationStrategy` when the default policy fields are not expressive enough.
-7. Add tests for registry validation, provider registration, and DTO validation.
+5. Register matching `grantType` metadata for the tenant through the Admin API.
+6. Add the same grant type to the client's `grantTypes`.
+7. Add a `GrantTypeValidationStrategy` when the default policy fields are not expressive enough.
+8. Add tests for registry validation, provider registration, and DTO validation.
 
 ```ts
 export const CUSTOM_GRANT_TYPES: CustomGrantStrategy[] = [
@@ -73,6 +75,35 @@ export const CUSTOM_GRANT_TYPES: CustomGrantStrategy[] = [
   },
 ];
 ```
+
+## DB Metadata Registration
+
+Adding code strategy alone does not expose the grant. Tenant DB metadata must exist before the grant appears in `grant_types_supported`, passes client `grantTypes` validation, and gets registered on the provider.
+
+```http
+POST /t/acme/admin/custom-grants
+Content-Type: application/json
+
+{
+  "grantType": "urn:auth:grant-type:magic_link",
+  "displayName": "Magic Link",
+  "description": "Issue tokens from a verified magic link.",
+  "enabled": true,
+  "allowedClientTypes": ["confidential"],
+  "allowedApplicationTypes": ["web"],
+  "requiresClientAuthentication": true,
+  "requiresGrantTypes": []
+}
+```
+
+Do not store executable code or validation scripts in the DB. DB metadata only represents tenant-specific enablement and client policy; the actual token endpoint handler always lives in deployed code strategy.
+
+| State                   | Result                                  |
+| ----------------------- | --------------------------------------- |
+| Code strategy only      | Not supported for the tenant            |
+| DB metadata only        | Not supported because no handler exists |
+| Both exist and enabled  | Registered on the provider and usable   |
+| Both exist but disabled | Rejected by client policy validation    |
 
 ## Grant Policy Strategy Extension
 

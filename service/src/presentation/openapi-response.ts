@@ -213,6 +213,21 @@ export const OpenApiResponseSchemas = {
     updatedAt: dateTime('2026-05-25T00:00:00.000Z'),
   }),
 
+  customGrant: object({
+    id: string('custom-grant-1'),
+    grantType: string('urn:auth:grant-type:magic_link'),
+    displayName: string('Magic Link'),
+    description: nullableString('Issue tokens from a verified magic link'),
+    enabled: boolean(true),
+    allowedClientTypes: arrayOf(string('confidential')),
+    allowedApplicationTypes: arrayOf(string('web')),
+    requiresClientAuthentication: boolean(true),
+    requiresGrantTypes: arrayOf(string('authorization_code')),
+    builtIn: boolean(false),
+    createdAt: dateTime('2026-05-25T00:00:00.000Z'),
+    updatedAt: dateTime('2026-05-25T00:00:00.000Z'),
+  }),
+
   role: object({
     id: string('role-1'),
     code: string('USER_ADMIN'),

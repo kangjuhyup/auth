@@ -1,4 +1,45 @@
 import { OidcGrantTypeRegistryAdapter } from '@infrastructure/oidc-provider/grant-type-registry.adapter';
+import type { CustomGrantRepository } from '@domain/repositories';
+import { CustomGrantModel } from '@domain/models/custom-grant';
+
+function makeCustomGrant(
+  overrides: Partial<{
+    grantType: string;
+    enabled: boolean;
+    allowedClientTypes: ('confidential' | 'public' | 'service')[];
+    requiresClientAuthentication: boolean;
+  }> = {},
+): CustomGrantModel {
+  const grant = new CustomGrantModel({
+    tenantId: 'tenant-1',
+    grantType: overrides.grantType ?? 'urn:auth:grant-type:magic_link',
+    displayName: 'Magic Link',
+    description: null,
+    enabled: overrides.enabled ?? true,
+    allowedClientTypes: overrides.allowedClientTypes ?? ['confidential'],
+    allowedApplicationTypes: ['web'],
+    requiresClientAuthentication:
+      overrides.requiresClientAuthentication ?? true,
+    requiresGrantTypes: [],
+    builtIn: false,
+  });
+  grant.setPersistence('grant-1', new Date(), new Date());
+  return grant;
+}
+
+function createCustomGrantRepo(
+  grants: CustomGrantModel[] = [],
+): jest.Mocked<CustomGrantRepository> {
+  return {
+    findById: jest.fn(),
+    findByGrantType: jest.fn(),
+    list: jest.fn(),
+    listByTenantId: jest.fn().mockResolvedValue(grants),
+    listEnabledByTenantId: jest.fn(),
+    save: jest.fn(),
+    delete: jest.fn(),
+  };
+}
 
 describe('OidcGrantTypeRegistryAdapter', () => {
   let registry: OidcGrantTypeRegistryAdapter;
@@ -46,23 +87,26 @@ describe('OidcGrantTypeRegistryAdapter', () => {
   });
 
   it('등록된 custom grant를 provider 지원 목록과 client 정책 검증에 포함한다', async () => {
-    registry = new OidcGrantTypeRegistryAdapter([
-      {
-        grantType: 'urn:auth:grant-type:magic_link',
-        displayName: 'Magic Link',
-        builtIn: false,
-        enabled: true,
-        allowedClientTypes: ['confidential'],
-        allowedApplicationTypes: ['web'],
-        requiresClientAuthentication: true,
-        parameters: ['magic_token', 'scope'],
-        createHandler: () => jest.fn(),
-      },
-    ]);
-
-    await expect(registry.listSupportedGrantTypes()).resolves.toContain(
-      'urn:auth:grant-type:magic_link',
+    registry = new OidcGrantTypeRegistryAdapter(
+      createCustomGrantRepo([makeCustomGrant()]),
+      [
+        {
+          grantType: 'urn:auth:grant-type:magic_link',
+          displayName: 'Magic Link',
+          builtIn: false,
+          enabled: true,
+          allowedClientTypes: ['public'],
+          allowedApplicationTypes: ['native'],
+          requiresClientAuthentication: false,
+          parameters: ['magic_token', 'scope'],
+          createHandler: () => jest.fn(),
+        },
+      ],
     );
+
+    await expect(
+      registry.listSupportedGrantTypes('tenant-1'),
+    ).resolves.toContain('urn:auth:grant-type:magic_link');
     await expect(
       registry.validateClientGrantTypes({
         tenantId: 'tenant-1',
@@ -74,23 +118,53 @@ describe('OidcGrantTypeRegistryAdapter', () => {
     ).resolves.toEqual([]);
   });
 
-  it('disabled custom grant는 지원 목록에서 제외하고 client 정책 검증에서 거부한다', async () => {
-    registry = new OidcGrantTypeRegistryAdapter([
+  it('코드 handler가 없는 DB custom grant는 지원하지 않는다', async () => {
+    registry = new OidcGrantTypeRegistryAdapter(
+      createCustomGrantRepo([makeCustomGrant()]),
+      [],
+    );
+
+    await expect(
+      registry.validateClientGrantTypes({
+        tenantId: 'tenant-1',
+        clientType: 'confidential',
+        applicationType: 'web',
+        tokenEndpointAuthMethod: 'client_secret_basic',
+        grantTypes: ['urn:auth:grant-type:magic_link'],
+      }),
+    ).resolves.toEqual([
       {
-        grantType: 'urn:auth:grant-type:disabled',
-        displayName: 'Disabled Grant',
-        builtIn: false,
-        enabled: false,
-        allowedClientTypes: ['confidential'],
-        allowedApplicationTypes: ['web'],
-        requiresClientAuthentication: true,
-        createHandler: () => jest.fn(),
+        grantType: 'urn:auth:grant-type:magic_link',
+        reason: 'unsupported',
       },
     ]);
+  });
 
-    await expect(registry.listSupportedGrantTypes()).resolves.not.toContain(
-      'urn:auth:grant-type:disabled',
+  it('disabled custom grant는 지원 목록에서 제외하고 client 정책 검증에서 거부한다', async () => {
+    registry = new OidcGrantTypeRegistryAdapter(
+      createCustomGrantRepo([
+        makeCustomGrant({
+          grantType: 'urn:auth:grant-type:disabled',
+          enabled: false,
+        }),
+      ]),
+      [
+        {
+          grantType: 'urn:auth:grant-type:disabled',
+          displayName: 'Disabled Grant',
+          builtIn: false,
+          enabled: true,
+          allowedClientTypes: ['confidential'],
+          allowedApplicationTypes: ['web'],
+          requiresClientAuthentication: true,
+          createHandler: () => jest.fn(),
+        },
+      ],
     );
+
+    await expect(
+      registry.listSupportedGrantTypes('tenant-1'),
+    ).resolves.not.toContain('urn:auth:grant-type:disabled');
     await expect(
       registry.validateClientGrantTypes({
         tenantId: 'tenant-1',
@@ -161,6 +235,7 @@ describe('OidcGrantTypeRegistryAdapter', () => {
 
   it('custom grant validation strategy로 client 정책을 확장한다', async () => {
     registry = new OidcGrantTypeRegistryAdapter(
+      undefined,
       [],
       [
         {

@@ -1,5 +1,6 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { GrantTypeRegistryPort } from '@application/ports/grant-type-registry.port';
+import { CustomGrantRepository } from '@domain/repositories';
 import type {
   GrantTypeDefinition,
   GrantTypeValidationIssue,
@@ -11,6 +12,7 @@ import {
   BUILT_IN_GRANT_TYPE_VALIDATION_STRATEGIES,
   type GrantTypeValidationStrategy,
 } from './grant-type-strategies';
+import { resolveCustomGrantDefinitions } from './custom-grants/custom-grant-metadata';
 
 const BUILT_IN_GRANT_TYPES: GrantTypeDefinition[] = [
   {
@@ -56,6 +58,8 @@ const BUILT_IN_GRANT_TYPES: GrantTypeDefinition[] = [
 export class OidcGrantTypeRegistryAdapter extends GrantTypeRegistryPort {
   constructor(
     @Optional()
+    private readonly customGrantRepository?: CustomGrantRepository,
+    @Optional()
     private readonly customGrantTypes: readonly CustomGrantTypeDefinition[] = CUSTOM_GRANT_TYPES,
     @Optional()
     private readonly validationStrategies: readonly GrantTypeValidationStrategy[] = BUILT_IN_GRANT_TYPE_VALIDATION_STRATEGIES,
@@ -63,20 +67,20 @@ export class OidcGrantTypeRegistryAdapter extends GrantTypeRegistryPort {
     super();
   }
 
-  async listSupportedGrantTypes(): Promise<string[]> {
-    return this.getDefinitions()
+  async listSupportedGrantTypes(tenantId?: string): Promise<string[]> {
+    return (await this.getDefinitions(tenantId))
       .filter((grant) => grant.enabled)
       .map((grant) => grant.grantType);
   }
 
-  async listDefinitions(): Promise<GrantTypeDefinition[]> {
-    return this.getDefinitions().map((grant) => ({ ...grant }));
+  async listDefinitions(tenantId?: string): Promise<GrantTypeDefinition[]> {
+    return (await this.getDefinitions(tenantId)).map((grant) => ({ ...grant }));
   }
 
   async validateClientGrantTypes(
     params: GrantTypeValidationParams,
   ): Promise<GrantTypeValidationIssue[]> {
-    const definitions = await this.listDefinitions();
+    const definitions = await this.listDefinitions(params.tenantId);
     const byType = new Map(
       definitions.map((definition) => [definition.grantType, definition]),
     );
@@ -105,8 +109,16 @@ export class OidcGrantTypeRegistryAdapter extends GrantTypeRegistryPort {
     return issues;
   }
 
-  private getDefinitions(): GrantTypeDefinition[] {
-    return [...BUILT_IN_GRANT_TYPES, ...this.customGrantTypes].map((grant) => ({
+  private async getDefinitions(
+    tenantId?: string,
+  ): Promise<GrantTypeDefinition[]> {
+    const customGrantTypes = await resolveCustomGrantDefinitions({
+      tenantId,
+      repository: this.customGrantRepository,
+      definitions: this.customGrantTypes,
+    });
+
+    return [...BUILT_IN_GRANT_TYPES, ...customGrantTypes].map((grant) => ({
       ...grant,
     }));
   }

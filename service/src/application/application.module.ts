@@ -18,6 +18,8 @@ import { PermissionCommandPort } from './commands/ports/permission-command.port'
 import { PermissionCommandHandler } from './commands/handlers/permission-command.handler';
 import { ScopeCommandPort } from './commands/ports/scope-command.port';
 import { ScopeCommandHandler } from './commands/handlers/scope-command.handler';
+import { CustomGrantCommandPort } from './commands/ports/custom-grant-command.port';
+import { CustomGrantCommandHandler } from './commands/handlers/custom-grant-command.handler';
 
 // Infrastructure Ports
 import { AdminQueryPort } from './queries/ports/admin-query.port';
@@ -83,6 +85,10 @@ const commands = [
   {
     provide: ScopeCommandPort,
     useClass: ScopeCommandHandler,
+  },
+  {
+    provide: CustomGrantCommandPort,
+    useClass: CustomGrantCommandHandler,
   },
   {
     provide: ClientCommandPort,

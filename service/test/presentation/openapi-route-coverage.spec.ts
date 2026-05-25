@@ -10,6 +10,7 @@ import { AuthController } from '@presentation/controllers/auth.controller';
 import { AdminSessionController } from '@presentation/controllers/admin/session.controller';
 import { AdminAuditLogController } from '@presentation/controllers/admin/audit-log.controller';
 import { AdminClientController } from '@presentation/controllers/admin/client.controller';
+import { AdminCustomGrantController } from '@presentation/controllers/admin/custom-grant.controller';
 import { AdminGroupController } from '@presentation/controllers/admin/group.controller';
 import { AdminIdentityProviderController } from '@presentation/controllers/admin/identity-provider.controller';
 import { AdminKeyController } from '@presentation/controllers/admin/key.controller';
@@ -27,6 +28,7 @@ import { AuthQueryPort } from '@application/queries/ports';
 import { AdminSessionPort } from '@application/ports/admin-session.port';
 import { AdminQueryPort } from '@application/queries/ports';
 import { ClientCommandPort } from '@application/commands/ports/client-command.port';
+import { CustomGrantCommandPort } from '@application/commands/ports/custom-grant-command.port';
 import { GroupCommandPort } from '@application/commands/ports/group-command.port';
 import { IdentityProviderCommandPort } from '@application/commands/ports/identity-provider-command.port';
 import { KeyCommandPort } from '@application/commands/ports/key-command.port';
@@ -136,6 +138,7 @@ describe('openapi route coverage', () => {
         AdminSessionController,
         AdminAuditLogController,
         AdminClientController,
+        AdminCustomGrantController,
         AdminGroupController,
         AdminIdentityProviderController,
         AdminKeyController,
@@ -155,6 +158,7 @@ describe('openapi route coverage', () => {
         provider(AdminSessionPort),
         provider(AdminQueryPort),
         provider(ClientCommandPort),
+        provider(CustomGrantCommandPort),
         provider(GroupCommandPort),
         provider(IdentityProviderCommandPort),
         provider(KeyCommandPort),

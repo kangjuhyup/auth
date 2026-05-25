@@ -33,10 +33,11 @@
 
 | 파일                                                                                                                 | 역할                                          |
 | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| [`custom-grants/index.ts`](../src/infrastructure/oidc-provider/custom-grants/index.ts)                               | 커스텀 grant 정의를 추가하는 원본 목록        |
+| [`custom-grants/index.ts`](../src/infrastructure/oidc-provider/custom-grants/index.ts)                               | 커스텀 grant handler strategy 목록            |
 | [`custom-grant-type.ts`](../src/infrastructure/oidc-provider/custom-grants/custom-grant-type.ts)                     | `CustomGrantStrategy` 타입                    |
 | [`register-custom-grant-types.ts`](../src/infrastructure/oidc-provider/custom-grants/register-custom-grant-types.ts) | `Provider#registerGrantType` 호출             |
-| [`grant-type-registry.adapter.ts`](../src/infrastructure/oidc-provider/grant-type-registry.adapter.ts)               | 클라이언트 생성/수정 시 grant type 정책 검증  |
+| `custom_grant` DB table                                                                                              | tenant별 custom grant metadata                |
+| [`grant-type-registry.adapter.ts`](../src/infrastructure/oidc-provider/grant-type-registry.adapter.ts)               | DB metadata와 코드 strategy 합성, 정책 검증   |
 | [`grant-type-strategies`](../src/infrastructure/oidc-provider/grant-type-strategies)                                 | client grant 정책 검증 strategy               |
 | [`oidc-provider.factory.ts`](../src/infrastructure/oidc-provider/oidc-provider.factory.ts)                           | tenant별 provider 생성 직후 커스텀 grant 등록 |
 
@@ -44,13 +45,14 @@
 
 ### A.3 커스텀 grant 추가 절차
 
-1. [`custom-grants/index.ts`](../src/infrastructure/oidc-provider/custom-grants/index.ts)의 `CUSTOM_GRANT_TYPES` 배열에 `CustomGrantStrategy` 정의를 추가한다.
+1. [`custom-grants/index.ts`](../src/infrastructure/oidc-provider/custom-grants/index.ts)의 `CUSTOM_GRANT_TYPES` 배열에 `CustomGrantStrategy` handler를 추가한다.
 2. `grantType` 은 내장 grant와 충돌하지 않는 `urn:...` 형식으로 둔다.
 3. `parameters` 에 token endpoint에서 허용할 파라미터 이름을 명시한다.
 4. `createHandler(context)` 에서 `node-oidc-provider` grant handler를 반환한다.
-5. 해당 grant를 사용할 클라이언트의 `grantTypes` 배열에 동일한 `grantType` 값을 추가한다.
-6. 기본 정책으로 표현하기 어려운 client 검증이 있으면 `GrantTypeValidationStrategy`를 추가한다.
-7. 테스트에서 registry 검증과 handler 등록을 확인한다.
+5. Admin API로 tenant에 같은 `grantType` metadata를 등록한다.
+6. 해당 grant를 사용할 클라이언트의 `grantTypes` 배열에 동일한 `grantType` 값을 추가한다.
+7. 기본 정책으로 표현하기 어려운 client 검증이 있으면 `GrantTypeValidationStrategy`를 추가한다.
+8. 테스트에서 registry 검증과 handler 등록을 확인한다.
 
 예시:
 
@@ -89,7 +91,36 @@ export const CUSTOM_GRANT_TYPES: CustomGrantStrategy[] = [
 - `clientQuery`
 - `eventRepository`
 
-### A.4 클라이언트 메타데이터와 Admin API
+### A.4 DB metadata 등록
+
+코드 strategy만 추가하면 grant는 아직 tenant에서 지원되지 않는다. tenant별 `custom_grant` metadata가 있어야 discovery의 `grant_types_supported`, client `grantTypes` 검증, provider 등록 대상에 포함된다.
+
+```http
+POST /t/acme/admin/custom-grants
+Content-Type: application/json
+
+{
+  "grantType": "urn:auth:grant-type:magic_link",
+  "displayName": "Magic Link",
+  "description": "Issue tokens from a verified magic link.",
+  "enabled": true,
+  "allowedClientTypes": ["confidential"],
+  "allowedApplicationTypes": ["web"],
+  "requiresClientAuthentication": true,
+  "requiresGrantTypes": []
+}
+```
+
+DB에는 실행 코드나 검증 스크립트를 저장하지 않는다. DB metadata는 tenant별 활성화와 client 정책만 표현하고, 실제 token endpoint handler는 항상 배포된 코드 strategy가 담당한다.
+
+| 상태                  | 결과                          |
+| --------------------- | ----------------------------- |
+| 코드 strategy만 있음  | tenant에서 지원하지 않음      |
+| DB metadata만 있음    | handler가 없어 지원하지 않음  |
+| 둘 다 있고 enabled    | provider에 등록되고 사용 가능 |
+| 둘 다 있지만 disabled | client 정책 검증에서 거부     |
+
+### A.5 클라이언트 메타데이터와 Admin API
 
 클라이언트가 해당 `grant_type` 을 쓰려면 **등록된 클라이언트의 `grant_types`** 에 값이 포함되어야 한다. OIDC 어댑터는 DB 의 클라이언트를 그대로 노출하므로 ([`client-oidc.adapter.ts`](../src/infrastructure/oidc-provider/adapters/client-oidc.adapter.ts)):
 
@@ -109,7 +140,7 @@ export const CUSTOM_GRANT_TYPES: CustomGrantStrategy[] = [
 }
 ```
 
-### A.5 Grant 정책 Strategy
+### A.6 Grant 정책 Strategy
 
 `allowedClientTypes`, `allowedApplicationTypes`, `requiresClientAuthentication`, `requiresGrantTypes`로 표현되는 정책은 기본 `GrantTypeValidationStrategy`들이 검증한다.
 
@@ -133,11 +164,11 @@ export class MagicLinkGrantTenantStrategy implements GrantTypeValidationStrategy
 
 이 strategy는 client가 해당 grant를 등록하거나 사용할 수 있는 정책만 검증한다. 표준 grant의 발급, 서명, replay 방어는 `node-oidc-provider` 흐름을 우회해서 구현하지 않는다.
 
-### A.6 Discovery (`grant_types_supported`)
+### A.7 Discovery (`grant_types_supported`)
 
 커스텀 grant 를 등록하면, 사용 중인 `node-oidc-provider` 버전에 따라 **메타데이터에 자동 반영되는지** 확인한다. 필요하면 `configuration` 의 메타데이터 관련 옵션(버전별로 상이)을 문서와 타입 정의(`@types/oidc-provider`)로 점검한다.
 
-### A.7 보안 체크리스트
+### A.8 보안 체크리스트
 
 - **클라이언트 인증**: confidential 클라이언트는 `client_secret` 또는 등록된 인증 방식을 강제한다.
 - **파라미터 화이트리스트**: `registerGrantType` 의 세 번째 인자로 허용 파라미터를 명시한다.

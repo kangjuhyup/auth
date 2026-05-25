@@ -15,6 +15,7 @@ import {
   RoleRepository,
   PermissionRepository,
   ScopeRepository,
+  CustomGrantRepository,
   RoleAssignmentRepository,
   RolePermissionRepository,
   ClientRepository,
@@ -32,6 +33,7 @@ import { GroupRepositoryImpl } from './repositories/group.repository.impl';
 import { RoleRepositoryImpl } from './repositories/role.repository.impl';
 import { PermissionRepositoryImpl } from './repositories/permission.repository.impl';
 import { ScopeRepositoryImpl } from './repositories/scope.repository.impl';
+import { CustomGrantRepositoryImpl } from './repositories/custom-grant.repository.impl';
 import { RoleAssignmentRepositoryImpl } from './repositories/role-assignment.repository.impl';
 import { RolePermissionRepositoryImpl } from './repositories/role-permission.repository.impl';
 import { ClientRepositoryImpl } from './repositories/client.repository.impl';
@@ -112,6 +114,10 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     {
       provide: ScopeRepository,
       useClass: ScopeRepositoryImpl,
+    },
+    {
+      provide: CustomGrantRepository,
+      useClass: CustomGrantRepositoryImpl,
     },
     {
       provide: RoleAssignmentRepository,
@@ -277,6 +283,7 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     RoleRepository,
     PermissionRepository,
     ScopeRepository,
+    CustomGrantRepository,
     RoleAssignmentRepository,
     RolePermissionRepository,
     ClientRepository,

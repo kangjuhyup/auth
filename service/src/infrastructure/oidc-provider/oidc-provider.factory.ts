@@ -14,6 +14,7 @@ import type {
   JwksKeyRepository,
   TenantRepository,
   TenantConfigRepository,
+  CustomGrantRepository,
 } from '@domain/repositories';
 import type { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
 import type { JwksKeyCryptoPort } from '@application/ports/jwks-key-crypto.port';
@@ -21,6 +22,8 @@ import { JwksKeyModel } from '@domain/models/jwks-key';
 import { EventModel } from '@domain/models/event';
 import { GrantTypeRegistryPort } from '@application/ports/grant-type-registry.port';
 import { registerCustomGrantTypes } from './custom-grants/register-custom-grant-types';
+import { CUSTOM_GRANT_TYPES } from './custom-grants';
+import { resolveCustomGrantDefinitions } from './custom-grants/custom-grant-metadata';
 import { ScopeRegistryPort } from '@application/ports/scope-registry.port';
 import { ScopeClaimResolverPort } from '@application/ports/scope-claim-resolver.port';
 
@@ -38,6 +41,7 @@ export type CreateOidcProviderParams = {
   tenantConfigRepository: TenantConfigRepository;
   jwksKeyRepository: JwksKeyRepository;
   eventRepository: EventRepository;
+  customGrantRepository: CustomGrantRepository;
   jwksKeyCrypto: JwksKeyCryptoPort;
   symmetricCrypto: SymmetricCryptoPort;
   grantTypeRegistry: GrantTypeRegistryPort;
@@ -95,8 +99,9 @@ export async function createOidcProvider(
     tenantRepository: params.tenantRepository,
     symmetricCrypto: params.symmetricCrypto,
     jwksKeys,
-    supportedGrantTypes:
-      await params.grantTypeRegistry.listSupportedGrantTypes(),
+    supportedGrantTypes: await params.grantTypeRegistry.listSupportedGrantTypes(
+      tenant?.id,
+    ),
     supportedScopes: await params.scopeRegistry.listSupportedScopes(tenant?.id),
     scopeRegistry: params.scopeRegistry,
     scopeClaimResolver: params.scopeClaimResolver,
@@ -109,13 +114,21 @@ export async function createOidcProvider(
   const Provider = await loadOidcProviderConstructor();
 
   const provider = new Provider(params.issuer, configuration);
-  registerCustomGrantTypes(provider, {
-    tenantCode: params.tenantCode,
-    configService: params.configService,
-    userQuery: params.userQuery,
-    clientQuery: params.clientQuery,
-    eventRepository: params.eventRepository,
-  });
+  registerCustomGrantTypes(
+    provider,
+    {
+      tenantCode: params.tenantCode,
+      configService: params.configService,
+      userQuery: params.userQuery,
+      clientQuery: params.clientQuery,
+      eventRepository: params.eventRepository,
+    },
+    await resolveCustomGrantDefinitions({
+      tenantId: tenant?.id,
+      repository: params.customGrantRepository,
+      definitions: CUSTOM_GRANT_TYPES,
+    }),
+  );
 
   provider.on('grant.revoked', (ctx, grantId) => {
     if (!isRefreshTokenReuseRevocation(ctx)) return;
