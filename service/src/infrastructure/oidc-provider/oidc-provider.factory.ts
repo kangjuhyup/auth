@@ -20,6 +20,7 @@ import type { JwksKeyCryptoPort } from '@application/ports/jwks-key-crypto.port'
 import { JwksKeyModel } from '@domain/models/jwks-key';
 import { EventModel } from '@domain/models/event';
 import { GrantTypeRegistryPort } from '@application/ports/grant-type-registry.port';
+import { registerCustomGrantTypes } from './custom-grants/register-custom-grant-types';
 
 export type CreateOidcProviderParams = {
   issuer: string;
@@ -101,6 +102,14 @@ export async function createOidcProvider(
   const Provider = await loadOidcProviderConstructor();
 
   const provider = new Provider(params.issuer, configuration);
+  registerCustomGrantTypes(provider, {
+    tenantCode: params.tenantCode,
+    configService: params.configService,
+    userQuery: params.userQuery,
+    clientQuery: params.clientQuery,
+    eventRepository: params.eventRepository,
+  });
+
   provider.on('grant.revoked', (ctx, grantId) => {
     if (!isRefreshTokenReuseRevocation(ctx)) return;
     void auditRefreshTokenReuse(params.eventRepository, ctx, grantId).catch(

@@ -45,6 +45,68 @@ describe('OidcGrantTypeRegistryAdapter', () => {
     ]);
   });
 
+  it('등록된 custom grant를 provider 지원 목록과 client 정책 검증에 포함한다', async () => {
+    registry = new OidcGrantTypeRegistryAdapter([
+      {
+        grantType: 'urn:auth:grant-type:magic_link',
+        displayName: 'Magic Link',
+        builtIn: false,
+        enabled: true,
+        allowedClientTypes: ['confidential'],
+        allowedApplicationTypes: ['web'],
+        requiresClientAuthentication: true,
+        parameters: ['magic_token', 'scope'],
+        createHandler: () => jest.fn(),
+      },
+    ]);
+
+    await expect(registry.listSupportedGrantTypes()).resolves.toContain(
+      'urn:auth:grant-type:magic_link',
+    );
+    await expect(
+      registry.validateClientGrantTypes({
+        tenantId: 'tenant-1',
+        clientType: 'confidential',
+        applicationType: 'web',
+        tokenEndpointAuthMethod: 'client_secret_basic',
+        grantTypes: ['urn:auth:grant-type:magic_link'],
+      }),
+    ).resolves.toEqual([]);
+  });
+
+  it('disabled custom grant는 지원 목록에서 제외하고 client 정책 검증에서 거부한다', async () => {
+    registry = new OidcGrantTypeRegistryAdapter([
+      {
+        grantType: 'urn:auth:grant-type:disabled',
+        displayName: 'Disabled Grant',
+        builtIn: false,
+        enabled: false,
+        allowedClientTypes: ['confidential'],
+        allowedApplicationTypes: ['web'],
+        requiresClientAuthentication: true,
+        createHandler: () => jest.fn(),
+      },
+    ]);
+
+    await expect(registry.listSupportedGrantTypes()).resolves.not.toContain(
+      'urn:auth:grant-type:disabled',
+    );
+    await expect(
+      registry.validateClientGrantTypes({
+        tenantId: 'tenant-1',
+        clientType: 'confidential',
+        applicationType: 'web',
+        tokenEndpointAuthMethod: 'client_secret_basic',
+        grantTypes: ['urn:auth:grant-type:disabled'],
+      }),
+    ).resolves.toEqual([
+      {
+        grantType: 'urn:auth:grant-type:disabled',
+        reason: 'disabled',
+      },
+    ]);
+  });
+
   it('refresh_token만 단독으로 설정하면 authorization_code 누락을 알린다', async () => {
     await expect(
       registry.validateClientGrantTypes({

@@ -7,6 +7,7 @@ import { TenantConfigModel } from '@domain/models/tenant-config';
 import { JwksKeyModel } from '@domain/models/jwks-key';
 import { buildOidcConfiguration } from '@infrastructure/oidc-provider/oidc-provider.config';
 import { loadOidcProviderConstructor } from '@infrastructure/oidc-provider/oidc-provider.loader';
+import { registerCustomGrantTypes } from '@infrastructure/oidc-provider/custom-grants/register-custom-grant-types';
 import { createPrivateKey } from 'node:crypto';
 
 jest.mock('@infrastructure/oidc-provider/oidc-provider.config', () => ({
@@ -16,6 +17,13 @@ jest.mock('@infrastructure/oidc-provider/oidc-provider.config', () => ({
 jest.mock('@infrastructure/oidc-provider/oidc-provider.loader', () => ({
   loadOidcProviderConstructor: jest.fn(),
 }));
+
+jest.mock(
+  '@infrastructure/oidc-provider/custom-grants/register-custom-grant-types',
+  () => ({
+    registerCustomGrantTypes: jest.fn(),
+  }),
+);
 
 jest.mock('node:crypto', () => ({
   createPrivateKey: jest.fn(),
@@ -97,12 +105,14 @@ function createParams(): CreateOidcProviderParams {
       encrypt: jest.fn(),
     } as any,
     grantTypeRegistry: {
-      listSupportedGrantTypes: jest.fn().mockResolvedValue([
-        'authorization_code',
-        'refresh_token',
-        'client_credentials',
-        'implicit',
-      ]),
+      listSupportedGrantTypes: jest
+        .fn()
+        .mockResolvedValue([
+          'authorization_code',
+          'refresh_token',
+          'client_credentials',
+          'implicit',
+        ]),
     } as any,
   };
 }
@@ -179,6 +189,16 @@ describe('createOidcProvider', () => {
     expect(ProviderConstructor).toHaveBeenCalledWith(
       'https://auth.example.com/t/acme/oidc',
       providerConfiguration,
+    );
+    expect(registerCustomGrantTypes).toHaveBeenCalledWith(
+      provider,
+      expect.objectContaining({
+        tenantCode: 'acme',
+        configService: params.configService,
+        userQuery: params.userQuery,
+        clientQuery: params.clientQuery,
+        eventRepository: params.eventRepository,
+      }),
     );
     expect(provider).toEqual({
       issuer: 'https://auth.example.com/t/acme/oidc',

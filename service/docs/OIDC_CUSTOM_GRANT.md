@@ -2,9 +2,9 @@
 
 이 문서는 `node-oidc-provider`(현재 `^9.6.0`)를 쓰는 본 서비스에서 **Grant**를 확장하는 두 가지 의미를 구분하고, 각각의 작업 절차를 정리한다.
 
-| 구분 | 의미 | 대표 사용처 |
-|------|------|-------------|
-| **A. OAuth `grant_type` (토큰 엔드포인트)** | `POST /token` 에 `grant_type=...` 로 들어오는 **플로우**를 추가 | Token Exchange(RFC 8693), 사내 배포용 확장 grant 등 |
+| 구분                                           | 의미                                                                          | 대표 사용처                                          |
+| ---------------------------------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------- |
+| **A. OAuth `grant_type` (토큰 엔드포인트)**    | `POST /token` 에 `grant_type=...` 로 들어오는 **플로우**를 추가               | Token Exchange(RFC 8693), 사내 배포용 확장 grant 등  |
 | **B. OIDC `Grant` 객체 (동의·권한 부여 기록)** | 사용자·클라이언트 쌍에 대한 **부여된 scope/리소스**를 담는 provider 내부 모델 | `skipConsent` 시 자동 부여, 동의 화면에서 scope 저장 |
 
 혼동하기 쉬우므로 요구사항에 맞는 쪽을 먼저 고른 뒤 아래 절차를 따른다.
@@ -27,51 +27,97 @@
 2. 핸들러는 Koa 스타일 **`async (ctx, next) => { ... }`** 이며, `ctx.oidc.params`, `ctx.oidc.client` 등에 접근한다.
 3. 표준 grant 와 동일하게 **액세스 토큰(및 필요 시 리프레시 토큰 등)을 발급·저장**하는 로직을 구현해야 하며, 이 부분은 표준 grant 팩토리 코드를 베끼는 편이 실수가 적다.
 
-### A.2 이 저장소에서의 권장 연동 위치
+### A.2 이 저장소에서의 연동 위치
 
-**테넌트마다** `new Provider(issuer, configuration)` 이 호출되므로, **`registerGrantType` 은 인스턴스 생성 직후, 반환하기 전에** 수행해야 모든 테넌트에 동일하게 적용된다.
+커스텀 grant 확장점은 아래 파일들로 분리되어 있다.
 
-권장 패턴:
+| 파일                                                                                                                 | 역할                                          |
+| -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| [`custom-grants/index.ts`](../src/infrastructure/oidc-provider/custom-grants/index.ts)                               | 커스텀 grant 정의를 추가하는 원본 목록        |
+| [`custom-grant-type.ts`](../src/infrastructure/oidc-provider/custom-grants/custom-grant-type.ts)                     | 커스텀 grant 정의 타입                        |
+| [`register-custom-grant-types.ts`](../src/infrastructure/oidc-provider/custom-grants/register-custom-grant-types.ts) | `Provider#registerGrantType` 호출             |
+| [`grant-type-registry.adapter.ts`](../src/infrastructure/oidc-provider/grant-type-registry.adapter.ts)               | 클라이언트 생성/수정 시 grant type 정책 검증  |
+| [`oidc-provider.factory.ts`](../src/infrastructure/oidc-provider/oidc-provider.factory.ts)                           | tenant별 provider 생성 직후 커스텀 grant 등록 |
 
-1. [`createOidcProvider`](../src/infrastructure/oidc-provider/oidc-provider.factory.ts) 에서 `const provider = new Provider(...)` 이후
-2. 예: `registerCustomGrantTypes(provider, params)` 같은 함수를 호출해 `provider.registerGrantType(...)` 을 모아 둔다.
+테넌트마다 `new Provider(issuer, configuration)` 이 호출되므로, `oidc-provider.factory.ts` 에서 provider 인스턴스 생성 직후 `registerCustomGrantTypes(...)` 가 실행된다.
+
+### A.3 커스텀 grant 추가 절차
+
+1. [`custom-grants/index.ts`](../src/infrastructure/oidc-provider/custom-grants/index.ts)의 `CUSTOM_GRANT_TYPES` 배열에 정의를 추가한다.
+2. `grantType` 은 내장 grant와 충돌하지 않는 `urn:...` 형식으로 둔다.
+3. `parameters` 에 token endpoint에서 허용할 파라미터 이름을 명시한다.
+4. `createHandler(context)` 에서 `node-oidc-provider` grant handler를 반환한다.
+5. 해당 grant를 사용할 클라이언트의 `grantTypes` 배열에 동일한 `grantType` 값을 추가한다.
+6. 테스트에서 registry 검증과 handler 등록을 확인한다.
+
+예시:
 
 ```ts
-// 개념 예시 (실제 경로·의존성은 프로젝트에 맞게 조정)
-const provider = new Provider(params.issuer, configuration);
+// service/src/infrastructure/oidc-provider/custom-grants/index.ts
+import type { CustomGrantTypeDefinition } from './custom-grant-type';
 
-provider.registerGrantType(
-  'urn:example:params:oauth:grant-type:demo',
-  async (ctx, next) => {
-    // ctx.oidc.params — 허용할 파라미터 이름은 아래 배열과 일치해야 함
-    // ctx.oidc.client — 클라이언트 인증 후 주입
-    // 표준 grants 구현을 참고해 토큰 발급
-    await next();
+export const CUSTOM_GRANT_TYPES: CustomGrantTypeDefinition[] = [
+  {
+    grantType: 'urn:auth:grant-type:magic_link',
+    displayName: 'Magic Link',
+    builtIn: false,
+    enabled: true,
+    allowedClientTypes: ['confidential'],
+    allowedApplicationTypes: ['web'],
+    requiresClientAuthentication: true,
+    parameters: ['magic_token', 'scope'],
+    createHandler: (context) => async (ctx, next) => {
+      const magicToken = ctx.oidc.params.magic_token;
+
+      // context.userQuery / context.clientQuery / context.eventRepository 등을
+      // 사용해 토큰을 검증하고 필요한 감사 이벤트를 저장한다.
+      // token, secret, authorization code 원문은 로그에 남기지 않는다.
+
+      await next();
+    },
   },
-  ['custom_param', 'scope'], // 토큰 엔드포인트에서 파싱·허용할 파라미터 이름
-  [], // allowedDuplicateParameters (필요 시 RFC8693 token-exchange 처럼 중복 허용 목록)
-);
-
-return provider;
+];
 ```
 
-### A.3 클라이언트 메타데이터와 Admin API
+`createHandler` 가 받는 `context`:
+
+- `tenantCode`
+- `configService`
+- `userQuery`
+- `clientQuery`
+- `eventRepository`
+
+### A.4 클라이언트 메타데이터와 Admin API
 
 클라이언트가 해당 `grant_type` 을 쓰려면 **등록된 클라이언트의 `grant_types`** 에 값이 포함되어야 한다. OIDC 어댑터는 DB 의 클라이언트를 그대로 노출하므로 ([`client-oidc.adapter.ts`](../src/infrastructure/oidc-provider/adapters/client-oidc.adapter.ts)):
 
 1. Admin API 로 클라이언트를 만들거나 수정할 때 `grantTypes` 배열에 커스텀 grant 문자열을 넣는다.
-2. [`client.dto.ts`](../src/presentation/dto/admin/client.dto.ts) 의 `GRANT_TYPES` 화이트리스트에 **동일한 문자열을 추가**한다. 현재 허용 목록에 없으면 DTO 검증에서 걸린다.
+2. [`client.dto.ts`](../src/presentation/dto/admin/client.dto.ts) 는 내장 grant 또는 `urn:...` 형식의 커스텀 grant 문자열을 허용한다.
+3. 실제 지원 여부와 client type/application type/client authentication 정책은 `GrantTypeRegistryPort` 를 통해 검증된다.
 
-### A.4 Discovery (`grant_types_supported`)
+예시 요청:
+
+```json
+{
+  "clientId": "magic-link-client",
+  "name": "Magic Link Client",
+  "type": "confidential",
+  "tokenEndpointAuthMethod": "client_secret_basic",
+  "grantTypes": ["urn:auth:grant-type:magic_link"]
+}
+```
+
+### A.5 Discovery (`grant_types_supported`)
 
 커스텀 grant 를 등록하면, 사용 중인 `node-oidc-provider` 버전에 따라 **메타데이터에 자동 반영되는지** 확인한다. 필요하면 `configuration` 의 메타데이터 관련 옵션(버전별로 상이)을 문서와 타입 정의(`@types/oidc-provider`)로 점검한다.
 
-### A.5 보안 체크리스트
+### A.6 보안 체크리스트
 
 - **클라이언트 인증**: confidential 클라이언트는 `client_secret` 또는 등록된 인증 방식을 강제한다.
 - **파라미터 화이트리스트**: `registerGrantType` 의 세 번째 인자로 허용 파라미터를 명시한다.
 - **권한 모델**: 어떤 클라이언트가 이 grant 를 쓸 수 있는지 `grant_types` 외에도 비즈니스 규칙(테넌트 정책 등)으로 이중 검증하는 것을 권장한다.
 - **감사·레이트 리밋**: 토큰 엔드포인트 남용 방지.
+- **로그 마스킹**: token, authorization code, secret, one-time token 원문을 로그에 남기지 않는다.
 
 ---
 

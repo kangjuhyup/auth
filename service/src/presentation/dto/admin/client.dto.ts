@@ -25,6 +25,9 @@ const GRANT_TYPES = [
   'client_credentials',
   'implicit',
 ] as const;
+const GRANT_TYPE_PATTERN = new RegExp(
+  `^(${GRANT_TYPES.join('|')}|urn:[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,255})$`,
+);
 const RESPONSE_TYPES = ['code', 'token', 'id_token'] as const;
 const AUTH_METHODS = [
   'client_secret_basic',
@@ -77,7 +80,12 @@ export class CreateClientDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(10)
-  @IsIn(GRANT_TYPES, { each: true })
+  @IsString({ each: true })
+  @Matches(GRANT_TYPE_PATTERN, {
+    each: true,
+    message:
+      'grantTypes는 내장 grant 또는 urn:... 형식의 커스텀 grant만 허용됩니다',
+  })
   grantTypes?: string[];
 
   @IsOptional()
@@ -164,7 +172,12 @@ export class UpdateClientDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(10)
-  @IsIn(GRANT_TYPES, { each: true })
+  @IsString({ each: true })
+  @Matches(GRANT_TYPE_PATTERN, {
+    each: true,
+    message:
+      'grantTypes는 내장 grant 또는 urn:... 형식의 커스텀 grant만 허용됩니다',
+  })
   grantTypes?: string[];
 
   @IsOptional()

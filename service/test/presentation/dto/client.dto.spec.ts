@@ -80,6 +80,14 @@ describe('CreateClientDto', () => {
     expect(errors).toHaveLength(0);
   });
 
+  it('grantTypes에 urn 형식 custom grant면 에러 없음', async () => {
+    const errors = await getErrors(CreateClientDto, {
+      ...valid,
+      grantTypes: ['urn:auth:grant-type:magic_link'],
+    });
+    expect(errors).toHaveLength(0);
+  });
+
   it('grantTypes에 허용되지 않는 값이면 에러', async () => {
     const errors = await getErrors(CreateClientDto, {
       ...valid,

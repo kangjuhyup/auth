@@ -1,10 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { GrantTypeRegistryPort } from '@application/ports/grant-type-registry.port';
 import type {
   GrantTypeDefinition,
   GrantTypeValidationIssue,
   GrantTypeValidationParams,
 } from '@application/ports/grant-type-registry.port';
+import { CUSTOM_GRANT_TYPES } from './custom-grants';
+import type { CustomGrantTypeDefinition } from './custom-grants';
 
 const BUILT_IN_GRANT_TYPES: GrantTypeDefinition[] = [
   {
@@ -48,14 +50,21 @@ const BUILT_IN_GRANT_TYPES: GrantTypeDefinition[] = [
 
 @Injectable()
 export class OidcGrantTypeRegistryAdapter extends GrantTypeRegistryPort {
+  constructor(
+    @Optional()
+    private readonly customGrantTypes: readonly CustomGrantTypeDefinition[] = CUSTOM_GRANT_TYPES,
+  ) {
+    super();
+  }
+
   async listSupportedGrantTypes(): Promise<string[]> {
-    return BUILT_IN_GRANT_TYPES.filter((grant) => grant.enabled).map(
-      (grant) => grant.grantType,
-    );
+    return this.getDefinitions()
+      .filter((grant) => grant.enabled)
+      .map((grant) => grant.grantType);
   }
 
   async listDefinitions(): Promise<GrantTypeDefinition[]> {
-    return BUILT_IN_GRANT_TYPES.map((grant) => ({ ...grant }));
+    return this.getDefinitions().map((grant) => ({ ...grant }));
   }
 
   async validateClientGrantTypes(
@@ -84,7 +93,9 @@ export class OidcGrantTypeRegistryAdapter extends GrantTypeRegistryPort {
         issues.push({ grantType, reason: 'client_type_not_allowed' });
       }
 
-      if (!definition.allowedApplicationTypes.includes(params.applicationType)) {
+      if (
+        !definition.allowedApplicationTypes.includes(params.applicationType)
+      ) {
         issues.push({ grantType, reason: 'application_type_not_allowed' });
       }
 
@@ -107,5 +118,11 @@ export class OidcGrantTypeRegistryAdapter extends GrantTypeRegistryPort {
     }
 
     return issues;
+  }
+
+  private getDefinitions(): GrantTypeDefinition[] {
+    return [...BUILT_IN_GRANT_TYPES, ...this.customGrantTypes].map((grant) => ({
+      ...grant,
+    }));
   }
 }
