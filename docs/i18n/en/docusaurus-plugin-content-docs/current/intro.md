@@ -31,10 +31,10 @@ Auth Docs is the documentation portal for operating the OIDC Authorization Serve
 | [Client Policies](./concepts/client/policies.md)       | Client authentication policies and effective policy calculation       |
 | [Grant Overview](./concepts/client/grants/overview.md) | OAuth/OIDC grant types allowed for a client                           |
 | [Custom Grant](./concepts/client/grants/custom.md)     | How to add a custom OAuth `grant_type`                                |
-| [Scope Overview](./concepts/client/scopes.md)          | Scope and resource indicator semantics                                |
+| [Scope Overview](./concepts/client/scopes/overview.md) | Scope and resource indicator semantics                                |
+| [Custom Scope](./concepts/client/scopes/custom.md)     | Service-specific custom scope definition rules                        |
 | [MFA Overview](./concepts/mfa.md)                      | Multi-factor authentication policy, enrollment, and verification flow |
 | [IdP Overview](./concepts/idp.md)                      | External identity provider connection model and protocol settings     |
-| [Custom IdP](./concepts/idp/custom.md)                 | Rules for OAuth2/OIDC-style and SAML 2.0 custom IdPs                  |
 | [Interaction UI Customization](./ui/interaction-ui.md) | Safe customization points for login, consent, and MFA UI              |
 | [Redoc API Reference](./api/redoc.md)                  | How to open the OpenAPI / Redoc reference                             |
 

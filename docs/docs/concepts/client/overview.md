@@ -71,8 +71,8 @@ grant 정책 검증은 client type과 application type을 함께 봅니다.
 | `grantTypes`              | client가 사용할 수 있는 OAuth grant 흐름                  | [Grant 개요](./grants/overview.md) |
 | `responseTypes`           | authorization endpoint가 반환할 응답 방식                 | [Grant 개요](./grants/overview.md) |
 | `tokenEndpointAuthMethod` | token endpoint에서 client를 인증하는 방식                 | [Grant 개요](./grants/overview.md) |
-| `scope`                   | client가 요청할 수 있는 scope 목록                        | [Scope 개요](./scopes.md)          |
-| `allowedResources`        | resource indicator로 요청 가능한 API resource origin      | [Scope 개요](./scopes.md)          |
+| `scope`                   | client가 요청할 수 있는 scope 목록                        | [Scope 개요](./scopes/overview.md) |
+| `allowedResources`        | resource indicator로 요청 가능한 API resource origin      | [Scope 개요](./scopes/overview.md) |
 | `skipConsent`             | 신뢰된 client에서 사용자 동의 화면을 생략할지 여부        | [Client 정책](./policies.md)       |
 | `accessTokenTtlSec`       | client별 access token TTL override                        | [Client 정책](./policies.md)       |
 | `refreshTokenTtlSec`      | client별 refresh token TTL override                       | [Client 정책](./policies.md)       |
@@ -137,5 +137,5 @@ production URI는 HTTPS를 사용하고, 로그인 callback과 logout callback�
 | ---------------------------------- | -------------------------------------------- |
 | [Client 정책](./policies.md)       | client auth policy와 effective policy        |
 | [Grant 개요](./grants/overview.md) | grant type, response type, token auth method |
-| [Scope 개요](./scopes.md)          | scope와 resource indicator                   |
+| [Scope 개요](./scopes/overview.md) | scope와 resource indicator                   |
 | [Clients](../../ui/clients.md)     | 관리자 UI client 관리 화면                   |

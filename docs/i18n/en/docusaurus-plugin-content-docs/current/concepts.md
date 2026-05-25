@@ -66,10 +66,10 @@ flowchart LR
 | [Client Policies](./concepts/client/policies.md)       | Client authentication policies and effective policy calculation           |
 | [Grant Overview](./concepts/client/grants/overview.md) | Grant type policy and validation rules                                    |
 | [Custom Grant](./concepts/client/grants/custom.md)     | How to add a custom OAuth `grant_type`                                    |
-| [Scope Overview](./concepts/client/scopes.md)          | Scope and resource indicator behavior                                     |
+| [Scope Overview](./concepts/client/scopes/overview.md) | Scope and resource indicator behavior                                     |
+| [Custom Scope](./concepts/client/scopes/custom.md)     | Service-specific custom scope definition rules                            |
 | [MFA Overview](./concepts/mfa.md)                      | MFA methods, enrollment, and interaction verification                     |
 | [IdP Overview](./concepts/idp.md)                      | External IdP connection model, protocol settings, and policy restrictions |
-| [Custom IdP](./concepts/idp/custom.md)                 | Rules for OAuth2/OIDC-style and SAML 2.0 custom IdPs                      |
 
 ## RBAC
 

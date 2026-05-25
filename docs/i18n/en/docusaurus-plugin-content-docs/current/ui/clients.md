@@ -27,7 +27,7 @@ See also:
 
 - [Client Overview](../concepts/client/overview.md) for redirect URI and core attributes
 - [Grant Overview](../concepts/client/grants/overview.md) for grant selection
-- [Scope Overview](../concepts/client/scopes.md) for scope and resource indicators
+- [Scope Overview](../concepts/client/scopes/overview.md) for scope and resource indicators
 - [Client Policies](../concepts/client/policies.md) for MFA, consent, and session policy
 
 :::danger

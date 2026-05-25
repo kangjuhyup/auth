@@ -1,9 +1,9 @@
 ---
-title: 개요
+title: IdP
 description: 외부 Identity Provider의 의미, 프로토콜, tenant/client 정책 관계
 ---
 
-# IdP 개요
+# IdP
 
 IdP는 Identity Provider의 약자입니다. Auth 시스템이 직접 비밀번호를 검증하는 대신, Google, Okta, 사내 SSO, SAML IdP 같은 외부 인증 제공자를 통해 사용자를 인증할 수 있게 합니다.
 
@@ -95,10 +95,9 @@ Tenant 정책은 tenant 전체에서 허용할 IdP 목록을 정하고, Client �
 
 ## 관련 문서
 
-| 문서                                              | 설명                                              |
-| ------------------------------------------------- | ------------------------------------------------- |
-| [커스텀 IdP](./idp/custom.md)                     | OAuth2/OIDC 스타일, SAML 2.0 커스텀 IdP 추가 기준 |
-| [Identity Providers](../ui/identity-providers.md) | 관리자 UI IdP 설정 화면                           |
-| [Tenant 정책](./tenant/policies.md)               | tenant allowed IdP 정책                           |
-| [Client 정책](./client/policies.md)               | client별 IdP 제한                                 |
-| [OIDC 인증 흐름](./oidc-flow.md)                  | Interaction과 외부 IdP 흐름                       |
+| 문서                                              | 설명                        |
+| ------------------------------------------------- | --------------------------- |
+| [Identity Providers](../ui/identity-providers.md) | 관리자 UI IdP 설정 화면     |
+| [Tenant 정책](./tenant/policies.md)               | tenant allowed IdP 정책     |
+| [Client 정책](./client/policies.md)               | client별 IdP 제한           |
+| [OIDC 인증 흐름](./oidc-flow.md)                  | Interaction과 외부 IdP 흐름 |

@@ -25,7 +25,7 @@ OIDC/OAuth client를 관리합니다. client는 로그인을 요청하는 애플
 
 Redirect URI 등 client 속성 설명은 [Client 개요](../concepts/client/overview.md)를 참고하세요.
 Grant Type 선택 기준과 조합은 [Grant 개요](../concepts/client/grants/overview.md)를 참고하세요.
-Scope와 resource indicator는 [Scope 개요](../concepts/client/scopes.md)를 참고하세요.
+Scope와 resource indicator는 [Scope 개요](../concepts/client/scopes/overview.md)를 참고하세요.
 로그인 방식, MFA, 동의, 세션 정책은 [Client 정책](../concepts/client/policies.md)을 참고하세요.
 
 :::danger

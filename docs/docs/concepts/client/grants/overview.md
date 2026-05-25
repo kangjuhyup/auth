@@ -106,5 +106,5 @@ grant_type=refresh_token
 | ------------------------------------ | ----------------------------------- |
 | [Client 개요](../overview.md)        | client 주요 속성                    |
 | [커스텀 Grant](./custom.md)          | 커스텀 OAuth `grant_type` 추가 절차 |
-| [Scope 개요](../scopes.md)           | scope와 resource indicator          |
+| [Scope 개요](../scopes/overview.md)  | scope와 resource indicator          |
 | [OIDC 인증 흐름](../../oidc-flow.md) | Authorization Code + PKCE 흐름      |

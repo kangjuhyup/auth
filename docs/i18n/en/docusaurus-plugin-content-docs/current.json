@@ -34,5 +34,9 @@
   "sidebar.mainSidebar.category.IdP": {
     "message": "IdP",
     "description": "The label for category 'IdP' in sidebar 'mainSidebar'"
+  },
+  "sidebar.mainSidebar.category.Scope": {
+    "message": "Scope",
+    "description": "The label for category 'Scope' in sidebar 'mainSidebar'"
   }
 }

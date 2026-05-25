@@ -57,8 +57,8 @@ Grant policy validation considers both client type and application type.
 | `grantTypes`              | OAuth grant flows allowed for this client                 | [Grant Overview](./grants/overview.md) |
 | `responseTypes`           | Authorization endpoint response modes                     | [Grant Overview](./grants/overview.md) |
 | `tokenEndpointAuthMethod` | How the client authenticates at the token endpoint        | [Grant Overview](./grants/overview.md) |
-| `scope`                   | Scopes this client can request                            | [Scope Overview](./scopes.md)          |
-| `allowedResources`        | Resource indicator origins this client can request        | [Scope Overview](./scopes.md)          |
+| `scope`                   | Scopes this client can request                            | [Scope Overview](./scopes/overview.md) |
+| `allowedResources`        | Resource indicator origins this client can request        | [Scope Overview](./scopes/overview.md) |
 | `skipConsent`             | Whether trusted clients can skip consent                  | [Client Policies](./policies.md)       |
 | `accessTokenTtlSec`       | Client-specific access token TTL override                 | [Client Policies](./policies.md)       |
 | `refreshTokenTtlSec`      | Client-specific refresh token TTL override                | [Client Policies](./policies.md)       |

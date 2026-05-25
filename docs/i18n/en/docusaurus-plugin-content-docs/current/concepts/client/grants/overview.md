@@ -88,9 +88,9 @@ When a client is saved, `GrantTypeRegistryPort` validates `grantTypes`.
 
 ## Related Docs
 
-| Document                          | Description                            |
-| --------------------------------- | -------------------------------------- |
-| [Client Overview](../overview.md) | Main client attributes                 |
-| [Custom Grant](./custom.md)       | How to add a custom OAuth `grant_type` |
-| [Scope Overview](../scopes.md)    | Scope and resource indicator behavior  |
-| [OIDC Flow](../../oidc-flow.md)   | Authorization Code + PKCE flow         |
+| Document                                | Description                            |
+| --------------------------------------- | -------------------------------------- |
+| [Client Overview](../overview.md)       | Main client attributes                 |
+| [Custom Grant](./custom.md)             | How to add a custom OAuth `grant_type` |
+| [Scope Overview](../scopes/overview.md) | Scope and resource indicator behavior  |
+| [OIDC Flow](../../oidc-flow.md)         | Authorization Code + PKCE flow         |

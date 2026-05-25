@@ -3,7 +3,7 @@ title: IdP
 description: What an external Identity Provider means, protocols, and tenant/client policy relationships
 ---
 
-# IdP Overview
+# IdP
 
 IdP stands for Identity Provider. Instead of verifying the user's password directly, the Auth system can authenticate users through an external provider such as Google, Okta, workforce SSO, or a SAML IdP.
 
@@ -95,10 +95,9 @@ If `client.allowedIdpProviderKeys` is `null`, the client follows the tenant poli
 
 ## Related Docs
 
-| Document                                          | Description                                          |
-| ------------------------------------------------- | ---------------------------------------------------- |
-| [Custom IdP](./idp/custom.md)                     | Rules for OAuth2/OIDC-style and SAML 2.0 custom IdPs |
-| [Identity Providers](../ui/identity-providers.md) | Admin UI IdP configuration screen                    |
-| [Tenant Policies](./tenant/policies.md)           | Tenant allowed IdP policy                            |
-| [Client Policies](./client/policies.md)           | Client-specific IdP restrictions                     |
-| [OIDC Flow](./oidc-flow.md)                       | Interaction and external IdP flow                    |
+| Document                                          | Description                       |
+| ------------------------------------------------- | --------------------------------- |
+| [Identity Providers](../ui/identity-providers.md) | Admin UI IdP configuration screen |
+| [Tenant Policies](./tenant/policies.md)           | Tenant allowed IdP policy         |
+| [Client Policies](./client/policies.md)           | Client-specific IdP restrictions  |
+| [OIDC Flow](./oidc-flow.md)                       | Interaction and external IdP flow |

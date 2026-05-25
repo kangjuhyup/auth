@@ -35,16 +35,19 @@ const sidebars = {
                 'concepts/client/grants/custom',
               ],
             },
-            'concepts/client/scopes',
+            {
+              type: 'category',
+              label: 'Scope',
+              collapsed: false,
+              items: [
+                'concepts/client/scopes/overview',
+                'concepts/client/scopes/custom',
+              ],
+            },
           ],
         },
         'concepts/mfa',
-        {
-          type: 'category',
-          label: 'IdP',
-          collapsed: false,
-          items: ['concepts/idp', 'concepts/idp/custom'],
-        },
+        'concepts/idp',
       ],
     },
     {

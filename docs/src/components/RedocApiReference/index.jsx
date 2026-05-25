@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import useBaseUrl from '@docusaurus/useBaseUrl';
 
 const REDOC_SCRIPT_SRC =
   'https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js';
@@ -25,11 +26,10 @@ function loadRedocScript() {
   return redocScriptPromise;
 }
 
-export default function RedocApiReference({
-  specUrl = 'http://localhost:3000/openapi.json',
-}) {
+export default function RedocApiReference({ specUrl = '/openapi.json' }) {
   const containerRef = useRef(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const resolvedSpecUrl = useBaseUrl(specUrl);
 
   useEffect(() => {
     let cancelled = false;
@@ -42,7 +42,11 @@ export default function RedocApiReference({
           return;
         }
         containerRef.current.innerHTML = '';
-        window.Redoc.init(specUrl, { hideDownloadButton: false }, containerRef.current);
+        window.Redoc.init(
+          resolvedSpecUrl,
+          { hideDownloadButton: false },
+          containerRef.current,
+        );
       } catch (error) {
         if (!cancelled) {
           setErrorMessage(
@@ -59,14 +63,14 @@ export default function RedocApiReference({
     return () => {
       cancelled = true;
     };
-  }, [specUrl]);
+  }, [resolvedSpecUrl]);
 
   return (
     <div className="redocApiReference">
       {errorMessage ? (
         <div className="redocApiReference__error">
-          Redoc을 불러오지 못했습니다. service가 실행 중인지, 그리고
-          HTTP_CORS_ORIGINS에 docs origin이 포함되어 있는지 확인하세요.
+          Redoc을 불러오지 못했습니다. 정적 OpenAPI JSON 파일이 배포
+          산출물에 포함되어 있는지 확인하세요.
           <br />
           <code>{errorMessage}</code>
         </div>

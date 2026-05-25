@@ -5,23 +5,22 @@ description: How to view the service OpenAPI document with Redoc
 
 # Redoc API Reference
 
-The service exposes an OpenAPI document and AuthDocs renders it with Redoc.
+AuthDocs renders Redoc from the static OpenAPI JSON file stored at `docs/static/openapi.json`. Deployed documentation does not call a running service to fetch the schema.
 
 ## Local URLs
 
-| Target               | URL                                  |
-| -------------------- | ------------------------------------ |
-| Service OpenAPI JSON | `http://localhost:3000/openapi.json` |
-| AuthDocs Redoc page  | `/api-reference`                     |
+| Target              | URL                                       |
+| ------------------- | ----------------------------------------- |
+| Static OpenAPI JSON | `http://localhost:3100/auth/openapi.json` |
+| AuthDocs Redoc page | `/api-reference`                          |
 
 ## Build Flow
 
-1. Run the service.
-2. Open `/openapi.json` to verify the schema.
-3. Run AuthDocs and open the Redoc page.
+1. Update `docs/static/openapi.json` from the service when the API changes.
+2. Run AuthDocs and open the Redoc page.
 
 ```bash
-yarn service:dev
+curl http://localhost:3000/openapi.json -o docs/static/openapi.json
 yarn docs:dev
 ```
 
@@ -38,6 +37,6 @@ yarn docs:dev
 
 | Symptom             | Check                                                |
 | ------------------- | ---------------------------------------------------- |
-| Redoc page is blank | Service is running and `/openapi.json` is reachable  |
+| Redoc page is blank | `docs/static/openapi.json` is included in the build  |
 | Schema is missing   | Controller decorator or response schema registration |
-| CORS/proxy issue    | Docs dev server proxy or direct service URL          |
+| Stale schema        | Refresh `docs/static/openapi.json` from the service  |

@@ -30,10 +30,10 @@ AuthDocs is the user and operator documentation portal for this repository. Mark
 | [Client Policies](./concepts/client/policies.md)       | Client authentication policy overrides                       |
 | [Grant Overview](./concepts/client/grants/overview.md) | Client grant type policy                                     |
 | [Custom Grant](./concepts/client/grants/custom.md)     | Custom `grant_type` extension procedure                      |
-| [Scope Overview](./concepts/client/scopes.md)          | Scope and resource indicator behavior                        |
+| [Scope Overview](./concepts/client/scopes/overview.md) | Scope and resource indicator behavior                        |
+| [Custom Scope](./concepts/client/scopes/custom.md)     | Service-specific custom scope definition rules               |
 | [MFA Overview](./concepts/mfa.md)                      | MFA methods, enrollment, and interaction verification        |
 | [IdP Overview](./concepts/idp.md)                      | External identity provider protocols and policy restrictions |
-| [Custom IdP](./concepts/idp/custom.md)                 | Rules for OAuth2/OIDC-style and SAML 2.0 custom IdPs         |
 | [Redoc API Reference](./api/redoc.md)                  | OpenAPI / Redoc reference                                    |
 
 ## Admin UI

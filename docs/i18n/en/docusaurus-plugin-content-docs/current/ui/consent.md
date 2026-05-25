@@ -20,4 +20,4 @@ Consent records represent what scopes a user has allowed for a client.
 - Review scope meaning before skipping consent.
 - Do not log raw tokens or sensitive user data.
 
-Related concept: [Scope Overview](../concepts/client/scopes.md).
+Related concept: [Scope Overview](../concepts/client/scopes/overview.md).

@@ -1,5 +1,5 @@
 ---
-title: Scope
+title: 개요
 description: Client scope와 resource indicator의 의미와 운영 기준
 ---
 
@@ -51,7 +51,7 @@ scope는 client가 요청할 수 있는 범위의 상한선입니다. 실제 ID 
 | 기존 동의 scope      | 기존 Grant를 재사용할 수 있음                |
 | `skipConsent` client | 정책상 허용된 경우 동의 없이 Grant 자동 생성 |
 
-`skipConsent`는 [Client 정책](./policies.md)과 함께 검토해야 합니다.
+`skipConsent`는 [Client 정책](../policies.md)과 함께 검토해야 합니다.
 
 ## Allowed Resources
 
@@ -81,9 +81,10 @@ scope가 있다고 해서 사용자가 모든 동작을 할 수 있는 것은 �
 
 ## 관련 문서
 
-| 문서                               | 설명                             |
-| ---------------------------------- | -------------------------------- |
-| [Client 개요](./overview.md)       | client 주요 속성                 |
-| [Grant 개요](./grants/overview.md) | grant type과 token endpoint 인증 |
-| [Consent](../../ui/consent.md)     | 사용자 consent 관리              |
-| [OIDC 인증 흐름](../oidc-flow.md)  | scope 요청과 token 발급 흐름     |
+| 문서                                 | 설명                             |
+| ------------------------------------ | -------------------------------- |
+| [커스텀 Scope](./custom.md)          | 서비스별 scope 정의 기준         |
+| [Client 개요](../overview.md)        | client 주요 속성                 |
+| [Grant 개요](../grants/overview.md)  | grant type과 token endpoint 인증 |
+| [Consent](../../../ui/consent.md)    | 사용자 consent 관리              |
+| [OIDC 인증 흐름](../../oidc-flow.md) | scope 요청과 token 발급 흐름     |

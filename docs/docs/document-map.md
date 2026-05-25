@@ -30,10 +30,10 @@ AuthDocs는 이 저장소의 사용자/운영자 대상 문서 포털입니다. 
 | [Client 정책](./concepts/client/policies.md)       | client별 인증 정책과 effective policy              |
 | [Grant 개요](./concepts/client/grants/overview.md) | client grant type 정책                             |
 | [커스텀 Grant](./concepts/client/grants/custom.md) | 커스텀 `grant_type` 추가 절차                      |
-| [Scope 개요](./concepts/client/scopes.md)          | scope와 resource indicator                         |
+| [Scope 개요](./concepts/client/scopes/overview.md) | scope와 resource indicator                         |
+| [커스텀 Scope](./concepts/client/scopes/custom.md) | 서비스별 custom scope 정의 기준                    |
 | [MFA 개요](./concepts/mfa.md)                      | MFA 정책, enrollment, 인증 흐름                    |
 | [IdP 개요](./concepts/idp.md)                      | 외부 Identity Provider와 OAuth2/SAML 연동          |
-| [커스텀 IdP](./concepts/idp/custom.md)             | OAuth2/OIDC 스타일, SAML 2.0 커스텀 IdP 추가 기준  |
 | [Redoc API 문서](./api/redoc.md)                   | OpenAPI / Redoc 확인 방법                          |
 
 ## 관리자 UI

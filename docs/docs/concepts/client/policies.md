@@ -58,7 +58,7 @@ MFA 방식과 enrollment 흐름은 [MFA 개요](../mfa.md)를 참고하세요.
 
 - 외부 또는 제3자 client는 consent를 유지합니다.
 - 1st-party client에서 동의를 생략하려면 client 신뢰 경계와 scope를 먼저 검토합니다.
-- scope 의미는 [Scope 개요](./scopes.md)를 함께 확인합니다.
+- scope 의미는 [Scope 개요](./scopes/overview.md)를 함께 확인합니다.
 
 ## Session / Reauthentication
 

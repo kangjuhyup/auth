@@ -1,0 +1,388 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Auth API",
+    "description": "OIDC Authorization Server API Reference snapshot for Auth Docs.",
+    "version": "0.1.1"
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Service origin"
+    },
+    {
+      "url": "/api",
+      "description": "Vite proxy"
+    }
+  ],
+  "tags": [
+    {
+      "name": "OIDC Protocol",
+      "description": "Tenant-scoped OAuth2/OIDC endpoints delegated to node-oidc-provider."
+    },
+    {
+      "name": "Admin",
+      "description": "Tenant-scoped administration APIs."
+    },
+    {
+      "name": "Auth",
+      "description": "User self-service authentication APIs."
+    }
+  ],
+  "paths": {
+    "/t/{tenantCode}/oidc/.well-known/openid-configuration": {
+      "get": {
+        "tags": ["OIDC Protocol"],
+        "summary": "OIDC discovery metadata",
+        "description": "Returns tenant issuer metadata for client auto-configuration.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantCode"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OIDC discovery document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "issuer",
+                    "authorization_endpoint",
+                    "token_endpoint",
+                    "jwks_uri"
+                  ],
+                  "properties": {
+                    "issuer": {
+                      "type": "string",
+                      "example": "http://localhost:3000/t/acme/oidc"
+                    },
+                    "authorization_endpoint": {
+                      "type": "string"
+                    },
+                    "token_endpoint": {
+                      "type": "string"
+                    },
+                    "jwks_uri": {
+                      "type": "string"
+                    },
+                    "scopes_supported": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "grant_types_supported": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/t/{tenantCode}/oidc/auth": {
+      "get": {
+        "tags": ["OIDC Protocol"],
+        "summary": "Authorization endpoint",
+        "description": "Starts an OIDC/OAuth2 authorization request. PKCE is required with S256.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantCode"
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "response_type",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "code"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "openid profile email"
+            }
+          },
+          {
+            "name": "redirect_uri",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          {
+            "name": "code_challenge",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code_challenge_method",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": ["S256"]
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to interaction or client redirect URI."
+          },
+          "400": {
+            "$ref": "#/components/responses/OAuthError"
+          }
+        }
+      }
+    },
+    "/t/{tenantCode}/oidc/token": {
+      "post": {
+        "tags": ["OIDC Protocol"],
+        "summary": "Token endpoint",
+        "description": "Exchanges authorization code, refresh token, client credentials, or registered custom grant requests for tokens.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantCode"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": ["grant_type"],
+                "properties": {
+                  "grant_type": {
+                    "type": "string",
+                    "example": "authorization_code"
+                  },
+                  "client_id": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "redirect_uri": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "code_verifier": {
+                    "type": "string"
+                  },
+                  "refresh_token": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/OAuthError"
+          }
+        }
+      }
+    },
+    "/t/{tenantCode}/oidc/jwks": {
+      "get": {
+        "tags": ["OIDC Protocol"],
+        "summary": "JWKS endpoint",
+        "description": "Returns public signing keys for validating issued JWTs.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantCode"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "JSON Web Key Set"
+          }
+        }
+      }
+    },
+    "/t/{tenantCode}/oidc/me": {
+      "get": {
+        "tags": ["OIDC Protocol"],
+        "summary": "UserInfo endpoint",
+        "description": "Returns OIDC user claims for a valid access token.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantCode"
+          }
+        ],
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User claims"
+          },
+          "401": {
+            "description": "Invalid or missing access token"
+          }
+        }
+      }
+    },
+    "/t/{tenantCode}/admin/clients": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List clients",
+        "description": "Client lifecycle management. Redirect URIs are strictly validated, grant types are checked against policy, client secrets are never returned, and changes are audited.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantCode"
+          }
+        ],
+        "security": [
+          {
+            "admin_session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Client list"
+          }
+        }
+      }
+    },
+    "/auth/profile": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "Get current user profile",
+        "description": "Authenticated profile self-service. Password hashes, credential secrets, raw MFA material, and internal system fields are never exposed.",
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current user profile"
+          },
+          "401": {
+            "description": "Unauthenticated"
+          },
+          "403": {
+            "description": "Authenticated but forbidden"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "access-token": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      },
+      "admin_session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "admin_session"
+      }
+    },
+    "parameters": {
+      "TenantCode": {
+        "name": "tenantCode",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "example": "acme"
+        },
+        "description": "Tenant code bound to the OIDC issuer."
+      }
+    },
+    "responses": {
+      "OAuthError": {
+        "description": "OAuth/OIDC error response. Internal stack traces are never exposed.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": {
+                  "type": "string",
+                  "example": "invalid_request"
+                },
+                "error_description": {
+                  "type": "string",
+                  "example": "The request is missing a required parameter."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "TokenResponse": {
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string"
+          },
+          "id_token": {
+            "type": "string"
+          },
+          "refresh_token": {
+            "type": "string"
+          },
+          "token_type": {
+            "type": "string",
+            "example": "Bearer"
+          },
+          "expires_in": {
+            "type": "integer",
+            "example": 3600
+          },
+          "scope": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
