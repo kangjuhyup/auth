@@ -1,5 +1,10 @@
 export type RefreshTokenReuseAction = 'revoke_grant';
 export type SignupMode = 'invite' | 'open';
+export type LoginSessionMode = 'multi' | 'single';
+export type SessionConflictAction =
+  | 'deny_new_login'
+  | 'revoke_previous_sessions'
+  | 'revoke_oldest_session';
 
 export interface PasswordPolicy {
   minLength: number;
@@ -26,6 +31,9 @@ export interface TenantSessionPolicy {
   maxAgeSec: number | null;
   requireAuthTime: boolean;
   reauthenticationIntervalSec: number | null;
+  loginSessionMode: LoginSessionMode;
+  maxConcurrentSessions: number | null;
+  sessionConflictAction: SessionConflictAction;
 }
 
 export interface TenantRefreshTokenPolicy {
@@ -80,6 +88,9 @@ export const DEFAULT_TENANT_POLICY_SET: TenantPolicySet = {
     maxAgeSec: 8 * 60 * 60,
     requireAuthTime: false,
     reauthenticationIntervalSec: null,
+    loginSessionMode: 'multi',
+    maxConcurrentSessions: null,
+    sessionConflictAction: 'revoke_previous_sessions',
   },
   refreshToken: {
     ttlSec: 14 * 24 * 60 * 60,
@@ -181,6 +192,21 @@ export function normalizeTenantPolicySet(
         'reauthenticationIntervalSec',
         base.session.reauthenticationIntervalSec,
       ),
+      loginSessionMode: loginSessionModeFrom(
+        input.session,
+        'loginSessionMode',
+        base.session.loginSessionMode,
+      ),
+      maxConcurrentSessions: nullableIntFrom(
+        input.session,
+        'maxConcurrentSessions',
+        base.session.maxConcurrentSessions,
+      ),
+      sessionConflictAction: sessionConflictActionFrom(
+        input.session,
+        'sessionConflictAction',
+        base.session.sessionConflictAction,
+      ),
     },
     refreshToken: {
       ttlSec: intFrom(input.refreshToken, 'ttlSec', base.refreshToken.ttlSec),
@@ -274,6 +300,28 @@ function nullableIntFrom(
   const value = record?.[key];
   if (value === null) return null;
   return typeof value === 'number' && Number.isInteger(value) && value >= 0
+    ? value
+    : fallback;
+}
+
+function loginSessionModeFrom(
+  source: unknown,
+  key: string,
+  fallback: LoginSessionMode,
+): LoginSessionMode {
+  const value = stringFrom(source, key);
+  return value === 'multi' || value === 'single' ? value : fallback;
+}
+
+function sessionConflictActionFrom(
+  source: unknown,
+  key: string,
+  fallback: SessionConflictAction,
+): SessionConflictAction {
+  const value = stringFrom(source, key);
+  return value === 'deny_new_login' ||
+    value === 'revoke_previous_sessions' ||
+    value === 'revoke_oldest_session'
     ? value
     : fallback;
 }

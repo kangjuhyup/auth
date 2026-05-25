@@ -117,10 +117,7 @@ export function TenantForm({
             <InputNumber min={1} max={3650} style={{ width: '100%' }} />
           </Form.Item>
 
-          <Form.Item
-            name="lockoutFailureThreshold"
-            label="계정 잠금 실패 횟수"
-          >
+          <Form.Item name="lockoutFailureThreshold" label="계정 잠금 실패 횟수">
             <InputNumber min={1} max={100} style={{ width: '100%' }} />
           </Form.Item>
 
@@ -173,11 +170,33 @@ export function TenantForm({
             <Switch />
           </Form.Item>
 
-          <Form.Item
-            name="reauthenticationIntervalSec"
-            label="재인증 주기(초)"
-          >
+          <Form.Item name="reauthenticationIntervalSec" label="재인증 주기(초)">
             <InputNumber min={60} max={31536000} style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Form.Item name="loginSessionMode" label="로그인 세션 모드">
+            <Select>
+              <Select.Option value="multi">멀티 로그인</Select.Option>
+              <Select.Option value="single">싱글 로그인</Select.Option>
+            </Select>
+          </Form.Item>
+
+          <Form.Item name="maxConcurrentSessions" label="최대 동시 세션 수">
+            <InputNumber min={1} max={100} style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Form.Item name="sessionConflictAction" label="세션 충돌 처리">
+            <Select>
+              <Select.Option value="revoke_previous_sessions">
+                기존 세션 만료
+              </Select.Option>
+              <Select.Option value="deny_new_login">
+                새 로그인 거부
+              </Select.Option>
+              <Select.Option value="revoke_oldest_session">
+                가장 오래된 세션 만료
+              </Select.Option>
+            </Select>
           </Form.Item>
 
           <Divider orientation="left">Refresh token 정책</Divider>

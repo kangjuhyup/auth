@@ -104,6 +104,24 @@ class SessionPolicyDto {
   @Min(60)
   @Max(31536000)
   reauthenticationIntervalSec?: number | null;
+
+  @IsOptional()
+  @IsIn(['multi', 'single'])
+  loginSessionMode?: 'multi' | 'single';
+
+  @IsOptional()
+  @ValidateIf((o) => o.maxConcurrentSessions !== null)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  maxConcurrentSessions?: number | null;
+
+  @IsOptional()
+  @IsIn(['deny_new_login', 'revoke_previous_sessions', 'revoke_oldest_session'])
+  sessionConflictAction?:
+    | 'deny_new_login'
+    | 'revoke_previous_sessions'
+    | 'revoke_oldest_session';
 }
 
 class RefreshTokenPolicyDto {

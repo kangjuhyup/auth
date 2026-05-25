@@ -104,4 +104,27 @@ export class ClientAuthPolicyOrmEntity extends BaseEntity {
     default: 'revoke_grant',
   })
   refreshTokenReuseAction!: string;
+
+  @Property({
+    fieldName: 'login_session_mode',
+    type: 'varchar',
+    length: 16,
+    nullable: true,
+  })
+  loginSessionMode?: string | null;
+
+  @Property({
+    fieldName: 'max_concurrent_sessions',
+    type: 'int',
+    nullable: true,
+  })
+  maxConcurrentSessions?: number | null;
+
+  @Property({
+    fieldName: 'session_conflict_action',
+    type: 'varchar',
+    length: 32,
+    nullable: true,
+  })
+  sessionConflictAction?: string | null;
 }

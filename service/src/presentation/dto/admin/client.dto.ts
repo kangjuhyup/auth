@@ -10,6 +10,7 @@ import {
   MinLength,
   MaxLength,
   Min,
+  Max,
   Matches,
   ArrayMaxSize,
   ValidateIf,
@@ -299,6 +300,27 @@ export class UpdateClientAuthPolicyDto {
   @IsOptional()
   @IsIn(REFRESH_TOKEN_REUSE_ACTIONS)
   refreshTokenReuseAction?: 'revoke_grant';
+
+  @IsOptional()
+  @ValidateIf((o) => o.loginSessionMode !== null)
+  @IsIn(['single'])
+  loginSessionMode?: 'single' | null;
+
+  @IsOptional()
+  @ValidateIf((o) => o.maxConcurrentSessions !== null)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  maxConcurrentSessions?: number | null;
+
+  @IsOptional()
+  @ValidateIf((o) => o.sessionConflictAction !== null)
+  @IsIn(['deny_new_login', 'revoke_previous_sessions', 'revoke_oldest_session'])
+  sessionConflictAction?:
+    | 'deny_new_login'
+    | 'revoke_previous_sessions'
+    | 'revoke_oldest_session'
+    | null;
 }
 
 export class ClientResponse {
@@ -407,6 +429,19 @@ export class ClientAuthPolicyResponse {
   refreshTokenReuseAction!: 'revoke_grant';
 
   @Expose()
+  loginSessionMode!: 'single' | null;
+
+  @Expose()
+  maxConcurrentSessions!: number | null;
+
+  @Expose()
+  sessionConflictAction!:
+    | 'deny_new_login'
+    | 'revoke_previous_sessions'
+    | 'revoke_oldest_session'
+    | null;
+
+  @Expose()
   effective!: {
     mfaRequired: boolean;
     allowedIdpProviderKeys: string[] | null;
@@ -414,5 +449,11 @@ export class ClientAuthPolicyResponse {
     requireAuthTime: boolean;
     reauthenticationIntervalSec: number | null;
     refreshTokenTtlSec: number;
+    loginSessionMode: 'multi' | 'single';
+    maxConcurrentSessions: number | null;
+    sessionConflictAction:
+      | 'deny_new_login'
+      | 'revoke_previous_sessions'
+      | 'revoke_oldest_session';
   };
 }

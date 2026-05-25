@@ -469,6 +469,40 @@ describe('ClientCommandHandler', () => {
       expect(policy.reauthenticationIntervalSec).toBe(1800);
     });
 
+    it('클라이언트별 single login override를 수정한다', async () => {
+      const policy = makeClientAuthPolicy('client-1');
+      clientAuthPolicyRepo.findByClientRefId.mockResolvedValue(policy);
+
+      await handler.updateClientAuthPolicy('tenant-1', 'client-1', {
+        loginSessionMode: 'single',
+        maxConcurrentSessions: 1,
+        sessionConflictAction: 'deny_new_login',
+      });
+
+      expect(clientAuthPolicyRepo.save).toHaveBeenCalledWith(policy);
+      expect(policy.loginSessionMode).toBe('single');
+      expect(policy.maxConcurrentSessions).toBe(1);
+      expect(policy.sessionConflictAction).toBe('deny_new_login');
+    });
+
+    it('single login override를 null로 돌려 tenant 정책 상속으로 복귀한다', async () => {
+      const policy = makeClientAuthPolicy('client-1');
+      policy.changeLoginSessionMode('single');
+      policy.changeMaxConcurrentSessions(1);
+      policy.changeSessionConflictAction('deny_new_login');
+      clientAuthPolicyRepo.findByClientRefId.mockResolvedValue(policy);
+
+      await handler.updateClientAuthPolicy('tenant-1', 'client-1', {
+        loginSessionMode: null,
+        maxConcurrentSessions: null,
+        sessionConflictAction: null,
+      });
+
+      expect(policy.loginSessionMode).toBeNull();
+      expect(policy.maxConcurrentSessions).toBeNull();
+      expect(policy.sessionConflictAction).toBeNull();
+    });
+
     it('기존 정책이 없으면 기본 정책을 생성한 뒤 수정한다', async () => {
       clientAuthPolicyRepo.findByClientRefId.mockResolvedValue(null);
 

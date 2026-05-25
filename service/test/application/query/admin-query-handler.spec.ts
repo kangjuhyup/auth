@@ -828,6 +828,9 @@ describe('AdminQueryHandler - ClientAuthPolicy', () => {
       expect(result.refreshTokenReuseAction).toBe('revoke_grant');
       expect(result.allowedIdpProviderKeys).toEqual(['okta']);
       expect(result.reauthenticationIntervalSec).toBe(1800);
+      expect(result.loginSessionMode).toBeNull();
+      expect(result.maxConcurrentSessions).toBeNull();
+      expect(result.sessionConflictAction).toBeNull();
       expect(result.effective).toEqual({
         mfaRequired: false,
         allowedIdpProviderKeys: ['okta'],
@@ -835,6 +838,9 @@ describe('AdminQueryHandler - ClientAuthPolicy', () => {
         requireAuthTime: false,
         reauthenticationIntervalSec: 1800,
         refreshTokenTtlSec: 14 * 24 * 60 * 60,
+        loginSessionMode: 'multi',
+        maxConcurrentSessions: null,
+        sessionConflictAction: 'revoke_previous_sessions',
       });
     });
   });

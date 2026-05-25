@@ -1,9 +1,11 @@
 import { ClientAuthPolicyModel } from '@domain/models/client-auth-policy';
 import type {
   AuthMethod,
+  ClientLoginSessionModeOverride,
   MfaMethod,
   RefreshTokenReuseAction,
 } from '@domain/models/client-auth-policy';
+import type { SessionConflictAction } from '@domain/models/tenant-policy';
 
 function makePolicy(
   overrides: Partial<{
@@ -18,6 +20,9 @@ function makePolicy(
     reauthenticationIntervalSec: number | null;
     refreshTokenRotationEnabled: boolean;
     refreshTokenReuseAction: RefreshTokenReuseAction;
+    loginSessionMode: ClientLoginSessionModeOverride;
+    maxConcurrentSessions: number | null;
+    sessionConflictAction: SessionConflictAction | null;
   }> = {},
 ): ClientAuthPolicyModel {
   return new ClientAuthPolicyModel({
@@ -35,6 +40,9 @@ function makePolicy(
     refreshTokenRotationEnabled: overrides.refreshTokenRotationEnabled ?? true,
     refreshTokenReuseAction:
       overrides.refreshTokenReuseAction ?? 'revoke_grant',
+    loginSessionMode: overrides.loginSessionMode ?? null,
+    maxConcurrentSessions: overrides.maxConcurrentSessions ?? null,
+    sessionConflictAction: overrides.sessionConflictAction ?? null,
   });
 }
 
@@ -55,6 +63,9 @@ describe('ClientAuthPolicyModel', () => {
     expect(policy.reauthenticationIntervalSec).toBeNull();
     expect(policy.refreshTokenRotationEnabled).toBe(true);
     expect(policy.refreshTokenReuseAction).toBe('revoke_grant');
+    expect(policy.loginSessionMode).toBeNull();
+    expect(policy.maxConcurrentSessions).toBeNull();
+    expect(policy.sessionConflictAction).toBeNull();
   });
 
   it('id를 지정하여 생성할 수 있다', () => {
@@ -73,6 +84,9 @@ describe('ClientAuthPolicyModel', () => {
         reauthenticationIntervalSec: null,
         refreshTokenRotationEnabled: true,
         refreshTokenReuseAction: 'revoke_grant',
+        loginSessionMode: null,
+        maxConcurrentSessions: null,
+        sessionConflictAction: null,
       },
       'policy-1',
     );
@@ -191,6 +205,30 @@ describe('ClientAuthPolicyModel', () => {
 
       expect(policy.refreshTokenReuseAction).toBe('revoke_grant');
     });
+
+    it('changeLoginSessionMode로 single login override를 변경한다', () => {
+      const policy = makePolicy();
+
+      policy.changeLoginSessionMode('single');
+
+      expect(policy.loginSessionMode).toBe('single');
+    });
+
+    it('changeMaxConcurrentSessions로 동시 세션 제한을 변경한다', () => {
+      const policy = makePolicy();
+
+      policy.changeMaxConcurrentSessions(1);
+
+      expect(policy.maxConcurrentSessions).toBe(1);
+    });
+
+    it('changeSessionConflictAction으로 세션 충돌 정책을 변경한다', () => {
+      const policy = makePolicy();
+
+      policy.changeSessionConflictAction('deny_new_login');
+
+      expect(policy.sessionConflictAction).toBe('deny_new_login');
+    });
   });
 
   it('tenant 기본 정책과 client override를 결합해 effective policy를 계산한다', () => {
@@ -221,6 +259,9 @@ describe('ClientAuthPolicyModel', () => {
           maxAgeSec: 3600,
           requireAuthTime: true,
           reauthenticationIntervalSec: 1200,
+          loginSessionMode: 'multi',
+          maxConcurrentSessions: 3,
+          sessionConflictAction: 'revoke_previous_sessions',
         },
         refreshToken: {
           ttlSec: 86400,
@@ -239,6 +280,54 @@ describe('ClientAuthPolicyModel', () => {
       requireAuthTime: true,
       reauthenticationIntervalSec: 900,
       refreshTokenTtlSec: 7200,
+      loginSessionMode: 'multi',
+      maxConcurrentSessions: 3,
+      sessionConflictAction: 'revoke_previous_sessions',
     });
+  });
+
+  it('client single login override와 더 작은 동시 세션 제한을 effective policy에 반영한다', () => {
+    const policy = makePolicy({
+      loginSessionMode: 'single',
+      maxConcurrentSessions: 1,
+      sessionConflictAction: 'deny_new_login',
+    });
+
+    const effective = policy.resolveEffectivePolicy(
+      {
+        password: {
+          minLength: 12,
+          requireUppercase: true,
+          requireLowercase: true,
+          requireNumber: true,
+          requireSymbol: true,
+          preventReuseCount: 5,
+          expiresInDays: 90,
+          lockoutFailureThreshold: 5,
+          lockoutDurationSec: 900,
+        },
+        mfa: { required: false, adminRequired: true },
+        allowedIdp: { providerKeys: null },
+        session: {
+          maxAgeSec: 3600,
+          requireAuthTime: false,
+          reauthenticationIntervalSec: null,
+          loginSessionMode: 'multi',
+          maxConcurrentSessions: 5,
+          sessionConflictAction: 'revoke_previous_sessions',
+        },
+        refreshToken: {
+          ttlSec: 86400,
+          rotationEnabled: true,
+          reuseAction: 'revoke_grant',
+        },
+        signup: { mode: 'invite', allowedEmailDomains: [] },
+      },
+      null,
+    );
+
+    expect(effective.loginSessionMode).toBe('single');
+    expect(effective.maxConcurrentSessions).toBe(1);
+    expect(effective.sessionConflictAction).toBe('deny_new_login');
   });
 });

@@ -23,6 +23,12 @@ export interface TenantSessionPolicy {
   maxAgeSec: number | null;
   requireAuthTime: boolean;
   reauthenticationIntervalSec: number | null;
+  loginSessionMode: 'multi' | 'single';
+  maxConcurrentSessions: number | null;
+  sessionConflictAction:
+    | 'deny_new_login'
+    | 'revoke_previous_sessions'
+    | 'revoke_oldest_session';
 }
 
 export interface TenantRefreshTokenPolicy {

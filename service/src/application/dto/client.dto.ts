@@ -206,6 +206,13 @@ export class UpdateClientAuthPolicyDto {
     public readonly reauthenticationIntervalSec?: number | null,
     public readonly refreshTokenRotationEnabled?: boolean,
     public readonly refreshTokenReuseAction?: 'revoke_grant',
+    public readonly loginSessionMode?: 'single' | null,
+    public readonly maxConcurrentSessions?: number | null,
+    public readonly sessionConflictAction?:
+      | 'deny_new_login'
+      | 'revoke_previous_sessions'
+      | 'revoke_oldest_session'
+      | null,
   ) {}
 
   static of(params: {
@@ -220,6 +227,13 @@ export class UpdateClientAuthPolicyDto {
     reauthenticationIntervalSec?: number | null;
     refreshTokenRotationEnabled?: boolean;
     refreshTokenReuseAction?: 'revoke_grant';
+    loginSessionMode?: 'single' | null;
+    maxConcurrentSessions?: number | null;
+    sessionConflictAction?:
+      | 'deny_new_login'
+      | 'revoke_previous_sessions'
+      | 'revoke_oldest_session'
+      | null;
   }): UpdateClientAuthPolicyDto {
     return new UpdateClientAuthPolicyDto(
       params.allowedAuthMethods,
@@ -233,6 +247,9 @@ export class UpdateClientAuthPolicyDto {
       params.reauthenticationIntervalSec,
       params.refreshTokenRotationEnabled,
       params.refreshTokenReuseAction,
+      params.loginSessionMode,
+      params.maxConcurrentSessions,
+      params.sessionConflictAction,
     );
   }
 }
@@ -245,6 +262,12 @@ export class ClientAuthPolicyEffectiveResponse {
     public readonly requireAuthTime: boolean,
     public readonly reauthenticationIntervalSec: number | null,
     public readonly refreshTokenTtlSec: number,
+    public readonly loginSessionMode: 'multi' | 'single',
+    public readonly maxConcurrentSessions: number | null,
+    public readonly sessionConflictAction:
+      | 'deny_new_login'
+      | 'revoke_previous_sessions'
+      | 'revoke_oldest_session',
   ) {}
 
   static of(params: {
@@ -254,6 +277,12 @@ export class ClientAuthPolicyEffectiveResponse {
     requireAuthTime: boolean;
     reauthenticationIntervalSec: number | null;
     refreshTokenTtlSec: number;
+    loginSessionMode: 'multi' | 'single';
+    maxConcurrentSessions: number | null;
+    sessionConflictAction:
+      | 'deny_new_login'
+      | 'revoke_previous_sessions'
+      | 'revoke_oldest_session';
   }): ClientAuthPolicyEffectiveResponse {
     return new ClientAuthPolicyEffectiveResponse(
       params.mfaRequired,
@@ -262,6 +291,9 @@ export class ClientAuthPolicyEffectiveResponse {
       params.requireAuthTime,
       params.reauthenticationIntervalSec,
       params.refreshTokenTtlSec,
+      params.loginSessionMode,
+      params.maxConcurrentSessions,
+      params.sessionConflictAction,
     );
   }
 }
@@ -280,6 +312,13 @@ export class ClientAuthPolicyResponse {
     public readonly reauthenticationIntervalSec: number | null,
     public readonly refreshTokenRotationEnabled: boolean,
     public readonly refreshTokenReuseAction: 'revoke_grant',
+    public readonly loginSessionMode: 'single' | null,
+    public readonly maxConcurrentSessions: number | null,
+    public readonly sessionConflictAction:
+      | 'deny_new_login'
+      | 'revoke_previous_sessions'
+      | 'revoke_oldest_session'
+      | null,
     public readonly effective: ClientAuthPolicyEffectiveResponse,
   ) {}
 
@@ -296,6 +335,13 @@ export class ClientAuthPolicyResponse {
     reauthenticationIntervalSec: number | null;
     refreshTokenRotationEnabled: boolean;
     refreshTokenReuseAction: 'revoke_grant';
+    loginSessionMode: 'single' | null;
+    maxConcurrentSessions: number | null;
+    sessionConflictAction:
+      | 'deny_new_login'
+      | 'revoke_previous_sessions'
+      | 'revoke_oldest_session'
+      | null;
     effective: ClientAuthPolicyEffectiveResponse;
   }): ClientAuthPolicyResponse {
     return new ClientAuthPolicyResponse(
@@ -311,6 +357,9 @@ export class ClientAuthPolicyResponse {
       params.reauthenticationIntervalSec,
       params.refreshTokenRotationEnabled,
       params.refreshTokenReuseAction,
+      params.loginSessionMode,
+      params.maxConcurrentSessions,
+      params.sessionConflictAction,
       params.effective,
     );
   }

@@ -248,4 +248,22 @@ describe('UpdateClientAuthPolicyDto', () => {
       errors.some((e) => e.property === 'reauthenticationIntervalSec'),
     ).toBe(true);
   });
+
+  it('single login override 정책이면 에러 없음', async () => {
+    expect(
+      await getErrors(UpdateClientAuthPolicyDto, {
+        loginSessionMode: 'single',
+        maxConcurrentSessions: 1,
+        sessionConflictAction: 'deny_new_login',
+      }),
+    ).toHaveLength(0);
+  });
+
+  it('client는 multi login으로 완화할 수 없다', async () => {
+    const errors = await getErrors(UpdateClientAuthPolicyDto, {
+      loginSessionMode: 'multi',
+    });
+
+    expect(errors.some((e) => e.property === 'loginSessionMode')).toBe(true);
+  });
 });

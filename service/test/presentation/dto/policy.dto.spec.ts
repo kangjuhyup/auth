@@ -22,6 +22,9 @@ describe('UpdateTenantPoliciesDto', () => {
         maxAgeSec: 7200,
         requireAuthTime: true,
         reauthenticationIntervalSec: 1800,
+        loginSessionMode: 'single',
+        maxConcurrentSessions: 1,
+        sessionConflictAction: 'revoke_previous_sessions',
       },
       refreshToken: { ttlSec: 604800, rotationEnabled: true },
       signup: {

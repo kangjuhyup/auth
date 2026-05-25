@@ -49,6 +49,13 @@ export interface UpdateClientAuthPolicyDto {
   reauthenticationIntervalSec?: number | null;
   refreshTokenRotationEnabled?: boolean;
   refreshTokenReuseAction?: 'revoke_grant';
+  loginSessionMode?: 'single' | null;
+  maxConcurrentSessions?: number | null;
+  sessionConflictAction?:
+    | 'deny_new_login'
+    | 'revoke_previous_sessions'
+    | 'revoke_oldest_session'
+    | null;
 }
 
 export interface ClientAuthPolicyResponse {
@@ -64,6 +71,13 @@ export interface ClientAuthPolicyResponse {
   reauthenticationIntervalSec: number | null;
   refreshTokenRotationEnabled: boolean;
   refreshTokenReuseAction: 'revoke_grant';
+  loginSessionMode: 'single' | null;
+  maxConcurrentSessions: number | null;
+  sessionConflictAction:
+    | 'deny_new_login'
+    | 'revoke_previous_sessions'
+    | 'revoke_oldest_session'
+    | null;
   effective: {
     mfaRequired: boolean;
     allowedIdpProviderKeys: string[] | null;
@@ -71,5 +85,11 @@ export interface ClientAuthPolicyResponse {
     requireAuthTime: boolean;
     reauthenticationIntervalSec: number | null;
     refreshTokenTtlSec: number;
+    loginSessionMode: 'multi' | 'single';
+    maxConcurrentSessions: number | null;
+    sessionConflictAction:
+      | 'deny_new_login'
+      | 'revoke_previous_sessions'
+      | 'revoke_oldest_session';
   };
 }

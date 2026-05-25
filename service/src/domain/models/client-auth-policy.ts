@@ -1,10 +1,18 @@
 import { Getter } from '../decorators';
 import { PersistenceModel } from './persistence-model';
-import type { TenantPolicySet } from './tenant-policy';
+import type {
+  LoginSessionMode,
+  SessionConflictAction,
+  TenantPolicySet,
+} from './tenant-policy';
 
 export type AuthMethod = 'password' | 'totp' | 'webauthn' | 'magic_link';
 export type MfaMethod = 'totp' | 'webauthn' | 'recovery_code';
 export type RefreshTokenReuseAction = 'revoke_grant';
+export type ClientLoginSessionModeOverride = Extract<
+  LoginSessionMode,
+  'single'
+> | null;
 
 interface ClientAuthPolicyModelProps {
   tenantId: string;
@@ -20,6 +28,9 @@ interface ClientAuthPolicyModelProps {
   reauthenticationIntervalSec: number | null;
   refreshTokenRotationEnabled: boolean;
   refreshTokenReuseAction: RefreshTokenReuseAction;
+  loginSessionMode?: ClientLoginSessionModeOverride;
+  maxConcurrentSessions?: number | null;
+  sessionConflictAction?: SessionConflictAction | null;
 }
 
 export interface EffectiveClientAuthPolicy {
@@ -29,6 +40,9 @@ export interface EffectiveClientAuthPolicy {
   requireAuthTime: boolean;
   reauthenticationIntervalSec: number | null;
   refreshTokenTtlSec: number;
+  loginSessionMode: LoginSessionMode;
+  maxConcurrentSessions: number | null;
+  sessionConflictAction: SessionConflictAction;
 }
 
 export class ClientAuthPolicyModel extends PersistenceModel<
@@ -36,7 +50,15 @@ export class ClientAuthPolicyModel extends PersistenceModel<
   ClientAuthPolicyModelProps
 > {
   constructor(props: ClientAuthPolicyModelProps, id?: string) {
-    super(props, id);
+    super(
+      {
+        ...props,
+        loginSessionMode: props.loginSessionMode ?? null,
+        maxConcurrentSessions: props.maxConcurrentSessions ?? null,
+        sessionConflictAction: props.sessionConflictAction ?? null,
+      },
+      id,
+    );
   }
 
   @Getter()
@@ -77,6 +99,15 @@ export class ClientAuthPolicyModel extends PersistenceModel<
 
   @Getter()
   declare readonly refreshTokenReuseAction: RefreshTokenReuseAction;
+
+  @Getter()
+  declare readonly loginSessionMode: ClientLoginSessionModeOverride;
+
+  @Getter()
+  declare readonly maxConcurrentSessions: number | null;
+
+  @Getter()
+  declare readonly sessionConflictAction: SessionConflictAction | null;
 
   changeAllowedAuthMethods(methods: AuthMethod[]): void {
     this.etc.allowedAuthMethods = methods;
@@ -122,6 +153,18 @@ export class ClientAuthPolicyModel extends PersistenceModel<
     this.etc.refreshTokenReuseAction = action;
   }
 
+  changeLoginSessionMode(mode: ClientLoginSessionModeOverride): void {
+    this.etc.loginSessionMode = mode;
+  }
+
+  changeMaxConcurrentSessions(count: number | null): void {
+    this.etc.maxConcurrentSessions = count;
+  }
+
+  changeSessionConflictAction(action: SessionConflictAction | null): void {
+    this.etc.sessionConflictAction = action;
+  }
+
   resolveEffectivePolicy(
     tenantPolicies: TenantPolicySet,
     clientRefreshTokenTtlSec: number | null | undefined,
@@ -139,6 +182,27 @@ export class ClientAuthPolicyModel extends PersistenceModel<
         tenantPolicies.session.reauthenticationIntervalSec,
       refreshTokenTtlSec:
         clientRefreshTokenTtlSec ?? tenantPolicies.refreshToken.ttlSec,
+      loginSessionMode:
+        tenantPolicies.session.loginSessionMode === 'single' ||
+        this.loginSessionMode === 'single'
+          ? 'single'
+          : 'multi',
+      maxConcurrentSessions: resolveStricterSessionLimit(
+        tenantPolicies.session.maxConcurrentSessions,
+        this.maxConcurrentSessions,
+      ),
+      sessionConflictAction:
+        this.sessionConflictAction ??
+        tenantPolicies.session.sessionConflictAction,
     };
   }
+}
+
+function resolveStricterSessionLimit(
+  tenantLimit: number | null,
+  clientLimit: number | null,
+): number | null {
+  if (tenantLimit === null) return clientLimit;
+  if (clientLimit === null) return tenantLimit;
+  return Math.min(tenantLimit, clientLimit);
 }

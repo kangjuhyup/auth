@@ -1,4 +1,14 @@
-import { Alert, Button, Card, Form, Space, Spin, Switch } from 'antd';
+import {
+  Alert,
+  Button,
+  Card,
+  Form,
+  InputNumber,
+  Select,
+  Space,
+  Spin,
+  Switch,
+} from 'antd';
 import { useEffect } from 'react';
 import { useTenantStore } from '@/stores/tenant.store';
 import type { UpdateTenantPoliciesDto } from '@/types/policy.types';
@@ -8,6 +18,12 @@ import { useUpdateTenantPolicies } from './hooks/useUpdateTenantPolicies';
 type TenantPolicyForm = {
   mfaRequired: boolean;
   adminMfaRequired: boolean;
+  loginSessionMode: 'multi' | 'single';
+  maxConcurrentSessions: number | null;
+  sessionConflictAction:
+    | 'deny_new_login'
+    | 'revoke_previous_sessions'
+    | 'revoke_oldest_session';
 };
 
 export function TenantPoliciesPage() {
@@ -22,6 +38,9 @@ export function TenantPoliciesPage() {
       form.setFieldsValue({
         mfaRequired: policies.mfa.required,
         adminMfaRequired: policies.mfa.adminRequired,
+        loginSessionMode: policies.session.loginSessionMode,
+        maxConcurrentSessions: policies.session.maxConcurrentSessions,
+        sessionConflictAction: policies.session.sessionConflictAction,
       });
     }
   }, [form, policies]);
@@ -31,6 +50,11 @@ export function TenantPoliciesPage() {
       mfa: {
         required: values.mfaRequired,
         adminRequired: values.adminMfaRequired,
+      },
+      session: {
+        loginSessionMode: values.loginSessionMode,
+        maxConcurrentSessions: values.maxConcurrentSessions,
+        sessionConflictAction: values.sessionConflictAction,
       },
     };
     updatePolicies.mutate(dto);
@@ -73,6 +97,46 @@ export function TenantPoliciesPage() {
             valuePropName="checked"
           >
             <Switch />
+          </Form.Item>
+
+          <Form.Item
+            name="loginSessionMode"
+            label="Login session mode"
+            rules={[{ required: true, message: 'Session mode is required' }]}
+          >
+            <Select
+              options={[
+                { label: 'Multi login', value: 'multi' },
+                { label: 'Single login', value: 'single' },
+              ]}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="maxConcurrentSessions"
+            label="Max concurrent sessions"
+          >
+            <InputNumber min={1} max={100} style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Form.Item
+            name="sessionConflictAction"
+            label="Session conflict action"
+            rules={[{ required: true, message: 'Conflict action is required' }]}
+          >
+            <Select
+              options={[
+                {
+                  label: 'Revoke previous sessions',
+                  value: 'revoke_previous_sessions',
+                },
+                { label: 'Deny new login', value: 'deny_new_login' },
+                {
+                  label: 'Revoke oldest session',
+                  value: 'revoke_oldest_session',
+                },
+              ]}
+            />
           </Form.Item>
 
           <Form.Item>

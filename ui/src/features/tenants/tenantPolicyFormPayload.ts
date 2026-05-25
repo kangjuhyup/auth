@@ -24,6 +24,12 @@ export interface TenantPolicyFormValues {
   sessionMaxAgeSec?: number | null;
   sessionRequireAuthTime?: boolean;
   reauthenticationIntervalSec?: number | null;
+  loginSessionMode?: 'multi' | 'single';
+  maxConcurrentSessions?: number | null;
+  sessionConflictAction?:
+    | 'deny_new_login'
+    | 'revoke_previous_sessions'
+    | 'revoke_oldest_session';
   refreshTokenTtlSec?: number;
   refreshTokenRotationEnabled?: boolean;
   allowedEmailDomains?: string[];
@@ -61,6 +67,9 @@ export function tenantResponseToFormValues(
     sessionMaxAgeSec: policies?.session.maxAgeSec,
     sessionRequireAuthTime: policies?.session.requireAuthTime,
     reauthenticationIntervalSec: policies?.session.reauthenticationIntervalSec,
+    loginSessionMode: policies?.session.loginSessionMode,
+    maxConcurrentSessions: policies?.session.maxConcurrentSessions,
+    sessionConflictAction: policies?.session.sessionConflictAction,
     refreshTokenTtlSec: policies?.refreshToken.ttlSec,
     refreshTokenRotationEnabled: policies?.refreshToken.rotationEnabled,
     allowedEmailDomains: policies?.signup.allowedEmailDomains ?? [],
@@ -97,7 +106,8 @@ export function toTenantPolicyDto(
     },
     allowedIdp: {
       providerKeys:
-        values.allowedIdpProviderKeys && values.allowedIdpProviderKeys.length > 0
+        values.allowedIdpProviderKeys &&
+        values.allowedIdpProviderKeys.length > 0
           ? values.allowedIdpProviderKeys
           : null,
     },
@@ -105,6 +115,9 @@ export function toTenantPolicyDto(
       maxAgeSec: values.sessionMaxAgeSec ?? null,
       requireAuthTime: values.sessionRequireAuthTime,
       reauthenticationIntervalSec: values.reauthenticationIntervalSec ?? null,
+      loginSessionMode: values.loginSessionMode,
+      maxConcurrentSessions: values.maxConcurrentSessions ?? null,
+      sessionConflictAction: values.sessionConflictAction,
     },
     refreshToken: {
       ttlSec: values.refreshTokenTtlSec,

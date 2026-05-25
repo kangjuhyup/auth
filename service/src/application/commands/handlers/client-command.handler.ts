@@ -246,6 +246,15 @@ export class ClientCommandHandler implements ClientCommandPort {
     if (dto.refreshTokenReuseAction !== undefined) {
       policy.changeRefreshTokenReuseAction(dto.refreshTokenReuseAction);
     }
+    if (dto.loginSessionMode !== undefined) {
+      policy.changeLoginSessionMode(dto.loginSessionMode);
+    }
+    if (dto.maxConcurrentSessions !== undefined) {
+      policy.changeMaxConcurrentSessions(dto.maxConcurrentSessions);
+    }
+    if (dto.sessionConflictAction !== undefined) {
+      policy.changeSessionConflictAction(dto.sessionConflictAction);
+    }
 
     await this.clientAuthPolicyRepo.save(policy);
     await this.auditRecorder?.recordAdminAction({
@@ -301,6 +310,9 @@ export class ClientCommandHandler implements ClientCommandPort {
       reauthenticationIntervalSec: null,
       refreshTokenRotationEnabled: true,
       refreshTokenReuseAction: 'revoke_grant',
+      loginSessionMode: null,
+      maxConcurrentSessions: null,
+      sessionConflictAction: null,
     });
   }
 

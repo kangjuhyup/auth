@@ -153,6 +153,12 @@ export const OpenApiResponseSchemas = {
     reauthenticationIntervalSec: { ...integer(1800), nullable: true },
     refreshTokenRotationEnabled: boolean(true),
     refreshTokenReuseAction: string('revoke_grant'),
+    loginSessionMode: { ...string('single'), nullable: true },
+    maxConcurrentSessions: { ...integer(1), nullable: true },
+    sessionConflictAction: {
+      ...string('revoke_previous_sessions'),
+      nullable: true,
+    },
     effective: object({
       mfaRequired: boolean(false),
       allowedIdpProviderKeys: {
@@ -163,6 +169,9 @@ export const OpenApiResponseSchemas = {
       requireAuthTime: boolean(false),
       reauthenticationIntervalSec: { ...integer(1800), nullable: true },
       refreshTokenTtlSec: integer(1209600),
+      loginSessionMode: string('single'),
+      maxConcurrentSessions: { ...integer(1), nullable: true },
+      sessionConflictAction: string('revoke_previous_sessions'),
     }),
   }),
 
@@ -330,6 +339,9 @@ export const OpenApiResponseSchemas = {
       maxAgeSec: { ...integer(28800), nullable: true },
       requireAuthTime: boolean(true),
       reauthenticationIntervalSec: { ...integer(3600), nullable: true },
+      loginSessionMode: string('multi'),
+      maxConcurrentSessions: { ...integer(5), nullable: true },
+      sessionConflictAction: string('revoke_previous_sessions'),
     }),
     refreshToken: nullableObject({
       ttlSec: integer(1209600),

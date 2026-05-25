@@ -234,6 +234,9 @@ export class AdminQueryHandler implements AdminQueryPort {
       reauthenticationIntervalSec: policy.reauthenticationIntervalSec,
       refreshTokenRotationEnabled: policy.refreshTokenRotationEnabled,
       refreshTokenReuseAction: policy.refreshTokenReuseAction,
+      loginSessionMode: policy.loginSessionMode,
+      maxConcurrentSessions: policy.maxConcurrentSessions,
+      sessionConflictAction: policy.sessionConflictAction,
       effective: ClientAuthPolicyEffectiveResponse.of(effective),
     });
   }
