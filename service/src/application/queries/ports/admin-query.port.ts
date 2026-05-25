@@ -1,4 +1,8 @@
-import { PaginationQuery, PaginatedResult } from '@application/dto';
+import {
+  PaginationQuery,
+  PaginatedResult,
+  UserListQuery,
+} from '@application/dto';
 import type {
   AuditLogQuery,
   AuditLogResponse,
@@ -50,7 +54,7 @@ export abstract class AdminQueryPort {
   // User
   abstract getUsers(
     tenantId: string,
-    query: PaginationQuery,
+    query: UserListQuery,
   ): Promise<PaginatedResult<UserResponse>>;
   abstract getUser(tenantId: string, id: string): Promise<UserResponse>;
   abstract getUserConsents(

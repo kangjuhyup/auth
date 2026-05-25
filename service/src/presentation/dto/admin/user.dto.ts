@@ -11,6 +11,7 @@ import {
 } from 'class-validator';
 import { Expose, Transform } from 'class-transformer';
 import { MaskLog } from '@kangjuhyup/rvlog';
+import { PaginationQuery } from '../common/pagination.dto';
 
 const USER_STATUSES = ['ACTIVE', 'LOCKED', 'DISABLED'] as const;
 
@@ -72,6 +73,13 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   mfaEnabled?: boolean;
+}
+
+export class UserListQuery extends PaginationQuery {
+  @IsOptional()
+  @IsString()
+  @MaxLength(191)
+  search?: string;
 }
 
 export class UserResponse {

@@ -85,6 +85,19 @@ describe('queryKeys', () => {
       expect(listKey).not.toEqual(rolesKey);
     });
 
+    it('검색어가 다르면 users list 키도 달라진다', () => {
+      const key1 = queryKeys.admin.users.list('acme', {
+        page: 1,
+        search: 'alice',
+      });
+      const key2 = queryKeys.admin.users.list('acme', {
+        page: 1,
+        search: 'bob',
+      });
+
+      expect(key1).not.toEqual(key2);
+    });
+
     it('consent 목록과 이력 키가 userId 와 페이지 필터를 담는다', () => {
       const filters = { page: 1, limit: 10 };
       const consentsKey = queryKeys.admin.users.consents(

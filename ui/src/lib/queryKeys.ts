@@ -96,8 +96,10 @@ export const queryKeys = {
     },
     users: {
       all: ['admin', 'users'] as const,
-      list: (tenantId: string, filters: { page?: number; limit?: number }) =>
-        [...queryKeys.admin.users.all, tenantId, 'list', filters] as const,
+      list: (
+        tenantId: string,
+        filters: { page?: number; limit?: number; search?: string },
+      ) => [...queryKeys.admin.users.all, tenantId, 'list', filters] as const,
       detail: (tenantId: string, id: string) =>
         [...queryKeys.admin.users.all, tenantId, 'detail', id] as const,
       roles: (tenantId: string, userId: string) =>

@@ -6,6 +6,7 @@ export interface UserListQuery {
   tenantId: string;
   page: number;
   limit: number;
+  search?: string;
 }
 
 export interface CredentialLookupOptions {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Button, Space, Alert } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { Alert, Button, Input, Space } from 'antd';
+import { PlusOutlined, UndoOutlined } from '@ant-design/icons';
 import { UserTable } from './components/UserTable';
 import { UserFormModal } from './components/UserFormModal';
 import { UserRoleModal } from './components/UserRoleModal';
@@ -12,14 +12,28 @@ import { useTenantStore } from '@/stores/tenant.store';
 export function UsersPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
 
   const selectedTenant = useTenantStore((state) => state.selectedTenant);
-  const { data, isLoading } = useUsers({ page, limit: pageSize });
+  const { data, isLoading } = useUsers({ page, limit: pageSize, search });
   const { openCreateModal } = useAdminUiStore();
 
   const handlePageChange = (newPage: number, newPageSize: number) => {
     setPage(newPage);
     setPageSize(newPageSize);
+  };
+
+  const handleSearch = (value: string) => {
+    setPage(1);
+    setSearchInput(value);
+    setSearch(value.trim());
+  };
+
+  const handleReset = () => {
+    setPage(1);
+    setSearch('');
+    setSearchInput('');
   };
 
   if (!selectedTenant) {
@@ -43,13 +57,27 @@ export function UsersPage() {
         }}
       >
         <h1 style={{ margin: 0 }}>Users</h1>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={openCreateModal}
-        >
-          Create User
-        </Button>
+        <Space>
+          <Input.Search
+            allowClear
+            enterButton
+            placeholder="Search username, email, or phone"
+            style={{ width: 320 }}
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            onSearch={handleSearch}
+          />
+          <Button icon={<UndoOutlined />} onClick={handleReset}>
+            Reset
+          </Button>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={openCreateModal}
+          >
+            Create User
+          </Button>
+        </Space>
       </div>
 
       <UserTable

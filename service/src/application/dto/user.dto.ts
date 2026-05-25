@@ -52,6 +52,28 @@ export class UpdateUserDto {
   }
 }
 
+export class UserListQuery {
+  private constructor(
+    public readonly page?: number,
+    public readonly limit?: number,
+    public readonly search?: string,
+  ) {}
+
+  static of(params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+  }): UserListQuery {
+    const normalizedSearch = params.search?.trim();
+
+    return new UserListQuery(
+      params.page,
+      params.limit,
+      normalizedSearch ? normalizedSearch : undefined,
+    );
+  }
+}
+
 export class UserResponse {
   private constructor(
     public readonly id: string,

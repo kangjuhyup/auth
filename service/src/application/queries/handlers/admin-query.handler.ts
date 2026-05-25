@@ -5,6 +5,7 @@ import { AdminQueryPort } from '../ports/admin-query.port';
 import {
   PaginationQuery,
   PaginatedResult,
+  UserListQuery,
   TenantResponse,
   ClientResponse,
   ClientAuthPolicyEffectiveResponse,
@@ -318,7 +319,7 @@ export class AdminQueryHandler implements AdminQueryPort {
 
   async getUsers(
     tenantId: string,
-    query: PaginationQuery,
+    query: UserListQuery,
   ): Promise<PaginatedResult<UserResponse>> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
@@ -327,6 +328,7 @@ export class AdminQueryHandler implements AdminQueryPort {
       tenantId,
       page,
       limit,
+      search: query.search,
     });
 
     return PaginatedResult.of({

@@ -17,16 +17,17 @@ import {
   UpdateUserDto,
   UserResponse,
   UserConsentResponse,
+  UserListQuery,
   RoleResponse,
-  PaginationQuery,
   PaginatedResult,
 } from '@presentation/dto';
 import {
   AuditContext,
   TenantContext,
   CreateUserDto as AppCreateUserDto,
-  PaginationQuery as AppPaginationQuery,
   UpdateUserDto as AppUpdateUserDto,
+  UserListQuery as AppUserListQuery,
+  PaginationQuery as AppPaginationQuery,
 } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
 import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
@@ -53,9 +54,9 @@ export class AdminUserController {
   @ApiPaginatedSchema('List users', OpenApiResponseSchemas.user)
   list(
     @Tenant() tenant: TenantContext,
-    @Query() query: PaginationQuery,
+    @Query() query: UserListQuery,
   ): Promise<PaginatedResult<UserResponse>> {
-    return this.queryPort.getUsers(tenant.id, AppPaginationQuery.of(query));
+    return this.queryPort.getUsers(tenant.id, AppUserListQuery.of(query));
   }
 
   @Get(':id')

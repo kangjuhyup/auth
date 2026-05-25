@@ -14,6 +14,12 @@ export interface UpdateUserDto {
   mfaEnabled?: boolean;
 }
 
+export interface UserListQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+}
+
 export interface UserResponse {
   id: string;
   username: string;

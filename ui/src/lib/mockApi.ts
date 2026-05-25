@@ -1280,16 +1280,25 @@ export const mockUserApi = {
   list: async (params: {
     page?: number;
     limit?: number;
+    search?: string;
   }): Promise<PaginatedResult<UserResponse>> => {
     await delay(300);
     const page = params.page ?? 1;
     const limit = params.limit ?? 10;
+    const keyword = params.search?.trim().toLowerCase();
+    const filtered = keyword
+      ? mockUsers.filter((user) =>
+          [user.username, user.email ?? '', user.phone ?? ''].some((value) =>
+            value.toLowerCase().includes(keyword),
+          ),
+        )
+      : mockUsers;
     const start = (page - 1) * limit;
-    const items = mockUsers.slice(start, start + limit);
+    const items = filtered.slice(start, start + limit);
 
     return {
       items,
-      total: mockUsers.length,
+      total: filtered.length,
       page,
       limit,
     };

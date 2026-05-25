@@ -1055,6 +1055,26 @@ describe('AdminQueryHandler - Users', () => {
       expect(item.status).toBe('ACTIVE');
       expect(item.mfaEnabled).toBe(false);
     });
+
+    it('검색어가 있으면 사용자 저장소에 함께 전달한다', async () => {
+      userRepo.list.mockResolvedValue({
+        items: [makeUser('u-1', 'tenant-1')],
+        total: 1,
+      });
+
+      await handler.getUsers('tenant-1', {
+        page: 1,
+        limit: 10,
+        search: 'alice',
+      });
+
+      expect(userRepo.list).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        page: 1,
+        limit: 10,
+        search: 'alice',
+      });
+    });
   });
 
   describe('getUser', () => {

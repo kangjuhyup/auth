@@ -102,6 +102,32 @@ describe('UserWriteRepositoryImpl', () => {
       );
     });
 
+    it('검색어가 있으면 username, email, phone 부분 일치 조건으로 조회한다', async () => {
+      const first = createUserEntity();
+      attachCredentials(first, [createUserCredentialEntity()]);
+      em.findAndCount.mockResolvedValue([[first], 1]);
+
+      await repository.list({
+        tenantId: 'tenant-1',
+        page: 1,
+        limit: 10,
+        search: 'alice',
+      });
+
+      expect(em.findAndCount).toHaveBeenCalledWith(
+        UserOrmEntity,
+        {
+          tenant: 'tenant-1',
+          $or: [
+            { username: { $ilike: '%alice%' } },
+            { email: { $ilike: '%alice%' } },
+            { phone: { $ilike: '%alice%' } },
+          ],
+        },
+        { populate: ['tenant', 'credentials'], limit: 10, offset: 0 },
+      );
+    });
+
     it('credential 타입별 조회는 활성 credential만 도메인 모델로 변환한다', async () => {
       em.find.mockResolvedValue([
         createUserCredentialEntity({

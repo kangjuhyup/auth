@@ -6,6 +6,7 @@ import type {
   UserConsentResponse,
   CreateUserDto,
   UpdateUserDto,
+  UserListQuery,
 } from '@/types/user.types';
 import type { RoleResponse } from '@/types/role.types';
 
@@ -14,10 +15,12 @@ const USE_MOCK = import.meta.env.VITE_USE_MOCK_API === 'true';
 export const userApi = {
   list: (
     tenantCode: string,
-    params: { page?: number; limit?: number },
+    params: UserListQuery,
   ): Promise<PaginatedResult<UserResponse>> => {
     if (USE_MOCK) return mockApi.users.list(params);
-    return apiClient.get(`/t/${tenantCode}/admin/users`, { params });
+    return apiClient.get(`/t/${tenantCode}/admin/users`, {
+      params: { ...params },
+    });
   },
 
   get: (tenantCode: string, id: string): Promise<UserResponse> => {

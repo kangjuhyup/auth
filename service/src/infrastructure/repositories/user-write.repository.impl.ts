@@ -85,9 +85,22 @@ export class UserWriteRepositoryImpl implements UserWriteRepositoryPort {
     query: UserListQuery,
   ): Promise<{ items: UserModel[]; total: number }> {
     const offset = (query.page - 1) * query.limit;
+    const where: Record<string, unknown> = {
+      tenant: query.tenantId as any,
+    };
+
+    if (query.search) {
+      const keyword = `%${query.search}%`;
+      where.$or = [
+        { username: { $ilike: keyword } },
+        { email: { $ilike: keyword } },
+        { phone: { $ilike: keyword } },
+      ];
+    }
+
     const [entities, total] = await this.em.findAndCount(
       UserOrmEntity,
-      { tenant: query.tenantId as any },
+      where as any,
       { populate: ['tenant', 'credentials'], limit: query.limit, offset },
     );
 
