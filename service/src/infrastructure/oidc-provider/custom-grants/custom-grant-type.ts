@@ -30,3 +30,5 @@ export interface CustomGrantTypeDefinition extends GrantTypeDefinition {
   duplicateParameters?: CustomGrantTypeParameters;
   createHandler: (context: CustomGrantTypeContext) => CustomGrantTypeHandler;
 }
+
+export type CustomGrantStrategy = CustomGrantTypeDefinition;

@@ -39,4 +39,28 @@ describe('OidcScopeClaimResolverAdapter', () => {
       }),
     ).resolves.toEqual({ sub: 'user-1' });
   });
+
+  it('custom scope claim strategy를 통해 claim을 확장한다', async () => {
+    const adapter = new OidcScopeClaimResolverAdapter([
+      {
+        supports: (claimKey) => claimKey === 'department',
+        resolve: ({ tenantId, subject }) => ({
+          department: `${tenantId}:${subject}:engineering`,
+        }),
+      },
+    ]);
+
+    await expect(
+      adapter.resolve({
+        tenantId: 'tenant-1',
+        subject: 'user-1',
+        requestedScopes: ['department'],
+        claimKeys: ['department'],
+        baseClaims: { sub: 'user-1' },
+      }),
+    ).resolves.toEqual({
+      sub: 'user-1',
+      department: 'tenant-1:user-1:engineering',
+    });
+  });
 });

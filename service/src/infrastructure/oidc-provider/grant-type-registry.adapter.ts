@@ -7,6 +7,10 @@ import type {
 } from '@application/ports/grant-type-registry.port';
 import { CUSTOM_GRANT_TYPES } from './custom-grants';
 import type { CustomGrantTypeDefinition } from './custom-grants';
+import {
+  BUILT_IN_GRANT_TYPE_VALIDATION_STRATEGIES,
+  type GrantTypeValidationStrategy,
+} from './grant-type-strategies';
 
 const BUILT_IN_GRANT_TYPES: GrantTypeDefinition[] = [
   {
@@ -53,6 +57,8 @@ export class OidcGrantTypeRegistryAdapter extends GrantTypeRegistryPort {
   constructor(
     @Optional()
     private readonly customGrantTypes: readonly CustomGrantTypeDefinition[] = CUSTOM_GRANT_TYPES,
+    @Optional()
+    private readonly validationStrategies: readonly GrantTypeValidationStrategy[] = BUILT_IN_GRANT_TYPE_VALIDATION_STRATEGIES,
   ) {
     super();
   }
@@ -85,36 +91,15 @@ export class OidcGrantTypeRegistryAdapter extends GrantTypeRegistryPort {
         continue;
       }
 
-      if (!definition.enabled) {
-        issues.push({ grantType, reason: 'disabled' });
-      }
-
-      if (!definition.allowedClientTypes.includes(params.clientType)) {
-        issues.push({ grantType, reason: 'client_type_not_allowed' });
-      }
-
-      if (
-        !definition.allowedApplicationTypes.includes(params.applicationType)
-      ) {
-        issues.push({ grantType, reason: 'application_type_not_allowed' });
-      }
-
-      if (
-        definition.requiresClientAuthentication &&
-        params.tokenEndpointAuthMethod === 'none'
-      ) {
-        issues.push({ grantType, reason: 'client_auth_required' });
-      }
-
-      for (const requiredGrantType of definition.requiresGrantTypes ?? []) {
-        if (!selectedGrantTypes.has(requiredGrantType)) {
-          issues.push({
-            grantType,
-            reason: 'required_grant_missing',
-            requiredGrantType,
-          });
-        }
-      }
+      issues.push(
+        ...this.validationStrategies.flatMap((strategy) =>
+          strategy.validate({
+            definition,
+            params,
+            selectedGrantTypes,
+          }),
+        ),
+      );
     }
 
     return issues;

@@ -158,4 +158,33 @@ describe('OidcGrantTypeRegistryAdapter', () => {
       },
     ]);
   });
+
+  it('custom grant validation strategy로 client 정책을 확장한다', async () => {
+    registry = new OidcGrantTypeRegistryAdapter(
+      [],
+      [
+        {
+          validate: ({ definition }) =>
+            definition.grantType === 'implicit'
+              ? [{ grantType: definition.grantType, reason: 'disabled' }]
+              : [],
+        },
+      ],
+    );
+
+    await expect(
+      registry.validateClientGrantTypes({
+        tenantId: 'tenant-1',
+        clientType: 'public',
+        applicationType: 'web',
+        tokenEndpointAuthMethod: 'none',
+        grantTypes: ['implicit'],
+      }),
+    ).resolves.toEqual([
+      {
+        grantType: 'implicit',
+        reason: 'disabled',
+      },
+    ]);
+  });
 });

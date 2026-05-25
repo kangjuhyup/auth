@@ -3,6 +3,7 @@ import type { CustomGrantTypeDefinition } from './custom-grant-type';
 export const CUSTOM_GRANT_TYPES: CustomGrantTypeDefinition[] = [];
 
 export type {
+  CustomGrantStrategy,
   CustomGrantTypeContext,
   CustomGrantTypeDefinition,
   CustomGrantTypeHandler,
