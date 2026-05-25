@@ -69,7 +69,7 @@ flowchart LR
 | [Scope Overview](./concepts/client/scopes/overview.md) | Scope and resource indicator behavior                                     |
 | [Custom Scope](./concepts/client/scopes/custom.md)     | Service-specific custom scope definition rules                            |
 | [MFA Overview](./concepts/mfa.md)                      | MFA methods, enrollment, and interaction verification                     |
-| [IdP Overview](./concepts/idp.md)                      | External IdP connection model, protocol settings, and policy restrictions |
+| [IdP](./concepts/idp.md)                               | External IdP connection model, protocol settings, and policy restrictions |
 
 ## RBAC
 

@@ -34,7 +34,7 @@ Auth Docs is the documentation portal for operating the OIDC Authorization Serve
 | [Scope Overview](./concepts/client/scopes/overview.md) | Scope and resource indicator semantics                                |
 | [Custom Scope](./concepts/client/scopes/custom.md)     | Service-specific custom scope definition rules                        |
 | [MFA Overview](./concepts/mfa.md)                      | Multi-factor authentication policy, enrollment, and verification flow |
-| [IdP Overview](./concepts/idp.md)                      | External identity provider connection model and protocol settings     |
+| [IdP](./concepts/idp.md)                               | External identity provider connection model and protocol settings     |
 | [Interaction UI Customization](./ui/interaction-ui.md) | Safe customization points for login, consent, and MFA UI              |
 | [Redoc API Reference](./api/redoc.md)                  | How to open the OpenAPI / Redoc reference                             |
 

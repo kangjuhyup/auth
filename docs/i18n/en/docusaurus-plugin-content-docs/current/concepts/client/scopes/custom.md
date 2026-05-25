@@ -62,8 +62,8 @@ Check before operating:
 
 ## Related Docs
 
-| Document                          | Description                                   |
-| --------------------------------- | --------------------------------------------- |
-| [Scope Overview](./overview.md)   | Scope and resource indicator basics           |
-| [Client Policies](../policies.md) | Consent, MFA, and IdP restriction policies    |
-| [OIDC Flow](../../oidc-flow.md)   | Authorization request and token issuance flow |
+| Document                       | Description                                   |
+| ------------------------------ | --------------------------------------------- |
+| [Scope Overview](./overview)   | Scope and resource indicator basics           |
+| [Client Policies](../policies) | Consent, MFA, and IdP restriction policies    |
+| [OIDC Flow](../../oidc-flow)   | Authorization request and token issuance flow |

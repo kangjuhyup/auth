@@ -77,6 +77,16 @@ export function configureOpenApiDocs(app: INestApplication): void {
     return;
   }
 
+  const document = createOpenApiDocument(app);
+  const adapter = app.getHttpAdapter();
+
+  adapter.get(OPENAPI_JSON_PATH, (request, response: ResponseLike) => {
+    applyOpenApiCorsHeaders(config, request, response);
+    response.json(document);
+  });
+}
+
+export function createOpenApiDocument(app: INestApplication) {
   const openApiConfig = new DocumentBuilder()
     .setTitle('Auth API')
     .setDescription('OIDC Authorization Server API Reference')
@@ -100,10 +110,5 @@ export function configureOpenApiDocs(app: INestApplication): void {
 
   const document = SwaggerModule.createDocument(app, openApiConfig);
   applyEndpointReference(document);
-  const adapter = app.getHttpAdapter();
-
-  adapter.get(OPENAPI_JSON_PATH, (request, response: ResponseLike) => {
-    applyOpenApiCorsHeaders(config, request, response);
-    response.json(document);
-  });
+  return document;
 }

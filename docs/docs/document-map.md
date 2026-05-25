@@ -33,7 +33,7 @@ AuthDocs는 이 저장소의 사용자/운영자 대상 문서 포털입니다. 
 | [Scope 개요](./concepts/client/scopes/overview.md) | scope와 resource indicator                         |
 | [커스텀 Scope](./concepts/client/scopes/custom.md) | 서비스별 custom scope 정의 기준                    |
 | [MFA 개요](./concepts/mfa.md)                      | MFA 정책, enrollment, 인증 흐름                    |
-| [IdP 개요](./concepts/idp.md)                      | 외부 Identity Provider와 OAuth2/SAML 연동          |
+| [IdP](./concepts/idp.md)                           | 외부 Identity Provider와 OAuth2/SAML 연동          |
 | [Redoc API 문서](./api/redoc.md)                   | OpenAPI / Redoc 확인 방법                          |
 
 ## 관리자 UI

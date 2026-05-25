@@ -17,7 +17,7 @@ tenant 정책은 보안 하한선입니다. tenant에서 필수로 켠 MFA나 `r
 | ------------- | ---------------------------------------------------------------------------- |
 | Password      | 비밀번호 생성, 변경, 재사용, 잠금 기준                                       |
 | MFA           | tenant 일반 사용자와 관리자 MFA 필수 여부. 상세는 [MFA 개요](../mfa.md) 참고 |
-| Allowed IdP   | tenant에서 허용할 외부 Identity Provider. 상세는 [IdP 개요](../idp.md) 참고  |
+| Allowed IdP   | tenant에서 허용할 외부 Identity Provider. 상세는 [IdP](../idp.md) 참고       |
 | Session       | 로그인 세션 수명과 재인증 기준                                               |
 | Refresh Token | refresh token 수명, rotation, reuse 대응                                     |
 | Signup        | 가입 허용 방식과 이메일 도메인 제한                                          |
@@ -94,5 +94,5 @@ reuse 감지 시 token 원문을 로그에 남기지 않고 audit event와 revok
 | [Tenant 개요](./overview.md)                 | tenant 보안 경계와 issuer            |
 | [Client 정책](../client/policies.md)         | client별 override와 effective policy |
 | [MFA 개요](../mfa.md)                        | MFA 등록과 인증 흐름                 |
-| [IdP 개요](../idp.md)                        | OAuth2/SAML IdP 연동 구조            |
+| [IdP](../idp.md)                             | OAuth2/SAML IdP 연동 구조            |
 | [Tenant Policies 화면](../../ui/policies.md) | 관리자 UI 정책 화면 사용법           |

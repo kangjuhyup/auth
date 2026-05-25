@@ -78,7 +78,7 @@ tenant `requireAuthTime`이 `true`이면 client에서 낮출 수 없습니다.
 
 `null`이면 tenant의 `allowedIdp.providerKeys`를 따릅니다. 빈 배열은 허용 IdP가 없다는 의미가 될 수 있으므로 로그인 방식과 함께 신중히 설정합니다.
 
-OAuth2/SAML IdP 연동 구조는 [IdP 개요](../idp.md)를 참고하세요.
+OAuth2/SAML IdP 연동 구조는 [IdP](../idp.md)를 참고하세요.
 
 ## Refresh Token
 
@@ -110,5 +110,5 @@ Client auth policy 응답의 `effective` 값이 실제 로그인/세션 흐름�
 | [Client 개요](./overview.md)                 | client 주요 속성           |
 | [Tenant 정책](../tenant/policies.md)         | tenant 기본 정책           |
 | [MFA 개요](../mfa.md)                        | MFA 등록과 인증 흐름       |
-| [IdP 개요](../idp.md)                        | OAuth2/SAML IdP 연동 구조  |
+| [IdP](../idp.md)                             | OAuth2/SAML IdP 연동 구조  |
 | [Tenant Policies 화면](../../ui/policies.md) | 관리자 UI 정책 화면 사용법 |

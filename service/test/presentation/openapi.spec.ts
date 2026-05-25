@@ -84,6 +84,17 @@ describe('openapi docs', () => {
 
     applyEndpointReference(document);
 
+    expect(Object.keys(document.paths).sort()).toEqual([
+      '/t/{tenantCode}/oidc/.well-known/openid-configuration',
+      '/t/{tenantCode}/oidc/auth',
+      '/t/{tenantCode}/oidc/jwks',
+      '/t/{tenantCode}/oidc/me',
+      '/t/{tenantCode}/oidc/request',
+      '/t/{tenantCode}/oidc/session/end',
+      '/t/{tenantCode}/oidc/token',
+      '/t/{tenantCode}/oidc/token/introspection',
+      '/t/{tenantCode}/oidc/token/revocation',
+    ]);
     expect(
       document.paths['/t/{tenantCode}/oidc/auth']?.get?.description,
     ).toContain('PKCE is required with S256');

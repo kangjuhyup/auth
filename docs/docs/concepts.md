@@ -63,7 +63,7 @@ flowchart LR
 | [Scope 개요](./concepts/client/scopes/overview.md) | scope와 resource indicator                         |
 | [커스텀 Scope](./concepts/client/scopes/custom.md) | 서비스별 custom scope 정의 기준                    |
 | [MFA 개요](./concepts/mfa.md)                      | MFA 정책, enrollment, 인증 흐름                    |
-| [IdP 개요](./concepts/idp.md)                      | 외부 Identity Provider와 OAuth2/SAML 연동          |
+| [IdP](./concepts/idp.md)                           | 외부 Identity Provider와 OAuth2/SAML 연동          |
 
 ## RBAC
 
@@ -148,7 +148,7 @@ User ← Role → Permission
 | [Scope 개요](./concepts/client/scopes/overview.md) | scope와 resource indicator                   |
 | [커스텀 Scope](./concepts/client/scopes/custom.md) | 서비스별 custom scope 정의 기준              |
 | [MFA 개요](./concepts/mfa.md)                      | MFA 정책과 등록/인증 흐름                    |
-| [IdP 개요](./concepts/idp.md)                      | OAuth2/SAML IdP 연동 구조                    |
+| [IdP](./concepts/idp.md)                           | OAuth2/SAML IdP 연동 구조                    |
 | [Tenant 정책](./concepts/tenant/policies.md)       | tenant 기본 정책                             |
 | [Client 정책](./concepts/client/policies.md)       | client별 인증 정책                           |
 | [Roles / Groups / Users](./ui/access.md)           | RBAC 화면 사용법                             |

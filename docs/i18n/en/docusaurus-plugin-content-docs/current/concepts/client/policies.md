@@ -73,7 +73,7 @@ If tenant `requireAuthTime` is true, the client cannot weaken it.
 
 ## Client-specific IdP Restriction
 
-See [IdP Overview](../idp.md) for provider keys and supported external identity protocols.
+See [IdP](../idp.md) for provider keys and supported external identity protocols.
 
 | Field                    | Default | Description                               |
 | ------------------------ | ------- | ----------------------------------------- |
@@ -109,5 +109,5 @@ The `effective` field in the client auth policy response is what the login/sessi
 | Document                                 | Description                                    |
 | ---------------------------------------- | ---------------------------------------------- |
 | [MFA Overview](../mfa.md)                | Client MFA requirement and allowed methods     |
-| [IdP Overview](../idp.md)                | Client-specific external provider restrictions |
+| [IdP](../idp.md)                         | Client-specific external provider restrictions |
 | [Tenant Policies](../tenant/policies.md) | Tenant baseline policy                         |

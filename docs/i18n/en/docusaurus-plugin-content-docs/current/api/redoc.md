@@ -16,11 +16,11 @@ AuthDocs renders Redoc from the static OpenAPI JSON file stored at `docs/static/
 
 ## Build Flow
 
-1. Update `docs/static/openapi.json` from the service when the API changes.
+1. Export `docs/static/openapi.json` from the service controller/Swagger metadata when the API changes.
 2. Run AuthDocs and open the Redoc page.
 
 ```bash
-curl http://localhost:3000/openapi.json -o docs/static/openapi.json
+yarn docs:openapi
 yarn docs:dev
 ```
 
@@ -39,4 +39,4 @@ yarn docs:dev
 | ------------------- | ---------------------------------------------------- |
 | Redoc page is blank | `docs/static/openapi.json` is included in the build  |
 | Schema is missing   | Controller decorator or response schema registration |
-| Stale schema        | Refresh `docs/static/openapi.json` from the service  |
+| Stale schema        | Run `yarn docs:openapi`                              |

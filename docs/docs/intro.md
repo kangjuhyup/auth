@@ -34,7 +34,7 @@ Auth Docs는 OIDC Authorization Server와 관리자 UI 운영을 위한 문서 �
 | [Scope 개요](./concepts/client/scopes/overview.md)    | scope와 resource indicator 의미                                       |
 | [커스텀 Scope](./concepts/client/scopes/custom.md)    | 서비스별 custom scope 정의 기준                                       |
 | [MFA 개요](./concepts/mfa.md)                         | MFA 정책, enrollment, 인증 흐름                                       |
-| [IdP 개요](./concepts/idp.md)                         | 외부 Identity Provider와 OAuth2/SAML 연동                             |
+| [IdP](./concepts/idp.md)                              | 외부 Identity Provider와 OAuth2/SAML 연동                             |
 | [Interaction UI 커스터마이징](./ui/interaction-ui.md) | 로그인, 동의, MFA 화면 수정 지점과 빌드 절차                          |
 | [Redoc API 문서](./api/redoc.md)                      | 서비스 OpenAPI 문서 확인 방법                                         |
 

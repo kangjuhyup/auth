@@ -6,7 +6,7 @@ title: Identity Providers
 
 경로: `/admin/identity-providers`
 
-외부 IdP를 tenant에 연결합니다. OAuth 2.0과 SAML 2.0을 지원합니다. 개념 설명은 [IdP 개요](../concepts/idp.md)를 참고하세요.
+외부 IdP를 tenant에 연결합니다. OAuth 2.0과 SAML 2.0을 지원합니다. 개념 설명은 [IdP](../concepts/idp.md)를 참고하세요.
 
 ## 공통 필드
 

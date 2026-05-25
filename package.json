@@ -16,6 +16,7 @@
   ],
   "scripts": {
     "docs:dev": "yarn workspace @auth/docs start",
+    "docs:openapi": "yarn workspace @auth/service openapi:export",
     "docs:build": "yarn workspace @auth/docs build",
     "docs:serve": "yarn workspace @auth/docs serve",
     "service:dev": "yarn workspace @auth/service start:dev",

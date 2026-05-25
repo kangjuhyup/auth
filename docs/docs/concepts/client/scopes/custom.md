@@ -62,8 +62,8 @@ profile:manage
 
 ## 관련 문서
 
-| 문서                                 | 설명                                    |
-| ------------------------------------ | --------------------------------------- |
-| [Scope 개요](./overview.md)          | scope와 resource indicator 기본 개념    |
-| [Client 정책](../policies.md)        | consent, MFA, IdP 제한 정책             |
-| [OIDC 인증 흐름](../../oidc-flow.md) | authorization request와 token 발급 흐름 |
+| 문서                              | 설명                                    |
+| --------------------------------- | --------------------------------------- |
+| [Scope 개요](./overview)          | scope와 resource indicator 기본 개념    |
+| [Client 정책](../policies)        | consent, MFA, IdP 제한 정책             |
+| [OIDC 인증 흐름](../../oidc-flow) | authorization request와 token 발급 흐름 |

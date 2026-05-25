@@ -6,7 +6,7 @@ title: Identity Providers
 
 Path: `/admin/identity-providers`
 
-Connect external identity providers to a tenant. OAuth 2.0 and SAML 2.0 providers are supported. For the conceptual model, see [IdP Overview](../concepts/idp.md).
+Connect external identity providers to a tenant. OAuth 2.0 and SAML 2.0 providers are supported. For the conceptual model, see [IdP](../concepts/idp.md).
 
 ## Common Fields
 

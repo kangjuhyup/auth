@@ -31,10 +31,10 @@ Auth Docs를 실행한 뒤 별도 API Reference 화면에서 Redoc을 확인할 
 
 ## OpenAPI JSON 갱신
 
-service의 최신 OpenAPI JSON을 문서에 반영하려면 service를 실행한 뒤 정적 JSON 파일을 갱신합니다.
+service의 최신 controller/Swagger 메타데이터를 문서에 반영하려면 export 스크립트로 정적 JSON 파일을 갱신합니다. 이 과정은 service HTTP 서버나 DB를 실행하지 않습니다.
 
 ```bash
-curl http://localhost:3000/openapi.json -o docs/static/openapi.json
+yarn docs:openapi
 ```
 
 운영 배포된 Auth Docs는 이 파일을 정적 asset으로 제공합니다.

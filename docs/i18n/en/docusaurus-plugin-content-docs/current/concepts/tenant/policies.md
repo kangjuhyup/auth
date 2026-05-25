@@ -49,7 +49,7 @@ If tenant MFA is required, client policy cannot disable it.
 
 ## Allowed IdP
 
-See [IdP Overview](../idp.md) for provider keys, OAuth2/OIDC-style providers, and SAML 2.0 settings.
+See [IdP](../idp.md) for provider keys, OAuth2/OIDC-style providers, and SAML 2.0 settings.
 
 | Field          | Default | Description                                                                             |
 | -------------- | ------- | --------------------------------------------------------------------------------------- |
@@ -87,5 +87,5 @@ Production tenants should usually keep `invite` as the default. If `open` is use
 | Document                                 | Description                           |
 | ---------------------------------------- | ------------------------------------- |
 | [MFA Overview](../mfa.md)                | MFA methods and enrollment flow       |
-| [IdP Overview](../idp.md)                | External provider configuration model |
+| [IdP](../idp.md)                         | External provider configuration model |
 | [Client Policies](../client/policies.md) | Client-level policy overrides         |
