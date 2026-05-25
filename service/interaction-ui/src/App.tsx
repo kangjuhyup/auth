@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getDetails } from './api/client';
-import type { InteractionDetails } from './api/client';
+import type { InteractionDetails, LoginResult } from './api/client';
 import LoginPage from './pages/LoginPage';
 import MfaPage from './pages/MfaPage';
 import ConsentPage from './pages/ConsentPage';
@@ -71,13 +71,7 @@ export default function App() {
       });
   }, []);
 
-  const handleLoginSuccess = (result: {
-    mfaRequired?: boolean;
-    mfaEnrollmentRequired?: boolean;
-    methods?: string[];
-    passwordChangeRequired?: boolean;
-    redirectTo?: string;
-  }) => {
+  const handleLoginSuccess = (result: LoginResult) => {
     debugInteraction('login.result', {
       success: true,
       passwordChangeRequired: result.passwordChangeRequired === true,

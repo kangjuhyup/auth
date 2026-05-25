@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { QRCodeSVG } from '@rc-component/qrcode';
 import { beginTotpEnrollment, confirmTotpEnrollment } from '../api/client';
 import { debugInteraction } from '../lib/debug';
 
@@ -98,6 +99,18 @@ export default function MfaEnrollmentPage({ onSuccess, onError }: Props) {
       <p className="subtitle">이 애플리케이션은 2단계 인증이 필요합니다.</p>
 
       {error && <div className="error-msg">{error}</div>}
+
+      {otpauthUrl && (
+        <div className="qr-box" aria-label="TOTP QR 코드">
+          <QRCodeSVG
+            value={otpauthUrl}
+            size={180}
+            level="M"
+            marginSize={3}
+            title="TOTP QR 코드"
+          />
+        </div>
+      )}
 
       <div className="secret-box">
         <label>설정 키</label>

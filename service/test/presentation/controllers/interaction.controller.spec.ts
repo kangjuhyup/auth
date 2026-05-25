@@ -55,11 +55,11 @@ describe('InteractionController', () => {
       });
     });
 
-    it('production에서는 빌드된 UI HTML을 읽어 캐시하고 반환한다', () => {
+    it('명시적으로 HTML 캐시를 켜면 빌드된 UI HTML을 읽어 캐시하고 반환한다', () => {
       const html = '<html><body>interaction-ui</body></html>';
       const res1 = createMockResponse();
       const res2 = createMockResponse();
-      config.get.mockReturnValue('production');
+      config.get.mockReturnValue('true');
       (existsSync as jest.MockedFunction<typeof existsSync>).mockReturnValue(
         true,
       );
@@ -80,12 +80,12 @@ describe('InteractionController', () => {
       );
     });
 
-    it('development에서는 최신 UI HTML을 매 요청마다 읽고 no-store로 반환한다', () => {
+    it('기본값은 최신 UI HTML을 매 요청마다 읽고 no-store로 반환한다', () => {
       const html1 = '<html><body>interaction-ui-v1</body></html>';
       const html2 = '<html><body>interaction-ui-v2</body></html>';
       const res1 = createMockResponse();
       const res2 = createMockResponse();
-      config.get.mockReturnValue('development');
+      config.get.mockReturnValue(undefined);
       (existsSync as jest.MockedFunction<typeof existsSync>).mockReturnValue(
         true,
       );

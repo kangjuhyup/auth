@@ -1,14 +1,10 @@
 import { useState } from 'react';
 import { submitPasswordChange } from '../api/client';
+import type { LoginResult } from '../api/client';
 import { debugInteraction } from '../lib/debug';
 
 interface Props {
-  onSuccess: (result: {
-    mfaRequired?: boolean;
-    mfaEnrollmentRequired?: boolean;
-    methods?: string[];
-    redirectTo?: string;
-  }) => void;
+  onSuccess: (result: LoginResult) => void;
 }
 
 export default function PasswordChangePage({ onSuccess }: Props) {

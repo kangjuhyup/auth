@@ -1,6 +1,7 @@
 # compiled output
 /node_modules
 /service/dist
+/service/interaction-ui/dist
 /service/coverage
 /ui/dist
 /ui/node_modules

@@ -418,6 +418,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@auth/interaction-ui@workspace:service/interaction-ui"
   dependencies:
+    "@rc-component/qrcode": "npm:~1.1.0"
     "@types/react": "npm:^19.1.0"
     "@types/react-dom": "npm:^19.1.0"
     "@vitejs/plugin-react": "npm:^4.4.1"

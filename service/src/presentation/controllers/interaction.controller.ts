@@ -361,6 +361,6 @@ export class InteractionController {
   }
 
   private shouldCacheSpaHtml(): boolean {
-    return this.config.get<string>('NODE_ENV') === 'production';
+    return this.config.get<string>('INTERACTION_UI_CACHE_HTML') === 'true';
   }
 }
