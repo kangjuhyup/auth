@@ -29,7 +29,15 @@ describe('AdminSessionHandler', () => {
       getUserRoles: jest.fn().mockResolvedValue([{ code: 'SUPER_ADMIN' }]),
     };
     tokenPort = {
-      issue: jest.fn().mockResolvedValue('access-token'),
+      issue: jest.fn().mockResolvedValue({
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+      }),
+      refresh: jest.fn().mockResolvedValue({
+        accessToken: 'next-access-token',
+        refreshToken: 'next-refresh-token',
+        userId: 'user-1',
+      }),
       verify: jest.fn().mockResolvedValue({ userId: 'user-1' }),
     };
     loginAttemptPolicy = {
@@ -83,7 +91,8 @@ describe('AdminSessionHandler', () => {
       userId: 'user-1',
     });
     expect(result).toEqual({
-      token: 'access-token',
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
       username: 'admin',
       passwordChangeRequired: false,
     });
@@ -115,7 +124,8 @@ describe('AdminSessionHandler', () => {
     await expect(
       handler.issueAdminToken({ username: 'admin', password: 'secret' }),
     ).resolves.toEqual({
-      token: 'access-token',
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
       username: 'admin',
       passwordChangeRequired: true,
     });
@@ -340,6 +350,30 @@ describe('AdminSessionHandler', () => {
       username: 'admin',
       passwordChangeRequired: true,
     });
+  });
+
+  it('refresh token으로 관리자 세션을 재발급한다', async () => {
+    await expect(handler.refreshAdminSession('refresh-token')).resolves.toEqual(
+      {
+        accessToken: 'next-access-token',
+        refreshToken: 'next-refresh-token',
+        username: 'admin',
+        passwordChangeRequired: false,
+      },
+    );
+
+    expect(tokenPort.refresh).toHaveBeenCalledWith({
+      tenantCode: 'master',
+      refreshToken: 'refresh-token',
+    });
+  });
+
+  it('refresh 후 SUPER_ADMIN 역할이 없으면 세션 재발급을 거부한다', async () => {
+    adminQuery.getUserRoles.mockResolvedValue([{ code: 'USER' }]);
+
+    await expect(
+      handler.refreshAdminSession('refresh-token'),
+    ).resolves.toBeNull();
   });
 
   it('관리자 세션 비밀번호 변경을 AuthCommandPort에 위임한다', async () => {

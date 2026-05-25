@@ -181,9 +181,45 @@ export class AdminSessionHandler extends AdminSessionPort {
     });
 
     return {
-      token,
+      accessToken: token.accessToken,
+      refreshToken: token.refreshToken,
       username: params.username,
       passwordChangeRequired: result.passwordChangeRequired,
+    };
+  }
+
+  async refreshAdminSession(refreshToken: string) {
+    const tenant = await this.tenantRepo.findByCode(MASTER_TENANT);
+    if (!tenant) {
+      return null;
+    }
+
+    const rotated = await this.tokenPort.refresh({
+      tenantCode: MASTER_TENANT,
+      refreshToken,
+    });
+    if (!rotated) {
+      return null;
+    }
+
+    const roles = await this.adminQuery.getUserRoles(tenant.id, rotated.userId);
+    if (!roles.some((role) => role.code === ADMIN_ROLE)) {
+      return null;
+    }
+
+    const profile = await this.userQuery.findProfile({
+      tenantId: tenant.id,
+      userId: rotated.userId,
+    });
+    if (!profile) {
+      return null;
+    }
+
+    return {
+      accessToken: rotated.accessToken,
+      refreshToken: rotated.refreshToken,
+      username: profile.username,
+      passwordChangeRequired: profile.passwordChangeRequired === true,
     };
   }
 

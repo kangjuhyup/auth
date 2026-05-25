@@ -2,8 +2,10 @@ import type { ConfigService } from '@nestjs/config';
 import type { CookieOptions, Request, Response } from 'express';
 
 export const ADMIN_SESSION_COOKIE_NAME = 'admin_session';
+export const ADMIN_REFRESH_COOKIE_NAME = 'admin_refresh';
 
-const DEFAULT_MAX_AGE_SEC = 60 * 60;
+const DEFAULT_SESSION_MAX_AGE_SEC = 60 * 60;
+const DEFAULT_REFRESH_MAX_AGE_SEC = 14 * 24 * 60 * 60;
 
 function getConfigValue(
   config: ConfigService,
@@ -35,8 +37,10 @@ function normalizeSameSite(value: string): CookieOptions['sameSite'] {
   return 'lax';
 }
 
-export function buildAdminSessionCookieOptions(
+function buildAdminCookieOptions(
   config: ConfigService,
+  maxAgeKey: string,
+  fallbackMaxAgeSec: number,
 ): CookieOptions {
   const sameSite = normalizeSameSite(
     getConfigValue(config, 'ADMIN_SESSION_COOKIE_SAME_SITE', 'lax'),
@@ -47,11 +51,7 @@ export function buildAdminSessionCookieOptions(
       ? true
       : getBooleanConfig(config, 'ADMIN_SESSION_COOKIE_SECURE', isProduction);
   const maxAgeSec = Number(
-    getConfigValue(
-      config,
-      'ADMIN_SESSION_COOKIE_MAX_AGE_SEC',
-      String(DEFAULT_MAX_AGE_SEC),
-    ),
+    getConfigValue(config, maxAgeKey, String(fallbackMaxAgeSec)),
   );
 
   return {
@@ -61,8 +61,28 @@ export function buildAdminSessionCookieOptions(
     path: '/',
     maxAge: Number.isFinite(maxAgeSec)
       ? Math.max(1, maxAgeSec) * 1000
-      : DEFAULT_MAX_AGE_SEC * 1000,
+      : fallbackMaxAgeSec * 1000,
   };
+}
+
+export function buildAdminSessionCookieOptions(
+  config: ConfigService,
+): CookieOptions {
+  return buildAdminCookieOptions(
+    config,
+    'ADMIN_SESSION_COOKIE_MAX_AGE_SEC',
+    DEFAULT_SESSION_MAX_AGE_SEC,
+  );
+}
+
+export function buildAdminRefreshCookieOptions(
+  config: ConfigService,
+): CookieOptions {
+  return buildAdminCookieOptions(
+    config,
+    'ADMIN_REFRESH_COOKIE_MAX_AGE_SEC',
+    DEFAULT_REFRESH_MAX_AGE_SEC,
+  );
 }
 
 export function setAdminSessionCookie(
@@ -74,6 +94,18 @@ export function setAdminSessionCookie(
     ADMIN_SESSION_COOKIE_NAME,
     token,
     buildAdminSessionCookieOptions(config),
+  );
+}
+
+export function setAdminRefreshCookie(
+  response: Response,
+  config: ConfigService,
+  token: string,
+): void {
+  response.cookie(
+    ADMIN_REFRESH_COOKIE_NAME,
+    token,
+    buildAdminRefreshCookieOptions(config),
   );
 }
 
@@ -89,6 +121,28 @@ export function clearAdminSessionCookie(
     sameSite: options.sameSite,
     path: options.path,
   });
+}
+
+export function clearAdminRefreshCookie(
+  response: Response,
+  config: ConfigService,
+): void {
+  const options = buildAdminRefreshCookieOptions(config);
+
+  response.clearCookie(ADMIN_REFRESH_COOKIE_NAME, {
+    httpOnly: options.httpOnly,
+    secure: options.secure,
+    sameSite: options.sameSite,
+    path: options.path,
+  });
+}
+
+export function clearAdminSessionCookies(
+  response: Response,
+  config: ConfigService,
+): void {
+  clearAdminSessionCookie(response, config);
+  clearAdminRefreshCookie(response, config);
 }
 
 export function resolveAdminSessionToken(request: Request): string | null {
@@ -107,6 +161,10 @@ export function resolveAdminSessionToken(request: Request): string | null {
 
   const bearerToken = auth.slice(7).trim();
   return bearerToken === '' ? null : bearerToken;
+}
+
+export function resolveAdminRefreshToken(request: Request): string | null {
+  return readCookie(request.headers.cookie, ADMIN_REFRESH_COOKIE_NAME);
 }
 
 function readCookie(header: string | undefined, name: string): string | null {

@@ -1,6 +1,9 @@
 import { HttpException, UnauthorizedException } from '@nestjs/common';
 import { AdminSessionController } from '@presentation/controllers/admin/session.controller';
-import { ADMIN_SESSION_COOKIE_NAME } from '@presentation/http/admin-session-cookie';
+import {
+  ADMIN_REFRESH_COOKIE_NAME,
+  ADMIN_SESSION_COOKIE_NAME,
+} from '@presentation/http/admin-session-cookie';
 
 describe('AdminSessionController', () => {
   let controller: AdminSessionController;
@@ -13,7 +16,14 @@ describe('AdminSessionController', () => {
     jest.clearAllMocks();
     adminSession = {
       issueAdminToken: jest.fn().mockResolvedValue({
-        token: 'access-token',
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+        username: 'admin',
+        passwordChangeRequired: false,
+      }),
+      refreshAdminSession: jest.fn().mockResolvedValue({
+        accessToken: 'next-access-token',
+        refreshToken: 'next-refresh-token',
         username: 'admin',
         passwordChangeRequired: false,
       }),
@@ -81,6 +91,16 @@ describe('AdminSessionController', () => {
         path: '/',
       }),
     );
+    expect(response.cookie).toHaveBeenCalledWith(
+      ADMIN_REFRESH_COOKIE_NAME,
+      'refresh-token',
+      expect.objectContaining({
+        httpOnly: true,
+        secure: true,
+        sameSite: 'lax',
+        path: '/',
+      }),
+    );
     expect(result).toEqual({
       username: 'admin',
       passwordChangeRequired: false,
@@ -89,7 +109,8 @@ describe('AdminSessionController', () => {
 
   it('임시 비밀번호 관리자 로그인 시 passwordChangeRequired를 반환한다', async () => {
     adminSession.issueAdminToken.mockResolvedValue({
-      token: 'access-token',
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
       username: 'admin',
       passwordChangeRequired: true,
     });
@@ -152,6 +173,39 @@ describe('AdminSessionController', () => {
     });
   });
 
+  it('refresh cookie가 있으면 새 세션 쿠키를 재설정한다', async () => {
+    const result = await controller.refresh(
+      {
+        headers: { cookie: `${ADMIN_REFRESH_COOKIE_NAME}=refresh-token` },
+      } as any,
+      response,
+    );
+
+    expect(adminSession.refreshAdminSession).toHaveBeenCalledWith(
+      'refresh-token',
+    );
+    expect(response.cookie).toHaveBeenCalledWith(
+      ADMIN_SESSION_COOKIE_NAME,
+      'next-access-token',
+      expect.any(Object),
+    );
+    expect(response.cookie).toHaveBeenCalledWith(
+      ADMIN_REFRESH_COOKIE_NAME,
+      'next-refresh-token',
+      expect.any(Object),
+    );
+    expect(result).toEqual({
+      username: 'admin',
+      passwordChangeRequired: false,
+    });
+  });
+
+  it('refresh cookie가 없으면 UnauthorizedException을 던진다', async () => {
+    await expect(
+      controller.refresh({ headers: {} } as any, response),
+    ).rejects.toThrow(new UnauthorizedException('Invalid session'));
+  });
+
   it('관리자 세션 비밀번호 변경을 port에 위임한다', async () => {
     await expect(
       controller.changePassword(
@@ -175,6 +229,15 @@ describe('AdminSessionController', () => {
     await expect(controller.logout(response)).resolves.toBeUndefined();
     expect(response.clearCookie).toHaveBeenCalledWith(
       ADMIN_SESSION_COOKIE_NAME,
+      expect.objectContaining({
+        httpOnly: true,
+        secure: true,
+        sameSite: 'lax',
+        path: '/',
+      }),
+    );
+    expect(response.clearCookie).toHaveBeenCalledWith(
+      ADMIN_REFRESH_COOKIE_NAME,
       expect.objectContaining({
         httpOnly: true,
         secure: true,

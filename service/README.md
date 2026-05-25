@@ -115,20 +115,24 @@ src/
 
 앱 부팅 시 [`src/main.ts`](src/main.ts)에서 [`src/presentation/http/http-security.ts`](src/presentation/http/http-security.ts)로 **Helmet·trust proxy·`X-Powered-By` 제거**를 적용하고, [`src/app.module.ts`](src/app.module.ts)의 **`@nestjs/throttler`** 로 Nest 컨트롤러에 **전역 레이트 리밋**을 건다. Helmet 세부 옵션은 [`src/presentation/http/security-headers.config.ts`](src/presentation/http/security-headers.config.ts), 경로 예외는 [`src/presentation/http/app-throttler.guard.ts`](src/presentation/http/app-throttler.guard.ts)를 본다.
 
-| 변수                             | 기본(미설정 시 코드 기본값) | 설명                                                                                                     |
-| -------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `HTTP_TRUST_PROXY_HOPS`          | (끔)                        | Ingress 등 프록시 뒤에서 `req.ip`·레이트 리밋이 실제 클라이언트를 보려면 hop 수(예: `1`).                |
-| `HTTP_HELMET_ENABLED`            | `true`                      | `false`면 Helmet 미들웨어 비활성.                                                                        |
-| `HTTP_HSTS_ENABLED`              | `false`                     | **HTTPS 프로덕션**에서만 `true`. 로컬 `http://` 에서 켜면 브라우저가 불필요하게 HTTPS 를 강요할 수 있다. |
-| `HTTP_HSTS_MAX_AGE_SEC`          | `15552000`                  | HSTS `max-age`(초).                                                                                      |
-| `HTTP_THROTTLE_ENABLED`          | `true`                      | `false`면 사실상 무제한(내부적으로 매우 큰 limit). E2E 는 `.env.e2e`에서 끈다.                           |
-| `HTTP_THROTTLE_TTL_MS`           | `60000`                     | 윈도 길이(ms).                                                                                           |
-| `HTTP_THROTTLE_LIMIT`            | `120`                       | 위 윈도당 허용 요청 수(컨트롤러 기준).                                                                   |
-| `LOGIN_RATE_LIMIT_IP_MAX`        | `10`                        | 로그인 시도 IP 기준 허용 횟수. 대상: admin session, interaction login.                                   |
-| `LOGIN_RATE_LIMIT_IP_WINDOW_SEC` | `60`                        | 로그인 IP 카운터 윈도(초). 초과 시 429.                                                                  |
-| `LOGIN_FAILURE_MAX`              | `5`                         | tenant+username 기준 인증 실패 허용 횟수.                                                                |
-| `LOGIN_FAILURE_WINDOW_SEC`       | `900`                       | 인증 실패 카운터 윈도(초).                                                                               |
-| `LOGIN_LOCK_TTL_SEC`             | `900`                       | 실패 횟수 초과 시 임시 계정 잠금 TTL(초).                                                                |
+| 변수                               | 기본(미설정 시 코드 기본값) | 설명                                                                                                     |
+| ---------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `HTTP_TRUST_PROXY_HOPS`            | (끔)                        | Ingress 등 프록시 뒤에서 `req.ip`·레이트 리밋이 실제 클라이언트를 보려면 hop 수(예: `1`).                |
+| `HTTP_HELMET_ENABLED`              | `true`                      | `false`면 Helmet 미들웨어 비활성.                                                                        |
+| `HTTP_HSTS_ENABLED`                | `false`                     | **HTTPS 프로덕션**에서만 `true`. 로컬 `http://` 에서 켜면 브라우저가 불필요하게 HTTPS 를 강요할 수 있다. |
+| `HTTP_HSTS_MAX_AGE_SEC`            | `15552000`                  | HSTS `max-age`(초).                                                                                      |
+| `HTTP_THROTTLE_ENABLED`            | `true`                      | `false`면 사실상 무제한(내부적으로 매우 큰 limit). E2E 는 `.env.e2e`에서 끈다.                           |
+| `HTTP_THROTTLE_TTL_MS`             | `60000`                     | 윈도 길이(ms).                                                                                           |
+| `HTTP_THROTTLE_LIMIT`              | `120`                       | 위 윈도당 허용 요청 수(컨트롤러 기준).                                                                   |
+| `LOGIN_RATE_LIMIT_IP_MAX`          | `10`                        | 로그인 시도 IP 기준 허용 횟수. 대상: admin session, interaction login.                                   |
+| `LOGIN_RATE_LIMIT_IP_WINDOW_SEC`   | `60`                        | 로그인 IP 카운터 윈도(초). 초과 시 429.                                                                  |
+| `LOGIN_FAILURE_MAX`                | `5`                         | tenant+username 기준 인증 실패 허용 횟수.                                                                |
+| `LOGIN_FAILURE_WINDOW_SEC`         | `900`                       | 인증 실패 카운터 윈도(초).                                                                               |
+| `LOGIN_LOCK_TTL_SEC`               | `900`                       | 실패 횟수 초과 시 임시 계정 잠금 TTL(초).                                                                |
+| `ADMIN_SESSION_COOKIE_MAX_AGE_SEC` | `3600`                      | `admin_session` cookie TTL(초). access token 성격의 관리자 세션 수명.                                    |
+| `ADMIN_REFRESH_COOKIE_MAX_AGE_SEC` | `1209600`                   | `admin_refresh` cookie TTL(초). refresh token 성격의 관리자 세션 수명.                                   |
+| `ADMIN_SESSION_COOKIE_SECURE`      | `NODE_ENV=production` 기준  | 관리자 세션/refresh cookie의 `Secure` 플래그.                                                            |
+| `ADMIN_SESSION_COOKIE_SAME_SITE`   | `lax`                       | 관리자 세션/refresh cookie의 `SameSite` 정책.                                                            |
 
 **레이트 리밋 범위:** `@nestjs/throttler` 가드는 **Nest 라우트 핸들러**에만 적용된다. 가드에서 **`/health`**, **`/interaction-assets`**, OIDC 토큰 엔드포인트를 제외한 **`/t/:tenantCode/oidc/...`** 는 스킵한다. `/t/:tenantCode/oidc/token` 은 전역 throttling 대상에 포함하며, Ingress/WAF 쪽 제한도 함께 검토한다.
 
@@ -137,6 +141,37 @@ src/
 **Helmet:** 기본적으로 **CSP(Content-Security-Policy)는 끈다**(OIDC 리다이렉트·interaction UI 와의 충돌을 피함). 정적 화면을 엄격히 통제할 때는 `security-headers.config.ts`에서 정책을 설계한다.
 
 `.env` 예시 키는 저장소의 `service/.env` 를 참고한다.
+
+---
+
+## 관리자 로그인 세션
+
+관리자 브라우저 세션은 `master` Tenant의 `SUPER_ADMIN` 사용자만 사용할 수 있고, `__admin-portal__` OIDC client를 통해 발급한 토큰을 **HttpOnly cookie**로 운반한다.
+
+### 쿠키
+
+- `admin_session`
+  기본 TTL은 `3600`초다. 관리자 API 인증에 직접 사용되는 access token 성격의 쿠키다.
+- `admin_refresh`
+  기본 TTL은 `1209600`초(14일)다. `admin_session` 만료 후 재발급에 사용하는 refresh token 성격의 쿠키다.
+
+두 쿠키 모두 `HttpOnly`, `path=/`로 발급되며 `SameSite`/`Secure`는 `ADMIN_SESSION_COOKIE_*` 설정을 따른다.
+
+### 엔드포인트
+
+| 메서드 | 경로                      | 설명                                                        |
+| ------ | ------------------------- | ----------------------------------------------------------- |
+| POST   | `/admin/session`          | 관리자 로그인. `admin_session` + `admin_refresh` 쿠키 발급  |
+| POST   | `/admin/session/refresh`  | `admin_refresh` 쿠키를 소모하고 새 세션/refresh 쿠키로 교체 |
+| GET    | `/admin/session`          | 현재 관리자 세션 조회                                       |
+| PUT    | `/admin/session/password` | 현재 관리자 비밀번호 변경                                   |
+| DELETE | `/admin/session`          | 관리자 세션 종료. 두 쿠키 모두 삭제                         |
+
+### UI 동작
+
+- 관리 UI는 관리자 API가 `401`을 반환하면 `POST /admin/session/refresh`를 한 번 자동 시도한다.
+- refresh가 성공하면 원래 요청을 한 번 재시도한다.
+- refresh도 실패하면 auth store를 비우고 `/login`으로 이동한다.
 
 ---
 

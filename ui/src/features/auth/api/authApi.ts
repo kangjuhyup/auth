@@ -21,7 +21,10 @@ const tenantOptions = (tenantCode: string) => ({
 export const authApi = {
   login: (dto: LoginDto): Promise<LoginResponse> => {
     if (USE_MOCK) return mockApi.auth.login(dto);
-    return apiClient.post<LoginResponse>('/admin/session', dto);
+    return apiClient.post<LoginResponse>('/admin/session', dto, {
+      skipAuthRefresh: true,
+      skipUnauthorizedRedirect: true,
+    });
   },
 
   getSession: (): Promise<LoginResponse> => {
@@ -29,9 +32,22 @@ export const authApi = {
     return apiClient.get<LoginResponse>('/admin/session');
   },
 
+  refreshSession: (): Promise<LoginResponse> => {
+    if (USE_MOCK) return mockApi.auth.refreshSession();
+    return apiClient.post<LoginResponse>('/admin/session/refresh', undefined, {
+      skipAuthRefresh: true,
+      skipUnauthorizedRedirect: true,
+    });
+  },
+
   logout: (): Promise<void> => {
     if (USE_MOCK) return mockApi.auth.logout();
-    return apiClient.delete<void>('/admin/session').catch(() => {});
+    return apiClient
+      .delete<void>('/admin/session', {
+        skipAuthRefresh: true,
+        skipUnauthorizedRedirect: true,
+      })
+      .catch(() => {});
   },
 
   changeAdminPassword: (dto: ChangePasswordDto): Promise<void> => {

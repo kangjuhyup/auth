@@ -233,6 +233,9 @@ const defaultTenantPolicies: TenantPolicyResponse = {
     maxAgeSec: 28800,
     requireAuthTime: false,
     reauthenticationIntervalSec: null,
+    loginSessionMode: 'multi',
+    maxConcurrentSessions: null,
+    sessionConflictAction: 'revoke_previous_sessions',
   },
   refreshToken: {
     ttlSec: 1209600,
@@ -263,6 +266,9 @@ const mockClientAuthPolicies: Record<string, ClientAuthPolicyResponse> = {
     reauthenticationIntervalSec: null,
     refreshTokenRotationEnabled: true,
     refreshTokenReuseAction: 'revoke_grant',
+    loginSessionMode: null,
+    maxConcurrentSessions: null,
+    sessionConflictAction: null,
     effective: {
       mfaRequired: false,
       allowedIdpProviderKeys: null,
@@ -270,6 +276,9 @@ const mockClientAuthPolicies: Record<string, ClientAuthPolicyResponse> = {
       requireAuthTime: false,
       reauthenticationIntervalSec: null,
       refreshTokenTtlSec: 1209600,
+      loginSessionMode: 'multi',
+      maxConcurrentSessions: null,
+      sessionConflictAction: 'revoke_previous_sessions',
     },
   },
 };
@@ -629,6 +638,11 @@ export const mockAuthApi = {
     return { username: 'admin', passwordChangeRequired: false };
   },
 
+  refreshSession: async (): Promise<LoginResponse> => {
+    await delay(100);
+    return { username: 'admin', passwordChangeRequired: false };
+  },
+
   logout: async (): Promise<void> => {
     await delay(200);
     // Nothing to do for mock
@@ -975,10 +989,33 @@ export const mockClientApi = {
           dto.reauthenticationIntervalSec ??
           current.reauthenticationIntervalSec ??
           mockTenantPolicies.session.reauthenticationIntervalSec,
+        loginSessionMode:
+          mockTenantPolicies.session.loginSessionMode === 'single' ||
+          dto.loginSessionMode === 'single' ||
+          current.loginSessionMode === 'single'
+            ? 'single'
+            : 'multi',
+        maxConcurrentSessions: resolveMockSessionLimit(
+          mockTenantPolicies.session.maxConcurrentSessions,
+          dto.maxConcurrentSessions ?? current.maxConcurrentSessions,
+        ),
+        sessionConflictAction:
+          dto.sessionConflictAction ??
+          current.sessionConflictAction ??
+          mockTenantPolicies.session.sessionConflictAction,
       },
     };
   },
 };
+
+function resolveMockSessionLimit(
+  tenantLimit: number | null,
+  clientLimit: number | null,
+): number | null {
+  if (tenantLimit === null) return clientLimit;
+  if (clientLimit === null) return tenantLimit;
+  return Math.min(tenantLimit, clientLimit);
+}
 
 export const mockScopeApi = {
   list: async (params: {

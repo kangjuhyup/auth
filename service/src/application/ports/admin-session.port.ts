@@ -6,8 +6,18 @@ export type AdminSessionView = {
   passwordChangeRequired: boolean;
 };
 
+export type AdminSessionTokenBundle = {
+  accessToken: string;
+  refreshToken: string;
+};
+
+export type AdminSessionAuthSuccess = AdminSessionTokenBundle & {
+  username: string;
+  passwordChangeRequired: boolean;
+};
+
 export type AdminSessionIssueResult =
-  | { token: string; username: string; passwordChangeRequired: boolean }
+  | AdminSessionAuthSuccess
   | {
       blocked: true;
       reason: LoginAttemptBlockReason;
@@ -24,11 +34,13 @@ export abstract class AdminSessionPort {
     correlationId?: string;
   }): Promise<AdminSessionIssueResult>;
 
+  abstract refreshAdminSession(
+    refreshToken: string,
+  ): Promise<AdminSessionAuthSuccess | null>;
+
   abstract verifyAdminToken(token: string): Promise<boolean>;
 
-  abstract getAdminSession(
-    token: string,
-  ): Promise<AdminSessionView | null>;
+  abstract getAdminSession(token: string): Promise<AdminSessionView | null>;
 
   abstract changePassword(
     token: string,

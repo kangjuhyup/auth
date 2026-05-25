@@ -259,6 +259,23 @@ interface Adapter {
   destroy(id: string): Promise<void>;
   revokeByGrantId(grantId: string): Promise<void>;
 }
+
+## 5.4 관리자 로그인 세션과 OIDC 토큰 모델
+
+관리자 브라우저 세션은 `/t/:tenantCode/oidc/*` 경로의 표준 OIDC 엔드포인트가 아니라 별도 Nest 컨트롤러인 `/admin/session` 계열에서 처리한다.
+
+다만 내부 구현은 `node-oidc-provider`와 분리된 별도 토큰 시스템을 만들지 않고, tenant `master`의 provider에서 다음 모델을 직접 사용한다.
+
+- `AccessToken`
+- `RefreshToken`
+
+흐름:
+
+1. `POST /admin/session` 로그인 성공 시 `AccessToken` + `RefreshToken`을 발급한다.
+2. 토큰 값은 각각 `admin_session`, `admin_refresh` HttpOnly cookie에 담는다.
+3. `POST /admin/session/refresh`는 기존 `RefreshToken`을 소모(`destroy()`)한 뒤 새 `AccessToken` + `RefreshToken`을 다시 발급한다.
+
+즉 관리자 세션도 저장·만료·폐기 관점에서는 OIDC provider의 토큰 저장소와 TTL 정책을 재사용한다.
 ```
 
 > `expiresIn` 은 반드시 `number` 타입이다.

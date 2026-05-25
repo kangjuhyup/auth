@@ -18,8 +18,10 @@ import type { Request, Response } from 'express';
 import { AdminGuard } from '@presentation/http/admin.guard';
 import { AdminSessionPort } from '@application/ports/admin-session.port';
 import {
-  clearAdminSessionCookie,
+  clearAdminSessionCookies,
+  resolveAdminRefreshToken,
   resolveAdminSessionToken,
+  setAdminRefreshCookie,
   setAdminSessionCookie,
 } from '@presentation/http/admin-session-cookie';
 import { AdminLoginDto, ChangePasswordDto } from '@presentation/dto';
@@ -47,7 +49,10 @@ export class AdminSessionController {
   ) {}
 
   @Post()
-  @ApiOkSchema('Issue admin session cookie', OpenApiResponseSchemas.adminSession)
+  @ApiOkSchema(
+    'Issue admin session cookie',
+    OpenApiResponseSchemas.adminSession,
+  )
   async login(
     @Body() dto: AdminLoginDto,
     @Req() request: Request,
@@ -75,11 +80,40 @@ export class AdminSessionController {
       throw new HttpException('Account temporarily locked', HttpStatus.LOCKED);
     }
 
-    setAdminSessionCookie(response, this.config, result.token);
+    setAdminSessionCookie(response, this.config, result.accessToken);
+    setAdminRefreshCookie(response, this.config, result.refreshToken);
 
     return {
       username: result.username,
       passwordChangeRequired: result.passwordChangeRequired,
+    };
+  }
+
+  @Post('refresh')
+  @ApiOkSchema(
+    'Refresh admin session cookies',
+    OpenApiResponseSchemas.adminSession,
+  )
+  async refresh(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<{ username: string; passwordChangeRequired: boolean }> {
+    const refreshToken = resolveAdminRefreshToken(request);
+    if (!refreshToken) {
+      throw new UnauthorizedException('Invalid session');
+    }
+
+    const session = await this.adminSession.refreshAdminSession(refreshToken);
+    if (!session) {
+      throw new UnauthorizedException('Invalid session');
+    }
+
+    setAdminSessionCookie(response, this.config, session.accessToken);
+    setAdminRefreshCookie(response, this.config, session.refreshToken);
+
+    return {
+      username: session.username,
+      passwordChangeRequired: session.passwordChangeRequired,
     };
   }
 
@@ -122,10 +156,9 @@ export class AdminSessionController {
   }
 
   @Delete()
-  @UseGuards(AdminGuard)
   @HttpCode(204)
   @ApiNoContentSchema('Clear admin session')
   async logout(@Res({ passthrough: true }) response: Response): Promise<void> {
-    clearAdminSessionCookie(response, this.config);
+    clearAdminSessionCookies(response, this.config);
   }
 }

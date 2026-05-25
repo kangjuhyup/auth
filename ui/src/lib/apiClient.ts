@@ -5,7 +5,11 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 interface RequestOptions extends Omit<RequestInit, 'body'> {
   body?: unknown;
   params?: Record<string, string | number | boolean | undefined | null>;
+  skipAuthRefresh?: boolean;
+  skipUnauthorizedRedirect?: boolean;
 }
+
+let refreshPromise: Promise<boolean> | null = null;
 
 async function parseResponseBody<T>(response: Response): Promise<T> {
   if (response.status === 204) {
@@ -24,7 +28,14 @@ async function request<T>(
   endpoint: string,
   options: RequestOptions = {},
 ): Promise<T> {
-  const { body, headers: customHeaders, params, ...restOptions } = options;
+  const {
+    body,
+    headers: customHeaders,
+    params,
+    skipAuthRefresh = false,
+    skipUnauthorizedRedirect = false,
+    ...restOptions
+  } = options;
 
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
@@ -54,14 +65,20 @@ async function request<T>(
   });
 
   if (response.status === 401) {
-    // Clear auth and redirect to login
-    try {
-      const { useAuthStore } = await import('@/stores/auth.store');
-      useAuthStore.getState().clearAuth();
-    } catch {
-      // Store not available
+    if (!skipAuthRefresh) {
+      const refreshed = await tryRefreshSession();
+      if (refreshed) {
+        return request<T>(endpoint, {
+          ...options,
+          skipAuthRefresh: true,
+        });
+      }
     }
-    window.location.href = '/login';
+
+    if (!skipUnauthorizedRedirect) {
+      await handleUnauthorized();
+    }
+
     throw new Error(`Unauthorized: ${response.status}`);
   }
 
@@ -76,6 +93,39 @@ async function request<T>(
   }
 
   return parseResponseBody<T>(response);
+}
+
+async function tryRefreshSession(): Promise<boolean> {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      const [{ authApi }, { useAuthStore }] = await Promise.all([
+        import('@/features/auth/api/authApi'),
+        import('@/stores/auth.store'),
+      ]);
+      const session = await authApi.refreshSession();
+      useAuthStore
+        .getState()
+        .login(session.username, session.passwordChangeRequired);
+      return true;
+    })()
+      .catch(() => false)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+
+  return refreshPromise;
+}
+
+async function handleUnauthorized(): Promise<void> {
+  try {
+    const { useAuthStore } = await import('@/stores/auth.store');
+    useAuthStore.getState().clearAuth();
+  } catch {
+    // Store not available
+  }
+
+  window.location.href = '/login';
 }
 
 export const apiClient = {

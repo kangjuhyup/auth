@@ -43,18 +43,18 @@ OIDC authorize 흐름 중 **로그인·동의·MFA**를 담당하는 별도 Vite
 
 ## 주요 기능
 
-| 영역                 | 설명                                                                                                         |
-| -------------------- | ------------------------------------------------------------------------------------------------------------ |
-| **Multi-tenancy**    | Tenant별 독립 OIDC issuer (`/t/:tenantCode/oidc`)                                                            |
-| **OIDC/OAuth2**      | Authorization Code + **PKCE(필수)**, Token, Userinfo, Revoke, Session End                                    |
-| **Client 관리**      | confidential·public·service 타입, resource indicator, 동의 생략(`skipConsent`)                               |
-| **Client 인증 정책** | 허용 로그인 방식, MFA, 세션·동의 정책 등                                                                     |
-| **사용자/권한**      | 사용자, 역할, 권한, 그룹                                                                                     |
-| **Interaction**      | `/t/:tenantCode/interaction/:uid` — 비밀번호 로그인, **외부 IdP 버튼**, 동의, MFA                            |
-| **외부 IdP**         | Tenant별 OAuth2 연동 — 내장 키(`google`, `kakao`, `naver`, `apple`) 또는 **임의 slug + `oauth_config` JSON** |
-| **관리자 세션**      | `POST /admin/session` — `master` Tenant의 `SUPER_ADMIN` + OIDC admin Client로 access token 발급              |
-| **스토리지**         | PostgreSQL / MySQL / MSSQL + Redis (`rdb` · `redis` · `hybrid` 어댑터)                                       |
-| **암호화**           | Argon2id·PBKDF2 비밀번호 해시, 대칭 암호화, JWKS 키 관리                                                     |
+| 영역                 | 설명                                                                                                                   |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **Multi-tenancy**    | Tenant별 독립 OIDC issuer (`/t/:tenantCode/oidc`)                                                                      |
+| **OIDC/OAuth2**      | Authorization Code + **PKCE(필수)**, Token, Userinfo, Revoke, Session End                                              |
+| **Client 관리**      | confidential·public·service 타입, resource indicator, 동의 생략(`skipConsent`)                                         |
+| **Client 인증 정책** | 허용 로그인 방식, MFA, 세션·동의 정책 등                                                                               |
+| **사용자/권한**      | 사용자, 역할, 권한, 그룹                                                                                               |
+| **Interaction**      | `/t/:tenantCode/interaction/:uid` — 비밀번호 로그인, **외부 IdP 버튼**, 동의, MFA                                      |
+| **외부 IdP**         | Tenant별 OAuth2 연동 — 내장 키(`google`, `kakao`, `naver`, `apple`) 또는 **임의 slug + `oauth_config` JSON**           |
+| **관리자 세션**      | `POST /admin/session` — `master` Tenant의 `SUPER_ADMIN` 로그인 후 `admin_session` + `admin_refresh` HttpOnly 쿠키 발급 |
+| **스토리지**         | PostgreSQL / MySQL / MSSQL + Redis (`rdb` · `redis` · `hybrid` 어댑터)                                                 |
+| **암호화**           | Argon2id·PBKDF2 비밀번호 해시, 대칭 암호화, JWKS 키 관리                                                               |
 
 ---
 
@@ -156,7 +156,16 @@ Authorize는 **PKCE(`code_challenge` / `code_challenge_method=S256`)가 필요**
 
 ## 관리 API 개요
 
-관리자 브라우저 세션은 `POST /admin/session`(바디: `username`, `password`)으로 발급한 Bearer 토큰을 사용합니다.  
+관리자 브라우저 세션은 **HttpOnly cookie 기반**입니다.  
+`POST /admin/session` 로그인 시 access token 성격의 `admin_session` 쿠키와 refresh token 성격의 `admin_refresh` 쿠키를 함께 발급합니다.
+
+- `GET /admin/session`: 현재 관리자 세션 조회
+- `POST /admin/session/refresh`: `admin_refresh` 쿠키로 세션 재발급
+- `PUT /admin/session/password`: 현재 관리자 비밀번호 변경
+- `DELETE /admin/session`: 세션 쿠키 삭제
+
+관리 UI는 관리자 API 호출이 `401`을 반환하면 `POST /admin/session/refresh`를 **한 번 자동 시도**하고, 성공 시 원래 요청을 재시도합니다. refresh도 실패하면 로그인 화면으로 이동합니다.
+
 Tenant별 리소스는 경로에 Tenant code가 들어갑니다.
 
 | 범위                  | 예시                                                                                                                                                                          |
