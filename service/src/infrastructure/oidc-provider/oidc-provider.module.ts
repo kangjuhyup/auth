@@ -26,6 +26,10 @@ import { OperationalMetricsPort } from '@application/ports/operational-metrics.p
 import { InMemoryOperationalMetricsAdapter } from '@infrastructure/observability/in-memory-operational-metrics.adapter';
 import { GrantTypeRegistryPort } from '@application/ports/grant-type-registry.port';
 import { OidcGrantTypeRegistryAdapter } from './grant-type-registry.adapter';
+import { ScopeRegistryPort } from '@application/ports/scope-registry.port';
+import { OidcScopeRegistryAdapter } from './scope-registry.adapter';
+import { ScopeClaimResolverPort } from '@application/ports/scope-claim-resolver.port';
+import { OidcScopeClaimResolverAdapter } from './scope-claim-resolver.adapter';
 
 @Module({
   imports: [
@@ -53,6 +57,8 @@ import { OidcGrantTypeRegistryAdapter } from './grant-type-registry.adapter';
         symmetricCrypto: SymmetricCryptoPort,
         metrics: OperationalMetricsPort,
         grantTypeRegistry: GrantTypeRegistryPort,
+        scopeRegistry: ScopeRegistryPort,
+        scopeClaimResolver: ScopeClaimResolverPort,
       ) => {
         const base = configService.getOrThrow<string>('OIDC_ISSUER');
 
@@ -76,6 +82,8 @@ import { OidcGrantTypeRegistryAdapter } from './grant-type-registry.adapter';
             jwksKeyCrypto,
             symmetricCrypto,
             grantTypeRegistry,
+            scopeRegistry,
+            scopeClaimResolver,
           });
         }, metrics);
 
@@ -97,11 +105,21 @@ import { OidcGrantTypeRegistryAdapter } from './grant-type-registry.adapter';
         SymmetricCryptoPort,
         OperationalMetricsPort,
         GrantTypeRegistryPort,
+        ScopeRegistryPort,
+        ScopeClaimResolverPort,
       ],
     },
     {
       provide: GrantTypeRegistryPort,
       useClass: OidcGrantTypeRegistryAdapter,
+    },
+    {
+      provide: ScopeRegistryPort,
+      useClass: OidcScopeRegistryAdapter,
+    },
+    {
+      provide: ScopeClaimResolverPort,
+      useClass: OidcScopeClaimResolverAdapter,
     },
     {
       provide: OperationalMetricsPort,
@@ -117,6 +135,8 @@ import { OidcGrantTypeRegistryAdapter } from './grant-type-registry.adapter';
     AccessVerifierPort,
     OperationalMetricsPort,
     GrantTypeRegistryPort,
+    ScopeRegistryPort,
+    ScopeClaimResolverPort,
   ],
 })
 export class OidcProviderModule {}

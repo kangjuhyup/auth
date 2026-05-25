@@ -10,6 +10,7 @@ import type {
 } from '@domain/repositories';
 import type { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
 import type { GrantTypeRegistryPort } from '@application/ports/grant-type-registry.port';
+import type { ScopeRegistryPort } from '@application/ports/scope-registry.port';
 import { ClientModel } from '@domain/models/client';
 import { ClientAuthPolicyModel } from '@domain/models/client-auth-policy';
 
@@ -89,14 +90,26 @@ function createMockCrypto(): jest.Mocked<SymmetricCryptoPort> {
 
 function createMockGrantTypeRegistry(): jest.Mocked<GrantTypeRegistryPort> {
   return {
-    listSupportedGrantTypes: jest.fn().mockResolvedValue([
-      'authorization_code',
-      'refresh_token',
-      'client_credentials',
-      'implicit',
-    ]),
+    listSupportedGrantTypes: jest
+      .fn()
+      .mockResolvedValue([
+        'authorization_code',
+        'refresh_token',
+        'client_credentials',
+        'implicit',
+      ]),
     listDefinitions: jest.fn(),
     validateClientGrantTypes: jest.fn().mockResolvedValue([]),
+  };
+}
+
+function createMockScopeRegistry(): jest.Mocked<ScopeRegistryPort> {
+  return {
+    listSupportedScopes: jest
+      .fn()
+      .mockResolvedValue(['openid', 'profile', 'email', 'orders:read']),
+    listDefinitions: jest.fn(),
+    validateClientScopes: jest.fn().mockResolvedValue([]),
   };
 }
 
@@ -106,6 +119,7 @@ describe('ClientCommandHandler', () => {
   let clientAuthPolicyRepo: jest.Mocked<ClientAuthPolicyRepository>;
   let crypto: jest.Mocked<SymmetricCryptoPort>;
   let grantTypeRegistry: jest.Mocked<GrantTypeRegistryPort>;
+  let scopeRegistry: jest.Mocked<ScopeRegistryPort>;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -113,11 +127,13 @@ describe('ClientCommandHandler', () => {
     clientAuthPolicyRepo = createMockClientAuthPolicyRepo();
     crypto = createMockCrypto();
     grantTypeRegistry = createMockGrantTypeRegistry();
+    scopeRegistry = createMockScopeRegistry();
     handler = new ClientCommandHandler(
       clientRepo,
       clientAuthPolicyRepo,
       crypto,
       grantTypeRegistry,
+      scopeRegistry,
     );
   });
 
@@ -140,6 +156,10 @@ describe('ClientCommandHandler', () => {
         applicationType: 'web',
         tokenEndpointAuthMethod: 'none',
         grantTypes: ['authorization_code'],
+      });
+      expect(scopeRegistry.validateClientScopes).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        scopes: ['openid'],
       });
       expect(result.id).toBeDefined();
     });
@@ -229,6 +249,37 @@ describe('ClientCommandHandler', () => {
           name: 'Bad Client',
           grantTypes: ['client_credentials'],
           tokenEndpointAuthMethod: 'none',
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(clientRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('custom scope가 registry에 등록되어 있으면 정규화해 저장한다', async () => {
+      await handler.createClient('tenant-1', {
+        clientId: 'custom-scope-client',
+        name: 'Custom Scope Client',
+        scope: 'openid  orders:read   profile orders:read',
+      });
+
+      expect(scopeRegistry.validateClientScopes).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        scopes: ['openid', 'orders:read', 'profile'],
+      });
+      const saved = clientRepo.save.mock.calls[0][0] as ClientModel;
+      expect(saved.scope).toBe('openid orders:read profile');
+    });
+
+    it('지원하지 않는 scope 정책이면 BadRequestException을 던진다', async () => {
+      scopeRegistry.validateClientScopes.mockResolvedValue([
+        { scope: 'payments:write', reason: 'unsupported' },
+      ]);
+
+      await expect(
+        handler.createClient('tenant-1', {
+          clientId: 'bad-scope-client',
+          name: 'Bad Scope Client',
+          scope: 'openid payments:write',
         }),
       ).rejects.toThrow(BadRequestException);
 
@@ -337,6 +388,19 @@ describe('ClientCommandHandler', () => {
       expect(saved.skipConsent).toBe(true);
       expect(saved.accessTokenTtlSec).toBe(1200);
       expect(saved.refreshTokenTtlSec).toBeNull();
+    });
+
+    it('scope 변경 시 registry 정책으로 검증한 뒤 정규화한다', async () => {
+      await handler.updateClient('tenant-1', 'client-1', {
+        scope: 'openid  orders:read orders:read',
+      });
+
+      expect(scopeRegistry.validateClientScopes).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        scopes: ['openid', 'orders:read'],
+      });
+      const saved = clientRepo.save.mock.calls[0][0] as ClientModel;
+      expect(saved.scope).toBe('openid orders:read');
     });
 
     it('grantTypes 변경 시 최종 client 정책을 검증한다', async () => {

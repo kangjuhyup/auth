@@ -13,6 +13,7 @@ import { TenantResponse } from '@application/dto';
 import { UserResponse, UserConsentResponse } from '@application/dto';
 import { RoleResponse } from '@application/dto';
 import { PermissionResponse } from '@application/dto';
+import { ScopeResponse } from '@application/dto';
 import { GroupResponse } from '@application/dto';
 
 export abstract class AdminQueryPort {
@@ -83,6 +84,13 @@ export abstract class AdminQueryPort {
     tenantId: string,
     id: string,
   ): Promise<PermissionResponse>;
+
+  // Scope
+  abstract getScopes(
+    tenantId: string,
+    query: PaginationQuery,
+  ): Promise<PaginatedResult<ScopeResponse>>;
+  abstract getScope(tenantId: string, id: string): Promise<ScopeResponse>;
 
   // Group
   abstract getGroups(

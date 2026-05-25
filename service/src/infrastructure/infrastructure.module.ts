@@ -14,6 +14,7 @@ import {
   GroupRepository,
   RoleRepository,
   PermissionRepository,
+  ScopeRepository,
   RoleAssignmentRepository,
   RolePermissionRepository,
   ClientRepository,
@@ -30,6 +31,7 @@ import { TenantRepositoryImpl } from './repositories/tenant.repository.impl';
 import { GroupRepositoryImpl } from './repositories/group.repository.impl';
 import { RoleRepositoryImpl } from './repositories/role.repository.impl';
 import { PermissionRepositoryImpl } from './repositories/permission.repository.impl';
+import { ScopeRepositoryImpl } from './repositories/scope.repository.impl';
 import { RoleAssignmentRepositoryImpl } from './repositories/role-assignment.repository.impl';
 import { RolePermissionRepositoryImpl } from './repositories/role-permission.repository.impl';
 import { ClientRepositoryImpl } from './repositories/client.repository.impl';
@@ -78,6 +80,10 @@ import { IdentityLinkSessionPort } from '@application/ports/identity-link-sessio
 import { RedisIdentityLinkSessionRepository } from './repositories/redis-identity-link-session.repository';
 import { GrantTypeRegistryPort } from '@application/ports/grant-type-registry.port';
 import { OidcGrantTypeRegistryAdapter } from './oidc-provider/grant-type-registry.adapter';
+import { ScopeRegistryPort } from '@application/ports/scope-registry.port';
+import { OidcScopeRegistryAdapter } from './oidc-provider/scope-registry.adapter';
+import { ScopeClaimResolverPort } from '@application/ports/scope-claim-resolver.port';
+import { OidcScopeClaimResolverAdapter } from './oidc-provider/scope-claim-resolver.adapter';
 
 // Password Hash Implementations
 import { Argon2idHash } from './crypto/password/impl/argon2-hash';
@@ -102,6 +108,10 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     {
       provide: PermissionRepository,
       useClass: PermissionRepositoryImpl,
+    },
+    {
+      provide: ScopeRepository,
+      useClass: ScopeRepositoryImpl,
     },
     {
       provide: RoleAssignmentRepository,
@@ -175,6 +185,14 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     {
       provide: GrantTypeRegistryPort,
       useClass: OidcGrantTypeRegistryAdapter,
+    },
+    {
+      provide: ScopeRegistryPort,
+      useClass: OidcScopeRegistryAdapter,
+    },
+    {
+      provide: ScopeClaimResolverPort,
+      useClass: OidcScopeClaimResolverAdapter,
     },
     {
       provide: IdpPort,
@@ -252,10 +270,13 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     IdentityLinkSessionPort,
     OidcInteractionPort,
     GrantTypeRegistryPort,
+    ScopeRegistryPort,
+    ScopeClaimResolverPort,
     TenantRepository,
     GroupRepository,
     RoleRepository,
     PermissionRepository,
+    ScopeRepository,
     RoleAssignmentRepository,
     RolePermissionRepository,
     ClientRepository,

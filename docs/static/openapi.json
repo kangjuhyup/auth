@@ -4557,6 +4557,326 @@
         "description": "Role management. Role codes are tenant-unique, deletion must account for assignments, inheritance must not form cycles, and changes are audited."
       }
     },
+    "/t/{tenantCode}/admin/scopes": {
+      "get": {
+        "operationId": "AdminScopeController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "example": "scope-1"
+                          },
+                          "name": {
+                            "type": "string",
+                            "example": "orders:read"
+                          },
+                          "displayName": {
+                            "type": "string",
+                            "example": "Read orders"
+                          },
+                          "description": {
+                            "type": "string",
+                            "example": "Allow reading order data",
+                            "nullable": true
+                          },
+                          "claimKeys": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "example": "profile"
+                            }
+                          },
+                          "enabled": {
+                            "type": "boolean",
+                            "example": true
+                          },
+                          "builtIn": {
+                            "type": "boolean",
+                            "example": false
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "example": "2026-05-25T00:00:00.000Z"
+                          },
+                          "updatedAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "example": "2026-05-25T00:00:00.000Z"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "displayName",
+                          "description",
+                          "claimKeys",
+                          "enabled",
+                          "builtIn",
+                          "createdAt",
+                          "updatedAt"
+                        ]
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "example": 42
+                    },
+                    "page": {
+                      "type": "integer",
+                      "example": 1
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "example": 20
+                    }
+                  },
+                  "required": ["items", "total", "page", "limit"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Admin session is missing or invalid"
+          },
+          "403": {
+            "description": "Admin permission is required"
+          }
+        },
+        "security": [
+          {
+            "admin_session": []
+          }
+        ],
+        "summary": "List scopes",
+        "tags": ["Admin Scopes"]
+      },
+      "post": {
+        "operationId": "AdminScopeController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateScopeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "example": "1234567890"
+                    }
+                  },
+                  "required": ["id"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Admin session is missing or invalid"
+          },
+          "403": {
+            "description": "Admin permission is required"
+          }
+        },
+        "security": [
+          {
+            "admin_session": []
+          }
+        ],
+        "summary": "Create scope",
+        "tags": ["Admin Scopes"]
+      }
+    },
+    "/t/{tenantCode}/admin/scopes/{id}": {
+      "get": {
+        "operationId": "AdminScopeController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "example": "scope-1"
+                    },
+                    "name": {
+                      "type": "string",
+                      "example": "orders:read"
+                    },
+                    "displayName": {
+                      "type": "string",
+                      "example": "Read orders"
+                    },
+                    "description": {
+                      "type": "string",
+                      "example": "Allow reading order data",
+                      "nullable": true
+                    },
+                    "claimKeys": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "example": "profile"
+                      }
+                    },
+                    "enabled": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "builtIn": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "example": "2026-05-25T00:00:00.000Z"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "example": "2026-05-25T00:00:00.000Z"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "displayName",
+                    "description",
+                    "claimKeys",
+                    "enabled",
+                    "builtIn",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Admin session is missing or invalid"
+          },
+          "403": {
+            "description": "Admin permission is required"
+          }
+        },
+        "security": [
+          {
+            "admin_session": []
+          }
+        ],
+        "summary": "Get scope",
+        "tags": ["Admin Scopes"]
+      },
+      "put": {
+        "operationId": "AdminScopeController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateScopeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "Admin session is missing or invalid"
+          },
+          "403": {
+            "description": "Admin permission is required"
+          }
+        },
+        "security": [
+          {
+            "admin_session": []
+          }
+        ],
+        "summary": "Update scope",
+        "tags": ["Admin Scopes"]
+      },
+      "delete": {
+        "operationId": "AdminScopeController_delete",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "Admin session is missing or invalid"
+          },
+          "403": {
+            "description": "Admin permission is required"
+          }
+        },
+        "security": [
+          {
+            "admin_session": []
+          }
+        ],
+        "summary": "Delete scope",
+        "tags": ["Admin Scopes"]
+      }
+    },
     "/admin/tenants": {
       "get": {
         "operationId": "AdminTenantController_list",
@@ -6504,6 +6824,14 @@
         "properties": {}
       },
       "UpdateRoleDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateScopeDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateScopeDto": {
         "type": "object",
         "properties": {}
       },

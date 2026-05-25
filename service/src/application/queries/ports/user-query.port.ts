@@ -68,6 +68,9 @@ export type UserProfileView = Readonly<{
 
 export type UserClaimsView = Readonly<{
   sub: string;
+  username?: string;
   email?: string;
   email_verified?: boolean;
+  phone?: string;
+  phone_verified?: boolean;
 }>;

@@ -3,6 +3,13 @@ export { TenantModel as Tenant } from './tenant';
 export { GroupModel } from './group';
 export { RoleModel } from './role';
 export { PermissionModel } from './permission';
+export { ScopeModel } from './scope';
+export {
+  BUILT_IN_OIDC_SCOPES,
+  isValidScopeToken,
+  normalizeScopeString,
+  parseScopeString,
+} from './scope';
 export { ClientModel } from './client';
 export type { ClientType, ApplicationType } from './client';
 export { TenantConfigModel } from './tenant-config';

@@ -10,6 +10,8 @@ import type {
   TenantRepository,
 } from '@domain/repositories';
 import type { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
+import type { ScopeRegistryPort } from '@application/ports/scope-registry.port';
+import type { ScopeClaimResolverPort } from '@application/ports/scope-claim-resolver.port';
 
 describe('buildOidcConfiguration', () => {
   const makeCtx = (tenantId?: string) =>
@@ -68,6 +70,49 @@ describe('buildOidcConfiguration', () => {
     } as any as jest.Mocked<ClientAuthPolicyRepository>;
     const tenantRepository = {} as TenantRepository;
     const symmetricCrypto = {} as SymmetricCryptoPort;
+    const scopeRegistry: jest.Mocked<ScopeRegistryPort> = {
+      listSupportedScopes: jest
+        .fn()
+        .mockResolvedValue(['openid', 'profile', 'email', 'orders:read']),
+      listDefinitions: jest.fn().mockResolvedValue([
+        {
+          scope: 'openid',
+          displayName: 'openid',
+          claimKeys: [],
+          builtIn: true,
+          enabled: true,
+        },
+        {
+          scope: 'profile',
+          displayName: 'profile',
+          claimKeys: ['profile'],
+          builtIn: true,
+          enabled: true,
+        },
+        {
+          scope: 'email',
+          displayName: 'email',
+          claimKeys: ['email'],
+          builtIn: true,
+          enabled: true,
+        },
+        {
+          scope: 'orders:read',
+          displayName: 'Read orders',
+          claimKeys: ['orders'],
+          builtIn: false,
+          enabled: true,
+        },
+      ]),
+      validateClientScopes: jest.fn(),
+    };
+    const scopeClaimResolver: jest.Mocked<ScopeClaimResolverPort> = {
+      resolve: jest.fn().mockImplementation(async ({ baseClaims }) => ({
+        sub: baseClaims.sub,
+        email: baseClaims.email,
+        email_verified: baseClaims.email_verified,
+      })),
+    };
 
     return {
       em,
@@ -79,6 +124,8 @@ describe('buildOidcConfiguration', () => {
       clientAuthPolicyRepository,
       tenantRepository,
       symmetricCrypto,
+      scopeRegistry,
+      scopeClaimResolver,
       jwksKeys: [],
       supportedGrantTypes: [
         'authorization_code',
@@ -86,6 +133,7 @@ describe('buildOidcConfiguration', () => {
         'client_credentials',
         'implicit',
       ],
+      supportedScopes: ['openid', 'profile', 'email', 'orders:read'],
       tenantAccessTokenTtlSec: 3600,
       tenantRefreshTokenTtlSec: 86400,
     };
@@ -200,7 +248,7 @@ describe('buildOidcConfiguration', () => {
     expect(info).toBeDefined();
     expect(info.accessTokenFormat).toBe('jwt');
     expect(info.audience).toBe('https://api.example.com');
-    expect(info.scope).toBe('openid profile email');
+    expect(info.scope).toBe('openid profile email orders:read');
   });
 
   it('findAccount: tenant가 없으면 missing_tenant를 던진다', async () => {
@@ -251,6 +299,15 @@ describe('buildOidcConfiguration', () => {
     expect(claims.sub).toBe('user-1');
     expect(claims.email).toBe('u@example.com');
     expect(claims.email_verified).toBe(true);
+    expect(deps.scopeRegistry.listDefinitions).toHaveBeenCalledWith('tenant-1');
+    expect(deps.scopeClaimResolver.resolve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        subject: 'user-1',
+        requestedScopes: ['openid', 'profile', 'email'],
+        claimKeys: ['profile', 'email'],
+      }),
+    );
   });
 
   it('OIDC_ACCESS_TOKEN_FORMAT=opaque이면 accessTokenFormat은 opaque다', async () => {

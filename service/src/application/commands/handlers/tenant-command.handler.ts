@@ -10,8 +10,9 @@ import {
   CreateTenantDto,
   UpdateTenantDto,
 } from '@application/dto';
-import { TenantRepository } from '@domain/repositories';
+import { ScopeRepository, TenantRepository } from '@domain/repositories';
 import { TenantModel } from '@domain/models/tenant';
+import { BUILT_IN_OIDC_SCOPES, ScopeModel } from '@domain/models/scope';
 import { orThrow } from '@domain/utils';
 import { AuditRecorder } from '@application/services/audit-recorder';
 
@@ -21,6 +22,7 @@ export class TenantCommandHandler implements TenantCommandPort {
 
   constructor(
     private readonly tenantRepo: TenantRepository,
+    private readonly scopeRepo: ScopeRepository,
     private readonly auditRecorder?: AuditRecorder,
   ) {}
 
@@ -35,6 +37,7 @@ export class TenantCommandHandler implements TenantCommandPort {
 
     const tenant = new TenantModel({ code: dto.code, name: dto.name });
     const saved = await this.tenantRepo.save(tenant);
+    await this.seedBuiltInScopes(saved.id);
     await this.auditRecorder?.recordAdminAction({
       tenantId: saved.id,
       action: 'CREATE',
@@ -45,6 +48,24 @@ export class TenantCommandHandler implements TenantCommandPort {
     });
 
     return { id: saved.id };
+  }
+
+  private async seedBuiltInScopes(tenantId: string): Promise<void> {
+    for (const scope of BUILT_IN_OIDC_SCOPES) {
+      const existing = await this.scopeRepo.findByName(tenantId, scope);
+      if (existing) continue;
+      await this.scopeRepo.save(
+        new ScopeModel({
+          tenantId,
+          name: scope,
+          displayName: defaultScopeDisplayName(scope),
+          description: defaultScopeDescription(scope),
+          claimKeys: defaultScopeClaimKeys(scope),
+          enabled: true,
+          builtIn: true,
+        }),
+      );
+    }
   }
 
   async updateTenant(
@@ -89,4 +110,24 @@ export class TenantCommandHandler implements TenantCommandPort {
     });
     await this.tenantRepo.delete(id);
   }
+}
+
+function defaultScopeDisplayName(scope: string): string {
+  if (scope === 'openid') return 'OpenID';
+  if (scope === 'profile') return 'Profile';
+  if (scope === 'email') return 'Email';
+  return scope;
+}
+
+function defaultScopeDescription(scope: string): string {
+  if (scope === 'openid') return 'OIDC authentication scope';
+  if (scope === 'profile') return 'Basic profile claims';
+  if (scope === 'email') return 'Email claims';
+  return scope;
+}
+
+function defaultScopeClaimKeys(scope: string): string[] {
+  if (scope === 'profile') return ['profile'];
+  if (scope === 'email') return ['email'];
+  return [];
 }

@@ -1,8 +1,15 @@
 export { TenantRepository, TenantListQuery } from './tenant.repository';
 export { GroupRepository, GroupListQuery } from './group.repository';
 export { RoleRepository, RoleListQuery } from './role.repository';
-export { PermissionRepository, PermissionListQuery } from './permission.repository';
-export { RolePermissionRepository, RolePermissionListQuery } from './role-permission.repository';
+export {
+  PermissionRepository,
+  PermissionListQuery,
+} from './permission.repository';
+export { ScopeRepository, ScopeListQuery } from './scope.repository';
+export {
+  RolePermissionRepository,
+  RolePermissionListQuery,
+} from './role-permission.repository';
 export { RoleAssignmentRepository } from './role-assignment.repository';
 export { ClientRepository, ClientListQuery } from './client.repository';
 export { TenantConfigRepository } from './tenant-config.repository';

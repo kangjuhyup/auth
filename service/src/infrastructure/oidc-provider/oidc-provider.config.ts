@@ -12,6 +12,9 @@ import type {
   TenantRepository,
 } from '@domain/repositories';
 import type { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
+import type { ScopeRegistryPort } from '@application/ports/scope-registry.port';
+import type { ScopeClaimResolverPort } from '@application/ports/scope-claim-resolver.port';
+import { parseScopeString } from '@domain/models/scope';
 
 type OidcConfiguration = Configuration & {
   grantTypes: string[];
@@ -30,6 +33,9 @@ export function buildOidcConfiguration(params: {
   symmetricCrypto: SymmetricCryptoPort;
   jwksKeys: Record<string, unknown>[];
   supportedGrantTypes: string[];
+  supportedScopes: string[];
+  scopeRegistry: ScopeRegistryPort;
+  scopeClaimResolver: ScopeClaimResolverPort;
   tenantAccessTokenTtlSec: number;
   tenantRefreshTokenTtlSec: number;
 }): OidcConfiguration {
@@ -45,6 +51,9 @@ export function buildOidcConfiguration(params: {
     tenantRepository,
     symmetricCrypto,
     supportedGrantTypes,
+    supportedScopes,
+    scopeRegistry,
+    scopeClaimResolver,
     tenantAccessTokenTtlSec,
     tenantRefreshTokenTtlSec,
   } = params;
@@ -146,7 +155,16 @@ export function buildOidcConfiguration(params: {
 
       // 첫 번째 파티 클라이언트: 동의 없이 Grant 자동 생성
       const grant = new ctx.oidc.provider.Grant({ clientId, accountId });
-      grant.addOIDCScope('openid profile email');
+      const requestedScopes = parseScopeString(
+        ctx.oidc.params?.scope as string | undefined,
+      );
+      const allowedScopes = new Set(parseScopeString(client.scope));
+      const grantScopes = requestedScopes.filter((scope) =>
+        allowedScopes.has(scope),
+      );
+      grant.addOIDCScope(
+        grantScopes.length > 0 ? grantScopes.join(' ') : client.scope,
+      );
       await grant.save();
       return grant;
     },
@@ -194,8 +212,8 @@ export function buildOidcConfiguration(params: {
             // 리소스 서버별 TTL (선택)
             // accessTokenTTL: 60 * 60,
 
-            // scope 제한
-            scope: 'openid profile email',
+            // resource server가 허용하는 scope는 tenant scope registry와 동기화한다.
+            scope: supportedScopes.join(' '),
           };
         },
       },
@@ -208,7 +226,7 @@ export function buildOidcConfiguration(params: {
       if (!tenantId || !clientId) return true;
       return getRefreshTokenRotationEnabled(tenantId, clientId);
     },
-    scopes: ['openid', 'profile', 'email'],
+    scopes: supportedScopes,
 
     cookies: { keys: getSecretKeys(configService, 'OIDC_COOKIE_KEYS') },
 
@@ -292,11 +310,25 @@ export function buildOidcConfiguration(params: {
 
       return {
         accountId: String(sub),
-        claims: async () => ({
-          sub: view.sub,
-          email: view.email ?? undefined,
-          email_verified: view.email_verified ?? undefined,
-        }),
+        claims: async (_use, scope) => {
+          const requestedScopes = parseScopeString(scope);
+          const definitions = await scopeRegistry.listDefinitions(tenantId);
+          const requested = new Set(requestedScopes);
+          const claimKeys = definitions
+            .filter(
+              (definition) =>
+                definition.enabled && requested.has(definition.scope),
+            )
+            .flatMap((definition) => definition.claimKeys);
+
+          return (await scopeClaimResolver.resolve({
+            tenantId,
+            subject: String(sub),
+            requestedScopes,
+            claimKeys,
+            baseClaims: view,
+          })) as any;
+        },
       };
     },
 

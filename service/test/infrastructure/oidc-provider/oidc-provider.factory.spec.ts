@@ -114,6 +114,14 @@ function createParams(): CreateOidcProviderParams {
           'implicit',
         ]),
     } as any,
+    scopeRegistry: {
+      listSupportedScopes: jest
+        .fn()
+        .mockResolvedValue(['openid', 'profile', 'email', 'orders:read']),
+    } as any,
+    scopeClaimResolver: {
+      resolve: jest.fn(),
+    } as any,
   };
 }
 

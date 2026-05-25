@@ -58,7 +58,9 @@ const object = (
   required,
 });
 
-const nullableObject = (properties: Record<string, OpenApiSchema>): OpenApiSchema => ({
+const nullableObject = (
+  properties: Record<string, OpenApiSchema>,
+): OpenApiSchema => ({
   ...object(properties),
   nullable: true,
 });
@@ -121,8 +123,12 @@ export const OpenApiResponseSchemas = {
     scope: string('openid email profile'),
     postLogoutRedirectUris: arrayOf(string('https://app.example.com/logout')),
     applicationType: string('web'),
-    backchannelLogoutUri: nullableString('https://app.example.com/backchannel-logout'),
-    frontchannelLogoutUri: nullableString('https://app.example.com/frontchannel-logout'),
+    backchannelLogoutUri: nullableString(
+      'https://app.example.com/backchannel-logout',
+    ),
+    frontchannelLogoutUri: nullableString(
+      'https://app.example.com/frontchannel-logout',
+    ),
     allowedResources: arrayOf(string('https://api.example.com')),
     skipConsent: boolean(false),
     accessTokenTtlSec: { ...integer(3600), nullable: true },
@@ -191,6 +197,18 @@ export const OpenApiResponseSchemas = {
     resource: nullableString('users'),
     action: nullableString('read'),
     description: nullableString('Read users'),
+    createdAt: dateTime('2026-05-25T00:00:00.000Z'),
+    updatedAt: dateTime('2026-05-25T00:00:00.000Z'),
+  }),
+
+  scope: object({
+    id: string('scope-1'),
+    name: string('orders:read'),
+    displayName: string('Read orders'),
+    description: nullableString('Allow reading order data'),
+    claimKeys: arrayOf(string('profile')),
+    enabled: boolean(true),
+    builtIn: boolean(false),
     createdAt: dateTime('2026-05-25T00:00:00.000Z'),
     updatedAt: dateTime('2026-05-25T00:00:00.000Z'),
   }),
@@ -379,7 +397,9 @@ export function ApiAdminResource(tag: string) {
   return applyDecorators(
     ApiTags(tag),
     ApiCookieAuth('admin_session'),
-    ApiUnauthorizedResponse({ description: 'Admin session is missing or invalid' }),
+    ApiUnauthorizedResponse({
+      description: 'Admin session is missing or invalid',
+    }),
     ApiForbiddenResponse({ description: 'Admin permission is required' }),
   );
 }

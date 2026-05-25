@@ -21,6 +21,8 @@ import { JwksKeyModel } from '@domain/models/jwks-key';
 import { EventModel } from '@domain/models/event';
 import { GrantTypeRegistryPort } from '@application/ports/grant-type-registry.port';
 import { registerCustomGrantTypes } from './custom-grants/register-custom-grant-types';
+import { ScopeRegistryPort } from '@application/ports/scope-registry.port';
+import { ScopeClaimResolverPort } from '@application/ports/scope-claim-resolver.port';
 
 export type CreateOidcProviderParams = {
   issuer: string;
@@ -39,6 +41,8 @@ export type CreateOidcProviderParams = {
   jwksKeyCrypto: JwksKeyCryptoPort;
   symmetricCrypto: SymmetricCryptoPort;
   grantTypeRegistry: GrantTypeRegistryPort;
+  scopeRegistry: ScopeRegistryPort;
+  scopeClaimResolver: ScopeClaimResolverPort;
 };
 
 const DEFAULT_ACCESS_TOKEN_TTL = 60 * 60;
@@ -93,6 +97,9 @@ export async function createOidcProvider(
     jwksKeys,
     supportedGrantTypes:
       await params.grantTypeRegistry.listSupportedGrantTypes(),
+    supportedScopes: await params.scopeRegistry.listSupportedScopes(tenant?.id),
+    scopeRegistry: params.scopeRegistry,
+    scopeClaimResolver: params.scopeClaimResolver,
     tenantAccessTokenTtlSec:
       tenantConfig?.accessTokenTtlSec ?? DEFAULT_ACCESS_TOKEN_TTL,
     tenantRefreshTokenTtlSec:

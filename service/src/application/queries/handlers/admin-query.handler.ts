@@ -7,24 +7,25 @@ import {
   PaginatedResult,
   TenantResponse,
   ClientResponse,
+  ClientAuthPolicyEffectiveResponse,
   ClientAuthPolicyResponse,
   UserResponse,
   UserConsentResponse,
   RoleResponse,
   PermissionResponse,
+  ScopeResponse,
   GroupResponse,
   IdentityProviderResponse,
   TenantPolicyResponse,
-} from '@application/dto';
-import type {
   AuditLogQuery,
   AuditLogResponse,
-} from '@application/dto/audit-log.dto';
+} from '@application/dto';
 import {
   TenantRepository,
   GroupRepository,
   RoleRepository,
   PermissionRepository,
+  ScopeRepository,
   RolePermissionRepository,
   RoleAssignmentRepository,
   ClientRepository,
@@ -39,6 +40,10 @@ import { UserWriteRepositoryPort } from '@application/commands/ports/user-write-
 import { IdentityProviderModel } from '@domain/models/identity-provider';
 import { ConsentModel } from '@domain/models/consent';
 import { TenantConfigModel } from '@domain/models/tenant-config';
+import { ScopeModel } from '@domain/models/scope';
+import { RoleModel } from '@domain/models/role';
+import { PermissionModel } from '@domain/models/permission';
+import { GroupModel } from '@domain/models/group';
 
 @Injectable()
 @Logging({ level: LogLevel.DEBUG })
@@ -48,6 +53,7 @@ export class AdminQueryHandler implements AdminQueryPort {
     private readonly groupRepo: GroupRepository,
     private readonly roleRepo: RoleRepository,
     private readonly permissionRepo: PermissionRepository,
+    private readonly scopeRepo: ScopeRepository,
     private readonly rolePermissionRepo: RolePermissionRepository,
     private readonly roleAssignmentRepo: RoleAssignmentRepository,
     private readonly clientRepo: ClientRepository,
@@ -73,19 +79,21 @@ export class AdminQueryHandler implements AdminQueryPort {
     const responses: TenantResponse[] = [];
     for (const t of items) {
       const config = await this.tenantConfigRepo.findByTenantId(t.id);
-      responses.push({
-        id: t.id,
-        code: t.code,
-        name: t.name,
-        signupPolicy: config?.signupPolicy ?? 'open',
-        requirePhoneVerify: config?.requirePhoneVerify ?? false,
-        brandName: config?.brandName ?? null,
-        createdAt: t.createdAt,
-        updatedAt: t.updatedAt,
-      });
+      responses.push(
+        TenantResponse.of({
+          id: t.id,
+          code: t.code,
+          name: t.name,
+          signupPolicy: config?.signupPolicy ?? 'open',
+          requirePhoneVerify: config?.requirePhoneVerify ?? false,
+          brandName: config?.brandName ?? null,
+          createdAt: t.createdAt,
+          updatedAt: t.updatedAt,
+        }),
+      );
     }
 
-    return { items: responses, total, page, limit };
+    return PaginatedResult.of({ items: responses, total, page, limit });
   }
 
   async getTenant(id: string): Promise<TenantResponse> {
@@ -96,7 +104,7 @@ export class AdminQueryHandler implements AdminQueryPort {
 
     const config = await this.tenantConfigRepo.findByTenantId(tenant.id);
 
-    return {
+    return TenantResponse.of({
       id: tenant.id,
       code: tenant.code,
       name: tenant.name,
@@ -105,7 +113,7 @@ export class AdminQueryHandler implements AdminQueryPort {
       brandName: config?.brandName ?? null,
       createdAt: tenant.createdAt,
       updatedAt: tenant.updatedAt,
-    };
+    });
   }
 
   // ── Not implemented ──────────────────────────────────────────────────────
@@ -123,33 +131,35 @@ export class AdminQueryHandler implements AdminQueryPort {
       limit,
     });
 
-    return {
-      items: items.map((c) => ({
-        id: c.id,
-        clientId: c.clientId,
-        name: c.name,
-        type: c.type,
-        enabled: c.enabled,
-        redirectUris: c.redirectUris,
-        grantTypes: c.grantTypes,
-        responseTypes: c.responseTypes,
-        tokenEndpointAuthMethod: c.tokenEndpointAuthMethod,
-        scope: c.scope,
-        postLogoutRedirectUris: c.postLogoutRedirectUris,
-        applicationType: c.applicationType,
-        backchannelLogoutUri: c.backchannelLogoutUri ?? null,
-        frontchannelLogoutUri: c.frontchannelLogoutUri ?? null,
-        allowedResources: c.allowedResources,
-        skipConsent: c.skipConsent,
-        accessTokenTtlSec: c.accessTokenTtlSec ?? null,
-        refreshTokenTtlSec: c.refreshTokenTtlSec ?? null,
-        createdAt: c.createdAt,
-        updatedAt: c.updatedAt,
-      })),
+    return PaginatedResult.of({
+      items: items.map((c) =>
+        ClientResponse.of({
+          id: c.id,
+          clientId: c.clientId,
+          name: c.name,
+          type: c.type,
+          enabled: c.enabled,
+          redirectUris: c.redirectUris,
+          grantTypes: c.grantTypes,
+          responseTypes: c.responseTypes,
+          tokenEndpointAuthMethod: c.tokenEndpointAuthMethod,
+          scope: c.scope,
+          postLogoutRedirectUris: c.postLogoutRedirectUris,
+          applicationType: c.applicationType,
+          backchannelLogoutUri: c.backchannelLogoutUri ?? null,
+          frontchannelLogoutUri: c.frontchannelLogoutUri ?? null,
+          allowedResources: c.allowedResources,
+          skipConsent: c.skipConsent,
+          accessTokenTtlSec: c.accessTokenTtlSec ?? null,
+          refreshTokenTtlSec: c.refreshTokenTtlSec ?? null,
+          createdAt: c.createdAt,
+          updatedAt: c.updatedAt,
+        }),
+      ),
       total,
       page,
       limit,
-    };
+    });
   }
 
   async getClient(tenantId: string, id: string): Promise<ClientResponse> {
@@ -159,7 +169,7 @@ export class AdminQueryHandler implements AdminQueryPort {
       (c) => c.tenantId === tenantId,
     );
 
-    return {
+    return ClientResponse.of({
       id: client.id,
       clientId: client.clientId,
       name: client.name,
@@ -180,7 +190,7 @@ export class AdminQueryHandler implements AdminQueryPort {
       refreshTokenTtlSec: client.refreshTokenTtlSec ?? null,
       createdAt: client.createdAt,
       updatedAt: client.updatedAt,
-    };
+    });
   }
 
   async getClientAuthPolicy(
@@ -201,7 +211,12 @@ export class AdminQueryHandler implements AdminQueryPort {
       (await this.tenantConfigRepo.findByTenantId(tenantId)) ??
       this.createDefaultTenantConfig(tenantId);
 
-    return {
+    const effective = policy.resolveEffectivePolicy(
+      tenantConfig.getPolicies(),
+      client.refreshTokenTtlSec,
+    );
+
+    return ClientAuthPolicyResponse.of({
       clientRefId: policy.clientRefId,
       allowedAuthMethods: policy.allowedAuthMethods,
       defaultAcr: policy.defaultAcr,
@@ -214,11 +229,8 @@ export class AdminQueryHandler implements AdminQueryPort {
       reauthenticationIntervalSec: policy.reauthenticationIntervalSec,
       refreshTokenRotationEnabled: policy.refreshTokenRotationEnabled,
       refreshTokenReuseAction: policy.refreshTokenReuseAction,
-      effective: policy.resolveEffectivePolicy(
-        tenantConfig.getPolicies(),
-        client.refreshTokenTtlSec,
-      ),
-    };
+      effective: ClientAuthPolicyEffectiveResponse.of(effective),
+    });
   }
 
   async getKeys(tenantId: string): Promise<unknown[]> {
@@ -238,7 +250,7 @@ export class AdminQueryHandler implements AdminQueryPort {
     const config =
       (await this.tenantConfigRepo.findByTenantId(tenantId)) ??
       this.createDefaultTenantConfig(tenantId);
-    return config.getPolicies();
+    return TenantPolicyResponse.of(config.getPolicies());
   }
 
   @NoLog
@@ -275,27 +287,29 @@ export class AdminQueryHandler implements AdminQueryPort {
       ...(query.correlationId ? { correlationId: query.correlationId } : {}),
     });
 
-    return {
-      items: items.map((e) => ({
-        id: e.id,
-        category: e.category,
-        severity: e.severity,
-        action: e.action,
-        userId: e.userId ?? null,
-        clientId: e.clientId ?? null,
-        resourceType: e.resourceType ?? null,
-        resourceId: e.resourceId ?? null,
-        success: e.success,
-        reason: e.reason ?? null,
-        userAgent: e.userAgent ?? null,
-        correlationId: e.correlationId ?? null,
-        metadata: e.metadata ?? null,
-        occurredAt: e.occurredAt,
-      })),
+    return PaginatedResult.of({
+      items: items.map((e) =>
+        AuditLogResponse.of({
+          id: e.id,
+          category: e.category,
+          severity: e.severity,
+          action: e.action,
+          userId: e.userId ?? null,
+          clientId: e.clientId ?? null,
+          resourceType: e.resourceType ?? null,
+          resourceId: e.resourceId ?? null,
+          success: e.success,
+          reason: e.reason ?? null,
+          userAgent: e.userAgent ?? null,
+          correlationId: e.correlationId ?? null,
+          metadata: e.metadata ?? null,
+          occurredAt: e.occurredAt,
+        }),
+      ),
       total,
       page,
       limit,
-    };
+    });
   }
 
   async getUsers(
@@ -311,23 +325,25 @@ export class AdminQueryHandler implements AdminQueryPort {
       limit,
     });
 
-    return {
-      items: items.map((u) => ({
-        id: u.id,
-        username: u.username,
-        email: u.email ?? null,
-        emailVerified: u.emailVerified,
-        phone: u.phone ?? null,
-        phoneVerified: u.phoneVerified,
-        status: u.status,
-        mfaEnabled: u.mfaEnabled,
-        createdAt: u.createdAt,
-        updatedAt: u.updatedAt,
-      })),
+    return PaginatedResult.of({
+      items: items.map((u) =>
+        UserResponse.of({
+          id: u.id,
+          username: u.username,
+          email: u.email ?? null,
+          emailVerified: u.emailVerified,
+          phone: u.phone ?? null,
+          phoneVerified: u.phoneVerified,
+          status: u.status,
+          mfaEnabled: u.mfaEnabled,
+          createdAt: u.createdAt,
+          updatedAt: u.updatedAt,
+        }),
+      ),
       total,
       page,
       limit,
-    };
+    });
   }
 
   async getUser(tenantId: string, id: string): Promise<UserResponse> {
@@ -337,7 +353,7 @@ export class AdminQueryHandler implements AdminQueryPort {
       (u) => u.tenantId === tenantId,
     );
 
-    return {
+    return UserResponse.of({
       id: user.id,
       username: user.username,
       email: user.email ?? null,
@@ -348,7 +364,7 @@ export class AdminQueryHandler implements AdminQueryPort {
       mfaEnabled: user.mfaEnabled,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
-    };
+    });
   }
 
   async getUserConsents(
@@ -367,12 +383,12 @@ export class AdminQueryHandler implements AdminQueryPort {
       limit,
     });
 
-    return {
+    return PaginatedResult.of({
       items: items.map((consent) => this.toUserConsentResponse(consent)),
       total,
       page,
       limit,
-    };
+    });
   }
 
   async getUserConsentHistory(
@@ -392,12 +408,12 @@ export class AdminQueryHandler implements AdminQueryPort {
       includeRevoked: true,
     });
 
-    return {
+    return PaginatedResult.of({
       items: items.map((consent) => this.toUserConsentResponse(consent)),
       total,
       page,
       limit,
-    };
+    });
   }
 
   @NoLog
@@ -414,7 +430,7 @@ export class AdminQueryHandler implements AdminQueryPort {
 
   @NoLog
   private toUserConsentResponse(consent: ConsentModel): UserConsentResponse {
-    return {
+    return UserConsentResponse.of({
       id: consent.id ?? '',
       userId: consent.userId,
       clientRefId: consent.clientRefId,
@@ -424,7 +440,7 @@ export class AdminQueryHandler implements AdminQueryPort {
       grantedAt: consent.grantedAt,
       revokedAt: consent.revokedAt ?? null,
       status: consent.isRevoked ? 'REVOKED' : 'ACTIVE',
-    };
+    });
   }
 
   async getRoles(
@@ -440,19 +456,12 @@ export class AdminQueryHandler implements AdminQueryPort {
       limit,
     });
 
-    return {
-      items: items.map((r) => ({
-        id: r.id,
-        code: r.code,
-        name: r.name,
-        description: r.description ?? null,
-        createdAt: r.createdAt,
-        updatedAt: r.updatedAt,
-      })),
+    return PaginatedResult.of({
+      items: items.map((r) => this.toRoleResponse(r)),
       total,
       page,
       limit,
-    };
+    });
   }
 
   async getRole(tenantId: string, id: string): Promise<RoleResponse> {
@@ -462,14 +471,7 @@ export class AdminQueryHandler implements AdminQueryPort {
       (r) => r.tenantId === tenantId,
     );
 
-    return {
-      id: role.id,
-      code: role.code,
-      name: role.name,
-      description: role.description ?? null,
-      createdAt: role.createdAt,
-      updatedAt: role.updatedAt,
-    };
+    return this.toRoleResponse(role);
   }
 
   async getRolePermissions(
@@ -492,20 +494,12 @@ export class AdminQueryHandler implements AdminQueryPort {
       limit,
     });
 
-    return {
-      items: items.map((p) => ({
-        id: p.id,
-        code: p.code,
-        resource: p.resource ?? null,
-        action: p.action ?? null,
-        description: p.description ?? null,
-        createdAt: p.createdAt,
-        updatedAt: p.updatedAt,
-      })),
+    return PaginatedResult.of({
+      items: items.map((p) => this.toPermissionResponse(p)),
       total,
       page,
       limit,
-    };
+    });
   }
 
   async getPermissions(
@@ -521,20 +515,12 @@ export class AdminQueryHandler implements AdminQueryPort {
       limit,
     });
 
-    return {
-      items: items.map((p) => ({
-        id: p.id,
-        code: p.code,
-        resource: p.resource ?? null,
-        action: p.action ?? null,
-        description: p.description ?? null,
-        createdAt: p.createdAt,
-        updatedAt: p.updatedAt,
-      })),
+    return PaginatedResult.of({
+      items: items.map((p) => this.toPermissionResponse(p)),
       total,
       page,
       limit,
-    };
+    });
   }
 
   async getPermission(
@@ -547,15 +533,38 @@ export class AdminQueryHandler implements AdminQueryPort {
       (p) => p.tenantId === tenantId,
     );
 
-    return {
-      id: permission.id,
-      code: permission.code,
-      resource: permission.resource ?? null,
-      action: permission.action ?? null,
-      description: permission.description ?? null,
-      createdAt: permission.createdAt,
-      updatedAt: permission.updatedAt,
-    };
+    return this.toPermissionResponse(permission);
+  }
+
+  async getScopes(
+    tenantId: string,
+    query: PaginationQuery,
+  ): Promise<PaginatedResult<ScopeResponse>> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+
+    const { items, total } = await this.scopeRepo.list({
+      tenantId,
+      page,
+      limit,
+    });
+
+    return PaginatedResult.of({
+      items: items.map((scope) => this.toScopeResponse(scope)),
+      total,
+      page,
+      limit,
+    });
+  }
+
+  async getScope(tenantId: string, id: string): Promise<ScopeResponse> {
+    const scope = orThrow(
+      await this.scopeRepo.findById(id),
+      new NotFoundException('Scope not found'),
+      (s) => s.tenantId === tenantId,
+    );
+
+    return this.toScopeResponse(scope);
   }
 
   async getGroups(
@@ -571,19 +580,12 @@ export class AdminQueryHandler implements AdminQueryPort {
       limit,
     });
 
-    return {
-      items: items.map((g) => ({
-        id: g.id,
-        code: g.code,
-        name: g.name,
-        parentId: g.parentId ?? null,
-        createdAt: g.createdAt,
-        updatedAt: g.updatedAt,
-      })),
+    return PaginatedResult.of({
+      items: items.map((g) => this.toGroupResponse(g)),
       total,
       page,
       limit,
-    };
+    });
   }
 
   async getGroup(tenantId: string, id: string): Promise<GroupResponse> {
@@ -593,14 +595,7 @@ export class AdminQueryHandler implements AdminQueryPort {
       (g) => g.tenantId === tenantId,
     );
 
-    return {
-      id: group.id,
-      code: group.code,
-      name: group.name,
-      parentId: group.parentId ?? null,
-      createdAt: group.createdAt,
-      updatedAt: group.updatedAt,
-    };
+    return this.toGroupResponse(group);
   }
 
   async getGroupRoles(
@@ -614,14 +609,7 @@ export class AdminQueryHandler implements AdminQueryPort {
     );
 
     const roles = await this.roleAssignmentRepo.listForGroup(groupId);
-    return roles.map((r) => ({
-      id: r.id,
-      code: r.code,
-      name: r.name,
-      description: r.description ?? null,
-      createdAt: r.createdAt,
-      updatedAt: r.updatedAt,
-    }));
+    return roles.map((r) => this.toRoleResponse(r));
   }
 
   async getUserRoles(
@@ -629,21 +617,68 @@ export class AdminQueryHandler implements AdminQueryPort {
     userId: string,
   ): Promise<RoleResponse[]> {
     const roles = await this.roleAssignmentRepo.listForUser(userId);
-    return roles.map((r) => ({
-      id: r.id,
-      code: r.code,
-      name: r.name,
-      description: r.description ?? null,
-      createdAt: r.createdAt,
-      updatedAt: r.updatedAt,
-    }));
+    return roles.map((r) => this.toRoleResponse(r));
+  }
+
+  @NoLog
+  private toRoleResponse(role: RoleModel): RoleResponse {
+    return RoleResponse.of({
+      id: role.id,
+      code: role.code,
+      name: role.name,
+      description: role.description ?? null,
+      createdAt: role.createdAt,
+      updatedAt: role.updatedAt,
+    });
+  }
+
+  @NoLog
+  private toPermissionResponse(
+    permission: PermissionModel,
+  ): PermissionResponse {
+    return PermissionResponse.of({
+      id: permission.id,
+      code: permission.code,
+      resource: permission.resource ?? null,
+      action: permission.action ?? null,
+      description: permission.description ?? null,
+      createdAt: permission.createdAt,
+      updatedAt: permission.updatedAt,
+    });
+  }
+
+  @NoLog
+  private toGroupResponse(group: GroupModel): GroupResponse {
+    return GroupResponse.of({
+      id: group.id,
+      code: group.code,
+      name: group.name,
+      parentId: group.parentId ?? null,
+      createdAt: group.createdAt,
+      updatedAt: group.updatedAt,
+    });
+  }
+
+  @NoLog
+  private toScopeResponse(scope: ScopeModel): ScopeResponse {
+    return ScopeResponse.of({
+      id: scope.id,
+      name: scope.name,
+      displayName: scope.displayName,
+      description: scope.description ?? null,
+      claimKeys: scope.claimKeys,
+      enabled: scope.enabled,
+      builtIn: scope.builtIn,
+      createdAt: scope.createdAt,
+      updatedAt: scope.updatedAt,
+    });
   }
 
   @NoLog
   private toIdentityProviderResponse(
     m: IdentityProviderModel,
   ): IdentityProviderResponse {
-    return {
+    return IdentityProviderResponse.of({
       id: m.id,
       provider: m.provider,
       protocol: m.protocol,
@@ -656,7 +691,7 @@ export class AdminQueryHandler implements AdminQueryPort {
       samlConfig: m.samlConfig,
       createdAt: m.createdAt,
       updatedAt: m.updatedAt,
-    };
+    });
   }
 
   async getIdentityProviders(
@@ -672,12 +707,12 @@ export class AdminQueryHandler implements AdminQueryPort {
       limit,
     });
 
-    return {
+    return PaginatedResult.of({
       items: items.map((m) => this.toIdentityProviderResponse(m)),
       total,
       page,
       limit,
-    };
+    });
   }
 
   async getIdentityProvider(

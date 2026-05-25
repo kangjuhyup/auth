@@ -145,8 +145,11 @@ describe('UserQueryHandler', () => {
 
       expect(result).toEqual({
         sub: 'user-1',
+        username: 'testuser',
         email: 'user@example.com',
         email_verified: true,
+        phone: undefined,
+        phone_verified: false,
       });
     });
   });

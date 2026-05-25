@@ -19,6 +19,7 @@ import { AdminTenantController } from './controllers/admin/tenant.controller';
 import { AdminUserController } from './controllers/admin/user.controller';
 import { AdminRoleController } from './controllers/admin/role.controller';
 import { AdminPermissionController } from './controllers/admin/permission.controller';
+import { AdminScopeController } from './controllers/admin/scope.controller';
 import { AdminGroupController } from './controllers/admin/group.controller';
 import { AdminSessionController } from './controllers/admin/session.controller';
 import { AdminIdentityProviderController } from './controllers/admin/identity-provider.controller';
@@ -40,6 +41,7 @@ import { AccessGuard } from './http/access.guard';
     AdminUserController,
     AdminRoleController,
     AdminPermissionController,
+    AdminScopeController,
     AdminGroupController,
     AdminSessionController,
     AdminIdentityProviderController,

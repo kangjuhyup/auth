@@ -1,7 +1,8 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { TenantCommandHandler } from '@application/commands/handlers/tenant-command.handler';
-import type { TenantRepository } from '@domain/repositories';
+import type { ScopeRepository, TenantRepository } from '@domain/repositories';
 import { TenantModel } from '@domain/models/tenant';
+import { ScopeModel } from '@domain/models/scope';
 
 function makeTenant(id = 'tenant-1'): TenantModel {
   const t = new TenantModel({ code: 'acme', name: 'ACME Corp' });
@@ -22,18 +23,39 @@ function createMockTenantRepo(): jest.Mocked<TenantRepository> {
   };
 }
 
+function createMockScopeRepo(): jest.Mocked<ScopeRepository> {
+  return {
+    findById: jest.fn(),
+    findByName: jest.fn().mockResolvedValue(null),
+    findByNames: jest.fn(),
+    list: jest.fn(),
+    listEnabledByTenantId: jest.fn(),
+    save: jest.fn().mockImplementation(async (s: ScopeModel) => {
+      if (!s.id) s.setPersistence(`scope-${s.name}`, new Date(), new Date());
+      return s;
+    }),
+    delete: jest.fn(),
+  };
+}
+
 describe('TenantCommandHandler', () => {
   let handler: TenantCommandHandler;
   let tenantRepo: jest.Mocked<TenantRepository>;
+  let scopeRepo: jest.Mocked<ScopeRepository>;
   let auditRecorder: { recordAdminAction: jest.Mock };
 
   beforeEach(() => {
     jest.clearAllMocks();
     tenantRepo = createMockTenantRepo();
+    scopeRepo = createMockScopeRepo();
     auditRecorder = {
       recordAdminAction: jest.fn().mockResolvedValue(undefined),
     };
-    handler = new TenantCommandHandler(tenantRepo, auditRecorder as any);
+    handler = new TenantCommandHandler(
+      tenantRepo,
+      scopeRepo,
+      auditRecorder as any,
+    );
   });
 
   describe('createTenant', () => {
@@ -47,6 +69,7 @@ describe('TenantCommandHandler', () => {
 
       expect(tenantRepo.findByCode).toHaveBeenCalledWith('new');
       expect(tenantRepo.save).toHaveBeenCalledTimes(1);
+      expect(scopeRepo.save).toHaveBeenCalledTimes(3);
       expect(result.id).toBeDefined();
       expect(auditRecorder.recordAdminAction).toHaveBeenCalledWith(
         expect.objectContaining({

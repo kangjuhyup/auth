@@ -32,6 +32,15 @@ export type {
   GrantTypeValidationIssueReason,
   GrantTypeValidationParams,
 } from './grant-type-registry.port';
+export { ScopeRegistryPort } from './scope-registry.port';
+export type {
+  ScopeDefinition,
+  ScopeValidationIssue,
+  ScopeValidationIssueReason,
+  ScopeValidationParams,
+} from './scope-registry.port';
+export { ScopeClaimResolverPort } from './scope-claim-resolver.port';
+export type { ScopeClaimResolveParams } from './scope-claim-resolver.port';
 export type {
   InteractionCompletionResult,
   InteractionDetailsResult,

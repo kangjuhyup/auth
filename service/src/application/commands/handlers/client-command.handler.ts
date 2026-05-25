@@ -24,6 +24,9 @@ import { orThrow } from '@domain/utils';
 import { AuditRecorder } from '@application/services/audit-recorder';
 import { GrantTypeRegistryPort } from '@application/ports/grant-type-registry.port';
 import type { GrantTypeValidationIssue } from '@application/ports/grant-type-registry.port';
+import { ScopeRegistryPort } from '@application/ports/scope-registry.port';
+import type { ScopeValidationIssue } from '@application/ports/scope-registry.port';
+import { normalizeScopeString, parseScopeString } from '@domain/models/scope';
 
 @Injectable()
 export class ClientCommandHandler implements ClientCommandPort {
@@ -34,6 +37,7 @@ export class ClientCommandHandler implements ClientCommandPort {
     private readonly clientAuthPolicyRepo: ClientAuthPolicyRepository,
     private readonly symmetricCrypto: SymmetricCryptoPort,
     private readonly grantTypeRegistry: GrantTypeRegistryPort,
+    private readonly scopeRegistry: ScopeRegistryPort,
     private readonly auditRecorder?: AuditRecorder,
   ) {}
 
@@ -64,6 +68,10 @@ export class ClientCommandHandler implements ClientCommandPort {
       tokenEndpointAuthMethod,
       grantTypes,
     });
+    const scope = await this.normalizeAndAssertScopesAllowed(
+      tenantId,
+      dto.scope ?? 'openid',
+    );
 
     const secretEnc = dto.secret
       ? this.symmetricCrypto.encrypt(dto.secret)
@@ -80,7 +88,7 @@ export class ClientCommandHandler implements ClientCommandPort {
       grantTypes,
       responseTypes: dto.responseTypes ?? ['code'],
       tokenEndpointAuthMethod,
-      scope: dto.scope ?? 'openid',
+      scope,
       postLogoutRedirectUris: dto.postLogoutRedirectUris ?? [],
       applicationType,
       backchannelLogoutUri: dto.backchannelLogoutUri ?? null,
@@ -153,7 +161,11 @@ export class ClientCommandHandler implements ClientCommandPort {
       client.changeResponseTypes(dto.responseTypes);
     if (dto.tokenEndpointAuthMethod !== undefined)
       client.changeTokenEndpointAuthMethod(dto.tokenEndpointAuthMethod);
-    if (dto.scope !== undefined) client.changeScope(dto.scope);
+    if (dto.scope !== undefined) {
+      client.changeScope(
+        await this.normalizeAndAssertScopesAllowed(tenantId, dto.scope),
+      );
+    }
     if (dto.postLogoutRedirectUris !== undefined)
       client.changePostLogoutRedirectUris(dto.postLogoutRedirectUris);
     if (dto.applicationType !== undefined)
@@ -299,13 +311,33 @@ export class ClientCommandHandler implements ClientCommandPort {
     tokenEndpointAuthMethod: string;
     grantTypes: string[];
   }): Promise<void> {
-    const issues = await this.grantTypeRegistry.validateClientGrantTypes(params);
+    const issues =
+      await this.grantTypeRegistry.validateClientGrantTypes(params);
     if (issues.length === 0) return;
 
     throw new BadRequestException({
       message: 'Invalid client grant type policy',
       issues: issues.map(formatGrantTypeIssue),
     });
+  }
+
+  private async normalizeAndAssertScopesAllowed(
+    tenantId: string,
+    scope: string,
+  ): Promise<string> {
+    const scopes = parseScopeString(scope);
+    const issues = await this.scopeRegistry.validateClientScopes({
+      tenantId,
+      scopes,
+    });
+    if (issues.length > 0) {
+      throw new BadRequestException({
+        message: 'Invalid client scope policy',
+        issues: issues.map(formatScopeIssue),
+      });
+    }
+
+    return normalizeScopeString(scope);
   }
 }
 
@@ -314,4 +346,8 @@ function formatGrantTypeIssue(issue: GrantTypeValidationIssue): string {
     return `${issue.grantType}: ${issue.reason}:${issue.requiredGrantType}`;
   }
   return `${issue.grantType}: ${issue.reason}`;
+}
+
+function formatScopeIssue(issue: ScopeValidationIssue): string {
+  return `${issue.scope || '<empty>'}: ${issue.reason}`;
 }

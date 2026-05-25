@@ -5,6 +5,7 @@ import type {
   GroupRepository,
   RoleRepository,
   PermissionRepository,
+  ScopeRepository,
   RolePermissionRepository,
   RoleAssignmentRepository,
   ClientRepository,
@@ -22,6 +23,7 @@ import { RoleModel } from '@domain/models/role';
 import { ClientModel } from '@domain/models/client';
 import { ClientAuthPolicyModel } from '@domain/models/client-auth-policy';
 import { PermissionModel } from '@domain/models/permission';
+import { ScopeModel } from '@domain/models/scope';
 import { JwksKeyModel } from '@domain/models/jwks-key';
 import { EventModel } from '@domain/models/event';
 import { UserModel } from '@domain/models/user';
@@ -110,6 +112,18 @@ function createMockPermissionRepo(): jest.Mocked<PermissionRepository> {
     findById: jest.fn(),
     findByCode: jest.fn(),
     list: jest.fn(),
+    save: jest.fn(),
+    delete: jest.fn(),
+  };
+}
+
+function createMockScopeRepo(): jest.Mocked<ScopeRepository> {
+  return {
+    findById: jest.fn(),
+    findByName: jest.fn(),
+    findByNames: jest.fn(),
+    list: jest.fn(),
+    listEnabledByTenantId: jest.fn(),
     save: jest.fn(),
     delete: jest.fn(),
   };
@@ -213,6 +227,7 @@ function createHandler() {
   const groupRepo = createMockGroupRepo();
   const roleRepo = createMockRoleRepo();
   const permissionRepo = createMockPermissionRepo();
+  const scopeRepo = createMockScopeRepo();
   const rolePermissionRepo = createMockRolePermissionRepo();
   const roleAssignmentRepo = createMockRoleAssignmentRepo();
   const clientRepo = createMockClientRepo();
@@ -229,6 +244,7 @@ function createHandler() {
     groupRepo,
     roleRepo,
     permissionRepo,
+    scopeRepo,
     rolePermissionRepo,
     roleAssignmentRepo,
     clientRepo,
@@ -247,6 +263,7 @@ function createHandler() {
     groupRepo,
     roleRepo,
     permissionRepo,
+    scopeRepo,
     rolePermissionRepo,
     roleAssignmentRepo,
     clientRepo,
@@ -623,6 +640,20 @@ function makePermission(id: string, tenantId: string): PermissionModel {
   });
   p.setPersistence(id, new Date('2024-01-01'), new Date('2024-01-01'));
   return p;
+}
+
+function makeScope(id: string, tenantId: string): ScopeModel {
+  const s = new ScopeModel({
+    tenantId,
+    name: 'orders:read',
+    displayName: 'Read orders',
+    description: 'Allow reading order data',
+    claimKeys: ['profile'],
+    enabled: true,
+    builtIn: false,
+  });
+  s.setPersistence(id, new Date('2024-01-01'), new Date('2024-01-01'));
+  return s;
 }
 
 function makeJwksKey(kid: string): JwksKeyModel {
@@ -1199,6 +1230,49 @@ describe('AdminQueryHandler - Permissions', () => {
       expect(result.items).toHaveLength(1);
       expect(result.items[0].code).toBe('read:users');
     });
+  });
+});
+
+describe('AdminQueryHandler - Scopes', () => {
+  let handler: AdminQueryHandler;
+  let scopeRepo: jest.Mocked<ScopeRepository>;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    const deps = createHandler();
+    handler = deps.handler;
+    scopeRepo = deps.scopeRepo;
+  });
+
+  it('페이지네이션된 scope 목록을 반환한다', async () => {
+    scopeRepo.list.mockResolvedValue({
+      items: [makeScope('scope-1', 'tenant-1')],
+      total: 1,
+    });
+
+    const result = await handler.getScopes('tenant-1', {
+      page: 1,
+      limit: 10,
+    });
+
+    expect(scopeRepo.list).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      page: 1,
+      limit: 10,
+    });
+    expect(result.items[0]).toMatchObject({
+      id: 'scope-1',
+      name: 'orders:read',
+      claimKeys: ['profile'],
+    });
+  });
+
+  it('tenantId 불일치 scope 조회는 NotFoundException을 던진다', async () => {
+    scopeRepo.findById.mockResolvedValue(makeScope('scope-1', 'other-tenant'));
+
+    await expect(handler.getScope('tenant-1', 'scope-1')).rejects.toThrow(
+      NotFoundException,
+    );
   });
 });
 

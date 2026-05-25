@@ -61,8 +61,11 @@ export class UserQueryHandler implements UserQueryPort {
 
     return {
       sub: user.id,
+      username: user.username,
       email: user.email ?? undefined,
       email_verified: user.emailVerified,
+      phone: user.phone ?? undefined,
+      phone_verified: user.phoneVerified,
     };
   }
 

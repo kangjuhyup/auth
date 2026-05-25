@@ -16,6 +16,7 @@ import { AdminKeyController } from '@presentation/controllers/admin/key.controll
 import { AdminPermissionController } from '@presentation/controllers/admin/permission.controller';
 import { AdminPolicyController } from '@presentation/controllers/admin/policy.controller';
 import { AdminRoleController } from '@presentation/controllers/admin/role.controller';
+import { AdminScopeController } from '@presentation/controllers/admin/scope.controller';
 import { AdminTenantController } from '@presentation/controllers/admin/tenant.controller';
 import { AdminUserController } from '@presentation/controllers/admin/user.controller';
 import { ObservabilityQueryPort } from '@application/queries/ports/observability-query.port';
@@ -32,6 +33,7 @@ import { KeyCommandPort } from '@application/commands/ports/key-command.port';
 import { PermissionCommandPort } from '@application/commands/ports/permission-command.port';
 import { PolicyCommandPort } from '@application/commands/ports/policy-command.port';
 import { RoleCommandPort } from '@application/commands/ports/role-command.port';
+import { ScopeCommandPort } from '@application/commands/ports/scope-command.port';
 import { TenantCommandPort } from '@application/commands/ports/tenant-command.port';
 import { UserCommandPort } from '@application/commands/ports/user-command.port';
 
@@ -140,6 +142,7 @@ describe('openapi route coverage', () => {
         AdminPermissionController,
         AdminPolicyController,
         AdminRoleController,
+        AdminScopeController,
         AdminTenantController,
         AdminUserController,
       ],
@@ -158,6 +161,7 @@ describe('openapi route coverage', () => {
         provider(PermissionCommandPort),
         provider(PolicyCommandPort),
         provider(RoleCommandPort),
+        provider(ScopeCommandPort),
         provider(TenantCommandPort),
         provider(UserCommandPort),
         {
