@@ -18,6 +18,7 @@ import {
   UserResponse,
   UserConsentResponse,
   UserListQuery,
+  PaginationQuery,
   RoleResponse,
   PaginatedResult,
 } from '@presentation/dto';

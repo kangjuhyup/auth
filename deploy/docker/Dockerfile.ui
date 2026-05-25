@@ -13,6 +13,7 @@ COPY .yarn/releases .yarn/releases
 
 COPY service/package.json service/package.json
 COPY ui/package.json ui/package.json
+COPY docs/package.json docs/package.json
 COPY service/interaction-ui/package.json service/interaction-ui/package.json
 
 ENV YARN_NODE_LINKER=node-modules
