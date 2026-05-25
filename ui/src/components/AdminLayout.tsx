@@ -10,6 +10,8 @@ import {
   LockOutlined,
   FileSearchOutlined,
   ControlOutlined,
+  KeyOutlined,
+  ProfileOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useUiStore } from '@/stores/ui.store';
@@ -36,6 +38,16 @@ export function AdminLayout() {
       key: '/admin/clients',
       icon: <SafetyOutlined />,
       label: 'Clients',
+    },
+    {
+      key: '/admin/scopes',
+      icon: <ProfileOutlined />,
+      label: 'Scopes',
+    },
+    {
+      key: '/admin/custom-grants',
+      icon: <KeyOutlined />,
+      label: 'Custom grants',
     },
     {
       key: '/admin/identity-providers',

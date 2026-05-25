@@ -2,12 +2,16 @@ import { Form, Input, Select, Switch, Space, Button } from 'antd';
 import type { FormInstance } from 'antd';
 import { PlusOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import type { CreateClientDto, UpdateClientDto } from '@/types/client.types';
+import type { CustomGrantResponse } from '@/types/custom-grant.types';
+import type { ScopeResponse } from '@/types/scope.types';
 
 interface ClientFormProps {
   initialValues?: Partial<CreateClientDto | UpdateClientDto>;
   onFinish: (values: CreateClientDto | UpdateClientDto) => void;
   mode: 'create' | 'edit';
   form: FormInstance<CreateClientDto | UpdateClientDto>;
+  availableScopes?: ScopeResponse[];
+  availableCustomGrants?: CustomGrantResponse[];
 }
 
 export function ClientForm({
@@ -15,8 +19,14 @@ export function ClientForm({
   onFinish,
   mode,
   form,
+  availableScopes = [],
+  availableCustomGrants = [],
 }: ClientFormProps) {
   const clientTypeLabel = formatClientType(getClientType(initialValues));
+  const enabledScopes = availableScopes.filter((scope) => scope.enabled);
+  const enabledCustomGrants = availableCustomGrants.filter(
+    (grant) => grant.enabled,
+  );
 
   return (
     <Form
@@ -147,6 +157,11 @@ export function ClientForm({
           <Select.Option value="password">
             Password (not recommended)
           </Select.Option>
+          {enabledCustomGrants.map((grant) => (
+            <Select.Option key={grant.grantType} value={grant.grantType}>
+              {grant.displayName} ({grant.grantType})
+            </Select.Option>
+          ))}
         </Select>
       </Form.Item>
 
@@ -158,8 +173,19 @@ export function ClientForm({
         </Select>
       </Form.Item>
 
-      <Form.Item name="scope" label="Allowed Scopes">
-        <Input placeholder="e.g. openid profile email" />
+      <Form.Item
+        name="scope"
+        label="Allowed Scopes"
+        getValueProps={(value?: string) => ({ value: parseScopeValue(value) })}
+        normalize={(value?: string[]) => formatScopeValue(value)}
+      >
+        <Select mode="tags" placeholder="Select or enter scopes">
+          {enabledScopes.map((scope) => (
+            <Select.Option key={scope.name} value={scope.name}>
+              {scope.displayName} ({scope.name})
+            </Select.Option>
+          ))}
+        </Select>
       </Form.Item>
 
       <Form.Item
@@ -192,4 +218,19 @@ function getClientType(
 ): unknown {
   if (!values || !('type' in values)) return undefined;
   return values.type;
+}
+
+function parseScopeValue(value?: string): string[] {
+  if (!value) return [];
+  return value
+    .split(/\s+/)
+    .map((scope) => scope.trim())
+    .filter(Boolean);
+}
+
+function formatScopeValue(value?: string[]): string {
+  return Array.from(new Set(value ?? []))
+    .map((scope) => scope.trim())
+    .filter(Boolean)
+    .join(' ');
 }

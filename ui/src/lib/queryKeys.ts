@@ -37,6 +37,25 @@ export const queryKeys = {
       authPolicy: (tenantId: string, id: string) =>
         [...queryKeys.admin.clients.all, tenantId, 'auth-policy', id] as const,
     },
+    scopes: {
+      all: ['admin', 'scopes'] as const,
+      list: (tenantId: string, filters: { page?: number; limit?: number }) =>
+        [...queryKeys.admin.scopes.all, tenantId, 'list', filters] as const,
+      detail: (tenantId: string, id: string) =>
+        [...queryKeys.admin.scopes.all, tenantId, 'detail', id] as const,
+    },
+    customGrants: {
+      all: ['admin', 'custom-grants'] as const,
+      list: (tenantId: string, filters: { page?: number; limit?: number }) =>
+        [
+          ...queryKeys.admin.customGrants.all,
+          tenantId,
+          'list',
+          filters,
+        ] as const,
+      detail: (tenantId: string, id: string) =>
+        [...queryKeys.admin.customGrants.all, tenantId, 'detail', id] as const,
+    },
     policies: {
       all: ['admin', 'policies'] as const,
       tenant: (tenantId: string) =>

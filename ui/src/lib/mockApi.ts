@@ -12,6 +12,11 @@ import type {
   UpdateClientDto,
 } from '@/types/client.types';
 import type {
+  CreateCustomGrantDto,
+  CustomGrantResponse,
+  UpdateCustomGrantDto,
+} from '@/types/custom-grant.types';
+import type {
   TenantPolicyResponse,
   UpdateTenantPoliciesDto,
 } from '@/types/policy.types';
@@ -45,6 +50,11 @@ import type {
   AuditLogResponse,
 } from '@/types/audit-log.types';
 import type { IdentityProviderResponse } from '@/types/identity-provider.types';
+import type {
+  CreateScopeDto,
+  ScopeResponse,
+  UpdateScopeDto,
+} from '@/types/scope.types';
 
 // Simulate network delay
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -133,6 +143,70 @@ const mockClients: ClientResponse[] = [
     postLogoutRedirectUris: [],
     createdAt: new Date('2024-02-15'),
     updatedAt: new Date('2024-02-15'),
+  },
+];
+
+const mockScopes: ScopeResponse[] = [
+  {
+    id: 'scope-1',
+    name: 'openid',
+    displayName: 'OpenID',
+    description: 'OIDC authentication scope',
+    claimKeys: [],
+    enabled: true,
+    builtIn: true,
+    createdAt: new Date('2024-01-01'),
+    updatedAt: new Date('2024-01-01'),
+  },
+  {
+    id: 'scope-2',
+    name: 'profile',
+    displayName: 'Profile',
+    description: 'Basic profile claims',
+    claimKeys: ['profile'],
+    enabled: true,
+    builtIn: true,
+    createdAt: new Date('2024-01-01'),
+    updatedAt: new Date('2024-01-01'),
+  },
+  {
+    id: 'scope-3',
+    name: 'email',
+    displayName: 'Email',
+    description: 'Email address claims',
+    claimKeys: ['email'],
+    enabled: true,
+    builtIn: true,
+    createdAt: new Date('2024-01-01'),
+    updatedAt: new Date('2024-01-01'),
+  },
+  {
+    id: 'scope-4',
+    name: 'orders:read',
+    displayName: 'Read orders',
+    description: 'Read-only access to order APIs',
+    claimKeys: [],
+    enabled: true,
+    builtIn: false,
+    createdAt: new Date('2024-03-01'),
+    updatedAt: new Date('2024-03-01'),
+  },
+];
+
+const mockCustomGrants: CustomGrantResponse[] = [
+  {
+    id: 'custom-grant-1',
+    grantType: 'urn:auth:grant:magic-link',
+    displayName: 'Magic Link Grant',
+    description: 'Demo custom grant metadata',
+    enabled: true,
+    allowedClientTypes: ['confidential'],
+    allowedApplicationTypes: ['web'],
+    requiresClientAuthentication: true,
+    requiresGrantTypes: ['authorization_code'],
+    builtIn: false,
+    createdAt: new Date('2024-03-01'),
+    updatedAt: new Date('2024-03-01'),
   },
 ];
 
@@ -906,6 +980,121 @@ export const mockClientApi = {
   },
 };
 
+export const mockScopeApi = {
+  list: async (params: {
+    page?: number;
+    limit?: number;
+  }): Promise<PaginatedResult<ScopeResponse>> => {
+    await delay(300);
+    return paginate(mockScopes, params);
+  },
+
+  get: async (id: string): Promise<ScopeResponse> => {
+    await delay(200);
+    const scope = mockScopes.find((item) => item.id === id);
+    if (!scope) throw new Error('Scope not found');
+    return scope;
+  },
+
+  create: async (dto: CreateScopeDto): Promise<{ id: string }> => {
+    await delay(400);
+    const id = `scope-${mockScopes.length + 1}`;
+    mockScopes.push({
+      id,
+      name: dto.name,
+      displayName: dto.displayName ?? dto.name,
+      description: dto.description ?? null,
+      claimKeys: dto.claimKeys ?? [],
+      enabled: dto.enabled ?? true,
+      builtIn: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    return { id };
+  },
+
+  update: async (id: string, dto: UpdateScopeDto): Promise<void> => {
+    await delay(400);
+    const index = mockScopes.findIndex((item) => item.id === id);
+    if (index === -1) throw new Error('Scope not found');
+    const prev = mockScopes[index]!;
+    mockScopes[index] = {
+      ...prev,
+      ...dto,
+      id: prev.id,
+      name: prev.name,
+      builtIn: prev.builtIn,
+      updatedAt: new Date(),
+    };
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await delay(300);
+    const index = mockScopes.findIndex((item) => item.id === id);
+    if (index === -1) throw new Error('Scope not found');
+    mockScopes.splice(index, 1);
+  },
+};
+
+export const mockCustomGrantApi = {
+  list: async (params: {
+    page?: number;
+    limit?: number;
+  }): Promise<PaginatedResult<CustomGrantResponse>> => {
+    await delay(300);
+    return paginate(mockCustomGrants, params);
+  },
+
+  get: async (id: string): Promise<CustomGrantResponse> => {
+    await delay(200);
+    const grant = mockCustomGrants.find((item) => item.id === id);
+    if (!grant) throw new Error('Custom grant not found');
+    return grant;
+  },
+
+  create: async (dto: CreateCustomGrantDto): Promise<{ id: string }> => {
+    await delay(400);
+    const id = `custom-grant-${mockCustomGrants.length + 1}`;
+    mockCustomGrants.push({
+      id,
+      grantType: dto.grantType,
+      displayName: dto.displayName ?? dto.grantType,
+      description: dto.description ?? null,
+      enabled: dto.enabled ?? true,
+      allowedClientTypes: dto.allowedClientTypes ?? ['confidential'],
+      allowedApplicationTypes: dto.allowedApplicationTypes ?? ['web'],
+      requiresClientAuthentication: dto.requiresClientAuthentication ?? true,
+      requiresGrantTypes: dto.requiresGrantTypes ?? [],
+      builtIn: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    return { id };
+  },
+
+  update: async (id: string, dto: UpdateCustomGrantDto): Promise<void> => {
+    await delay(400);
+    const index = mockCustomGrants.findIndex((item) => item.id === id);
+    if (index === -1) throw new Error('Custom grant not found');
+    const prev = mockCustomGrants[index]!;
+    mockCustomGrants[index] = {
+      ...prev,
+      ...dto,
+      id: prev.id,
+      grantType: prev.grantType,
+      builtIn: prev.builtIn,
+      updatedAt: new Date(),
+    };
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await delay(300);
+    const index = mockCustomGrants.findIndex((item) => item.id === id);
+    if (index === -1) throw new Error('Custom grant not found');
+    mockCustomGrants.splice(index, 1);
+  },
+};
+
 export const mockPolicyApi = {
   getTenantPolicies: async (): Promise<TenantPolicyResponse> => {
     await delay(200);
@@ -1230,6 +1419,8 @@ export const mockApi = {
   auth: mockAuthApi,
   tenants: mockTenantApi,
   clients: mockClientApi,
+  scopes: mockScopeApi,
+  customGrants: mockCustomGrantApi,
   policies: mockPolicyApi,
   roles: mockRoleApi,
   groups: mockGroupApi,

@@ -5,7 +5,9 @@ import { LoginPage } from '@/features/auth/LoginPage';
 import { PasswordChangePage } from '@/features/auth/PasswordChangePage';
 import { TenantsPage } from '@/features/tenants/TenantsPage';
 import { ClientsPage } from '@/features/clients/ClientsPage';
+import { CustomGrantsPage } from '@/features/custom-grants/CustomGrantsPage';
 import { RolesPage } from '@/features/roles/RolesPage';
+import { ScopesPage } from '@/features/scopes/ScopesPage';
 import { GroupsPage } from '@/features/groups/GroupsPage';
 import { UsersPage } from '@/features/users/UsersPage';
 import { AuditLogsPage } from '@/features/audit-logs/AuditLogsPage';
@@ -42,6 +44,8 @@ export function App() {
             <Route index element={<Navigate to="/admin/tenants" replace />} />
             <Route path="tenants" element={<TenantsPage />} />
             <Route path="clients" element={<ClientsPage />} />
+            <Route path="scopes" element={<ScopesPage />} />
+            <Route path="custom-grants" element={<CustomGrantsPage />} />
             <Route
               path="identity-providers"
               element={<IdentityProvidersPage />}

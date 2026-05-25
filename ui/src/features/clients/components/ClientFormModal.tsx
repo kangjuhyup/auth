@@ -5,6 +5,8 @@ import { useCreateClient } from '../hooks/useCreateClient';
 import { useUpdateClient } from '../hooks/useUpdateClient';
 import { useDeleteClient } from '../hooks/useDeleteClient';
 import { useClients } from '../hooks/useClients';
+import { useCustomGrants } from '@/features/custom-grants/hooks/useCustomGrants';
+import { useScopes } from '@/features/scopes/hooks/useScopes';
 import { toUpdateClientDto } from '../clientFormPayload';
 import { useAdminUiStore } from '@/stores/adminUi.store';
 import type { CreateClientDto, UpdateClientDto } from '@/types/client.types';
@@ -29,6 +31,8 @@ export function ClientFormModal() {
   const deleteMutation = useDeleteClient();
 
   const { data: clientsData } = useClients({ page: 1, limit: 100 });
+  const { data: scopesData } = useScopes({ page: 1, limit: 100 });
+  const { data: customGrantsData } = useCustomGrants({ page: 1, limit: 100 });
   const editingClient =
     clientsData?.items.find((c) => c.id === editingId) ?? null;
 
@@ -79,7 +83,13 @@ export function ClientFormModal() {
         confirmLoading={createMutation.isPending}
         width={600}
       >
-        <ClientForm mode="create" form={createForm} onFinish={handleCreate} />
+        <ClientForm
+          mode="create"
+          form={createForm}
+          availableScopes={scopesData?.items ?? []}
+          availableCustomGrants={customGrantsData?.items ?? []}
+          onFinish={handleCreate}
+        />
       </Modal>
 
       <Modal
@@ -97,6 +107,8 @@ export function ClientFormModal() {
           mode="edit"
           form={editForm}
           initialValues={editingClient ?? undefined}
+          availableScopes={scopesData?.items ?? []}
+          availableCustomGrants={customGrantsData?.items ?? []}
           onFinish={handleUpdate}
         />
       </Modal>
