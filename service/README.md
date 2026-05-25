@@ -13,7 +13,7 @@ OIDC 인가 서버. `node-oidc-provider` 기반으로 멀티테넌트 인증/인
 - CQRS: Command / Query 핸들러·포트 분리 (동일 애그리거트는 ORM·리포지토리로 영속화)
 - Jest (TDD)
 
-DB 설정/마이그레이션은 `docs/DATABASE.md` 참고.
+DB 설정/마이그레이션은 [`docs/DATABASE.md`](docs/DATABASE.md) 참고.
 
 ---
 
@@ -156,3 +156,13 @@ yarn workspace @auth/service test
 yarn workspace @auth/service build
 yarn workspace @auth/service start:dev
 ```
+
+## 문서
+
+| 문서                                             | 설명                           |
+| ------------------------------------------------ | ------------------------------ |
+| [Service Docs Index](docs/README.md)             | 백엔드 로컬 문서 목록          |
+| [OIDC Overview](docs/OIDC.md)                    | `node-oidc-provider` 연동 구조 |
+| [OIDC Custom Grant](docs/OIDC_CUSTOM_GRANT.md)   | 커스텀 grant 확장              |
+| [Database](docs/DATABASE.md)                     | DB 설정과 마이그레이션         |
+| [AuthDocs 문서 맵](../docs/docs/document-map.md) | 저장소 전체 문서 위치          |

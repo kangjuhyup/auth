@@ -8,6 +8,8 @@ title: Security
 
 현재 로그인한 사용자의 계정 보안 설정을 관리합니다.
 
+MFA 개념과 정책 적용 기준은 [MFA 개요](../concepts/mfa.md)를 참고하세요.
+
 ## Authenticator app
 
 1. `Start enrollment`를 누릅니다.

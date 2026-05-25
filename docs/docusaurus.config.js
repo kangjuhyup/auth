@@ -1,3 +1,4 @@
+/* global require, module */
 // @ts-check
 
 /** @type {import('@docusaurus/types').Config} */
@@ -6,14 +7,15 @@ const config = {
   tagline: 'OIDC Authorization Server 운영 문서',
   favicon: 'img/auth-docs.svg',
 
-  url: 'https://auth.local',
-  baseUrl: '/',
+  url: 'https://kangjuhyup.github.io',
+  baseUrl: '/auth/',
 
-  organizationName: 'auth',
+  organizationName: 'kangjuhyup',
   projectName: 'auth',
 
   onBrokenLinks: 'throw',
   markdown: {
+    mermaid: true,
     hooks: {
       onBrokenMarkdownLinks: 'warn',
     },
@@ -21,7 +23,15 @@ const config = {
 
   i18n: {
     defaultLocale: 'ko',
-    locales: ['ko'],
+    locales: ['ko', 'en'],
+    localeConfigs: {
+      ko: {
+        label: '한국어',
+      },
+      en: {
+        label: 'English',
+      },
+    },
   },
 
   presets: [
@@ -41,6 +51,8 @@ const config = {
     ],
   ],
 
+  themes: ['@docusaurus/theme-mermaid'],
+
   themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
@@ -52,6 +64,15 @@ const config = {
             sidebarId: 'mainSidebar',
             position: 'left',
             label: '문서',
+          },
+          {
+            type: 'localeDropdown',
+            position: 'right',
+          },
+          {
+            to: '/api-reference',
+            position: 'left',
+            label: 'API Reference',
           },
         ],
       },

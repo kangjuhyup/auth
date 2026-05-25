@@ -55,7 +55,7 @@ http://localhost:3000/t/acme/oidc
 Provider 인스턴스도 tenant 별로 분리 생성된다:
 
 ```ts
-new Provider(`https://auth.example.com/t/${tenantCode}/oidc`, configuration)
+new Provider(`https://auth.example.com/t/${tenantCode}/oidc`, configuration);
 ```
 
 ---
@@ -191,24 +191,24 @@ new Provider(`https://auth.example.com/t/${tenantCode}/oidc`, configuration)
 - `features.devInteractions` 는 `false` — `node-oidc-provider` 기본 개발용 UI 비활성화
 - [InteractionController](../src/presentation/controllers/interaction.controller.ts) 가 **SPA(`service/interaction-ui`)** 진입 HTML 서빙, JSON API, MFA, 외부 IdP 리다이렉트/콜백을 담당한다.
 
-UI 커스터마이징·빌드·API 계약은 [INTERACTION_UI.md](./INTERACTION_UI.md) 를 참고한다.
+UI 커스터마이징·빌드·API 계약은 [Interaction UI 커스터마이징](../interaction-ui/docs/CUSTOMIZATION.md)을 참고한다.
 
 관련 코드:
 
 - [interaction.controller.ts](../src/presentation/controllers/interaction.controller.ts)
 - [service/interaction-ui/](../interaction-ui/) (Vite + React SPA)
 
-대표 엔드포인트(전체는 INTERACTION_UI.md 및 컨트롤러 참고):
+대표 엔드포인트(전체는 Interaction UI 커스터마이징 문서 및 컨트롤러 참고):
 
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| GET | `/t/:tenantCode/interaction/:uid` | SPA `index.html` (정적 에셋은 `/interaction-assets/*`) |
-| GET | `/t/:tenantCode/interaction/:uid/api/details` | prompt, clientId, idp 목록 등 |
-| POST | `/t/:tenantCode/interaction/:uid/api/login` | 비밀번호 로그인 |
-| POST | `/t/:tenantCode/interaction/:uid/api/mfa` | MFA |
-| POST | `/t/:tenantCode/interaction/:uid/api/consent` | 동의 |
-| GET | `/t/:tenantCode/interaction/:uid/api/abort` | 취소 |
-| GET | `/t/:tenantCode/interaction/:uid/idp/:provider` | 외부 IdP 시작 |
+| 메서드 | 경로                                            | 설명                                                   |
+| ------ | ----------------------------------------------- | ------------------------------------------------------ |
+| GET    | `/t/:tenantCode/interaction/:uid`               | SPA `index.html` (정적 에셋은 `/interaction-assets/*`) |
+| GET    | `/t/:tenantCode/interaction/:uid/api/details`   | prompt, clientId, idp 목록 등                          |
+| POST   | `/t/:tenantCode/interaction/:uid/api/login`     | 비밀번호 로그인                                        |
+| POST   | `/t/:tenantCode/interaction/:uid/api/mfa`       | MFA                                                    |
+| POST   | `/t/:tenantCode/interaction/:uid/api/consent`   | 동의                                                   |
+| GET    | `/t/:tenantCode/interaction/:uid/api/abort`     | 취소                                                   |
+| GET    | `/t/:tenantCode/interaction/:uid/idp/:provider` | 외부 IdP 시작                                          |
 
 흐름:
 
@@ -319,11 +319,11 @@ cacheTtl = expiresIn - OIDC_CACHE_TTL_MARGIN_SEC
 
 ### Driver 비교
 
-| Driver  | 안전성     | 성능       | 운영 난이도 | 권장 환경 |
-|---------|-----------|-----------|------------|----------|
-| rdb     | ★★★★★ | ★★☆☆☆ | 낮음 | 개발/소규모 |
-| redis   | ★★☆☆☆ | ★★★★★ | 중간 | 특수 환경 |
-| hybrid  | ★★★★★ | ★★★★★ | 중간 | **운영 권장** |
+| Driver | 안전성 | 성능  | 운영 난이도 | 권장 환경     |
+| ------ | ------ | ----- | ----------- | ------------- |
+| rdb    | ★★★★★  | ★★☆☆☆ | 낮음        | 개발/소규모   |
+| redis  | ★★☆☆☆  | ★★★★★ | 중간        | 특수 환경     |
+| hybrid | ★★★★★  | ★★★★★ | 중간        | **운영 권장** |
 
 ## 5.4 Account Lookup
 
@@ -333,7 +333,10 @@ cacheTtl = expiresIn - OIDC_CACHE_TTL_MARGIN_SEC
 findAccount: async (ctx, sub) => {
   const tenantId = ctx.req.tenant?.id;
 
-  const view = await accountQuery.findClaimsBySub({ tenantId, sub: String(sub) });
+  const view = await accountQuery.findClaimsBySub({
+    tenantId,
+    sub: String(sub),
+  });
 
   return {
     accountId: String(sub),
@@ -343,7 +346,7 @@ findAccount: async (ctx, sub) => {
       email_verified: view.email_verified,
     }),
   };
-}
+};
 ```
 
 중요:
@@ -403,21 +406,21 @@ features: {
 
 ### Opaque vs JWT
 
-| 항목 | Opaque | JWT |
-|------|--------|-----|
-| 검증 방식 | 서버 DB 조회 | 서명 검증 |
-| 성능 | DB 의존 | Stateless |
-| 보안 통제 | 서버 통제 | 토큰 유출 시 위험 증가 |
-| 권장 사용 | 내부 API | 외부 API Gateway |
+| 항목      | Opaque       | JWT                    |
+| --------- | ------------ | ---------------------- |
+| 검증 방식 | 서버 DB 조회 | 서명 검증              |
+| 성능      | DB 의존      | Stateless              |
+| 보안 통제 | 서버 통제    | 토큰 유출 시 위험 증가 |
+| 권장 사용 | 내부 API     | 외부 API Gateway       |
 
 ### 환경별 권장
 
-| 환경 | 추천 |
-|------|------|
-| 내부 API | opaque |
-| 외부 공개 API | jwt |
-| 고트래픽 Gateway | jwt |
-| 고보안 환경 | opaque + introspection |
+| 환경             | 추천                   |
+| ---------------- | ---------------------- |
+| 내부 API         | opaque                 |
+| 외부 공개 API    | jwt                    |
+| 고트래픽 Gateway | jwt                    |
+| 고보안 환경      | opaque + introspection |
 
 ---
 
@@ -502,7 +505,9 @@ OIDC_CACHE_BACKFILL_TTL_SEC=60
 현재 설정:
 
 ```ts
-jwks: { keys: [] }
+jwks: {
+  keys: [];
+}
 ```
 
 JWKS signing key 를 provider 에 연동하는 부분은 아직 TODO 이다.
@@ -523,7 +528,7 @@ JWKS signing key 를 provider 에 연동하는 부분은 아직 TODO 이다.
 
 ## ~~10.3 Interaction UI~~ (완료)
 
-`InteractionController` + `service/interaction-ui` SPA(로그인·동의·MFA·외부 IdP 버튼)로 구현되었다. UI 변경 절차는 [INTERACTION_UI.md](./INTERACTION_UI.md) 를 참고한다.
+`InteractionController` + `service/interaction-ui` SPA(로그인·동의·MFA·외부 IdP 버튼)로 구현되었다. UI 변경 절차는 [Interaction UI 커스터마이징](../interaction-ui/docs/CUSTOMIZATION.md)을 참고한다.
 
 ## ~~10.4 Consent / revoke 연계~~ (완료)
 
@@ -553,13 +558,13 @@ OIDC_ACCESS_TOKEN_FORMAT=jwt
 
 ### 운영 환경별 Driver 선택
 
-| 환경 | 추천 Driver |
-|------|------------|
-| 로컬 개발 | rdb |
-| 단일 노드 | rdb |
-| 다중 노드 | hybrid |
-| 고트래픽 SaaS | hybrid |
-| 완전 캐시 기반 | redis |
+| 환경           | 추천 Driver |
+| -------------- | ----------- |
+| 로컬 개발      | rdb         |
+| 단일 노드      | rdb         |
+| 다중 노드      | hybrid      |
+| 고트래픽 SaaS  | hybrid      |
+| 완전 캐시 기반 | redis       |
 
 ### 보안 체크리스트
 
