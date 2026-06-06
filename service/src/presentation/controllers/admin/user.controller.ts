@@ -16,6 +16,7 @@ import {
   CreateUserDto,
   UpdateUserDto,
   UserResponse,
+  UserSessionResponse,
   UserConsentResponse,
   UserListQuery,
   PaginationQuery,
@@ -98,6 +99,47 @@ export class AdminUserController {
       id,
       AppPaginationQuery.of(query),
     );
+  }
+
+  @Get(':id/sessions')
+  @ApiOkArraySchema('List user sessions', OpenApiResponseSchemas.userSession)
+  getSessions(
+    @Tenant() tenant: TenantContext,
+    @Param('id') id: string,
+  ): Promise<UserSessionResponse[]> {
+    return this.queryPort.getUserSessions(tenant.id, id);
+  }
+
+  @Delete(':id/sessions/:sessionId')
+  @ApiNoContentSchema('Revoke user session')
+  revokeSession(
+    @Tenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @Param('sessionId') sessionId: string,
+    @AdminAuditContext() auditContext?: AuditContext,
+  ): Promise<void> {
+    if (!auditContext) {
+      return this.commandPort.revokeUserSession(tenant.id, id, sessionId);
+    }
+    return this.commandPort.revokeUserSession(
+      tenant.id,
+      id,
+      sessionId,
+      auditContext,
+    );
+  }
+
+  @Delete(':id/sessions')
+  @ApiNoContentSchema('Revoke all user sessions')
+  revokeSessions(
+    @Tenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @AdminAuditContext() auditContext?: AuditContext,
+  ): Promise<void> {
+    if (!auditContext) {
+      return this.commandPort.revokeUserSessions(tenant.id, id);
+    }
+    return this.commandPort.revokeUserSessions(tenant.id, id, auditContext);
   }
 
   @Post()

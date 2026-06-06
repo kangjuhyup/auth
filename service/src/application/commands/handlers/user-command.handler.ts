@@ -14,6 +14,7 @@ import { UserCredentialModel } from '@domain/models/user-credential';
 import { orThrow } from '@domain/utils';
 import { ulid } from 'ulid';
 import { AuditRecorder } from '@application/services/audit-recorder';
+import { UserSessionPort } from '@application/ports/user-session.port';
 
 @Injectable()
 export class UserCommandHandler implements UserCommandPort {
@@ -24,6 +25,7 @@ export class UserCommandHandler implements UserCommandPort {
     private readonly roleRepo: RoleRepository,
     private readonly roleAssignment: RoleAssignmentRepository,
     private readonly passwordHash: PasswordHashPort,
+    private readonly userSession: UserSessionPort,
     private readonly auditRecorder?: AuditRecorder,
   ) {}
 
@@ -218,6 +220,58 @@ export class UserCommandHandler implements UserCommandPort {
     });
   }
 
+  async revokeUserSession(
+    tenantId: string,
+    userId: string,
+    sessionId: string,
+    auditContext?: AuditContext,
+  ): Promise<void> {
+    await this.assertUserInTenant(tenantId, userId);
+    const revokedSessions = await this.userSession.revokeUserSession({
+      tenantId,
+      userId,
+      sessionId,
+    });
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      category: 'SECURITY',
+      action: 'TOKEN_REVOKED',
+      resourceType: 'oidc-session',
+      resourceId: sessionId,
+      reason: 'AdminUserSessionRevoked',
+      metadata: {
+        targetUserId: userId,
+        revokedSessions,
+      },
+      auditContext,
+    });
+  }
+
+  async revokeUserSessions(
+    tenantId: string,
+    userId: string,
+    auditContext?: AuditContext,
+  ): Promise<void> {
+    await this.assertUserInTenant(tenantId, userId);
+    const revokedSessions = await this.userSession.revokeUserSessions({
+      tenantId,
+      userId,
+    });
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      category: 'SECURITY',
+      action: 'TOKEN_REVOKED',
+      resourceType: 'oidc-session',
+      resourceId: userId,
+      reason: 'AdminUserSessionsRevoked',
+      metadata: {
+        targetUserId: userId,
+        revokedSessions,
+      },
+      auditContext,
+    });
+  }
+
   private async assertMfaCredentialExists(userId: string): Promise<void> {
     const credentials = await this.userWriteRepo.findCredentialsByType(userId, [
       'totp',
@@ -227,5 +281,16 @@ export class UserCommandHandler implements UserCommandPort {
     if (credentials.length === 0) {
       throw new BadRequestException('MFA credential is required');
     }
+  }
+
+  private async assertUserInTenant(
+    tenantId: string,
+    userId: string,
+  ): Promise<void> {
+    orThrow(
+      await this.userWriteRepo.findById(userId),
+      new NotFoundException('User not found'),
+      (u) => u.tenantId === tenantId,
+    );
   }
 }

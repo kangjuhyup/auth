@@ -32,6 +32,7 @@ import { OidcScopeRegistryAdapter } from './scope-registry.adapter';
 import { ScopeClaimResolverPort } from '@application/ports/scope-claim-resolver.port';
 import { OidcScopeClaimResolverAdapter } from './scope-claim-resolver.adapter';
 import { OidcSessionControlService } from './session/oidc-session-control.service';
+import { UserSessionPort } from '@application/ports/user-session.port';
 
 @Module({
   imports: [
@@ -135,6 +136,10 @@ import { OidcSessionControlService } from './session/oidc-session-control.servic
       useClass: AccessVerifierAdapter,
     },
     OidcSessionControlService,
+    {
+      provide: UserSessionPort,
+      useExisting: OidcSessionControlService,
+    },
   ],
   exports: [
     OIDC_PROVIDER,
@@ -144,6 +149,7 @@ import { OidcSessionControlService } from './session/oidc-session-control.servic
     ScopeRegistryPort,
     ScopeClaimResolverPort,
     OidcSessionControlService,
+    UserSessionPort,
   ],
 })
 export class OidcProviderModule {}

@@ -76,6 +76,19 @@ describe('OidcSessionControlService', () => {
       grantId: 'grant-1',
     });
 
+    await expect(
+      service.listUserSessions({
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        sessionId: 'session-1',
+        userId: 'user-1',
+        clientId: 'web-app',
+      }),
+    ]);
+
     await service.revokeSessions(sessions);
 
     await expect(sessionAdapter.find('session-1')).resolves.toBeUndefined();
@@ -127,10 +140,71 @@ describe('OidcSessionControlService', () => {
 
     expect(sessions).toHaveLength(1);
 
+    await expect(
+      service.listUserSessions({
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        sessionId: 'session-1',
+        userId: 'user-1',
+        clientId: 'web-app',
+      }),
+    ]);
+
     await service.revokeSessions(sessions);
 
     await expect(sessionAdapter.find('session-1')).resolves.toBeUndefined();
     await expect(refreshAdapter.find('refresh-1')).resolves.toBeUndefined();
     await expect(grantAdapter.find('grant-1')).resolves.toBeUndefined();
+  });
+
+  it('RDB index에서 사용자 단일 세션만 폐기한다', async () => {
+    const em = new LightweightEntityManager();
+    const redis = new InMemoryRedis();
+    const sessionIndex = new RdbOidcSessionIndexStore(
+      em as any,
+      'acme',
+      tenantRepository as any,
+    );
+    const sessionAdapter = new RdbOidcAdapter(
+      'Session',
+      em as any,
+      sessionIndex,
+    );
+    const service = new OidcSessionControlService(
+      em as any,
+      redis as any,
+      config('rdb'),
+    );
+
+    await sessionAdapter.upsert(
+      'session-1',
+      {
+        accountId: 'user-1',
+        authorizations: { 'web-app': { grantId: 'grant-1' } },
+      } as any,
+      3600,
+    );
+    await sessionAdapter.upsert(
+      'session-2',
+      {
+        accountId: 'user-1',
+        authorizations: { 'mobile-app': { grantId: 'grant-2' } },
+      } as any,
+      3600,
+    );
+
+    await expect(
+      service.revokeUserSession({
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+        sessionId: 'session-1',
+      }),
+    ).resolves.toBe(1);
+
+    await expect(sessionAdapter.find('session-1')).resolves.toBeUndefined();
+    await expect(sessionAdapter.find('session-2')).resolves.toBeDefined();
   });
 });

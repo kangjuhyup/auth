@@ -4,6 +4,7 @@ import type { PaginatedResult } from '@/types/pagination.types';
 import type {
   UserResponse,
   UserConsentResponse,
+  UserSessionResponse,
   CreateUserDto,
   UpdateUserDto,
   UserListQuery,
@@ -50,6 +51,30 @@ export const userApi = {
   getRoles: (tenantCode: string, userId: string): Promise<RoleResponse[]> => {
     if (USE_MOCK) return mockApi.users.getRoles(userId);
     return apiClient.get(`/t/${tenantCode}/admin/users/${userId}/roles`);
+  },
+
+  getSessions: (
+    tenantCode: string,
+    userId: string,
+  ): Promise<UserSessionResponse[]> => {
+    if (USE_MOCK) return mockApi.users.getSessions(userId);
+    return apiClient.get(`/t/${tenantCode}/admin/users/${userId}/sessions`);
+  },
+
+  revokeSession: (
+    tenantCode: string,
+    userId: string,
+    sessionId: string,
+  ): Promise<void> => {
+    if (USE_MOCK) return mockApi.users.revokeSession(userId, sessionId);
+    return apiClient.delete(
+      `/t/${tenantCode}/admin/users/${userId}/sessions/${sessionId}`,
+    );
+  },
+
+  revokeSessions: (tenantCode: string, userId: string): Promise<void> => {
+    if (USE_MOCK) return mockApi.users.revokeSessions(userId);
+    return apiClient.delete(`/t/${tenantCode}/admin/users/${userId}/sessions`);
   },
 
   getConsents: (

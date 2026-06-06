@@ -270,6 +270,14 @@ export const OpenApiResponseSchemas = {
     updatedAt: dateTime('2026-05-25T00:00:00.000Z'),
   }),
 
+  userSession: object({
+    sessionId: string('session-1'),
+    userId: string('user-1'),
+    clientId: string('web-app'),
+    createdAt: dateTime('2026-05-25T00:00:00.000Z'),
+    expiresAt: nullableDateTime('2026-06-08T00:00:00.000Z'),
+  }),
+
   consent: object({
     clientId: string('web-app'),
     clientName: string('Web App'),

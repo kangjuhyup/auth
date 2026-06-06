@@ -11,6 +11,8 @@ export type {
 } from './mfa-verification.port';
 export { TenantContextPort } from './tenant-context.port';
 export { AdminSessionPort } from './admin-session.port';
+export { UserSessionPort } from './user-session.port';
+export type { UserSessionView } from './user-session.port';
 export {
   IdentityLinkSessionPort,
   type IdentityLinkSession,

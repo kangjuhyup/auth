@@ -3,6 +3,7 @@ import {
   AuditOutlined,
   DeleteOutlined,
   EditOutlined,
+  LaptopOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -26,8 +27,13 @@ export function UserTable({
   pageSize,
   onPageChange,
 }: UserTableProps) {
-  const { openEditModal, openDeleteModal, openRoleModal, openConsentModal } =
-    useAdminUiStore();
+  const {
+    openEditModal,
+    openDeleteModal,
+    openRoleModal,
+    openConsentModal,
+    openSessionModal,
+  } = useAdminUiStore();
 
   const columns: ColumnsType<UserResponse> = [
     {
@@ -100,6 +106,12 @@ export function UserTable({
             icon={<AuditOutlined />}
             onClick={() => openConsentModal(record.id)}
             title="View Consents"
+          />
+          <Button
+            type="link"
+            icon={<LaptopOutlined />}
+            onClick={() => openSessionModal(record.id)}
+            title="Manage Sessions"
           />
           <Button
             type="link"

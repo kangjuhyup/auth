@@ -120,6 +120,29 @@ export class UserResponse {
   updatedAt!: Date;
 }
 
+export class UserSessionResponse {
+  @Expose()
+  sessionId!: string;
+
+  @Expose()
+  userId!: string;
+
+  @Expose()
+  clientId!: string;
+
+  @Expose()
+  @Transform(({ value }) =>
+    value instanceof Date ? value.toISOString() : value,
+  )
+  createdAt!: Date;
+
+  @Expose()
+  @Transform(({ value }) =>
+    value instanceof Date ? value.toISOString() : value,
+  )
+  expiresAt?: Date | null;
+}
+
 export class UserConsentResponse {
   @Expose()
   id!: string;

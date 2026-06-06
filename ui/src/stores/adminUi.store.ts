@@ -7,12 +7,14 @@ interface AdminUiState {
   deleteModalOpen: boolean;
   roleModalOpen: boolean;
   consentModalOpen: boolean;
+  sessionModalOpen: boolean;
 
   // Current editing/managing resource IDs
   editingId: string | null;
   deletingId: string | null;
   managingRolesId: string | null;
   viewingConsentsId: string | null;
+  viewingSessionsId: string | null;
 
   // Actions
   openCreateModal: () => void;
@@ -29,6 +31,9 @@ interface AdminUiState {
 
   openConsentModal: (id: string) => void;
   closeConsentModal: () => void;
+
+  openSessionModal: (id: string) => void;
+  closeSessionModal: () => void;
 }
 
 export const useAdminUiStore = create<AdminUiState>((set) => ({
@@ -37,11 +42,13 @@ export const useAdminUiStore = create<AdminUiState>((set) => ({
   deleteModalOpen: false,
   roleModalOpen: false,
   consentModalOpen: false,
+  sessionModalOpen: false,
 
   editingId: null,
   deletingId: null,
   managingRolesId: null,
   viewingConsentsId: null,
+  viewingSessionsId: null,
 
   openCreateModal: () => set({ createModalOpen: true }),
   closeCreateModal: () => set({ createModalOpen: false }),
@@ -59,4 +66,9 @@ export const useAdminUiStore = create<AdminUiState>((set) => ({
     set({ consentModalOpen: true, viewingConsentsId: id }),
   closeConsentModal: () =>
     set({ consentModalOpen: false, viewingConsentsId: null }),
+
+  openSessionModal: (id) =>
+    set({ sessionModalOpen: true, viewingSessionsId: id }),
+  closeSessionModal: () =>
+    set({ sessionModalOpen: false, viewingSessionsId: null }),
 }));

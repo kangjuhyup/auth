@@ -33,6 +33,14 @@ export interface UserResponse {
   updatedAt: Date;
 }
 
+export interface UserSessionResponse {
+  sessionId: string;
+  userId: string;
+  clientId: string;
+  createdAt: Date | string;
+  expiresAt?: Date | string | null;
+}
+
 export type UserConsentStatus = 'ACTIVE' | 'REVOKED';
 
 export interface UserConsentResponse {

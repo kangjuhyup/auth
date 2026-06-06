@@ -104,6 +104,8 @@ export const queryKeys = {
         [...queryKeys.admin.users.all, tenantId, 'detail', id] as const,
       roles: (tenantId: string, userId: string) =>
         [...queryKeys.admin.users.all, tenantId, 'roles', userId] as const,
+      sessions: (tenantId: string, userId: string) =>
+        [...queryKeys.admin.users.all, tenantId, 'sessions', userId] as const,
       consents: (
         tenantId: string,
         userId: string,

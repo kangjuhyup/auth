@@ -5,6 +5,7 @@ import { UserTable } from './components/UserTable';
 import { UserFormModal } from './components/UserFormModal';
 import { UserRoleModal } from './components/UserRoleModal';
 import { UserConsentModal } from './components/UserConsentModal';
+import { UserSessionModal } from './components/UserSessionModal';
 import { useUsers } from './hooks/useUsers';
 import { useAdminUiStore } from '@/stores/adminUi.store';
 import { useTenantStore } from '@/stores/tenant.store';
@@ -92,6 +93,7 @@ export function UsersPage() {
       <UserFormModal />
       <UserRoleModal />
       <UserConsentModal />
+      <UserSessionModal />
     </Space>
   );
 }

@@ -10,6 +10,7 @@ import type {
   HashResult,
   HashPolicy,
 } from '@application/ports/password-hash.port';
+import type { UserSessionPort } from '@application/ports/user-session.port';
 import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
 import { RoleModel } from '@domain/models/role';
@@ -89,12 +90,22 @@ function createMockRoleAssignment(): jest.Mocked<RoleAssignmentRepository> {
   };
 }
 
+function createMockUserSession(): jest.Mocked<UserSessionPort> {
+  return {
+    listUserSessions: jest.fn().mockResolvedValue([]),
+    revokeUserSession: jest.fn().mockResolvedValue(1),
+    revokeUserSessions: jest.fn().mockResolvedValue(2),
+  };
+}
+
 describe('UserCommandHandler', () => {
   let handler: UserCommandHandler;
   let userWriteRepo: jest.Mocked<UserWriteRepositoryPort>;
   let roleRepo: jest.Mocked<RoleRepository>;
   let roleAssignment: jest.Mocked<RoleAssignmentRepository>;
   let passwordHash: jest.Mocked<PasswordHashPort>;
+  let userSession: jest.Mocked<UserSessionPort>;
+  let auditRecorder: { recordAdminAction: jest.Mock };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -102,11 +113,17 @@ describe('UserCommandHandler', () => {
     roleRepo = createMockRoleRepo();
     roleAssignment = createMockRoleAssignment();
     passwordHash = createMockPasswordHash();
+    userSession = createMockUserSession();
+    auditRecorder = {
+      recordAdminAction: jest.fn().mockResolvedValue(undefined),
+    };
     handler = new UserCommandHandler(
       userWriteRepo,
       roleRepo,
       roleAssignment,
       passwordHash,
+      userSession,
+      auditRecorder as any,
     );
   });
 
@@ -411,6 +428,69 @@ describe('UserCommandHandler', () => {
 
       expect(user.status).toBe('WITHDRAWN');
       expect(userWriteRepo.save).toHaveBeenCalledWith(user);
+    });
+  });
+
+  describe('revokeUserSession', () => {
+    it('유저가 존재하면 지정 세션을 폐기하고 감사 로그를 남긴다', async () => {
+      await handler.revokeUserSession('tenant-1', 'user-1', 'session-1');
+
+      expect(userSession.revokeUserSession).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+        sessionId: 'session-1',
+      });
+      expect(auditRecorder.recordAdminAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          category: 'SECURITY',
+          action: 'TOKEN_REVOKED',
+          resourceType: 'oidc-session',
+          resourceId: 'session-1',
+          reason: 'AdminUserSessionRevoked',
+          metadata: {
+            targetUserId: 'user-1',
+            revokedSessions: 1,
+          },
+        }),
+      );
+    });
+
+    it('유저 tenantId가 다르면 세션 폐기를 호출하지 않는다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeUser('user-1', 'other-tenant'),
+      );
+
+      await expect(
+        handler.revokeUserSession('tenant-1', 'user-1', 'session-1'),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(userSession.revokeUserSession).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('revokeUserSessions', () => {
+    it('유저의 전체 세션을 폐기하고 감사 로그를 남긴다', async () => {
+      await handler.revokeUserSessions('tenant-1', 'user-1');
+
+      expect(userSession.revokeUserSessions).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+      });
+      expect(auditRecorder.recordAdminAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          category: 'SECURITY',
+          action: 'TOKEN_REVOKED',
+          resourceType: 'oidc-session',
+          resourceId: 'user-1',
+          reason: 'AdminUserSessionsRevoked',
+          metadata: {
+            targetUserId: 'user-1',
+            revokedSessions: 2,
+          },
+        }),
+      );
     });
   });
 });

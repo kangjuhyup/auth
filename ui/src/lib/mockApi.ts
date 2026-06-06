@@ -33,6 +33,7 @@ import type {
 import type {
   UserResponse,
   UserConsentResponse,
+  UserSessionResponse,
   CreateUserDto,
   UpdateUserDto,
 } from '@/types/user.types';
@@ -416,6 +417,23 @@ const mockUsers: UserResponse[] = [
     mfaEnabled: false,
     createdAt: new Date('2024-02-05'),
     updatedAt: new Date('2024-02-15'),
+  },
+];
+
+let mockUserSessions: UserSessionResponse[] = [
+  {
+    sessionId: 'session-admin-web',
+    userId: '1',
+    clientId: 'web-app',
+    createdAt: new Date('2026-06-06T01:00:00Z'),
+    expiresAt: new Date('2026-06-20T01:00:00Z'),
+  },
+  {
+    sessionId: 'session-john-mobile',
+    userId: '2',
+    clientId: 'mobile-app',
+    createdAt: new Date('2026-06-05T08:30:00Z'),
+    expiresAt: new Date('2026-06-19T08:30:00Z'),
   },
 ];
 
@@ -1391,6 +1409,26 @@ export const mockUserApi = {
     await delay(200);
     const roleIds = mockUserRoles.get(userId) ?? [];
     return mockRoles.filter((r) => roleIds.includes(r.id));
+  },
+
+  getSessions: async (userId: string): Promise<UserSessionResponse[]> => {
+    await delay(200);
+    return mockUserSessions.filter((session) => session.userId === userId);
+  },
+
+  revokeSession: async (userId: string, sessionId: string): Promise<void> => {
+    await delay(300);
+    mockUserSessions = mockUserSessions.filter(
+      (session) =>
+        !(session.userId === userId && session.sessionId === sessionId),
+    );
+  },
+
+  revokeSessions: async (userId: string): Promise<void> => {
+    await delay(300);
+    mockUserSessions = mockUserSessions.filter(
+      (session) => session.userId !== userId,
+    );
   },
 
   addRole: async (userId: string, roleId: string): Promise<void> => {

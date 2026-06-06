@@ -53,4 +53,17 @@ export abstract class UserCommandPort {
     roleId: string,
     auditContext?: AuditContext,
   ): Promise<void>;
+
+  abstract revokeUserSession(
+    tenantId: string,
+    userId: string,
+    sessionId: string,
+    auditContext?: AuditContext,
+  ): Promise<void>;
+
+  abstract revokeUserSessions(
+    tenantId: string,
+    userId: string,
+    auditContext?: AuditContext,
+  ): Promise<void>;
 }

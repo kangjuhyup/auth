@@ -85,6 +85,16 @@ describe('queryKeys', () => {
       expect(listKey).not.toEqual(rolesKey);
     });
 
+    it('sessions 키가 userId 를 담고 roles 키와 구분된다', () => {
+      const sessionsKey = queryKeys.admin.users.sessions('acme', 'user-1');
+      const rolesKey = queryKeys.admin.users.roles('acme', 'user-1');
+
+      expect(sessionsKey).toContain('acme');
+      expect(sessionsKey).toContain('user-1');
+      expect(sessionsKey).toContain('sessions');
+      expect(sessionsKey).not.toEqual(rolesKey);
+    });
+
     it('검색어가 다르면 users list 키도 달라진다', () => {
       const key1 = queryKeys.admin.users.list('acme', {
         page: 1,

@@ -115,6 +115,32 @@ export class UserResponse {
   }
 }
 
+export class UserSessionResponse {
+  private constructor(
+    public readonly sessionId: string,
+    public readonly userId: string,
+    public readonly clientId: string,
+    public readonly createdAt: Date,
+    public readonly expiresAt: Date | null,
+  ) {}
+
+  static of(params: {
+    sessionId: string;
+    userId: string;
+    clientId: string;
+    createdAt: Date;
+    expiresAt: Date | null;
+  }): UserSessionResponse {
+    return new UserSessionResponse(
+      params.sessionId,
+      params.userId,
+      params.clientId,
+      params.createdAt,
+      params.expiresAt,
+    );
+  }
+}
+
 export type UserConsentStatus = 'ACTIVE' | 'REVOKED';
 
 export class UserConsentResponse {

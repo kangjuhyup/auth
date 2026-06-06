@@ -18,6 +18,7 @@ import type {
   ConsentRepository,
 } from '@domain/repositories';
 import type { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
+import type { UserSessionPort } from '@application/ports/user-session.port';
 import { TenantModel } from '@domain/models/tenant';
 import { GroupModel } from '@domain/models/group';
 import { RoleModel } from '@domain/models/role';
@@ -253,6 +254,14 @@ function createMockConsentRepo(): jest.Mocked<ConsentRepository> {
   } as any;
 }
 
+function createMockUserSession(): jest.Mocked<UserSessionPort> {
+  return {
+    listUserSessions: jest.fn().mockResolvedValue([]),
+    revokeUserSession: jest.fn().mockResolvedValue(0),
+    revokeUserSessions: jest.fn().mockResolvedValue(0),
+  };
+}
+
 function createHandler() {
   const tenantRepo = createMockTenantRepo();
   const groupRepo = createMockGroupRepo();
@@ -270,6 +279,7 @@ function createHandler() {
   const userRepo = createMockUserRepo();
   const identityProviderRepo = createMockIdentityProviderRepo();
   const consentRepo = createMockConsentRepo();
+  const userSession = createMockUserSession();
 
   const handler = new AdminQueryHandler(
     tenantRepo,
@@ -288,6 +298,7 @@ function createHandler() {
     userRepo,
     identityProviderRepo,
     consentRepo,
+    userSession,
   );
 
   return {
@@ -308,6 +319,7 @@ function createHandler() {
     userRepo,
     identityProviderRepo,
     consentRepo,
+    userSession,
   };
 }
 
@@ -1020,6 +1032,7 @@ describe('AdminQueryHandler - Users', () => {
   let handler: AdminQueryHandler;
   let userRepo: jest.Mocked<UserWriteRepositoryPort>;
   let consentRepo: jest.Mocked<ConsentRepository>;
+  let userSession: jest.Mocked<UserSessionPort>;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -1027,6 +1040,7 @@ describe('AdminQueryHandler - Users', () => {
     handler = deps.handler;
     userRepo = deps.userRepo;
     consentRepo = deps.consentRepo;
+    userSession = deps.userSession;
   });
 
   describe('getUsers', () => {
@@ -1177,6 +1191,39 @@ describe('AdminQueryHandler - Users', () => {
         id: 'consent-2',
         status: 'REVOKED',
         revokedAt,
+      });
+    });
+  });
+
+  describe('getUserSessions', () => {
+    it('사용자 세션 목록을 조회한다', async () => {
+      const createdAt = new Date('2026-06-06T01:00:00Z');
+      const expiresAt = new Date('2026-06-07T01:00:00Z');
+      userRepo.findById.mockResolvedValue(makeUser('u-1', 'tenant-1'));
+      userSession.listUserSessions.mockResolvedValue([
+        {
+          sessionId: 'session-1',
+          tenantId: 'tenant-1',
+          userId: 'u-1',
+          clientId: 'web-app',
+          createdAt,
+          expiresAt,
+        },
+      ]);
+
+      const result = await handler.getUserSessions('tenant-1', 'u-1');
+
+      expect(userRepo.findById).toHaveBeenCalledWith('u-1');
+      expect(userSession.listUserSessions).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        userId: 'u-1',
+      });
+      expect(result[0]).toMatchObject({
+        sessionId: 'session-1',
+        userId: 'u-1',
+        clientId: 'web-app',
+        createdAt,
+        expiresAt,
       });
     });
   });

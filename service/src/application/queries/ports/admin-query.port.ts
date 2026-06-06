@@ -14,7 +14,11 @@ import {
   TenantPolicyResponse,
 } from '@application/dto';
 import { TenantResponse } from '@application/dto';
-import { UserResponse, UserConsentResponse } from '@application/dto';
+import {
+  UserResponse,
+  UserConsentResponse,
+  UserSessionResponse,
+} from '@application/dto';
 import { RoleResponse } from '@application/dto';
 import { PermissionResponse } from '@application/dto';
 import { ScopeResponse } from '@application/dto';
@@ -67,6 +71,10 @@ export abstract class AdminQueryPort {
     userId: string,
     query: PaginationQuery,
   ): Promise<PaginatedResult<UserConsentResponse>>;
+  abstract getUserSessions(
+    tenantId: string,
+    userId: string,
+  ): Promise<UserSessionResponse[]>;
 
   // Role
   abstract getRoles(

@@ -245,6 +245,8 @@ describe('관리자 관계형 컨트롤러', () => {
         deleteUser: jest.fn(),
         assignRole: jest.fn(),
         removeRole: jest.fn(),
+        revokeUserSession: jest.fn(),
+        revokeUserSessions: jest.fn(),
       };
       queryPort = {
         getUsers: jest.fn(),
@@ -252,6 +254,7 @@ describe('관리자 관계형 컨트롤러', () => {
         getUserRoles: jest.fn(),
         getUserConsents: jest.fn(),
         getUserConsentHistory: jest.fn(),
+        getUserSessions: jest.fn(),
       };
       controller = new AdminUserController(commandPort, queryPort);
     });
@@ -297,6 +300,19 @@ describe('관리자 관계형 컨트롤러', () => {
         tenant.id,
         'user-1',
         query,
+      );
+    });
+
+    it('getSessions는 tenant.id와 userId를 queryPort에 전달한다', async () => {
+      const result = [{ sessionId: 'session-1' }] as any;
+      queryPort.getUserSessions.mockResolvedValue(result);
+
+      await expect(controller.getSessions(tenant, 'user-1')).resolves.toBe(
+        result,
+      );
+      expect(queryPort.getUserSessions).toHaveBeenCalledWith(
+        tenant.id,
+        'user-1',
       );
     });
 
@@ -363,6 +379,31 @@ describe('관리자 관계형 컨트롤러', () => {
         tenant.id,
         'user-1',
         'role-1',
+      );
+    });
+
+    it('revokeSession은 tenant.id와 userId, sessionId를 commandPort에 전달한다', async () => {
+      commandPort.revokeUserSession.mockResolvedValue(undefined);
+
+      await expect(
+        controller.revokeSession(tenant, 'user-1', 'session-1'),
+      ).resolves.toBeUndefined();
+      expect(commandPort.revokeUserSession).toHaveBeenCalledWith(
+        tenant.id,
+        'user-1',
+        'session-1',
+      );
+    });
+
+    it('revokeSessions는 tenant.id와 userId를 commandPort에 전달한다', async () => {
+      commandPort.revokeUserSessions.mockResolvedValue(undefined);
+
+      await expect(
+        controller.revokeSessions(tenant, 'user-1'),
+      ).resolves.toBeUndefined();
+      expect(commandPort.revokeUserSessions).toHaveBeenCalledWith(
+        tenant.id,
+        'user-1',
       );
     });
   });

@@ -12,6 +12,7 @@ import {
   ClientAuthPolicyResponse,
   UserResponse,
   UserConsentResponse,
+  UserSessionResponse,
   RoleResponse,
   PermissionResponse,
   ScopeResponse,
@@ -48,6 +49,7 @@ import { CustomGrantModel } from '@domain/models/custom-grant';
 import { RoleModel } from '@domain/models/role';
 import { PermissionModel } from '@domain/models/permission';
 import { GroupModel } from '@domain/models/group';
+import { UserSessionPort } from '@application/ports/user-session.port';
 
 @Injectable()
 @Logging({ level: LogLevel.DEBUG })
@@ -69,6 +71,7 @@ export class AdminQueryHandler implements AdminQueryPort {
     private readonly userRepo: UserWriteRepositoryPort,
     private readonly identityProviderRepo: IdentityProviderRepository,
     private readonly consentRepo: ConsentRepository,
+    private readonly userSession: UserSessionPort,
   ) {}
 
   // ── Tenant ──────────────────────────────────────────────────────────────
@@ -423,6 +426,27 @@ export class AdminQueryHandler implements AdminQueryPort {
       page,
       limit,
     });
+  }
+
+  async getUserSessions(
+    tenantId: string,
+    userId: string,
+  ): Promise<UserSessionResponse[]> {
+    await this.assertUserInTenant(tenantId, userId);
+    const sessions = await this.userSession.listUserSessions({
+      tenantId,
+      userId,
+    });
+
+    return sessions.map((session) =>
+      UserSessionResponse.of({
+        sessionId: session.sessionId,
+        userId: session.userId,
+        clientId: session.clientId,
+        createdAt: session.createdAt,
+        expiresAt: session.expiresAt,
+      }),
+    );
   }
 
   @NoLog

@@ -136,11 +136,15 @@ export class RedisOidcSessionIndexStore implements OidcSessionIndexStore {
         authorization.clientId,
         descriptor.accountId,
       );
+      const userLookupKey = redisUserLookupKey(tenantId, descriptor.accountId);
       multi.sadd(lookupKey, sessionId);
+      multi.sadd(userLookupKey, sessionId);
       multi.sadd(redisSessionLookupListKey(sessionId), lookupKey);
+      multi.sadd(redisSessionLookupListKey(sessionId), userLookupKey);
       multi.set(redisSessionEntryKey(sessionId), JSON.stringify(entry));
       if (ttlSec) {
         multi.expire(lookupKey, ttlSec);
+        multi.expire(userLookupKey, ttlSec);
         multi.expire(redisSessionLookupListKey(sessionId), ttlSec);
         multi.expire(redisSessionEntryKey(sessionId), ttlSec);
       }
@@ -181,6 +185,13 @@ export function redisLookupKey(
   accountId: string,
 ): string {
   return `oidc:session-index:${tenantId}:${clientId}:${accountId}`;
+}
+
+export function redisUserLookupKey(
+  tenantId: string,
+  accountId: string,
+): string {
+  return `oidc:session-index:${tenantId}:user:${accountId}`;
 }
 
 export function redisSessionEntryKey(sessionId: string): string {
