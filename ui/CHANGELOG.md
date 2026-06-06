@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.0](https://github.com/kangjuhyup/auth/compare/auth-ui-v0.1.1...auth-ui-v0.2.0) (2026-06-06)
+
+
+### Features
+
+* **admin-ui:** add user search filters ([134cccf](https://github.com/kangjuhyup/auth/commit/134cccf569b96fcec1b0bbc9660a1cbc9eb92a91))
+* **auth:** 관리자 세션 refresh 흐름 추가 ([9f5efbb](https://github.com/kangjuhyup/auth/commit/9f5efbbf7648acf5f5af7c2d163a401e8f3f6a7f))
+* **ui:** tenant 수정에서 정책 설정 지원 ([32003b9](https://github.com/kangjuhyup/auth/commit/32003b9cc0a25b2fb035b231bf9378413ba22423))
+* **ui:** 계정 보안 설정 화면 추가 ([e7b61ac](https://github.com/kangjuhyup/auth/commit/e7b61aca0e2ff70f29a8aa2a9d0e80834d8a188e))
+
 ## [0.1.1](https://github.com/kangjuhyup/auth/compare/auth-ui-v0.1.0...auth-ui-v0.1.1) (2026-04-05)
 
 
