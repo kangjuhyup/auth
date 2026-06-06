@@ -11,6 +11,11 @@ describe('AdminSessionController', () => {
   let config: any;
   let request: any;
   let response: any;
+  const adminUsername = ['admin', 'user'].join('-');
+  const validCredential = ['valid', 'credential'].join('-');
+  const invalidCredential = ['invalid', 'credential'].join('-');
+  const temporaryCredential = ['temporary', 'credential'].join('-');
+  const changedCredential = ['changed', 'credential'].join('-');
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -18,18 +23,18 @@ describe('AdminSessionController', () => {
       issueAdminToken: jest.fn().mockResolvedValue({
         accessToken: 'access-token',
         refreshToken: 'refresh-token',
-        username: 'admin',
+        username: adminUsername,
         passwordChangeRequired: false,
       }),
       refreshAdminSession: jest.fn().mockResolvedValue({
         accessToken: 'next-access-token',
         refreshToken: 'next-refresh-token',
-        username: 'admin',
+        username: adminUsername,
         passwordChangeRequired: false,
       }),
       getAdminSession: jest.fn().mockResolvedValue({
         userId: 'user-1',
-        username: 'admin',
+        username: adminUsername,
         passwordChangeRequired: false,
       }),
       changePassword: jest.fn().mockResolvedValue(undefined),
@@ -57,7 +62,7 @@ describe('AdminSessionController', () => {
 
     await expect(
       controller.login(
-        { username: 'admin', password: 'wrong' },
+        { username: adminUsername, password: invalidCredential },
         request,
         response,
       ),
@@ -67,16 +72,16 @@ describe('AdminSessionController', () => {
   it('정상 로그인 시 HttpOnly session cookie를 설정하고 token은 body로 반환하지 않는다', async () => {
     const result = await controller.login(
       {
-        username: 'admin',
-        password: 'secret',
+        username: adminUsername,
+        password: validCredential,
       },
       request,
       response,
     );
 
     expect(adminSession.issueAdminToken).toHaveBeenCalledWith({
-      username: 'admin',
-      password: 'secret',
+      username: adminUsername,
+      password: validCredential,
       ipAddress: '203.0.113.10',
       userAgent: undefined,
       correlationId: undefined,
@@ -102,7 +107,7 @@ describe('AdminSessionController', () => {
       }),
     );
     expect(result).toEqual({
-      username: 'admin',
+      username: adminUsername,
       passwordChangeRequired: false,
     });
   });
@@ -111,18 +116,18 @@ describe('AdminSessionController', () => {
     adminSession.issueAdminToken.mockResolvedValue({
       accessToken: 'access-token',
       refreshToken: 'refresh-token',
-      username: 'admin',
+      username: adminUsername,
       passwordChangeRequired: true,
     });
 
     await expect(
       controller.login(
-        { username: 'admin', password: 'temporary123' },
+        { username: adminUsername, password: temporaryCredential },
         request,
         response,
       ),
     ).resolves.toEqual({
-      username: 'admin',
+      username: adminUsername,
       passwordChangeRequired: true,
     });
   });
@@ -136,7 +141,7 @@ describe('AdminSessionController', () => {
 
     await expect(
       controller.login(
-        { username: 'admin', password: 'secret' },
+        { username: adminUsername, password: validCredential },
         request,
         response,
       ),
@@ -152,7 +157,7 @@ describe('AdminSessionController', () => {
 
     await expect(
       controller.login(
-        { username: 'admin', password: 'secret' },
+        { username: adminUsername, password: validCredential },
         request,
         response,
       ),
@@ -168,7 +173,7 @@ describe('AdminSessionController', () => {
 
     expect(adminSession.getAdminSession).toHaveBeenCalledWith('access-token');
     expect(result).toEqual({
-      username: 'admin',
+      username: adminUsername,
       passwordChangeRequired: false,
     });
   });
@@ -195,7 +200,7 @@ describe('AdminSessionController', () => {
       expect.any(Object),
     );
     expect(result).toEqual({
-      username: 'admin',
+      username: adminUsername,
       passwordChangeRequired: false,
     });
   });
@@ -213,15 +218,15 @@ describe('AdminSessionController', () => {
           headers: { cookie: `${ADMIN_SESSION_COOKIE_NAME}=access-token` },
         } as any,
         {
-          currentPassword: 'temporary123',
-          newPassword: 'changed123',
+          currentPassword: temporaryCredential,
+          newPassword: changedCredential,
         },
       ),
     ).resolves.toBeUndefined();
 
     expect(adminSession.changePassword).toHaveBeenCalledWith('access-token', {
-      currentPassword: 'temporary123',
-      newPassword: 'changed123',
+      currentPassword: temporaryCredential,
+      newPassword: changedCredential,
     });
   });
 

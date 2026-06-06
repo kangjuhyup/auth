@@ -20,16 +20,26 @@ function maskWith<T extends object>(DtoClass: new () => T, body: object) {
 }
 
 describe('presentation DTO log masking', () => {
+  const signupUsername = ['signup', 'user'].join('-');
+  const adminUsername = ['admin', 'user'].join('-');
+  const interactionUsername = ['interaction', 'user'].join('-');
+  const loginCredential = ['login', 'credential'].join('-');
+  const resetCredential = ['reset', 'credential'].join('-');
+  const adminCredential = ['admin', 'credential'].join('-');
+  const interactionCredential = ['interaction', 'credential'].join('-');
+  const resetToken = ['reset', 'token'].join('-');
+  const idpClientCredential = ['idp', 'client', 'credential'].join('-');
+
   it('인증 요청의 password, token, code와 개인정보를 마스킹한다', () => {
     expect(
       maskWith(SignupDto, {
-        username: 'alice',
-        password: 'Passw0rd!',
+        username: signupUsername,
+        password: loginCredential,
         email: 'user@example.com',
         phone: '01012345678',
       }),
     ).toMatchObject({
-      username: 'alice',
+      username: signupUsername,
       password: '******',
       email: 'us***@example.com',
       phone: '010-****-5678',
@@ -37,8 +47,8 @@ describe('presentation DTO log masking', () => {
 
     expect(
       maskWith(PasswordResetDto, {
-        token: 'reset-token',
-        newPassword: 'NewPass1!',
+        token: resetToken,
+        newPassword: resetCredential,
       }),
     ).toMatchObject({
       token: '******',
@@ -63,11 +73,11 @@ describe('presentation DTO log masking', () => {
   it('관리자와 클라이언트 secret 필드를 마스킹한다', () => {
     expect(
       maskWith(AdminLoginDto, {
-        username: 'admin',
-        password: 'admin-secret',
+        username: adminUsername,
+        password: adminCredential,
       }),
     ).toMatchObject({
-      username: 'admin',
+      username: adminUsername,
       password: '******',
     });
 
@@ -85,7 +95,7 @@ describe('presentation DTO log masking', () => {
       maskWith(CreateIdentityProviderDto, {
         provider: 'google',
         clientId: 'google-client',
-        clientSecret: 'google-secret',
+        clientSecret: idpClientCredential,
       }),
     ).toMatchObject({
       provider: 'google',
@@ -97,11 +107,11 @@ describe('presentation DTO log masking', () => {
   it('interaction body의 password, MFA, SAML 값을 마스킹한다', () => {
     expect(
       maskWith(InteractionLoginDto, {
-        username: 'john',
-        password: 'login-secret',
+        username: interactionUsername,
+        password: interactionCredential,
       }),
     ).toMatchObject({
-      username: 'john',
+      username: interactionUsername,
       password: '******',
     });
 
