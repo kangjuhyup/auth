@@ -1,5 +1,6 @@
 import type { Adapter, AdapterPayload } from 'oidc-provider';
 import type { Redis } from 'ioredis';
+import type { OidcSessionIndexStore } from '../session/oidc-session-index.store';
 
 const NEG = '__nil__';
 
@@ -19,6 +20,7 @@ export class RedisAdapter implements Adapter {
   constructor(
     private readonly kind: string,
     private readonly redis: Redis,
+    private readonly sessionIndex?: OidcSessionIndexStore,
   ) {}
 
   // =========================
@@ -99,6 +101,10 @@ export class RedisAdapter implements Adapter {
     }
 
     await multi.exec();
+    if (this.kind === 'Session') {
+      const expiresAt = ttl ? new Date(Date.now() + ttl * 1000) : null;
+      await this.sessionIndex?.upsertSession(id, payload, expiresAt);
+    }
   }
 
   async find(id: string): Promise<AdapterPayload | undefined> {
@@ -157,6 +163,9 @@ export class RedisAdapter implements Adapter {
       multi.srem(this.grantKey(stored.meta.grantId), id);
 
     await multi.exec();
+    if (this.kind === 'Session') {
+      await this.sessionIndex?.destroySession(id);
+    }
   }
 
   async revokeByGrantId(grantId: string): Promise<void> {
@@ -185,6 +194,9 @@ export class RedisAdapter implements Adapter {
 
     multi.del(gk);
     await multi.exec();
+    if (this.kind === 'Session') {
+      await this.sessionIndex?.deleteByGrantIds([grantId]);
+    }
   }
 
   // =========================

@@ -11,6 +11,7 @@ export * from './role';
 export * from './role-inherit';
 export * from './role-permission';
 export * from './oidc-model';
+export * from './oidc-session-index';
 export * from './tenant';
 export * from './tenant-client';
 export * from './tenant-config';

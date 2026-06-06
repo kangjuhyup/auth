@@ -8,9 +8,11 @@ describe('useAdminUiStore', () => {
       editModalOpen: false,
       deleteModalOpen: false,
       roleModalOpen: false,
+      consentModalOpen: false,
       editingId: null,
       deletingId: null,
       managingRolesId: null,
+      viewingConsentsId: null,
     });
   });
 
@@ -21,9 +23,11 @@ describe('useAdminUiStore', () => {
       expect(state.editModalOpen).toBe(false);
       expect(state.deleteModalOpen).toBe(false);
       expect(state.roleModalOpen).toBe(false);
+      expect(state.consentModalOpen).toBe(false);
       expect(state.editingId).toBeNull();
       expect(state.deletingId).toBeNull();
       expect(state.managingRolesId).toBeNull();
+      expect(state.viewingConsentsId).toBeNull();
     });
   });
 
@@ -91,6 +95,23 @@ describe('useAdminUiStore', () => {
     });
   });
 
+  describe('consent 모달', () => {
+    it('openConsentModal(id) 이 consentModalOpen 을 true 로 하고 viewingConsentsId 를 설정한다', () => {
+      useAdminUiStore.getState().openConsentModal('user-77');
+      const state = useAdminUiStore.getState();
+      expect(state.consentModalOpen).toBe(true);
+      expect(state.viewingConsentsId).toBe('user-77');
+    });
+
+    it('closeConsentModal() 이 consentModalOpen 을 false 로 하고 viewingConsentsId 를 null 로 초기화한다', () => {
+      useAdminUiStore.getState().openConsentModal('user-77');
+      useAdminUiStore.getState().closeConsentModal();
+      const state = useAdminUiStore.getState();
+      expect(state.consentModalOpen).toBe(false);
+      expect(state.viewingConsentsId).toBeNull();
+    });
+  });
+
   describe('모달 독립성', () => {
     it('edit 모달을 열어도 다른 모달에 영향을 주지 않는다', () => {
       useAdminUiStore.getState().openEditModal('id-1');
@@ -98,6 +119,7 @@ describe('useAdminUiStore', () => {
       expect(state.createModalOpen).toBe(false);
       expect(state.deleteModalOpen).toBe(false);
       expect(state.roleModalOpen).toBe(false);
+      expect(state.consentModalOpen).toBe(false);
     });
 
     it('여러 ID 를 순서대로 열고 닫아도 올바른 ID 가 유지된다', () => {

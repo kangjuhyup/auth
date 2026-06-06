@@ -17,6 +17,7 @@ describe('EventMapper', () => {
       reason: null,
       ip: Buffer.from('127.0.0.1'),
       userAgent: 'jest',
+      correlationId: 'req-1',
       metadata: { source: 'test' },
       occurredAt: new Date('2025-01-01T00:00:00.000Z'),
     });
@@ -34,6 +35,7 @@ describe('EventMapper', () => {
     expect(domain.resourceId).toBe('session-1');
     expect(domain.success).toBe(true);
     expect(domain.ip).toEqual(Buffer.from('127.0.0.1'));
+    expect(domain.correlationId).toBe('req-1');
     expect(domain.metadata).toEqual({ source: 'test' });
   });
 
@@ -52,6 +54,7 @@ describe('EventMapper', () => {
       reason: 'denied',
       ip: null,
       userAgent: null,
+      correlationId: null,
       metadata: null,
       occurredAt: new Date('2025-01-01T00:00:00.000Z'),
     });
@@ -65,6 +68,7 @@ describe('EventMapper', () => {
     expect(domain.reason).toBe('denied');
     expect(domain.ip).toBeNull();
     expect(domain.userAgent).toBeNull();
+    expect(domain.correlationId).toBeNull();
     expect(domain.metadata).toBeNull();
   });
 });

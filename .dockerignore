@@ -5,9 +5,12 @@
 .yarn/cache
 .yarn/unplugged
 .yarn/install-state.gz
+docs/.yarn
 dist
 **/dist
+docs/build
 coverage
+**/coverage
 .turbo
 .idea
 .vscode

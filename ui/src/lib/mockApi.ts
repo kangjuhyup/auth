@@ -5,10 +5,21 @@ import type {
   UpdateTenantDto,
 } from '@/types/tenant.types';
 import type {
+  ClientAuthPolicyResponse,
   ClientResponse,
   CreateClientDto,
+  UpdateClientAuthPolicyDto,
   UpdateClientDto,
 } from '@/types/client.types';
+import type {
+  CreateCustomGrantDto,
+  CustomGrantResponse,
+  UpdateCustomGrantDto,
+} from '@/types/custom-grant.types';
+import type {
+  TenantPolicyResponse,
+  UpdateTenantPoliciesDto,
+} from '@/types/policy.types';
 import type {
   RoleResponse,
   CreateRoleDto,
@@ -21,10 +32,30 @@ import type {
 } from '@/types/group.types';
 import type {
   UserResponse,
+  UserConsentResponse,
+  UserSessionResponse,
   CreateUserDto,
   UpdateUserDto,
 } from '@/types/user.types';
-import type { LoginDto, LoginResponse } from '@/types/auth.types';
+import type {
+  IdentityLinkResponse,
+  ChangePasswordDto,
+  LoginDto,
+  LoginResponse,
+  ProfileResponse,
+  TotpConfirmationResponse,
+  TotpEnrollmentResponse,
+} from '@/types/auth.types';
+import type {
+  AuditLogFilters,
+  AuditLogResponse,
+} from '@/types/audit-log.types';
+import type { IdentityProviderResponse } from '@/types/identity-provider.types';
+import type {
+  CreateScopeDto,
+  ScopeResponse,
+  UpdateScopeDto,
+} from '@/types/scope.types';
 
 // Simulate network delay
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -116,6 +147,143 @@ const mockClients: ClientResponse[] = [
   },
 ];
 
+const mockScopes: ScopeResponse[] = [
+  {
+    id: 'scope-1',
+    name: 'openid',
+    displayName: 'OpenID',
+    description: 'OIDC authentication scope',
+    claimKeys: [],
+    enabled: true,
+    builtIn: true,
+    createdAt: new Date('2024-01-01'),
+    updatedAt: new Date('2024-01-01'),
+  },
+  {
+    id: 'scope-2',
+    name: 'profile',
+    displayName: 'Profile',
+    description: 'Basic profile claims',
+    claimKeys: ['profile'],
+    enabled: true,
+    builtIn: true,
+    createdAt: new Date('2024-01-01'),
+    updatedAt: new Date('2024-01-01'),
+  },
+  {
+    id: 'scope-3',
+    name: 'email',
+    displayName: 'Email',
+    description: 'Email address claims',
+    claimKeys: ['email'],
+    enabled: true,
+    builtIn: true,
+    createdAt: new Date('2024-01-01'),
+    updatedAt: new Date('2024-01-01'),
+  },
+  {
+    id: 'scope-4',
+    name: 'orders:read',
+    displayName: 'Read orders',
+    description: 'Read-only access to order APIs',
+    claimKeys: [],
+    enabled: true,
+    builtIn: false,
+    createdAt: new Date('2024-03-01'),
+    updatedAt: new Date('2024-03-01'),
+  },
+];
+
+const mockCustomGrants: CustomGrantResponse[] = [
+  {
+    id: 'custom-grant-1',
+    grantType: 'urn:auth:grant:magic-link',
+    displayName: 'Magic Link Grant',
+    description: 'Demo custom grant metadata',
+    enabled: true,
+    allowedClientTypes: ['confidential'],
+    allowedApplicationTypes: ['web'],
+    requiresClientAuthentication: true,
+    requiresGrantTypes: ['authorization_code'],
+    builtIn: false,
+    createdAt: new Date('2024-03-01'),
+    updatedAt: new Date('2024-03-01'),
+  },
+];
+
+const defaultTenantPolicies: TenantPolicyResponse = {
+  password: {
+    minLength: 12,
+    requireUppercase: true,
+    requireLowercase: true,
+    requireNumber: true,
+    requireSymbol: true,
+    preventReuseCount: 5,
+    expiresInDays: 90,
+    lockoutFailureThreshold: 5,
+    lockoutDurationSec: 900,
+  },
+  mfa: {
+    required: false,
+    adminRequired: true,
+  },
+  allowedIdp: {
+    providerKeys: null,
+  },
+  session: {
+    maxAgeSec: 28800,
+    requireAuthTime: false,
+    reauthenticationIntervalSec: null,
+    loginSessionMode: 'multi',
+    maxConcurrentSessions: null,
+    sessionConflictAction: 'revoke_previous_sessions',
+  },
+  refreshToken: {
+    ttlSec: 1209600,
+    rotationEnabled: true,
+    reuseAction: 'revoke_grant',
+  },
+  signup: {
+    mode: 'invite',
+    allowedEmailDomains: [],
+  },
+};
+
+let mockTenantPolicies: TenantPolicyResponse = structuredClone(
+  defaultTenantPolicies,
+);
+
+const mockClientAuthPolicies: Record<string, ClientAuthPolicyResponse> = {
+  '1': {
+    clientRefId: '1',
+    allowedAuthMethods: ['password'],
+    defaultAcr: 'urn:auth:pwd',
+    mfaRequired: false,
+    allowedMfaMethods: ['totp'],
+    maxSessionDurationSec: null,
+    consentRequired: true,
+    requireAuthTime: false,
+    allowedIdpProviderKeys: null,
+    reauthenticationIntervalSec: null,
+    refreshTokenRotationEnabled: true,
+    refreshTokenReuseAction: 'revoke_grant',
+    loginSessionMode: null,
+    maxConcurrentSessions: null,
+    sessionConflictAction: null,
+    effective: {
+      mfaRequired: false,
+      allowedIdpProviderKeys: null,
+      maxSessionDurationSec: 28800,
+      requireAuthTime: false,
+      reauthenticationIntervalSec: null,
+      refreshTokenTtlSec: 1209600,
+      loginSessionMode: 'multi',
+      maxConcurrentSessions: null,
+      sessionConflictAction: 'revoke_previous_sessions',
+    },
+  },
+};
+
 // Roles (tenant-scoped)
 const mockRoles: RoleResponse[] = [
   {
@@ -198,6 +366,7 @@ const mockUsers: UserResponse[] = [
     phone: '+821012345678',
     phoneVerified: true,
     status: 'ACTIVE',
+    mfaEnabled: true,
     createdAt: new Date('2024-01-01'),
     updatedAt: new Date('2024-01-01'),
   },
@@ -209,6 +378,7 @@ const mockUsers: UserResponse[] = [
     phone: null,
     phoneVerified: false,
     status: 'ACTIVE',
+    mfaEnabled: false,
     createdAt: new Date('2024-01-10'),
     updatedAt: new Date('2024-01-10'),
   },
@@ -220,6 +390,7 @@ const mockUsers: UserResponse[] = [
     phone: '+821098765432',
     phoneVerified: true,
     status: 'ACTIVE',
+    mfaEnabled: false,
     createdAt: new Date('2024-01-15'),
     updatedAt: new Date('2024-01-15'),
   },
@@ -231,6 +402,7 @@ const mockUsers: UserResponse[] = [
     phone: null,
     phoneVerified: false,
     status: 'LOCKED',
+    mfaEnabled: false,
     createdAt: new Date('2024-02-01'),
     updatedAt: new Date('2024-02-10'),
   },
@@ -242,8 +414,26 @@ const mockUsers: UserResponse[] = [
     phone: null,
     phoneVerified: false,
     status: 'DISABLED',
+    mfaEnabled: false,
     createdAt: new Date('2024-02-05'),
     updatedAt: new Date('2024-02-15'),
+  },
+];
+
+let mockUserSessions: UserSessionResponse[] = [
+  {
+    sessionId: 'session-admin-web',
+    userId: '1',
+    clientId: 'web-app',
+    createdAt: new Date('2026-06-06T01:00:00Z'),
+    expiresAt: new Date('2026-06-20T01:00:00Z'),
+  },
+  {
+    sessionId: 'session-john-mobile',
+    userId: '2',
+    clientId: 'mobile-app',
+    createdAt: new Date('2026-06-05T08:30:00Z'),
+    expiresAt: new Date('2026-06-19T08:30:00Z'),
   },
 ];
 
@@ -263,6 +453,186 @@ const mockUserRoles = new Map<string, string[]>([
   ['5', ['3']], // disabled.user has Viewer role
 ]);
 
+const mockUserConsents = new Map<string, UserConsentResponse[]>([
+  [
+    '1',
+    [
+      {
+        id: 'consent-1',
+        userId: '1',
+        clientRefId: '1',
+        clientId: 'web-app',
+        clientName: 'Web Application',
+        grantedScopes: 'openid profile email',
+        grantedAt: new Date('2024-03-01T09:00:00Z'),
+        revokedAt: null,
+        status: 'ACTIVE',
+      },
+      {
+        id: 'consent-2',
+        userId: '1',
+        clientRefId: '2',
+        clientId: 'mobile-app',
+        clientName: 'Mobile Application',
+        grantedScopes: 'openid profile email offline_access',
+        grantedAt: new Date('2024-02-10T09:00:00Z'),
+        revokedAt: new Date('2024-02-20T09:00:00Z'),
+        status: 'REVOKED',
+      },
+    ],
+  ],
+  [
+    '2',
+    [
+      {
+        id: 'consent-3',
+        userId: '2',
+        clientRefId: '1',
+        clientId: 'web-app',
+        clientName: 'Web Application',
+        grantedScopes: 'openid profile',
+        grantedAt: new Date('2024-03-04T12:00:00Z'),
+        revokedAt: null,
+        status: 'ACTIVE',
+      },
+    ],
+  ],
+]);
+
+const mockAuditLogs: AuditLogResponse[] = [
+  {
+    id: 'audit-1',
+    category: 'AUTH',
+    severity: 'INFO',
+    action: 'LOGIN',
+    userId: '1',
+    clientId: '1',
+    resourceType: 'session',
+    resourceId: 'session-1',
+    success: true,
+    reason: null,
+    userAgent: 'Mozilla/5.0',
+    correlationId: 'req-1001',
+    metadata: { method: 'password' },
+    occurredAt: new Date('2024-03-01T09:00:00Z'),
+  },
+  {
+    id: 'audit-2',
+    category: 'SECURITY',
+    severity: 'WARN',
+    action: 'ACCESS_DENIED',
+    userId: null,
+    clientId: '3',
+    resourceType: 'client',
+    resourceId: '3',
+    success: false,
+    reason: 'invalid_client',
+    userAgent: null,
+    correlationId: 'req-1002',
+    metadata: { endpoint: 'token' },
+    occurredAt: new Date('2024-03-02T11:00:00Z'),
+  },
+];
+
+function paginate<T>(
+  items: T[],
+  params: { page?: number; limit?: number },
+): PaginatedResult<T> {
+  const page = params.page ?? 1;
+  const limit = params.limit ?? 10;
+  const start = (page - 1) * limit;
+
+  return {
+    items: items.slice(start, start + limit),
+    total: items.length,
+    page,
+    limit,
+  };
+}
+
+const mockProfileByTenant = new Map<string, ProfileResponse>([
+  [
+    'default',
+    {
+      id: '1',
+      username: 'admin',
+      email: 'admin@example.com',
+      emailVerified: false,
+      phone: '+821012345678',
+      phoneVerified: false,
+      status: 'active',
+      mfaEnabled: true,
+      createdAt: new Date('2024-01-01'),
+      updatedAt: new Date('2024-01-01'),
+    },
+  ],
+]);
+
+const mockIdentityLinksByTenant = new Map<string, IdentityLinkResponse[]>([
+  [
+    'default',
+    [
+      {
+        id: 'identity-link-1',
+        provider: 'google',
+        email: 'admin@example.com',
+        linkedAt: new Date('2024-01-15'),
+      },
+      {
+        id: 'identity-link-2',
+        provider: 'saml-corporate',
+        email: 'admin@corp.example.com',
+        linkedAt: new Date('2024-02-20'),
+      },
+    ],
+  ],
+]);
+
+const mockIdentityProviders: IdentityProviderResponse[] = [
+  {
+    id: 'mock-idp-google',
+    provider: 'google',
+    protocol: 'oauth2',
+    displayName: 'Google',
+    clientId: 'google-client',
+    clientSecretSet: true,
+    redirectUri: 'http://localhost:3000/auth/identity-links/google/callback',
+    enabled: true,
+    oauthConfig: null,
+    samlConfig: null,
+    createdAt: new Date('2024-01-01').toISOString(),
+    updatedAt: new Date('2024-01-01').toISOString(),
+  },
+  {
+    id: 'mock-idp-github',
+    provider: 'github',
+    protocol: 'oauth2',
+    displayName: 'GitHub',
+    clientId: 'github-client',
+    clientSecretSet: true,
+    redirectUri: 'http://localhost:3000/auth/identity-links/github/callback',
+    enabled: true,
+    oauthConfig: {
+      authorizationUrl: 'https://github.com/login/oauth/authorize',
+      tokenUrl: 'https://github.com/login/oauth/access_token',
+      userinfoUrl: 'https://api.github.com/user',
+      scopes: ['read:user', 'user:email'],
+      subField: 'id',
+      emailField: 'email',
+    },
+    samlConfig: null,
+    createdAt: new Date('2024-01-02').toISOString(),
+    updatedAt: new Date('2024-01-02').toISOString(),
+  },
+];
+
+function getMockProfile(tenantCode: string): ProfileResponse {
+  const profile =
+    mockProfileByTenant.get(tenantCode) ?? mockProfileByTenant.get('default');
+  if (!profile) throw new Error('Profile not found');
+  return profile;
+}
+
 // ============================================================================
 // AUTHENTICATION API
 // ============================================================================
@@ -271,20 +641,193 @@ export const mockAuthApi = {
   login: async (dto: LoginDto): Promise<LoginResponse> => {
     await delay(500);
 
-    // Mock credentials: admin/admin
     if (dto.username === 'admin' && dto.password === 'admin') {
       return {
-        token: 'mock-jwt-token-' + Date.now(),
         username: dto.username,
+        passwordChangeRequired: false,
       };
     }
 
     throw new Error('Invalid credentials');
   },
 
+  getSession: async (): Promise<LoginResponse> => {
+    await delay(100);
+    return { username: 'admin', passwordChangeRequired: false };
+  },
+
+  refreshSession: async (): Promise<LoginResponse> => {
+    await delay(100);
+    return { username: 'admin', passwordChangeRequired: false };
+  },
+
   logout: async (): Promise<void> => {
     await delay(200);
     // Nothing to do for mock
+  },
+
+  changeAdminPassword: async (dto: ChangePasswordDto): Promise<void> => {
+    void dto;
+    await delay(200);
+  },
+
+  getProfile: async (tenantCode: string): Promise<ProfileResponse> => {
+    await delay(200);
+    return { ...getMockProfile(tenantCode) };
+  },
+
+  requestEmailVerification: async (tenantCode: string): Promise<void> => {
+    void tenantCode;
+    await delay(200);
+  },
+
+  verifyEmail: async (tenantCode: string, token: string): Promise<void> => {
+    await delay(200);
+    if (!token.trim()) throw new Error('Verification token is required');
+    const profile = getMockProfile(tenantCode);
+    profile.emailVerified = true;
+    profile.updatedAt = new Date();
+  },
+
+  requestPhoneVerification: async (tenantCode: string): Promise<void> => {
+    void tenantCode;
+    await delay(200);
+  },
+
+  verifyPhone: async (tenantCode: string, token: string): Promise<void> => {
+    await delay(200);
+    if (!token.trim()) throw new Error('Verification token is required');
+    const profile = getMockProfile(tenantCode);
+    profile.phoneVerified = true;
+    profile.updatedAt = new Date();
+  },
+
+  beginTotpEnrollment: async (
+    tenantCode: string,
+  ): Promise<TotpEnrollmentResponse> => {
+    void tenantCode;
+    await delay(200);
+    return {
+      secret: 'JBSWY3DPEHPK3PXP',
+      otpauthUrl:
+        'otpauth://totp/Auth%20Server:admin?secret=JBSWY3DPEHPK3PXP&issuer=Auth%20Server',
+    };
+  },
+
+  confirmTotpEnrollment: async (
+    tenantCode: string,
+    code: string,
+  ): Promise<TotpConfirmationResponse> => {
+    await delay(200);
+    if (!/^\d{6}$/.test(code)) throw new Error('TOTP code must be 6 digits');
+    const profile = getMockProfile(tenantCode);
+    profile.mfaEnabled = true;
+    profile.updatedAt = new Date();
+    return {
+      recoveryCodes: ['RC-1234-5678', 'RC-2345-6789', 'RC-3456-7890'],
+    };
+  },
+
+  getRecoveryCodeStatus: async (
+    tenantCode: string,
+  ): Promise<{
+    remaining: number;
+    total: number;
+    used: number;
+    low: boolean;
+  }> => {
+    void tenantCode;
+    await delay(150);
+    return { remaining: 3, total: 10, used: 7, low: false };
+  },
+
+  rotateRecoveryCodes: async (
+    tenantCode: string,
+  ): Promise<TotpConfirmationResponse> => {
+    void tenantCode;
+    await delay(200);
+    return {
+      recoveryCodes: ['RC-4567-8901', 'RC-5678-9012', 'RC-6789-0123'],
+    };
+  },
+
+  disableTotp: async (tenantCode: string): Promise<void> => {
+    await delay(200);
+    const profile = getMockProfile(tenantCode);
+    profile.mfaEnabled = false;
+    profile.updatedAt = new Date();
+  },
+
+  updateMfaPreference: async (
+    tenantCode: string,
+    enabled: boolean,
+  ): Promise<void> => {
+    await delay(200);
+    const profile = getMockProfile(tenantCode);
+    profile.mfaEnabled = enabled;
+    profile.updatedAt = new Date();
+  },
+
+  startIdentityLink: async (
+    tenantCode: string,
+    provider: string,
+    returnTo: string,
+  ): Promise<{ authorizationUrl: string }> => {
+    await delay(200);
+    const links =
+      mockIdentityLinksByTenant.get(tenantCode) ??
+      mockIdentityLinksByTenant.get('default') ??
+      [];
+    if (!links.some((link) => link.provider === provider)) {
+      links.push({
+        id: `identity-link-${provider}`,
+        provider,
+        email: `${provider}-user@example.com`,
+        linkedAt: new Date(),
+      });
+    }
+    const redirectTo =
+      returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')
+        ? returnTo
+        : '/admin/users';
+    return {
+      authorizationUrl: `${redirectTo}?identityLinked=${encodeURIComponent(provider)}`,
+    };
+  },
+
+  getIdentityLinks: async (
+    tenantCode: string,
+  ): Promise<IdentityLinkResponse[]> => {
+    await delay(200);
+    return [
+      ...(mockIdentityLinksByTenant.get(tenantCode) ??
+        mockIdentityLinksByTenant.get('default') ??
+        []),
+    ];
+  },
+
+  unlinkIdentity: async (
+    tenantCode: string,
+    identityId: string,
+  ): Promise<void> => {
+    await delay(200);
+    const links =
+      mockIdentityLinksByTenant.get(tenantCode) ??
+      mockIdentityLinksByTenant.get('default') ??
+      [];
+    const index = links.findIndex((link) => link.id === identityId);
+    if (index === -1) throw new Error('Identity link not found');
+    links.splice(index, 1);
+  },
+};
+
+export const mockIdentityProviderApi = {
+  list: async (params: {
+    page?: number;
+    limit?: number;
+  }): Promise<PaginatedResult<IdentityProviderResponse>> => {
+    await delay(200);
+    return paginate(mockIdentityProviders, params);
   },
 };
 
@@ -421,6 +964,214 @@ export const mockClientApi = {
     const index = mockClients.findIndex((c) => c.id === id);
     if (index === -1) throw new Error('Client not found');
     mockClients.splice(index, 1);
+  },
+
+  getAuthPolicy: async (id: string): Promise<ClientAuthPolicyResponse> => {
+    await delay(200);
+    return (
+      mockClientAuthPolicies[id] ?? {
+        ...mockClientAuthPolicies['1']!,
+        clientRefId: id,
+      }
+    );
+  },
+
+  updateAuthPolicy: async (
+    id: string,
+    dto: UpdateClientAuthPolicyDto,
+  ): Promise<void> => {
+    await delay(300);
+    const current = mockClientAuthPolicies[id] ?? {
+      ...mockClientAuthPolicies['1']!,
+      clientRefId: id,
+    };
+    mockClientAuthPolicies[id] = {
+      ...current,
+      ...dto,
+      effective: {
+        ...current.effective,
+        mfaRequired:
+          mockTenantPolicies.mfa.required || Boolean(dto.mfaRequired),
+        allowedIdpProviderKeys:
+          dto.allowedIdpProviderKeys ??
+          current.allowedIdpProviderKeys ??
+          mockTenantPolicies.allowedIdp.providerKeys,
+        maxSessionDurationSec:
+          dto.maxSessionDurationSec ??
+          current.maxSessionDurationSec ??
+          mockTenantPolicies.session.maxAgeSec,
+        requireAuthTime:
+          mockTenantPolicies.session.requireAuthTime ||
+          Boolean(dto.requireAuthTime ?? current.requireAuthTime),
+        reauthenticationIntervalSec:
+          dto.reauthenticationIntervalSec ??
+          current.reauthenticationIntervalSec ??
+          mockTenantPolicies.session.reauthenticationIntervalSec,
+        loginSessionMode:
+          mockTenantPolicies.session.loginSessionMode === 'single' ||
+          dto.loginSessionMode === 'single' ||
+          current.loginSessionMode === 'single'
+            ? 'single'
+            : 'multi',
+        maxConcurrentSessions: resolveMockSessionLimit(
+          mockTenantPolicies.session.maxConcurrentSessions,
+          dto.maxConcurrentSessions ?? current.maxConcurrentSessions,
+        ),
+        sessionConflictAction:
+          dto.sessionConflictAction ??
+          current.sessionConflictAction ??
+          mockTenantPolicies.session.sessionConflictAction,
+      },
+    };
+  },
+};
+
+function resolveMockSessionLimit(
+  tenantLimit: number | null,
+  clientLimit: number | null,
+): number | null {
+  if (tenantLimit === null) return clientLimit;
+  if (clientLimit === null) return tenantLimit;
+  return Math.min(tenantLimit, clientLimit);
+}
+
+export const mockScopeApi = {
+  list: async (params: {
+    page?: number;
+    limit?: number;
+  }): Promise<PaginatedResult<ScopeResponse>> => {
+    await delay(300);
+    return paginate(mockScopes, params);
+  },
+
+  get: async (id: string): Promise<ScopeResponse> => {
+    await delay(200);
+    const scope = mockScopes.find((item) => item.id === id);
+    if (!scope) throw new Error('Scope not found');
+    return scope;
+  },
+
+  create: async (dto: CreateScopeDto): Promise<{ id: string }> => {
+    await delay(400);
+    const id = `scope-${mockScopes.length + 1}`;
+    mockScopes.push({
+      id,
+      name: dto.name,
+      displayName: dto.displayName ?? dto.name,
+      description: dto.description ?? null,
+      claimKeys: dto.claimKeys ?? [],
+      enabled: dto.enabled ?? true,
+      builtIn: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    return { id };
+  },
+
+  update: async (id: string, dto: UpdateScopeDto): Promise<void> => {
+    await delay(400);
+    const index = mockScopes.findIndex((item) => item.id === id);
+    if (index === -1) throw new Error('Scope not found');
+    const prev = mockScopes[index]!;
+    mockScopes[index] = {
+      ...prev,
+      ...dto,
+      id: prev.id,
+      name: prev.name,
+      builtIn: prev.builtIn,
+      updatedAt: new Date(),
+    };
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await delay(300);
+    const index = mockScopes.findIndex((item) => item.id === id);
+    if (index === -1) throw new Error('Scope not found');
+    mockScopes.splice(index, 1);
+  },
+};
+
+export const mockCustomGrantApi = {
+  list: async (params: {
+    page?: number;
+    limit?: number;
+  }): Promise<PaginatedResult<CustomGrantResponse>> => {
+    await delay(300);
+    return paginate(mockCustomGrants, params);
+  },
+
+  get: async (id: string): Promise<CustomGrantResponse> => {
+    await delay(200);
+    const grant = mockCustomGrants.find((item) => item.id === id);
+    if (!grant) throw new Error('Custom grant not found');
+    return grant;
+  },
+
+  create: async (dto: CreateCustomGrantDto): Promise<{ id: string }> => {
+    await delay(400);
+    const id = `custom-grant-${mockCustomGrants.length + 1}`;
+    mockCustomGrants.push({
+      id,
+      grantType: dto.grantType,
+      displayName: dto.displayName ?? dto.grantType,
+      description: dto.description ?? null,
+      enabled: dto.enabled ?? true,
+      allowedClientTypes: dto.allowedClientTypes ?? ['confidential'],
+      allowedApplicationTypes: dto.allowedApplicationTypes ?? ['web'],
+      requiresClientAuthentication: dto.requiresClientAuthentication ?? true,
+      requiresGrantTypes: dto.requiresGrantTypes ?? [],
+      builtIn: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    return { id };
+  },
+
+  update: async (id: string, dto: UpdateCustomGrantDto): Promise<void> => {
+    await delay(400);
+    const index = mockCustomGrants.findIndex((item) => item.id === id);
+    if (index === -1) throw new Error('Custom grant not found');
+    const prev = mockCustomGrants[index]!;
+    mockCustomGrants[index] = {
+      ...prev,
+      ...dto,
+      id: prev.id,
+      grantType: prev.grantType,
+      builtIn: prev.builtIn,
+      updatedAt: new Date(),
+    };
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await delay(300);
+    const index = mockCustomGrants.findIndex((item) => item.id === id);
+    if (index === -1) throw new Error('Custom grant not found');
+    mockCustomGrants.splice(index, 1);
+  },
+};
+
+export const mockPolicyApi = {
+  getTenantPolicies: async (): Promise<TenantPolicyResponse> => {
+    await delay(200);
+    return mockTenantPolicies;
+  },
+
+  updateTenantPolicies: async (dto: UpdateTenantPoliciesDto): Promise<void> => {
+    await delay(300);
+    mockTenantPolicies = {
+      password: { ...mockTenantPolicies.password, ...(dto.password ?? {}) },
+      mfa: { ...mockTenantPolicies.mfa, ...(dto.mfa ?? {}) },
+      allowedIdp: {
+        ...mockTenantPolicies.allowedIdp,
+        ...(dto.allowedIdp ?? {}),
+      },
+      session: { ...mockTenantPolicies.session, ...(dto.session ?? {}) },
+      refreshToken: {
+        ...mockTenantPolicies.refreshToken,
+        ...(dto.refreshToken ?? {}),
+      },
+      signup: { ...mockTenantPolicies.signup, ...(dto.signup ?? {}) },
+    };
   },
 };
 
@@ -584,16 +1335,25 @@ export const mockUserApi = {
   list: async (params: {
     page?: number;
     limit?: number;
+    search?: string;
   }): Promise<PaginatedResult<UserResponse>> => {
     await delay(300);
     const page = params.page ?? 1;
     const limit = params.limit ?? 10;
+    const keyword = params.search?.trim().toLowerCase();
+    const filtered = keyword
+      ? mockUsers.filter((user) =>
+          [user.username, user.email ?? '', user.phone ?? ''].some((value) =>
+            value.toLowerCase().includes(keyword),
+          ),
+        )
+      : mockUsers;
     const start = (page - 1) * limit;
-    const items = mockUsers.slice(start, start + limit);
+    const items = filtered.slice(start, start + limit);
 
     return {
       items,
-      total: mockUsers.length,
+      total: filtered.length,
       page,
       limit,
     };
@@ -617,6 +1377,7 @@ export const mockUserApi = {
       phone: dto.phone ?? null,
       phoneVerified: false,
       status: dto.status ?? 'ACTIVE',
+      mfaEnabled: false,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -650,6 +1411,26 @@ export const mockUserApi = {
     return mockRoles.filter((r) => roleIds.includes(r.id));
   },
 
+  getSessions: async (userId: string): Promise<UserSessionResponse[]> => {
+    await delay(200);
+    return mockUserSessions.filter((session) => session.userId === userId);
+  },
+
+  revokeSession: async (userId: string, sessionId: string): Promise<void> => {
+    await delay(300);
+    mockUserSessions = mockUserSessions.filter(
+      (session) =>
+        !(session.userId === userId && session.sessionId === sessionId),
+    );
+  },
+
+  revokeSessions: async (userId: string): Promise<void> => {
+    await delay(300);
+    mockUserSessions = mockUserSessions.filter(
+      (session) => session.userId !== userId,
+    );
+  },
+
   addRole: async (userId: string, roleId: string): Promise<void> => {
     await delay(300);
     const existing = mockUserRoles.get(userId) ?? [];
@@ -666,6 +1447,52 @@ export const mockUserApi = {
       existing.filter((id) => id !== roleId),
     );
   },
+
+  getConsents: async (
+    userId: string,
+    params: { page?: number; limit?: number },
+  ): Promise<PaginatedResult<UserConsentResponse>> => {
+    await delay(200);
+    const items = (mockUserConsents.get(userId) ?? []).filter(
+      (consent) => consent.status === 'ACTIVE',
+    );
+    return paginate(items, params);
+  },
+
+  getConsentHistory: async (
+    userId: string,
+    params: { page?: number; limit?: number },
+  ): Promise<PaginatedResult<UserConsentResponse>> => {
+    await delay(200);
+    return paginate(mockUserConsents.get(userId) ?? [], params);
+  },
+};
+
+export const mockAuditLogApi = {
+  list: async (
+    params: AuditLogFilters,
+  ): Promise<PaginatedResult<AuditLogResponse>> => {
+    await delay(200);
+    const from = params.from ? new Date(params.from) : null;
+    const to = params.to ? new Date(params.to) : null;
+    const items = mockAuditLogs.filter((log) => {
+      const occurredAt =
+        log.occurredAt instanceof Date
+          ? log.occurredAt
+          : new Date(log.occurredAt);
+      return (
+        (!from || occurredAt >= from) &&
+        (!to || occurredAt <= to) &&
+        (!params.userId || log.userId === params.userId) &&
+        (!params.clientId || log.clientId === params.clientId) &&
+        (!params.category || log.category === params.category) &&
+        (!params.action || log.action === params.action) &&
+        (!params.severity || log.severity === params.severity) &&
+        (!params.correlationId || log.correlationId === params.correlationId)
+      );
+    });
+    return paginate(items, params);
+  },
 };
 
 // ============================================================================
@@ -676,7 +1503,12 @@ export const mockApi = {
   auth: mockAuthApi,
   tenants: mockTenantApi,
   clients: mockClientApi,
+  scopes: mockScopeApi,
+  customGrants: mockCustomGrantApi,
+  policies: mockPolicyApi,
   roles: mockRoleApi,
   groups: mockGroupApi,
   users: mockUserApi,
+  auditLogs: mockAuditLogApi,
+  identityProviders: mockIdentityProviderApi,
 };

@@ -50,6 +50,9 @@ export class UserOrmEntity extends BaseEntity {
   @Property({ type: 'varchar', length: 20, default: 'ACTIVE' })
   status!: UserStatus;
 
+  @Property({ fieldName: 'mfa_enabled', type: 'boolean', default: false })
+  mfaEnabled!: boolean;
+
   @OneToMany(() => UserCredentialOrmEntity, (uc) => uc.user)
   credentials = new Collection<UserCredentialOrmEntity>(this);
 

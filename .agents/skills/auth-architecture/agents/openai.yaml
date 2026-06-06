@@ -1,0 +1,6 @@
+interface:
+  display_name: 'Auth Architecture'
+  short_description: 'Layering and dependency rules for auth service'
+  default_prompt: 'Use $auth-architecture to check the service layer boundaries before editing.'
+policy:
+  allow_implicit_invocation: true

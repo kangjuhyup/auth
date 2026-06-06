@@ -1,0 +1,6 @@
+interface:
+  display_name: 'Auth Security'
+  short_description: 'Security checks for tokens, tenants, and SSO'
+  default_prompt: 'Use $auth-security to review this auth change for tenant isolation and token safety.'
+policy:
+  allow_implicit_invocation: true

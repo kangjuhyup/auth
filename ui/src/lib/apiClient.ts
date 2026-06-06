@@ -1,28 +1,44 @@
+import { message } from 'antd';
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 
 interface RequestOptions extends Omit<RequestInit, 'body'> {
   body?: unknown;
   params?: Record<string, string | number | boolean | undefined | null>;
+  skipAuthRefresh?: boolean;
+  skipUnauthorizedRedirect?: boolean;
+}
+
+let refreshPromise: Promise<boolean> | null = null;
+
+async function parseResponseBody<T>(response: Response): Promise<T> {
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const text = await response.text();
+  if (!text) {
+    return undefined as T;
+  }
+
+  return JSON.parse(text) as T;
 }
 
 async function request<T>(
   endpoint: string,
   options: RequestOptions = {},
 ): Promise<T> {
-  const { body, headers: customHeaders, params, ...restOptions } = options;
-
-  let token: string | null = null;
-
-  try {
-    const { useAuthStore } = await import('@/stores/auth.store');
-    token = useAuthStore.getState().token;
-  } catch {
-    // Stores not yet initialized (e.g., during initial load)
-  }
+  const {
+    body,
+    headers: customHeaders,
+    params,
+    skipAuthRefresh = false,
+    skipUnauthorizedRedirect = false,
+    ...restOptions
+  } = options;
 
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
-    ...(token && { Authorization: `Bearer ${token}` }),
     ...customHeaders,
   };
 
@@ -43,20 +59,32 @@ async function request<T>(
 
   const response = await fetch(url, {
     ...restOptions,
+    credentials: restOptions.credentials ?? 'include',
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });
 
-  if (response.status === 401 || response.status === 403) {
-    // Clear auth and redirect to login
-    try {
-      const { useAuthStore } = await import('@/stores/auth.store');
-      useAuthStore.getState().clearAuth();
-    } catch {
-      // Store not available
+  if (response.status === 401) {
+    if (!skipAuthRefresh) {
+      const refreshed = await tryRefreshSession();
+      if (refreshed) {
+        return request<T>(endpoint, {
+          ...options,
+          skipAuthRefresh: true,
+        });
+      }
     }
-    window.location.href = '/login';
+
+    if (!skipUnauthorizedRedirect) {
+      await handleUnauthorized();
+    }
+
     throw new Error(`Unauthorized: ${response.status}`);
+  }
+
+  if (response.status === 403) {
+    message.error('권한이 부족합니다.');
+    throw new Error(`Forbidden: ${response.status}`);
   }
 
   if (!response.ok) {
@@ -64,7 +92,40 @@ async function request<T>(
     throw new Error(error.message || `API Error: ${response.status}`);
   }
 
-  return response.json() as Promise<T>;
+  return parseResponseBody<T>(response);
+}
+
+async function tryRefreshSession(): Promise<boolean> {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      const [{ authApi }, { useAuthStore }] = await Promise.all([
+        import('@/features/auth/api/authApi'),
+        import('@/stores/auth.store'),
+      ]);
+      const session = await authApi.refreshSession();
+      useAuthStore
+        .getState()
+        .login(session.username, session.passwordChangeRequired);
+      return true;
+    })()
+      .catch(() => false)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+
+  return refreshPromise;
+}
+
+async function handleUnauthorized(): Promise<void> {
+  try {
+    const { useAuthStore } = await import('@/stores/auth.store');
+    useAuthStore.getState().clearAuth();
+  } catch {
+    // Store not available
+  }
+
+  window.location.href = '/login';
 }
 
 export const apiClient = {

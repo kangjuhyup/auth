@@ -1,3 +1,4 @@
+import { Getter } from '../decorators';
 import { PersistenceModel } from './persistence-model';
 
 interface PermissionModelProps {
@@ -8,30 +9,28 @@ interface PermissionModelProps {
   description?: string | null;
 }
 
-export class PermissionModel extends PersistenceModel<string, PermissionModelProps> {
+export class PermissionModel extends PersistenceModel<
+  string,
+  PermissionModelProps
+> {
   constructor(props: PermissionModelProps, id?: string) {
     super(props, id);
   }
 
-  get tenantId(): string {
-    return this.etc.tenantId;
-  }
+  @Getter()
+  declare readonly tenantId: string;
 
-  get code(): string {
-    return this.etc.code;
-  }
+  @Getter()
+  declare readonly code: string;
 
-  get resource(): string | null | undefined {
-    return this.etc.resource;
-  }
+  @Getter()
+  declare readonly resource: string | null | undefined;
 
-  get action(): string | null | undefined {
-    return this.etc.action;
-  }
+  @Getter()
+  declare readonly action: string | null | undefined;
 
-  get description(): string | null | undefined {
-    return this.etc.description;
-  }
+  @Getter()
+  declare readonly description: string | null | undefined;
 
   changeResource(resource: string | null): void {
     this.etc.resource = resource;

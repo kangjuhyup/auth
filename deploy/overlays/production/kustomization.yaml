@@ -1,6 +1,8 @@
-# 프로덕션: 사전에 네임스페이스 auth 에 Secret auth-service-secrets 를 생성한 뒤 적용하세요.
+# 프로덕션/GitOps: 사전에 네임스페이스 auth 에 Secret auth-service-secrets 를 생성한 뒤 적용하세요.
 #   kubectl apply -f deploy/base/namespace.yaml
-#   kubectl -n auth create secret generic auth-service-secrets --from-env-file=secrets.env
+#   cp deploy/overlays/production/secret.example.yaml /tmp/auth-service-secret.yaml
+#   vi /tmp/auth-service-secret.yaml
+#   kubectl apply -f /tmp/auth-service-secret.yaml
 #   kubectl apply -k deploy/overlays/production
 #
 # 이미지·OIDC_ISSUER·DB_HOST 는 아래 patches / images 를 수정하세요.
@@ -28,8 +30,8 @@ patches:
 
 images:
   - name: auth-service
-    newName: ghcr.io/REPLACE_ORG/auth-service
+    newName: ghcr.io/kangjuhyup/auth/auth-service
     newTag: latest
   - name: auth-ui
-    newName: ghcr.io/REPLACE_ORG/auth-ui
+    newName: ghcr.io/kangjuhyup/auth/auth-ui
     newTag: latest

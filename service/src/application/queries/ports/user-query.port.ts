@@ -20,12 +20,21 @@ export abstract class UserQueryPort {
     tenantId: string;
     username: string;
     password: string;
-  }): Promise<{ userId: string } | null>;
+  }): Promise<{
+    userId: string;
+    mfaEnabled: boolean;
+    passwordChangeRequired: boolean;
+  } | null>;
 
   abstract getMfaMethods(
     tenantId: string,
     userId: string,
   ): Promise<MfaMethodType[]>;
+
+  abstract getRecoveryCodeStatus(
+    tenantId: string,
+    userId: string,
+  ): Promise<{ remaining: number; total: number; used: number; low: boolean }>;
 
   abstract verifyMfa(params: {
     tenantId: string;
@@ -51,12 +60,17 @@ export type UserProfileView = Readonly<{
   phone?: string;
   phoneVerified: boolean;
   status: 'ACTIVE' | 'LOCKED' | 'DISABLED' | 'WITHDRAWN';
+  mfaEnabled: boolean;
+  passwordChangeRequired: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }>;
 
 export type UserClaimsView = Readonly<{
   sub: string;
+  username?: string;
   email?: string;
   email_verified?: boolean;
+  phone?: string;
+  phone_verified?: boolean;
 }>;

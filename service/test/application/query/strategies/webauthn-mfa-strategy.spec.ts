@@ -11,20 +11,28 @@ function createMockUserRepo(): jest.Mocked<UserWriteRepositoryPort> {
     list: jest.fn(),
     save: jest.fn(),
     findCredentialsByType: jest.fn().mockResolvedValue([]),
+    createCredential: jest.fn().mockResolvedValue(undefined),
     saveCredential: jest.fn().mockResolvedValue(undefined),
   } as unknown as jest.Mocked<UserWriteRepositoryPort>;
 }
 
 function createMockMfa(): jest.Mocked<MfaVerificationPort> {
   return {
+    generateTotpSecret: jest.fn(),
+    buildTotpUri: jest.fn(),
     verifyTotp: jest.fn(),
     generateWebAuthnAuthOptions: jest.fn(),
-    verifyWebAuthn: jest.fn().mockResolvedValue({ verified: true, newCounter: 6 }),
+    verifyWebAuthn: jest
+      .fn()
+      .mockResolvedValue({ verified: true, newCounter: 6 }),
     verifyRecoveryCode: jest.fn(),
   } as unknown as jest.Mocked<MfaVerificationPort>;
 }
 
-function makeWebAuthnCred(credentialID: string, counter = 0): UserCredentialModel {
+function makeWebAuthnCred(
+  credentialID: string,
+  counter = 0,
+): UserCredentialModel {
   return UserCredentialModel.of({
     type: 'webauthn',
     secretHash: 'pubkey-pem',
@@ -58,23 +66,50 @@ describe('WebAuthnMfaStrategy', () => {
   });
 
   it('webauthnResponse 없음 → false', async () => {
-    expect(await strategy.verify({ userId: 'u1', rpId: 'ex.com', expectedOrigin: 'https://ex.com' })).toBe(false);
+    expect(
+      await strategy.verify({
+        userId: 'u1',
+        rpId: 'ex.com',
+        expectedOrigin: 'https://ex.com',
+      }),
+    ).toBe(false);
   });
 
   it('rpId 없음 → false', async () => {
-    expect(await strategy.verify({ userId: 'u1', webauthnResponse: { id: 'x' }, expectedOrigin: 'https://ex.com' })).toBe(false);
+    expect(
+      await strategy.verify({
+        userId: 'u1',
+        webauthnResponse: { id: 'x' },
+        expectedOrigin: 'https://ex.com',
+      }),
+    ).toBe(false);
   });
 
   it('expectedOrigin 없음 → false', async () => {
-    expect(await strategy.verify({ userId: 'u1', webauthnResponse: { id: 'x' }, rpId: 'ex.com' })).toBe(false);
+    expect(
+      await strategy.verify({
+        userId: 'u1',
+        webauthnResponse: { id: 'x' },
+        rpId: 'ex.com',
+      }),
+    ).toBe(false);
   });
 
   it('credentialId 없음 → false', async () => {
-    expect(await strategy.verify({ userId: 'u1', webauthnResponse: {}, rpId: 'ex.com', expectedOrigin: 'https://ex.com' })).toBe(false);
+    expect(
+      await strategy.verify({
+        userId: 'u1',
+        webauthnResponse: {},
+        rpId: 'ex.com',
+        expectedOrigin: 'https://ex.com',
+      }),
+    ).toBe(false);
   });
 
   it('matching credential 없음 → false', async () => {
-    userRepo.findCredentialsByType.mockResolvedValue([makeWebAuthnCred('other-id')]);
+    userRepo.findCredentialsByType.mockResolvedValue([
+      makeWebAuthnCred('other-id'),
+    ]);
 
     expect(await strategy.verify(baseCtx)).toBe(false);
     expect(mfa.verifyWebAuthn).not.toHaveBeenCalled();

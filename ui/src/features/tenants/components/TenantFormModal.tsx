@@ -1,34 +1,27 @@
-import { Modal, Form } from 'antd';
+import { Modal, Form, Spin } from 'antd';
 import { useEffect, useMemo } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { TenantForm } from './TenantForm';
 import { useCreateTenant } from '../hooks/useCreateTenant';
 import { useUpdateTenant } from '../hooks/useUpdateTenant';
 import { useDeleteTenant } from '../hooks/useDeleteTenant';
 import { useTenants } from '../hooks/useTenants';
+import {
+  tenantResponseToFormValues,
+  type TenantFormValues,
+  toTenantPolicyDto,
+  toTenantUpdateDto,
+} from '../tenantPolicyFormPayload';
 import { useAdminUiStore } from '@/stores/adminUi.store';
-import type {
-  TenantResponse,
-  CreateTenantDto,
-  UpdateTenantDto,
-} from '@/types/tenant.types';
-
-function tenantResponseToFormValues(
-  t: TenantResponse,
-): Partial<CreateTenantDto | UpdateTenantDto> {
-  const policy = t.signupPolicy;
-  const signupPolicy: CreateTenantDto['signupPolicy'] =
-    policy === 'invite' || policy === 'open' ? policy : 'invite';
-  return {
-    name: t.name,
-    brandName: t.brandName ?? undefined,
-    signupPolicy,
-    requirePhoneVerify: t.requirePhoneVerify,
-  };
-}
+import { queryKeys } from '@/lib/queryKeys';
+import { policyApi } from '@/features/policies/api/policyApi';
+import type { CreateTenantDto } from '@/types/tenant.types';
+import type { UpdateTenantPoliciesDto } from '@/types/policy.types';
 
 export function TenantFormModal() {
-  const [createForm] = Form.useForm<CreateTenantDto | UpdateTenantDto>();
-  const [editForm] = Form.useForm<CreateTenantDto | UpdateTenantDto>();
+  const [createForm] = Form.useForm<TenantFormValues>();
+  const [editForm] = Form.useForm<TenantFormValues>();
+  const queryClient = useQueryClient();
 
   const {
     createModalOpen,
@@ -49,22 +42,44 @@ export function TenantFormModal() {
   const { data: tenantsData } = useTenants({ page: 1, limit: 100 });
   const editingTenant =
     tenantsData?.items.find((t) => t.id === editingId) ?? null;
+  const editingTenantCode = editingTenant?.code;
 
-  const tenantEditInitialValues = useMemo(():
-    | Partial<CreateTenantDto | UpdateTenantDto>
-    | undefined => {
+  const policiesQuery = useQuery({
+    queryKey: queryKeys.admin.policies.tenant(editingTenantCode ?? ''),
+    queryFn: () => policyApi.getTenantPolicies(editingTenantCode!),
+    enabled: Boolean(editModalOpen && editingTenantCode),
+  });
+
+  const updatePolicies = useMutation({
+    mutationFn: (dto: UpdateTenantPoliciesDto) =>
+      policyApi.updateTenantPolicies(editingTenantCode!, dto),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.admin.policies.tenant(editingTenantCode ?? ''),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.admin.clients.all,
+      });
+    },
+  });
+
+  const tenantEditInitialValues = useMemo((): Partial<
+    TenantFormValues
+  > | undefined => {
     if (!editingTenant) return undefined;
-    return tenantResponseToFormValues(editingTenant);
-  }, [editingTenant]);
+    return tenantResponseToFormValues(editingTenant, policiesQuery.data);
+  }, [editingTenant, policiesQuery.data]);
 
   // Populate form when editing
   useEffect(() => {
     if (editingTenant) {
-      editForm.setFieldsValue(tenantResponseToFormValues(editingTenant));
+      editForm.setFieldsValue(
+        tenantResponseToFormValues(editingTenant, policiesQuery.data),
+      );
     }
-  }, [editingTenant, editForm]);
+  }, [editingTenant, editForm, policiesQuery.data]);
 
-  const handleCreate = (values: CreateTenantDto | UpdateTenantDto) => {
+  const handleCreate = (values: TenantFormValues) => {
     createMutation.mutate(values as CreateTenantDto, {
       onSuccess: () => {
         closeCreateModal();
@@ -73,11 +88,15 @@ export function TenantFormModal() {
     });
   };
 
-  const handleUpdate = (values: CreateTenantDto | UpdateTenantDto) => {
-    updateMutation.mutate(values as UpdateTenantDto, {
+  const handleUpdate = (values: TenantFormValues) => {
+    updateMutation.mutate(toTenantUpdateDto(values), {
       onSuccess: () => {
-        closeEditModal();
-        editForm.resetFields();
+        updatePolicies.mutate(toTenantPolicyDto(values), {
+          onSuccess: () => {
+            closeEditModal();
+            editForm.resetFields();
+          },
+        });
       },
     });
   };
@@ -117,14 +136,19 @@ export function TenantFormModal() {
           editForm.resetFields();
         }}
         onOk={() => editForm.submit()}
-        confirmLoading={updateMutation.isPending}
+        confirmLoading={updateMutation.isPending || updatePolicies.isPending}
+        width={720}
       >
-        <TenantForm
-          mode="edit"
-          form={editForm}
-          initialValues={tenantEditInitialValues}
-          onFinish={handleUpdate}
-        />
+        {policiesQuery.isLoading ? (
+          <Spin />
+        ) : (
+          <TenantForm
+            mode="edit"
+            form={editForm}
+            initialValues={tenantEditInitialValues}
+            onFinish={handleUpdate}
+          />
+        )}
       </Modal>
 
       {/* Delete Confirmation Modal */}

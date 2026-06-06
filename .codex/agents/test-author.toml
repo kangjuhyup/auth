@@ -1,0 +1,13 @@
+name = "test_author"
+description = "Test implementation agent for command handlers, projections, adapters, middleware, registries, and security-sensitive behavior."
+model_reasoning_effort = "medium"
+sandbox_mode = "workspace-write"
+developer_instructions = """
+This is a Codex custom-agent wrapper.
+
+Before doing any work, read and apply the canonical agent instructions in:
+../../agents/test-author.md
+
+Do not duplicate shared agent behavior in this TOML file. Update the canonical file instead.
+"""
+nickname_candidates = ["Spec", "Probe", "Harness"]

@@ -11,12 +11,15 @@ function createMockUserRepo(): jest.Mocked<UserWriteRepositoryPort> {
     list: jest.fn(),
     save: jest.fn(),
     findCredentialsByType: jest.fn().mockResolvedValue([]),
+    createCredential: jest.fn().mockResolvedValue(undefined),
     saveCredential: jest.fn().mockResolvedValue(undefined),
   } as unknown as jest.Mocked<UserWriteRepositoryPort>;
 }
 
 function createMockMfa(): jest.Mocked<MfaVerificationPort> {
   return {
+    generateTotpSecret: jest.fn(),
+    buildTotpUri: jest.fn(),
     verifyTotp: jest.fn(),
     generateWebAuthnAuthOptions: jest.fn(),
     verifyWebAuthn: jest.fn(),
@@ -25,7 +28,12 @@ function createMockMfa(): jest.Mocked<MfaVerificationPort> {
 }
 
 function makeRecoveryCred(hash: string): UserCredentialModel {
-  return UserCredentialModel.of({ type: 'recovery_code', secretHash: hash, hashAlg: 'bcrypt', enabled: true });
+  return UserCredentialModel.of({
+    type: 'recovery_code',
+    secretHash: hash,
+    hashAlg: 'bcrypt',
+    enabled: true,
+  });
 }
 
 describe('RecoveryCodeMfaStrategy', () => {
@@ -52,14 +60,21 @@ describe('RecoveryCodeMfaStrategy', () => {
   it('credentials 없음 → false', async () => {
     userRepo.findCredentialsByType.mockResolvedValue([]);
 
-    expect(await strategy.verify({ userId: 'u1', code: 'ABCD-1234' })).toBe(false);
+    expect(await strategy.verify({ userId: 'u1', code: 'ABCD-1234' })).toBe(
+      false,
+    );
   });
 
   it('모든 코드 불일치 → false', async () => {
-    userRepo.findCredentialsByType.mockResolvedValue([makeRecoveryCred('h1'), makeRecoveryCred('h2')]);
+    userRepo.findCredentialsByType.mockResolvedValue([
+      makeRecoveryCred('h1'),
+      makeRecoveryCred('h2'),
+    ]);
     mfa.verifyRecoveryCode.mockResolvedValue(false);
 
-    expect(await strategy.verify({ userId: 'u1', code: 'ABCD-1234' })).toBe(false);
+    expect(await strategy.verify({ userId: 'u1', code: 'ABCD-1234' })).toBe(
+      false,
+    );
     expect(mfa.verifyRecoveryCode).toHaveBeenCalledTimes(2);
   });
 
@@ -67,12 +82,17 @@ describe('RecoveryCodeMfaStrategy', () => {
     const cred1 = makeRecoveryCred('h1');
     const cred2 = makeRecoveryCred('h2');
     userRepo.findCredentialsByType.mockResolvedValue([cred1, cred2]);
-    mfa.verifyRecoveryCode.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    mfa.verifyRecoveryCode
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
 
     const result = await strategy.verify({ userId: 'u1', code: 'ABCD-1234' });
 
     expect(result).toBe(true);
     expect(cred2.enabled).toBe(false);
+    expect(cred2.hashParams).toEqual(
+      expect.objectContaining({ usedAt: expect.any(String) }),
+    );
     expect(userRepo.saveCredential).toHaveBeenCalledWith(cred2);
   });
 

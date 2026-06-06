@@ -1,4 +1,5 @@
 import { apiClient } from '@/lib/apiClient';
+import { mockApi } from '@/lib/mockApi';
 import type { PaginatedResult } from '@/types/pagination.types';
 import type {
   IdentityProviderResponse,
@@ -6,12 +7,18 @@ import type {
   UpdateIdentityProviderDto,
 } from '@/types/identity-provider.types';
 
+const USE_MOCK = import.meta.env.VITE_USE_MOCK_API === 'true';
+
 export const identityProviderApi = {
   list: (
     tenantCode: string,
     params: { page?: number; limit?: number },
-  ): Promise<PaginatedResult<IdentityProviderResponse>> =>
-    apiClient.get(`/t/${tenantCode}/admin/identity-providers`, { params }),
+  ): Promise<PaginatedResult<IdentityProviderResponse>> => {
+    if (USE_MOCK) return mockApi.identityProviders.list(params);
+    return apiClient.get(`/t/${tenantCode}/admin/identity-providers`, {
+      params,
+    });
+  },
 
   get: (tenantCode: string, id: string): Promise<IdentityProviderResponse> =>
     apiClient.get(`/t/${tenantCode}/admin/identity-providers/${id}`),

@@ -6,8 +6,19 @@ import { ConfigService } from '@nestjs/config';
 import { buildOidcAdapterFactory } from './adapters/oidc-apdater.factory';
 import { ClientQueryPort } from '@application/queries/ports/client-query.port';
 import { UserQueryPort } from '@application/queries/ports/user-query.port';
-import type { ClientRepository, TenantRepository } from '@domain/repositories';
+import type {
+  ClientAuthPolicyRepository,
+  ClientRepository,
+  TenantRepository,
+} from '@domain/repositories';
 import type { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
+import type { ScopeRegistryPort } from '@application/ports/scope-registry.port';
+import type { ScopeClaimResolverPort } from '@application/ports/scope-claim-resolver.port';
+import { parseScopeString } from '@domain/models/scope';
+
+type OidcConfiguration = Configuration & {
+  grantTypes: string[];
+};
 
 export function buildOidcConfiguration(params: {
   em: EntityManager;
@@ -17,12 +28,17 @@ export function buildOidcConfiguration(params: {
   configService: ConfigService;
   tenantCode: string;
   clientRepository: ClientRepository;
+  clientAuthPolicyRepository: ClientAuthPolicyRepository;
   tenantRepository: TenantRepository;
   symmetricCrypto: SymmetricCryptoPort;
   jwksKeys: Record<string, unknown>[];
+  supportedGrantTypes: string[];
+  supportedScopes: string[];
+  scopeRegistry: ScopeRegistryPort;
+  scopeClaimResolver: ScopeClaimResolverPort;
   tenantAccessTokenTtlSec: number;
   tenantRefreshTokenTtlSec: number;
-}): Configuration {
+}): OidcConfiguration {
   const {
     em,
     redis,
@@ -31,8 +47,13 @@ export function buildOidcConfiguration(params: {
     configService,
     tenantCode,
     clientRepository,
+    clientAuthPolicyRepository,
     tenantRepository,
     symmetricCrypto,
+    supportedGrantTypes,
+    supportedScopes,
+    scopeRegistry,
+    scopeClaimResolver,
     tenantAccessTokenTtlSec,
     tenantRefreshTokenTtlSec,
   } = params;
@@ -42,6 +63,10 @@ export function buildOidcConfiguration(params: {
   const clientTtlCache = new Map<
     string,
     { access: number | null; refresh: number | null; cachedAt: number }
+  >();
+  const clientRefreshPolicyCache = new Map<
+    string,
+    { rotationEnabled: boolean; cachedAt: number }
   >();
 
   function warmClientTtlCache(tenantId: string, clientId: string): void {
@@ -69,11 +94,40 @@ export function buildOidcConfiguration(params: {
     return entry;
   }
 
+  async function getRefreshTokenRotationEnabled(
+    tenantId: string,
+    clientId: string,
+  ): Promise<boolean> {
+    const cacheKey = `${tenantId}:${clientId}`;
+    const entry = clientRefreshPolicyCache.get(cacheKey);
+    if (entry && Date.now() - entry.cachedAt <= CLIENT_TTL_CACHE_TTL_MS) {
+      return entry.rotationEnabled;
+    }
+    if (entry) clientRefreshPolicyCache.delete(cacheKey);
+
+    const client = await clientRepository.findByClientId(tenantId, clientId);
+    if (!client?.id) {
+      return true;
+    }
+
+    const policy = await clientAuthPolicyRepository.findByClientRefId(
+      client.id,
+    );
+    const rotationEnabled = policy?.refreshTokenRotationEnabled ?? true;
+    clientRefreshPolicyCache.set(cacheKey, {
+      rotationEnabled,
+      cachedAt: Date.now(),
+    });
+    return rotationEnabled;
+  }
+
   const accessTokenFormat = configService.getOrThrow<string>(
     'OIDC_ACCESS_TOKEN_FORMAT',
   ) as 'opaque' | 'jwt';
 
   return {
+    grantTypes: [...supportedGrantTypes],
+
     interactions: {
       url(_ctx, interaction) {
         return `/t/${tenantCode}/interaction/${interaction.uid}`;
@@ -101,7 +155,16 @@ export function buildOidcConfiguration(params: {
 
       // 첫 번째 파티 클라이언트: 동의 없이 Grant 자동 생성
       const grant = new ctx.oidc.provider.Grant({ clientId, accountId });
-      grant.addOIDCScope('openid profile email');
+      const requestedScopes = parseScopeString(
+        ctx.oidc.params?.scope as string | undefined,
+      );
+      const allowedScopes = new Set(parseScopeString(client.scope));
+      const grantScopes = requestedScopes.filter((scope) =>
+        allowedScopes.has(scope),
+      );
+      grant.addOIDCScope(
+        grantScopes.length > 0 ? grantScopes.join(' ') : client.scope,
+      );
       await grant.save();
       return grant;
     },
@@ -149,15 +212,21 @@ export function buildOidcConfiguration(params: {
             // 리소스 서버별 TTL (선택)
             // accessTokenTTL: 60 * 60,
 
-            // scope 제한
-            scope: 'openid profile email',
+            // resource server가 허용하는 scope는 tenant scope registry와 동기화한다.
+            scope: supportedScopes.join(' '),
           };
         },
       },
     },
 
     pkce: { required: () => true },
-    scopes: ['openid', 'profile', 'email'],
+    rotateRefreshToken: async (ctx) => {
+      const tenantId = (ctx as any)?.req?.tenant?.id;
+      const clientId = ctx.oidc.client?.clientId;
+      if (!tenantId || !clientId) return true;
+      return getRefreshTokenRotationEnabled(tenantId, clientId);
+    },
+    scopes: supportedScopes,
 
     cookies: { keys: getSecretKeys(configService, 'OIDC_COOKIE_KEYS') },
 
@@ -241,11 +310,25 @@ export function buildOidcConfiguration(params: {
 
       return {
         accountId: String(sub),
-        claims: async () => ({
-          sub: view.sub,
-          email: view.email ?? undefined,
-          email_verified: view.email_verified ?? undefined,
-        }),
+        claims: async (_use, scope) => {
+          const requestedScopes = parseScopeString(scope);
+          const definitions = await scopeRegistry.listDefinitions(tenantId);
+          const requested = new Set(requestedScopes);
+          const claimKeys = definitions
+            .filter(
+              (definition) =>
+                definition.enabled && requested.has(definition.scope),
+            )
+            .flatMap((definition) => definition.claimKeys);
+
+          return (await scopeClaimResolver.resolve({
+            tenantId,
+            subject: String(sub),
+            requestedScopes,
+            claimKeys,
+            baseClaims: view,
+          })) as any;
+        },
       };
     },
 

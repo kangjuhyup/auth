@@ -11,12 +11,15 @@ function createMockUserRepo(): jest.Mocked<UserWriteRepositoryPort> {
     list: jest.fn(),
     save: jest.fn(),
     findCredentialsByType: jest.fn().mockResolvedValue([]),
+    createCredential: jest.fn(),
     saveCredential: jest.fn(),
   } as unknown as jest.Mocked<UserWriteRepositoryPort>;
 }
 
 function createMockMfa(): jest.Mocked<MfaVerificationPort> {
   return {
+    generateTotpSecret: jest.fn(),
+    buildTotpUri: jest.fn(),
     verifyTotp: jest.fn().mockReturnValue(true),
     generateWebAuthnAuthOptions: jest.fn(),
     verifyWebAuthn: jest.fn(),
@@ -57,7 +60,12 @@ describe('TotpMfaStrategy', () => {
   });
 
   it('verifyTotp 위임 → true 반환', async () => {
-    const cred = UserCredentialModel.of({ type: 'totp', secretHash: 'secret', hashAlg: 'sha1', enabled: true });
+    const cred = UserCredentialModel.of({
+      type: 'totp',
+      secretHash: 'secret',
+      hashAlg: 'sha1',
+      enabled: true,
+    });
     userRepo.findCredentialsByType.mockResolvedValue([cred]);
     mfa.verifyTotp.mockReturnValue(true);
 
@@ -68,7 +76,12 @@ describe('TotpMfaStrategy', () => {
   });
 
   it('verifyTotp false → false 반환', async () => {
-    const cred = UserCredentialModel.of({ type: 'totp', secretHash: 'secret', hashAlg: 'sha1', enabled: true });
+    const cred = UserCredentialModel.of({
+      type: 'totp',
+      secretHash: 'secret',
+      hashAlg: 'sha1',
+      enabled: true,
+    });
     userRepo.findCredentialsByType.mockResolvedValue([cred]);
     mfa.verifyTotp.mockReturnValue(false);
 

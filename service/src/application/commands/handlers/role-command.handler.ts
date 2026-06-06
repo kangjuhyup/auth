@@ -1,9 +1,22 @@
-import { Injectable, ConflictException, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  ForbiddenException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { RoleCommandPort } from '../ports/role-command.port';
-import { CreateRoleDto, UpdateRoleDto } from '@application/dto';
-import { RoleRepository, PermissionRepository, RolePermissionRepository } from '@domain/repositories';
+import { AuditContext, CreateRoleDto, UpdateRoleDto } from '@application/dto';
+import {
+  RoleRepository,
+  PermissionRepository,
+  RolePermissionRepository,
+} from '@domain/repositories';
 import { RoleModel } from '@domain/models/role';
 import { orThrow } from '@domain/utils';
+import { AuditRecorder } from '@application/services/audit-recorder';
+
+const SUPER_ADMIN_ROLE_CODE = 'SUPER_ADMIN';
 
 @Injectable()
 export class RoleCommandHandler implements RoleCommandPort {
@@ -13,11 +26,13 @@ export class RoleCommandHandler implements RoleCommandPort {
     private readonly roleRepo: RoleRepository,
     private readonly permissionRepo: PermissionRepository,
     private readonly rolePermissionRepo: RolePermissionRepository,
+    private readonly auditRecorder?: AuditRecorder,
   ) {}
 
   async createRole(
     tenantId: string,
     dto: CreateRoleDto,
+    auditContext?: AuditContext,
   ): Promise<{ id: string }> {
     this.logger.log(`Creating role code=${dto.code} in tenant=${tenantId}`);
 
@@ -32,6 +47,15 @@ export class RoleCommandHandler implements RoleCommandPort {
     });
 
     const saved = await this.roleRepo.save(role);
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      category: 'ROLE',
+      action: 'CREATE',
+      resourceType: 'role',
+      resourceId: saved.id,
+      metadata: { code: saved.code },
+      auditContext,
+    });
     return { id: saved.id };
   }
 
@@ -39,6 +63,7 @@ export class RoleCommandHandler implements RoleCommandPort {
     tenantId: string,
     id: string,
     dto: UpdateRoleDto,
+    auditContext?: AuditContext,
   ): Promise<void> {
     this.logger.log(`Updating role id=${id} in tenant=${tenantId}`);
 
@@ -49,20 +74,59 @@ export class RoleCommandHandler implements RoleCommandPort {
     );
 
     if (dto.name) role.changeName(dto.name);
-    if (dto.description !== undefined) role.changeDescription(dto.description ?? null);
+    if (dto.description !== undefined)
+      role.changeDescription(dto.description ?? null);
 
     await this.roleRepo.save(role);
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      category: 'ROLE',
+      action: 'UPDATE',
+      resourceType: 'role',
+      resourceId: id,
+      metadata: { changedFields: Object.keys(dto) },
+      auditContext,
+    });
   }
 
-  async deleteRole(tenantId: string, id: string): Promise<void> {
+  async deleteRole(
+    tenantId: string,
+    id: string,
+    auditContext?: AuditContext,
+  ): Promise<void> {
     this.logger.log(`Deleting role id=${id} in tenant=${tenantId}`);
 
-    orThrow(
+    const role = orThrow(
       await this.roleRepo.findById(id),
       new NotFoundException('Role not found'),
       (r) => r.tenantId === tenantId,
     );
 
+    if (role.code === SUPER_ADMIN_ROLE_CODE) {
+      await this.auditRecorder?.recordAdminAction({
+        tenantId,
+        category: 'SECURITY',
+        severity: 'WARN',
+        action: 'ACCESS_DENIED',
+        resourceType: 'role',
+        resourceId: id,
+        success: false,
+        reason: 'ProtectedRoleDeletionDenied',
+        metadata: { code: role.code },
+        auditContext,
+      });
+      throw new ForbiddenException('SUPER_ADMIN role cannot be deleted');
+    }
+
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      category: 'ROLE',
+      action: 'DELETE',
+      resourceType: 'role',
+      resourceId: id,
+      metadata: { code: role.code },
+      auditContext,
+    });
     await this.roleRepo.delete(id);
   }
 
@@ -70,8 +134,11 @@ export class RoleCommandHandler implements RoleCommandPort {
     tenantId: string,
     roleId: string,
     permissionId: string,
+    auditContext?: AuditContext,
   ): Promise<void> {
-    this.logger.log(`Adding permission=${permissionId} to role=${roleId} in tenant=${tenantId}`);
+    this.logger.log(
+      `Adding permission=${permissionId} to role=${roleId} in tenant=${tenantId}`,
+    );
 
     orThrow(
       await this.roleRepo.findById(roleId),
@@ -85,18 +152,34 @@ export class RoleCommandHandler implements RoleCommandPort {
       (p) => p.tenantId === tenantId,
     );
 
-    const already = await this.rolePermissionRepo.exists({ roleId, permissionId });
-    if (already) throw new ConflictException('Permission already assigned to role');
+    const already = await this.rolePermissionRepo.exists({
+      roleId,
+      permissionId,
+    });
+    if (already)
+      throw new ConflictException('Permission already assigned to role');
 
     await this.rolePermissionRepo.add({ roleId, permissionId });
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      category: 'ROLE',
+      action: 'ASSIGN',
+      resourceType: 'role-permission',
+      resourceId: roleId,
+      metadata: { permissionId },
+      auditContext,
+    });
   }
 
   async removePermissionFromRole(
     tenantId: string,
     roleId: string,
     permissionId: string,
+    auditContext?: AuditContext,
   ): Promise<void> {
-    this.logger.log(`Removing permission=${permissionId} from role=${roleId} in tenant=${tenantId}`);
+    this.logger.log(
+      `Removing permission=${permissionId} from role=${roleId} in tenant=${tenantId}`,
+    );
 
     orThrow(
       await this.roleRepo.findById(roleId),
@@ -104,9 +187,21 @@ export class RoleCommandHandler implements RoleCommandPort {
       (r) => r.tenantId === tenantId,
     );
 
-    const exists = await this.rolePermissionRepo.exists({ roleId, permissionId });
+    const exists = await this.rolePermissionRepo.exists({
+      roleId,
+      permissionId,
+    });
     if (!exists) throw new NotFoundException('Permission not assigned to role');
 
     await this.rolePermissionRepo.remove({ roleId, permissionId });
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      category: 'ROLE',
+      action: 'REVOKE',
+      resourceType: 'role-permission',
+      resourceId: roleId,
+      metadata: { permissionId },
+      auditContext,
+    });
   }
 }

@@ -4,6 +4,8 @@ import { APP_GUARD } from '@nestjs/core';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { LogLevel } from '@kangjuhyup/rvlog';
+import { RvlogNestModule } from '@kangjuhyup/rvlog-nest';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ApplicationModule } from './application/application.module';
@@ -51,17 +53,58 @@ function readEnvValue(key: string): string | undefined {
   return undefined;
 }
 
+function readBooleanEnv(key: string, defaultValue: boolean): boolean {
+  const value = readEnvValue(key);
+  if (value === undefined) {
+    return defaultValue;
+  }
+  return value === 'true';
+}
+
+function readLogLevelEnv(key: string, defaultValue: LogLevel): LogLevel {
+  const value = readEnvValue(key)?.toUpperCase();
+  if (!value) {
+    return defaultValue;
+  }
+
+  return Object.values(LogLevel).includes(value as LogLevel)
+    ? (value as LogLevel)
+    : defaultValue;
+}
+
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ENV_FILE_PATHS,
     }),
+    RvlogNestModule.forRoot({
+      logger: {
+        minLevel: readLogLevelEnv('RVLOG_MIN_LEVEL', LogLevel.DEBUG),
+        pretty: readBooleanEnv(
+          'RVLOG_PRETTY',
+          process.env.NODE_ENV !== 'production',
+        ),
+      },
+      http: {
+        context: 'HTTP',
+        level: LogLevel.INFO,
+        logBody: false,
+        logQuery: false,
+        logParams: true,
+        logHeaders: false,
+        logResponseBody: false,
+        requestIdHeader: 'x-correlation-id',
+        setResponseHeader: true,
+        excludePaths: ['/health', '/ready', '/metrics', '/interaction-assets'],
+      },
+    }),
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
-        const disabled = config.get<string>('HTTP_THROTTLE_ENABLED', 'true') === 'false';
+        const disabled =
+          config.get<string>('HTTP_THROTTLE_ENABLED', 'true') === 'false';
         const ttl = Number(config.get('HTTP_THROTTLE_TTL_MS', '60000'));
         const limit = Number(config.get('HTTP_THROTTLE_LIMIT', '120'));
         if (disabled) {

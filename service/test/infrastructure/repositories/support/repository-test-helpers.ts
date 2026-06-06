@@ -50,6 +50,7 @@ export type EntityManagerMock = {
   flush: jest.Mock;
   count: jest.Mock;
   nativeUpdate: jest.Mock;
+  nativeDelete: jest.Mock;
   transactional: jest.Mock;
   getReference: jest.Mock;
   create: jest.Mock;
@@ -90,6 +91,7 @@ export function createEntityManagerMock(): EntityManagerMock {
     flush,
     count: jest.fn().mockResolvedValue(0),
     nativeUpdate: jest.fn().mockResolvedValue(0),
+    nativeDelete: jest.fn().mockResolvedValue(1),
     transactional: jest.fn(),
     getReference: jest.fn(
       <T extends object>(EntityClass: Constructor<T>, id: string): T =>
@@ -265,12 +267,14 @@ export function createIdentityProviderEntity(
       id: 'idp-1',
       tenant: overrides.tenant ?? asLoadedRef(createTenantEntity()),
       provider: 'google',
+      protocol: 'oauth2',
       displayName: 'Google',
       clientId: 'google-client',
       clientSecret: 'secret',
       redirectUri: 'https://auth.example.com/callback',
       enabled: true,
       oauthConfig: null,
+      samlConfig: null,
     }),
     overrides,
   );
@@ -324,6 +328,10 @@ export function createClientAuthPolicyEntity(
       maxSessionDurationSec: null,
       consentRequired: true,
       requireAuthTime: false,
+      allowedIdpProviderKeys: null,
+      reauthenticationIntervalSec: null,
+      refreshTokenRotationEnabled: true,
+      refreshTokenReuseAction: 'revoke_grant',
     }),
     overrides,
   );
@@ -570,12 +578,14 @@ export function createIdentityProviderModel(
     {
       tenantId: 'tenant-1',
       provider: 'google',
+      protocol: 'oauth2',
       displayName: 'Google',
       clientId: 'google-client',
       clientSecret: 'secret',
       redirectUri: 'https://auth.example.com/callback',
       enabled: true,
       oauthConfig: null,
+      samlConfig: null,
       ...overrides,
     },
     id,
@@ -638,6 +648,10 @@ export function createClientAuthPolicyModel(
       maxSessionDurationSec: null,
       consentRequired: true,
       requireAuthTime: false,
+      allowedIdpProviderKeys: null,
+      reauthenticationIntervalSec: null,
+      refreshTokenRotationEnabled: true,
+      refreshTokenReuseAction: 'revoke_grant',
       ...overrides,
     },
     id,

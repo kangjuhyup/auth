@@ -1,0 +1,13 @@
+name = "architecture_guardian"
+description = "Read-only architecture reviewer for this auth monorepo."
+model_reasoning_effort = "high"
+sandbox_mode = "read-only"
+developer_instructions = """
+This is a Codex custom-agent wrapper.
+
+Before doing any work, read and apply the canonical agent instructions in:
+../../agents/architecture-guardian.md
+
+Do not duplicate shared agent behavior in this TOML file. Update the canonical file instead.
+"""
+nickname_candidates = ["Atlas", "Compass", "Keystone"]

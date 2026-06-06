@@ -1,6 +1,5 @@
 export interface AuthSession {
   isAuthenticated: boolean;
-  token: string | null;
   username: string | null;
 }
 
@@ -10,6 +9,51 @@ export interface LoginDto {
 }
 
 export interface LoginResponse {
-  token: string;
   username: string;
+  passwordChangeRequired: boolean;
+}
+
+export interface ChangePasswordDto {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface ProfileResponse {
+  id: string;
+  username: string;
+  email?: string | null;
+  emailVerified: boolean;
+  phone?: string | null;
+  phoneVerified: boolean;
+  status: string;
+  mfaEnabled: boolean;
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
+}
+
+export interface TotpEnrollmentResponse {
+  secret: string;
+  otpauthUrl: string;
+}
+
+export interface TotpConfirmationResponse {
+  recoveryCodes: string[];
+}
+
+export interface RecoveryCodeStatusResponse {
+  remaining: number;
+  total: number;
+  used: number;
+  low: boolean;
+}
+
+export interface IdentityLinkResponse {
+  id: string;
+  provider: string;
+  email?: string | null;
+  linkedAt: string | Date;
+}
+
+export interface StartIdentityLinkResponse {
+  authorizationUrl: string;
 }

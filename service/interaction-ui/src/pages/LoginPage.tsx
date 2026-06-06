@@ -1,15 +1,12 @@
 import { useState } from 'react';
 import { submitLogin, abortInteraction, getIdpUrl } from '../api/client';
-import type { InteractionDetails } from '../api/client';
+import type { InteractionDetails, LoginResult } from '../api/client';
 import IdpButton from '../components/IdpButton';
+import { debugInteraction } from '../lib/debug';
 
 interface Props {
   details: InteractionDetails;
-  onSuccess: (result: {
-    mfaRequired: boolean;
-    methods?: string[];
-    redirectTo?: string;
-  }) => void;
+  onSuccess: (result: LoginResult) => void;
   onError: (msg: string) => void;
 }
 
@@ -23,6 +20,11 @@ export default function LoginPage({ details, onSuccess, onError }: Props) {
     e.preventDefault();
     setLoading(true);
     setError('');
+    debugInteraction('login.submit', {
+      hasUsername: username.trim().length > 0,
+      hasPassword: password.length > 0,
+      idpCount: details.idpList.length,
+    });
 
     try {
       const result = await submitLogin(username, password);
@@ -30,13 +32,15 @@ export default function LoginPage({ details, onSuccess, onError }: Props) {
         onSuccess(result);
       }
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : '로그인에 실패했습니다.';
+      const msg = err instanceof Error ? err.message : '로그인에 실패했습니다.';
       if (msg === 'invalid_credentials') {
         setError('아이디 또는 비밀번호가 올바르지 않습니다.');
       } else {
         setError(msg);
       }
+      debugInteraction('login.failed', {
+        reason: msg,
+      });
     } finally {
       setLoading(false);
     }
@@ -44,6 +48,9 @@ export default function LoginPage({ details, onSuccess, onError }: Props) {
 
   const handleAbort = async () => {
     try {
+      debugInteraction('interaction.abort', {
+        source: 'login',
+      });
       const result = await abortInteraction();
       window.location.href = result.redirectTo;
     } catch (err: unknown) {

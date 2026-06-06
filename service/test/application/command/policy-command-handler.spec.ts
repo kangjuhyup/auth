@@ -1,7 +1,10 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PolicyCommandHandler } from '@application/commands/handlers/policy-command.handler';
 import type { TransactionManagerPort } from '@application/ports/transaction-manager.port';
-import type { TenantConfigRepository, TenantRepository } from '@domain/repositories';
+import type {
+  TenantConfigRepository,
+  TenantRepository,
+} from '@domain/repositories';
 import { TenantModel } from '@domain/models/tenant';
 import { TenantConfigModel } from '@domain/models/tenant-config';
 
@@ -19,7 +22,16 @@ function makeTenantConfig(): TenantConfigModel {
     brandName: 'Acme',
     accessTokenTtlSec: 120,
     refreshTokenTtlSec: 240,
-    extra: { policies: { allowSignup: false, pkceRequired: true } },
+    extra: {
+      policies: {
+        mfa: { required: false, adminRequired: true },
+        refreshToken: {
+          ttlSec: 240,
+          rotationEnabled: true,
+          reuseAction: 'revoke_grant',
+        },
+      },
+    },
   });
 }
 
@@ -36,13 +48,17 @@ function createMockTenantRepo(): jest.Mocked<TenantRepository> {
 function createMockTenantConfigRepo(): jest.Mocked<TenantConfigRepository> {
   return {
     findByTenantId: jest.fn().mockResolvedValue(makeTenantConfig()),
-    save: jest.fn().mockImplementation(async (config: TenantConfigModel) => config),
+    save: jest
+      .fn()
+      .mockImplementation(async (config: TenantConfigModel) => config),
   };
 }
 
 function createMockTransactionManager(): jest.Mocked<TransactionManagerPort> {
   return {
-    runInTransaction: jest.fn().mockImplementation(async (work: () => Promise<unknown>) => work()),
+    runInTransaction: jest
+      .fn()
+      .mockImplementation(async (work: () => Promise<unknown>) => work()),
   } as any;
 }
 
@@ -80,7 +96,7 @@ describe('PolicyCommandHandler', () => {
       tenantRepo.findById.mockResolvedValue(null);
 
       await expect(
-        handler.updatePolicies('tenant-1', { pkceRequired: true }),
+        handler.updatePolicies('tenant-1', { mfa: { required: true } }),
       ).rejects.toThrow(NotFoundException);
 
       expect(tenantConfigRepo.findByTenantId).not.toHaveBeenCalled();
@@ -92,8 +108,8 @@ describe('PolicyCommandHandler', () => {
       tenantConfigRepo.findByTenantId.mockResolvedValue(existingConfig);
 
       await handler.updatePolicies('tenant-1', {
-        requireMfa: true,
-        allowedGrantTypes: ['authorization_code'],
+        mfa: { required: true },
+        allowedIdp: { providerKeys: ['google'] },
       });
 
       expect(tenantRepo.findById).toHaveBeenCalledWith('tenant-1');
@@ -102,10 +118,10 @@ describe('PolicyCommandHandler', () => {
 
       const savedConfig = tenantConfigRepo.save.mock.calls[0][0];
       expect(savedConfig).toBe(existingConfig);
-      expect(savedConfig.getPolicies()).toEqual({
-        requireMfa: true,
-        allowedGrantTypes: ['authorization_code'],
-      });
+      expect(savedConfig.getPolicies().mfa.required).toBe(true);
+      expect(savedConfig.getPolicies().allowedIdp.providerKeys).toEqual([
+        'google',
+      ]);
       expect(savedConfig.signupPolicy).toBe('invite');
       expect(savedConfig.requirePhoneVerify).toBe(true);
     });
@@ -114,7 +130,8 @@ describe('PolicyCommandHandler', () => {
       tenantConfigRepo.findByTenantId.mockResolvedValue(null);
 
       await handler.updatePolicies('tenant-1', {
-        enforcePkce: true,
+        refreshToken: { ttlSec: 604800 },
+        signup: { mode: 'invite' },
       });
 
       expect(tenantConfigRepo.save).toHaveBeenCalledTimes(1);
@@ -122,14 +139,13 @@ describe('PolicyCommandHandler', () => {
 
       expect(savedConfig).toBeInstanceOf(TenantConfigModel);
       expect(savedConfig.tenantId).toBe('tenant-1');
-      expect(savedConfig.signupPolicy).toBe('open');
+      expect(savedConfig.signupPolicy).toBe('invite');
       expect(savedConfig.requirePhoneVerify).toBe(false);
       expect(savedConfig.brandName).toBeNull();
       expect(savedConfig.accessTokenTtlSec).toBe(60 * 60);
-      expect(savedConfig.refreshTokenTtlSec).toBe(14 * 24 * 60 * 60);
-      expect(savedConfig.getPolicies()).toEqual({
-        enforcePkce: true,
-      });
+      expect(savedConfig.refreshTokenTtlSec).toBe(604800);
+      expect(savedConfig.getPolicies().refreshToken.ttlSec).toBe(604800);
+      expect(savedConfig.getPolicies().signup.mode).toBe('invite');
     });
   });
 });

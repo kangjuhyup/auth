@@ -12,9 +12,11 @@ export function useLogin() {
   return useMutation({
     mutationFn: (dto: LoginDto) => authApi.login(dto),
     onSuccess: (data) => {
-      login(data.username, data.token);
+      login(data.username, data.passwordChangeRequired);
       message.success('Login successful');
-      navigate('/admin/tenants');
+      navigate(
+        data.passwordChangeRequired ? '/password-change' : '/admin/tenants',
+      );
     },
     onError: (error: Error) => {
       message.error(error.message || 'Login failed');

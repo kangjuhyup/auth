@@ -1,4 +1,4 @@
-import { Form, Input, Select } from 'antd';
+import { Form, Input, Select, Switch } from 'antd';
 import type { FormInstance } from 'antd';
 import type { CreateUserDto, UpdateUserDto } from '@/types/user.types';
 
@@ -19,7 +19,11 @@ export function UserForm({
     <Form
       form={form}
       layout="vertical"
-      initialValues={initialValues}
+      initialValues={
+        mode === 'create'
+          ? { temporaryPassword: true, ...initialValues }
+          : initialValues
+      }
       onFinish={onFinish}
     >
       {mode === 'create' && (
@@ -49,6 +53,14 @@ export function UserForm({
           >
             <Input.Password placeholder="Min 8 characters" />
           </Form.Item>
+
+          <Form.Item
+            name="temporaryPassword"
+            label="Temporary password"
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
         </>
       )}
 
@@ -71,6 +83,12 @@ export function UserForm({
           <Select.Option value="DISABLED">Disabled</Select.Option>
         </Select>
       </Form.Item>
+
+      {mode === 'edit' && (
+        <Form.Item name="mfaEnabled" label="MFA login" valuePropName="checked">
+          <Switch />
+        </Form.Item>
+      )}
     </Form>
   );
 }

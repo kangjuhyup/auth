@@ -22,10 +22,26 @@ import {
   PaginationQuery,
   PaginatedResult,
 } from '@presentation/dto';
-import { TenantContext } from '@application/dto';
+import {
+  AuditContext,
+  TenantContext,
+  CreateRoleDto as AppCreateRoleDto,
+  PaginationQuery as AppPaginationQuery,
+  UpdateRoleDto as AppUpdateRoleDto,
+} from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
+import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
+import {
+  ApiAdminResource,
+  ApiCreatedIdSchema,
+  ApiNoContentSchema,
+  ApiOkSchema,
+  ApiPaginatedSchema,
+  OpenApiResponseSchemas,
+} from '@presentation/openapi-response';
 
 @UseGuards(AdminGuard)
+@ApiAdminResource('Admin Roles')
 @Controller('t/:tenantCode/admin/roles')
 export class AdminRoleController {
   constructor(
@@ -34,14 +50,16 @@ export class AdminRoleController {
   ) {}
 
   @Get()
+  @ApiPaginatedSchema('List roles', OpenApiResponseSchemas.role)
   list(
     @Tenant() tenant: TenantContext,
     @Query() query: PaginationQuery,
   ): Promise<PaginatedResult<RoleResponse>> {
-    return this.queryPort.getRoles(tenant.id, query);
+    return this.queryPort.getRoles(tenant.id, AppPaginationQuery.of(query));
   }
 
   @Get(':id')
+  @ApiOkSchema('Get role', OpenApiResponseSchemas.role)
   get(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -50,58 +68,103 @@ export class AdminRoleController {
   }
 
   @Post()
+  @ApiCreatedIdSchema('Create role')
   create(
     @Tenant() tenant: TenantContext,
     @Body() dto: CreateRoleDto,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<{ id: string }> {
-    return this.commandPort.createRole(tenant.id, dto);
+    const command = AppCreateRoleDto.of(dto);
+    if (!auditContext) return this.commandPort.createRole(tenant.id, command);
+    return this.commandPort.createRole(tenant.id, command, auditContext);
   }
 
   @Put(':id')
+  @ApiNoContentSchema('Update role')
   update(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
     @Body() dto: UpdateRoleDto,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    return this.commandPort.updateRole(tenant.id, id, dto);
+    const command = AppUpdateRoleDto.of(dto);
+    if (!auditContext) {
+      return this.commandPort.updateRole(tenant.id, id, command);
+    }
+    return this.commandPort.updateRole(tenant.id, id, command, auditContext);
   }
 
   @Delete(':id')
+  @ApiNoContentSchema('Delete role')
   delete(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    return this.commandPort.deleteRole(tenant.id, id);
+    if (!auditContext) return this.commandPort.deleteRole(tenant.id, id);
+    return this.commandPort.deleteRole(tenant.id, id, auditContext);
   }
 
   // ── Role-Permission ───────────────────────────────────────────────────────
 
   @Get(':id/permissions')
+  @ApiPaginatedSchema(
+    'List role permissions',
+    OpenApiResponseSchemas.permission,
+  )
   listPermissions(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
     @Query() query: PaginationQuery,
   ): Promise<PaginatedResult<PermissionResponse>> {
-    return this.queryPort.getRolePermissions(tenant.id, id, query);
+    return this.queryPort.getRolePermissions(
+      tenant.id,
+      id,
+      AppPaginationQuery.of(query),
+    );
   }
 
   @Post(':id/permissions')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiNoContentSchema('Add permission to role')
   addPermission(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
     @Body('permissionId') permissionId: string,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    return this.commandPort.addPermissionToRole(tenant.id, id, permissionId);
+    if (!auditContext) {
+      return this.commandPort.addPermissionToRole(tenant.id, id, permissionId);
+    }
+    return this.commandPort.addPermissionToRole(
+      tenant.id,
+      id,
+      permissionId,
+      auditContext,
+    );
   }
 
   @Delete(':id/permissions/:permissionId')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiNoContentSchema('Remove permission from role')
   removePermission(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
     @Param('permissionId') permissionId: string,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    return this.commandPort.removePermissionFromRole(tenant.id, id, permissionId);
+    if (!auditContext) {
+      return this.commandPort.removePermissionFromRole(
+        tenant.id,
+        id,
+        permissionId,
+      );
+    }
+    return this.commandPort.removePermissionFromRole(
+      tenant.id,
+      id,
+      permissionId,
+      auditContext,
+    );
   }
 }

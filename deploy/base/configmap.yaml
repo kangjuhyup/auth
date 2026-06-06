@@ -12,6 +12,7 @@ data:
   DB_HOST: postgresql.auth.svc.cluster.local
   DB_PORT: "5432"
   DB_NAME: auth
+  DB_MIGRATIONS_RUN_ON_STARTUP: "false"
   OIDC_ADAPTER_DRIVER: hybrid
   OIDC_ACCESS_TOKEN_FORMAT: opaque
   # 공개 issuer URL (Ingress/LB 주소와 일치해야 합니다)

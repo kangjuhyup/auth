@@ -1,6 +1,11 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { UserCommandPort } from '../ports/user-command.port';
-import { CreateUserDto, UpdateUserDto } from '@application/dto';
+import { AuditContext, CreateUserDto, UpdateUserDto } from '@application/dto';
 import { UserWriteRepositoryPort } from '../ports/user-write-repository.port';
 import { RoleRepository, RoleAssignmentRepository } from '@domain/repositories';
 import { PasswordHashPort } from '@application/ports/password-hash.port';
@@ -8,6 +13,8 @@ import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
 import { orThrow } from '@domain/utils';
 import { ulid } from 'ulid';
+import { AuditRecorder } from '@application/services/audit-recorder';
+import { UserSessionPort } from '@application/ports/user-session.port';
 
 @Injectable()
 export class UserCommandHandler implements UserCommandPort {
@@ -18,21 +25,32 @@ export class UserCommandHandler implements UserCommandPort {
     private readonly roleRepo: RoleRepository,
     private readonly roleAssignment: RoleAssignmentRepository,
     private readonly passwordHash: PasswordHashPort,
+    private readonly userSession: UserSessionPort,
+    private readonly auditRecorder?: AuditRecorder,
   ) {}
 
-  async createUser(tenantId: string, dto: CreateUserDto): Promise<{ id: string }> {
+  async createUser(
+    tenantId: string,
+    dto: CreateUserDto,
+    auditContext?: AuditContext,
+  ): Promise<{ id: string }> {
     this.logger.log(`Creating user in tenant=${tenantId}`);
 
-    const existing = await this.userWriteRepo.findByUsername(tenantId, dto.username);
+    const existing = await this.userWriteRepo.findByUsername(
+      tenantId,
+      dto.username,
+    );
     if (existing) throw new Error('UsernameAlreadyExists');
 
     const userId = ulid();
     const hashResult = await this.passwordHash.hash(dto.password);
+    const temporaryPassword = dto.temporaryPassword !== false;
     const credential = UserCredentialModel.password({
       secretHash: hashResult.hash,
       hashAlg: hashResult.alg,
       hashParams: hashResult.params,
       hashVersion: hashResult.version,
+      passwordChangeRequired: temporaryPassword,
     });
 
     const user = UserModel.create({
@@ -49,10 +67,26 @@ export class UserCommandHandler implements UserCommandPort {
     }
 
     await this.userWriteRepo.save(user);
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      category: 'USER',
+      action: 'CREATE',
+      resourceType: 'user',
+      resourceId: userId,
+      metadata: {
+        temporaryPassword,
+      },
+      auditContext,
+    });
     return { id: userId };
   }
 
-  async updateUser(tenantId: string, id: string, dto: UpdateUserDto): Promise<void> {
+  async updateUser(
+    tenantId: string,
+    id: string,
+    dto: UpdateUserDto,
+    auditContext?: AuditContext,
+  ): Promise<void> {
     this.logger.log(`Updating user=${id} in tenant=${tenantId}`);
 
     const user = orThrow(
@@ -70,11 +104,34 @@ export class UserCommandHandler implements UserCommandPort {
     if (dto.status !== undefined) {
       user.changeStatus(dto.status);
     }
+    if (dto.mfaEnabled !== undefined) {
+      if (dto.mfaEnabled) {
+        await this.assertMfaCredentialExists(id);
+      }
+      user.changeMfaEnabled(dto.mfaEnabled);
+    }
 
     await this.userWriteRepo.save(user);
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      category: 'USER',
+      action: 'UPDATE',
+      resourceType: 'user',
+      resourceId: id,
+      metadata: {
+        changedFields: Object.keys(dto),
+        statusChanged: dto.status !== undefined,
+        mfaEnabledChanged: dto.mfaEnabled !== undefined,
+      },
+      auditContext,
+    });
   }
 
-  async deleteUser(tenantId: string, id: string): Promise<void> {
+  async deleteUser(
+    tenantId: string,
+    id: string,
+    auditContext?: AuditContext,
+  ): Promise<void> {
     this.logger.log(`Deleting user=${id} in tenant=${tenantId}`);
 
     const user = orThrow(
@@ -85,10 +142,25 @@ export class UserCommandHandler implements UserCommandPort {
 
     user.withdraw();
     await this.userWriteRepo.save(user);
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      category: 'USER',
+      action: 'DELETE',
+      resourceType: 'user',
+      resourceId: id,
+      auditContext,
+    });
   }
 
-  async assignRole(tenantId: string, userId: string, roleId: string): Promise<void> {
-    this.logger.log(`Assigning role=${roleId} to user=${userId} in tenant=${tenantId}`);
+  async assignRole(
+    tenantId: string,
+    userId: string,
+    roleId: string,
+    auditContext?: AuditContext,
+  ): Promise<void> {
+    this.logger.log(
+      `Assigning role=${roleId} to user=${userId} in tenant=${tenantId}`,
+    );
 
     orThrow(
       await this.userWriteRepo.findById(userId),
@@ -102,14 +174,33 @@ export class UserCommandHandler implements UserCommandPort {
       (r) => r.tenantId === tenantId,
     );
 
-    const alreadyAssigned = await this.roleAssignment.existsForUser({ userId, roleId });
+    const alreadyAssigned = await this.roleAssignment.existsForUser({
+      userId,
+      roleId,
+    });
     if (alreadyAssigned) return;
 
     await this.roleAssignment.assignToUser({ userId, roleId });
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      category: 'USER',
+      action: 'ASSIGN',
+      resourceType: 'user-role',
+      resourceId: userId,
+      metadata: { roleId },
+      auditContext,
+    });
   }
 
-  async removeRole(tenantId: string, userId: string, roleId: string): Promise<void> {
-    this.logger.log(`Removing role=${roleId} from user=${userId} in tenant=${tenantId}`);
+  async removeRole(
+    tenantId: string,
+    userId: string,
+    roleId: string,
+    auditContext?: AuditContext,
+  ): Promise<void> {
+    this.logger.log(
+      `Removing role=${roleId} from user=${userId} in tenant=${tenantId}`,
+    );
 
     orThrow(
       await this.userWriteRepo.findById(userId),
@@ -118,5 +209,88 @@ export class UserCommandHandler implements UserCommandPort {
     );
 
     await this.roleAssignment.removeFromUser({ userId, roleId });
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      category: 'USER',
+      action: 'REVOKE',
+      resourceType: 'user-role',
+      resourceId: userId,
+      metadata: { roleId },
+      auditContext,
+    });
+  }
+
+  async revokeUserSession(
+    tenantId: string,
+    userId: string,
+    sessionId: string,
+    auditContext?: AuditContext,
+  ): Promise<void> {
+    await this.assertUserInTenant(tenantId, userId);
+    const revokedSessions = await this.userSession.revokeUserSession({
+      tenantId,
+      userId,
+      sessionId,
+    });
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      category: 'SECURITY',
+      action: 'TOKEN_REVOKED',
+      resourceType: 'oidc-session',
+      resourceId: sessionId,
+      reason: 'AdminUserSessionRevoked',
+      metadata: {
+        targetUserId: userId,
+        revokedSessions,
+      },
+      auditContext,
+    });
+  }
+
+  async revokeUserSessions(
+    tenantId: string,
+    userId: string,
+    auditContext?: AuditContext,
+  ): Promise<void> {
+    await this.assertUserInTenant(tenantId, userId);
+    const revokedSessions = await this.userSession.revokeUserSessions({
+      tenantId,
+      userId,
+    });
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      category: 'SECURITY',
+      action: 'TOKEN_REVOKED',
+      resourceType: 'oidc-session',
+      resourceId: userId,
+      reason: 'AdminUserSessionsRevoked',
+      metadata: {
+        targetUserId: userId,
+        revokedSessions,
+      },
+      auditContext,
+    });
+  }
+
+  private async assertMfaCredentialExists(userId: string): Promise<void> {
+    const credentials = await this.userWriteRepo.findCredentialsByType(userId, [
+      'totp',
+      'webauthn',
+      'recovery_code',
+    ]);
+    if (credentials.length === 0) {
+      throw new BadRequestException('MFA credential is required');
+    }
+  }
+
+  private async assertUserInTenant(
+    tenantId: string,
+    userId: string,
+  ): Promise<void> {
+    orThrow(
+      await this.userWriteRepo.findById(userId),
+      new NotFoundException('User not found'),
+      (u) => u.tenantId === tenantId,
+    );
   }
 }

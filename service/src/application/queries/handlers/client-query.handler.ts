@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
+import { Logging, LogLevel } from '@kangjuhyup/rvlog';
 import { ClientQueryPort } from '../ports/client-query.port';
 import { ClientRepository } from '@domain/repositories';
 
 @Injectable()
+@Logging({ level: LogLevel.DEBUG })
 export class ClientQueryHandler implements ClientQueryPort {
   constructor(private readonly clientRepo: ClientRepository) {}
 

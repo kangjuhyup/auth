@@ -19,6 +19,7 @@ function userResponseToFormValues(
     email: u.email ?? undefined,
     phone: u.phone ?? undefined,
     status: u.status as UpdateUserDto['status'],
+    mfaEnabled: u.mfaEnabled,
   };
 }
 

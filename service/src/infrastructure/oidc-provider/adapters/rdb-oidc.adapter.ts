@@ -1,11 +1,13 @@
 import { EntityManager } from '@mikro-orm/core';
 import type { Adapter, AdapterPayload } from 'oidc-provider';
 import { OidcModelOrmEntity } from '../../mikro-orm/entities/oidc-model';
+import type { OidcSessionIndexStore } from '../session/oidc-session-index.store';
 
 export class RdbOidcAdapter implements Adapter {
   constructor(
     private readonly kind: string,
     private readonly em: EntityManager,
+    private readonly sessionIndex?: OidcSessionIndexStore,
   ) {}
 
   async upsert(
@@ -40,6 +42,9 @@ export class RdbOidcAdapter implements Adapter {
     }
 
     await em.flush();
+    if (this.kind === 'Session') {
+      await this.sessionIndex?.upsertSession(id, payload, expiresAt ?? null);
+    }
   }
 
   async find(id: string): Promise<AdapterPayload | undefined> {
@@ -109,6 +114,9 @@ export class RdbOidcAdapter implements Adapter {
   async destroy(id: string): Promise<void> {
     const em = this.em.fork();
     await em.nativeDelete(OidcModelOrmEntity, { id, kind: this.kind });
+    if (this.kind === 'Session') {
+      await this.sessionIndex?.destroySession(id);
+    }
   }
 
   async revokeByGrantId(grantId: string): Promise<void> {
@@ -117,6 +125,9 @@ export class RdbOidcAdapter implements Adapter {
       grantId,
       kind: this.kind,
     });
+    if (this.kind === 'Session') {
+      await this.sessionIndex?.deleteByGrantIds([grantId]);
+    }
   }
 
   private isExpired(model: OidcModelOrmEntity): boolean {

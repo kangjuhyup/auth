@@ -1,7 +1,7 @@
 {
   "name": "@auth/interaction-ui",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@rc-component/qrcode": "~1.1.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },

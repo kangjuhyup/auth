@@ -1,3 +1,11 @@
+import { Getter } from '../decorators';
+import {
+  mergeTenantPolicySet,
+  normalizeTenantPolicySet,
+  type TenantPolicyInput,
+  type TenantPolicySet,
+} from './tenant-policy';
+
 export type SignupPolicy = 'invite' | 'open';
 
 interface TenantConfigModelProps {
@@ -17,39 +25,47 @@ export class TenantConfigModel {
     this.props = { ...props };
   }
 
-  get tenantId(): string {
-    return this.props.tenantId;
+  @Getter()
+  declare readonly tenantId: string;
+
+  @Getter()
+  declare readonly signupPolicy: SignupPolicy;
+
+  @Getter()
+  declare readonly requirePhoneVerify: boolean;
+
+  @Getter()
+  declare readonly brandName: string | null | undefined;
+
+  @Getter()
+  declare readonly accessTokenTtlSec: number;
+
+  @Getter()
+  declare readonly refreshTokenTtlSec: number;
+
+  @Getter()
+  declare readonly extra: Record<string, unknown> | null | undefined;
+
+  updatePolicies(policies: TenantPolicyInput): void {
+    const nextPolicies = mergeTenantPolicySet(this.getPolicies(), policies);
+    this.props.signupPolicy = nextPolicies.signup.mode;
+    this.props.refreshTokenTtlSec = nextPolicies.refreshToken.ttlSec;
+    this.props.extra = {
+      ...(this.props.extra ?? {}),
+      policies: nextPolicies,
+    };
   }
 
-  get signupPolicy(): SignupPolicy {
-    return this.props.signupPolicy;
-  }
-
-  get requirePhoneVerify(): boolean {
-    return this.props.requirePhoneVerify;
-  }
-
-  get brandName(): string | null | undefined {
-    return this.props.brandName;
-  }
-
-  get accessTokenTtlSec(): number {
-    return this.props.accessTokenTtlSec;
-  }
-
-  get refreshTokenTtlSec(): number {
-    return this.props.refreshTokenTtlSec;
-  }
-
-  get extra(): Record<string, unknown> | null | undefined {
-    return this.props.extra;
-  }
-
-  updatePolicies(policies: Record<string, unknown>): void {
-    this.props.extra = { ...(this.props.extra ?? {}), policies };
-  }
-
-  getPolicies(): Record<string, unknown> {
-    return (this.props.extra?.['policies'] as Record<string, unknown>) ?? {};
+  getPolicies(): TenantPolicySet {
+    const policies = this.props.extra?.['policies'];
+    return normalizeTenantPolicySet(
+      policies && typeof policies === 'object' && !Array.isArray(policies)
+        ? (policies as Record<string, unknown>)
+        : null,
+      {
+        signupMode: this.props.signupPolicy,
+        refreshTokenTtlSec: this.props.refreshTokenTtlSec,
+      },
+    );
   }
 }

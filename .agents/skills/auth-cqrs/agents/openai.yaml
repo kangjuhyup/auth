@@ -1,0 +1,6 @@
+interface:
+  display_name: 'Auth CQRS'
+  short_description: 'Command/query and projection rules'
+  default_prompt: 'Use $auth-cqrs to route this endpoint through the right command or query path.'
+policy:
+  allow_implicit_invocation: true

@@ -1,7 +1,16 @@
-import { Entity, PrimaryKey, Property, ManyToOne, Unique, Ref } from '@mikro-orm/core';
+import {
+  Entity,
+  PrimaryKey,
+  Property,
+  ManyToOne,
+  Unique,
+  Ref,
+} from '@mikro-orm/core';
 import type {
   IdpOauthEndpointsConfig,
+  IdpProtocol,
   IdpProvider,
+  IdpSamlConfig,
 } from '@domain/models/identity-provider';
 import { BaseEntity } from '../base';
 import { TenantOrmEntity } from './tenant';
@@ -12,11 +21,18 @@ export class IdentityProviderOrmEntity extends BaseEntity {
   @PrimaryKey({ type: 'bigint', autoincrement: true })
   id!: string;
 
-  @ManyToOne(() => TenantOrmEntity, { fieldName: 'tenant_id', deleteRule: 'restrict', ref: true })
+  @ManyToOne(() => TenantOrmEntity, {
+    fieldName: 'tenant_id',
+    deleteRule: 'restrict',
+    ref: true,
+  })
   tenant!: Ref<TenantOrmEntity>;
 
   @Property({ type: 'varchar', length: 64 })
   provider!: IdpProvider;
+
+  @Property({ type: 'varchar', length: 16, default: 'oauth2' })
+  protocol!: IdpProtocol;
 
   @Property({ fieldName: 'display_name', type: 'varchar', length: 50 })
   displayName!: string;
@@ -24,7 +40,12 @@ export class IdentityProviderOrmEntity extends BaseEntity {
   @Property({ fieldName: 'client_id', type: 'varchar', length: 191 })
   clientId!: string;
 
-  @Property({ fieldName: 'client_secret', type: 'varchar', length: 255, nullable: true })
+  @Property({
+    fieldName: 'client_secret',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
   clientSecret?: string | null;
 
   @Property({ fieldName: 'redirect_uri', type: 'varchar', length: 255 })
@@ -35,4 +56,7 @@ export class IdentityProviderOrmEntity extends BaseEntity {
 
   @Property({ fieldName: 'oauth_config', type: 'json', nullable: true })
   oauthConfig?: IdpOauthEndpointsConfig | null;
+
+  @Property({ fieldName: 'saml_config', type: 'json', nullable: true })
+  samlConfig?: IdpSamlConfig | null;
 }

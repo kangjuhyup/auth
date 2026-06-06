@@ -75,4 +75,56 @@ export class ClientAuthPolicyOrmEntity extends BaseEntity {
     default: false,
   })
   requireAuthTime!: boolean;
+
+  @Property({
+    fieldName: 'allowed_idp_provider_keys',
+    type: 'json',
+    nullable: true,
+  })
+  allowedIdpProviderKeys?: string[] | null;
+
+  @Property({
+    fieldName: 'reauthentication_interval_sec',
+    type: 'int',
+    nullable: true,
+  })
+  reauthenticationIntervalSec?: number | null;
+
+  @Property({
+    fieldName: 'refresh_token_rotation_enabled',
+    type: 'boolean',
+    default: true,
+  })
+  refreshTokenRotationEnabled!: boolean;
+
+  @Property({
+    fieldName: 'refresh_token_reuse_action',
+    type: 'varchar',
+    length: 32,
+    default: 'revoke_grant',
+  })
+  refreshTokenReuseAction!: string;
+
+  @Property({
+    fieldName: 'login_session_mode',
+    type: 'varchar',
+    length: 16,
+    nullable: true,
+  })
+  loginSessionMode?: string | null;
+
+  @Property({
+    fieldName: 'max_concurrent_sessions',
+    type: 'int',
+    nullable: true,
+  })
+  maxConcurrentSessions?: number | null;
+
+  @Property({
+    fieldName: 'session_conflict_action',
+    type: 'varchar',
+    length: 32,
+    nullable: true,
+  })
+  sessionConflictAction?: string | null;
 }

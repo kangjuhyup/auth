@@ -4,8 +4,14 @@ import { buildOidcConfiguration } from '@infrastructure/oidc-provider/oidc-provi
 import type { ClientQueryPort } from '@application/queries/ports/client-query.port';
 import { UserQueryPort } from '@application/queries/ports/user-query.port';
 import type { ConfigService } from '@nestjs/config';
-import type { ClientRepository, TenantRepository } from '@domain/repositories';
+import type {
+  ClientAuthPolicyRepository,
+  ClientRepository,
+  TenantRepository,
+} from '@domain/repositories';
 import type { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
+import type { ScopeRegistryPort } from '@application/ports/scope-registry.port';
+import type { ScopeClaimResolverPort } from '@application/ports/scope-claim-resolver.port';
 
 describe('buildOidcConfiguration', () => {
   const makeCtx = (tenantId?: string) =>
@@ -18,7 +24,9 @@ describe('buildOidcConfiguration', () => {
       clientId,
     }) as any;
 
-  const makeConfigService = (overrides: Record<string, string> = {}): jest.Mocked<ConfigService> => {
+  const makeConfigService = (
+    overrides: Record<string, string> = {},
+  ): jest.Mocked<ConfigService> => {
     const defaults: Record<string, string> = {
       OIDC_ACCESS_TOKEN_FORMAT: 'opaque',
       OIDC_COOKIE_KEYS: 'k1,k2',
@@ -57,8 +65,54 @@ describe('buildOidcConfiguration', () => {
     const configService = makeConfigService(configOverrides);
 
     const clientRepository = {} as ClientRepository;
+    const clientAuthPolicyRepository = {
+      findByClientRefId: jest.fn().mockResolvedValue(null),
+    } as any as jest.Mocked<ClientAuthPolicyRepository>;
     const tenantRepository = {} as TenantRepository;
     const symmetricCrypto = {} as SymmetricCryptoPort;
+    const scopeRegistry: jest.Mocked<ScopeRegistryPort> = {
+      listSupportedScopes: jest
+        .fn()
+        .mockResolvedValue(['openid', 'profile', 'email', 'orders:read']),
+      listDefinitions: jest.fn().mockResolvedValue([
+        {
+          scope: 'openid',
+          displayName: 'openid',
+          claimKeys: [],
+          builtIn: true,
+          enabled: true,
+        },
+        {
+          scope: 'profile',
+          displayName: 'profile',
+          claimKeys: ['profile'],
+          builtIn: true,
+          enabled: true,
+        },
+        {
+          scope: 'email',
+          displayName: 'email',
+          claimKeys: ['email'],
+          builtIn: true,
+          enabled: true,
+        },
+        {
+          scope: 'orders:read',
+          displayName: 'Read orders',
+          claimKeys: ['orders'],
+          builtIn: false,
+          enabled: true,
+        },
+      ]),
+      validateClientScopes: jest.fn(),
+    };
+    const scopeClaimResolver: jest.Mocked<ScopeClaimResolverPort> = {
+      resolve: jest.fn().mockImplementation(async ({ baseClaims }) => ({
+        sub: baseClaims.sub,
+        email: baseClaims.email,
+        email_verified: baseClaims.email_verified,
+      })),
+    };
 
     return {
       em,
@@ -67,9 +121,19 @@ describe('buildOidcConfiguration', () => {
       clientQuery,
       configService,
       clientRepository,
+      clientAuthPolicyRepository,
       tenantRepository,
       symmetricCrypto,
+      scopeRegistry,
+      scopeClaimResolver,
       jwksKeys: [],
+      supportedGrantTypes: [
+        'authorization_code',
+        'refresh_token',
+        'client_credentials',
+        'implicit',
+      ],
+      supportedScopes: ['openid', 'profile', 'email', 'orders:read'],
       tenantAccessTokenTtlSec: 3600,
       tenantRefreshTokenTtlSec: 86400,
     };
@@ -86,6 +150,21 @@ describe('buildOidcConfiguration', () => {
     expect(
       typeof (cfg.features?.resourceIndicators as any).getResourceServerInfo,
     ).toBe('function');
+  });
+
+  it('refresh_token과 client_credentials grant를 provider 지원 목록에 포함한다', () => {
+    const deps = makeDeps();
+    const cfg = buildOidcConfiguration({
+      ...deps,
+      tenantCode: 'acme',
+    });
+
+    expect((cfg as any).grantTypes).toEqual([
+      'authorization_code',
+      'refresh_token',
+      'client_credentials',
+      'implicit',
+    ]);
   });
 
   it('tenant가 없으면 getResourceServerInfo에서 에러(missing_tenant)를 던진다', async () => {
@@ -169,7 +248,7 @@ describe('buildOidcConfiguration', () => {
     expect(info).toBeDefined();
     expect(info.accessTokenFormat).toBe('jwt');
     expect(info.audience).toBe('https://api.example.com');
-    expect(info.scope).toBe('openid profile email');
+    expect(info.scope).toBe('openid profile email orders:read');
   });
 
   it('findAccount: tenant가 없으면 missing_tenant를 던진다', async () => {
@@ -220,6 +299,15 @@ describe('buildOidcConfiguration', () => {
     expect(claims.sub).toBe('user-1');
     expect(claims.email).toBe('u@example.com');
     expect(claims.email_verified).toBe(true);
+    expect(deps.scopeRegistry.listDefinitions).toHaveBeenCalledWith('tenant-1');
+    expect(deps.scopeClaimResolver.resolve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        subject: 'user-1',
+        requestedScopes: ['openid', 'profile', 'email'],
+        claimKeys: ['profile', 'email'],
+      }),
+    );
   });
 
   it('OIDC_ACCESS_TOKEN_FORMAT=opaque이면 accessTokenFormat은 opaque다', async () => {
@@ -262,14 +350,16 @@ describe('buildOidcConfiguration', () => {
     const makeTtlCtx = (tenantId = 'tenant-1') =>
       ({ req: { tenant: { id: tenantId } } }) as any;
 
-    const makeTtlClient = (clientId = 'client-1') =>
-      ({ clientId }) as any;
+    const makeTtlClient = (clientId = 'client-1') => ({ clientId }) as any;
 
     it('AccessToken: client에 TTL이 없으면 tenantAccessTokenTtlSec를 반환한다', async () => {
       const deps = makeDeps();
       (deps.clientRepository as any).findByClientId = jest
         .fn()
-        .mockResolvedValue({ accessTokenTtlSec: null, refreshTokenTtlSec: null });
+        .mockResolvedValue({
+          accessTokenTtlSec: null,
+          refreshTokenTtlSec: null,
+        });
 
       const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
       const ttlFn = (cfg.ttl as any).AccessToken;
@@ -290,7 +380,10 @@ describe('buildOidcConfiguration', () => {
       const deps = makeDeps();
       (deps.clientRepository as any).findByClientId = jest
         .fn()
-        .mockResolvedValue({ accessTokenTtlSec: null, refreshTokenTtlSec: null });
+        .mockResolvedValue({
+          accessTokenTtlSec: null,
+          refreshTokenTtlSec: null,
+        });
 
       const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
       const ttlFn = (cfg.ttl as any).RefreshToken;
@@ -309,7 +402,10 @@ describe('buildOidcConfiguration', () => {
       const deps = makeDeps();
       (deps.clientRepository as any).findByClientId = jest
         .fn()
-        .mockResolvedValue({ accessTokenTtlSec: clientAccessTtl, refreshTokenTtlSec: null });
+        .mockResolvedValue({
+          accessTokenTtlSec: clientAccessTtl,
+          refreshTokenTtlSec: null,
+        });
 
       const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
       const ttlFn = (cfg.ttl as any).AccessToken;
@@ -330,7 +426,10 @@ describe('buildOidcConfiguration', () => {
       const deps = makeDeps();
       (deps.clientRepository as any).findByClientId = jest
         .fn()
-        .mockResolvedValue({ accessTokenTtlSec: null, refreshTokenTtlSec: clientRefreshTtl });
+        .mockResolvedValue({
+          accessTokenTtlSec: null,
+          refreshTokenTtlSec: clientRefreshTtl,
+        });
 
       const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
       const ttlFn = (cfg.ttl as any).RefreshToken;
@@ -347,8 +446,66 @@ describe('buildOidcConfiguration', () => {
       const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
       const ttlFn = (cfg.ttl as any).AccessToken;
 
-      const result = ttlFn({ req: { tenant: undefined } } as any, {}, makeTtlClient());
+      const result = ttlFn(
+        { req: { tenant: undefined } } as any,
+        {},
+        makeTtlClient(),
+      );
       expect(result).toBe(deps.tenantAccessTokenTtlSec);
+    });
+  });
+
+  describe('refresh token rotation policy', () => {
+    it('정책이 없으면 refresh token rotation을 활성화한다', async () => {
+      const deps = makeDeps();
+      (deps.clientRepository as any).findByClientId = jest
+        .fn()
+        .mockResolvedValue({ id: 'client-ref-1' });
+
+      const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
+
+      await expect(
+        (cfg.rotateRefreshToken as any)({
+          req: { tenant: { id: 'tenant-1' } },
+          oidc: { client: { clientId: 'client-1' } },
+        }),
+      ).resolves.toBe(true);
+    });
+
+    it('클라이언트 인증 정책의 rotation 비활성화를 반영한다', async () => {
+      const deps = makeDeps();
+      (deps.clientRepository as any).findByClientId = jest
+        .fn()
+        .mockResolvedValue({ id: 'client-ref-1' });
+      deps.clientAuthPolicyRepository.findByClientRefId.mockResolvedValue({
+        refreshTokenRotationEnabled: false,
+      } as any);
+
+      const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
+
+      await expect(
+        (cfg.rotateRefreshToken as any)({
+          req: { tenant: { id: 'tenant-1' } },
+          oidc: { client: { clientId: 'client-1' } },
+        }),
+      ).resolves.toBe(false);
+
+      expect(deps.clientRepository.findByClientId).toHaveBeenCalledWith(
+        'tenant-1',
+        'client-1',
+      );
+      expect(
+        deps.clientAuthPolicyRepository.findByClientRefId,
+      ).toHaveBeenCalledWith('client-ref-1');
+    });
+
+    it('tenant나 client가 없으면 보수적으로 rotation을 활성화한다', async () => {
+      const deps = makeDeps();
+      const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
+
+      await expect(
+        (cfg.rotateRefreshToken as any)({ req: {}, oidc: {} }),
+      ).resolves.toBe(true);
     });
   });
 });

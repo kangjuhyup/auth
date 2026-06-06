@@ -1,128 +1,249 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { HttpException, UnauthorizedException } from '@nestjs/common';
 import { AdminSessionController } from '@presentation/controllers/admin/session.controller';
-import { TenantModel } from '@domain/models/tenant';
-
-function makeTenant(id = 'tenant-1', code = 'master'): TenantModel {
-  const tenant = new TenantModel({ code, name: 'Master Tenant' });
-  tenant.setPersistence(id, new Date(), new Date());
-  return tenant;
-}
-
-function createMockProvider() {
-  const client = { client_id: '__admin-portal__' };
-  const clientFind = jest.fn().mockResolvedValue(client);
-  const save = jest.fn().mockResolvedValue('access-token');
-  const AccessToken = jest.fn().mockImplementation(function (this: any, payload: any) {
-    this.payload = payload;
-    this.save = save;
-  });
-
-  return {
-    provider: {
-      Client: { find: clientFind },
-      AccessToken,
-    } as any,
-    client,
-    clientFind,
-    AccessToken,
-    save,
-  };
-}
+import {
+  ADMIN_REFRESH_COOKIE_NAME,
+  ADMIN_SESSION_COOKIE_NAME,
+} from '@presentation/http/admin-session-cookie';
 
 describe('AdminSessionController', () => {
   let controller: AdminSessionController;
-  let registry: any;
-  let userQuery: any;
-  let adminQuery: any;
-  let tenantRepo: any;
-  let providerBundle: ReturnType<typeof createMockProvider>;
+  let adminSession: any;
+  let config: any;
+  let request: any;
+  let response: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    providerBundle = createMockProvider();
-    registry = {
-      get: jest.fn().mockResolvedValue(providerBundle.provider),
+    adminSession = {
+      issueAdminToken: jest.fn().mockResolvedValue({
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+        username: 'admin',
+        passwordChangeRequired: false,
+      }),
+      refreshAdminSession: jest.fn().mockResolvedValue({
+        accessToken: 'next-access-token',
+        refreshToken: 'next-refresh-token',
+        username: 'admin',
+        passwordChangeRequired: false,
+      }),
+      getAdminSession: jest.fn().mockResolvedValue({
+        userId: 'user-1',
+        username: 'admin',
+        passwordChangeRequired: false,
+      }),
+      changePassword: jest.fn().mockResolvedValue(undefined),
     };
-    userQuery = {
-      authenticate: jest.fn().mockResolvedValue({ userId: 'user-1' }),
+    config = {
+      get: jest.fn((key: string) => {
+        const values: Record<string, string> = {
+          ADMIN_SESSION_COOKIE_SECURE: 'true',
+          ADMIN_SESSION_COOKIE_SAME_SITE: 'lax',
+        };
+        return values[key];
+      }),
     };
-    adminQuery = {
-      getUserRoles: jest.fn().mockResolvedValue([{ code: 'SUPER_ADMIN' }]),
+    response = {
+      cookie: jest.fn(),
+      clearCookie: jest.fn(),
     };
-    tenantRepo = {
-      findByCode: jest.fn().mockResolvedValue(makeTenant()),
-    };
+    request = { ip: '203.0.113.10', headers: {} };
 
-    controller = new AdminSessionController(
-      registry,
-      userQuery,
-      adminQuery,
-      tenantRepo,
-    );
+    controller = new AdminSessionController(adminSession, config);
   });
 
-  it('master tenant이 없으면 UnauthorizedException을 던진다', async () => {
-    tenantRepo.findByCode.mockResolvedValue(null);
+  it('세션 port가 null을 반환하면 UnauthorizedException을 던진다', async () => {
+    adminSession.issueAdminToken.mockResolvedValue(null);
 
     await expect(
-      controller.login({ username: 'admin', password: 'secret' }),
-    ).rejects.toThrow(new UnauthorizedException('master tenant not found'));
-  });
-
-  it('인증 실패 시 UnauthorizedException을 던진다', async () => {
-    userQuery.authenticate.mockResolvedValue(null);
-
-    await expect(
-      controller.login({ username: 'admin', password: 'wrong' }),
+      controller.login(
+        { username: 'admin', password: 'wrong' },
+        request,
+        response,
+      ),
     ).rejects.toThrow(new UnauthorizedException('Invalid credentials'));
   });
 
-  it('SUPER_ADMIN 역할이 없으면 UnauthorizedException을 던진다', async () => {
-    adminQuery.getUserRoles.mockResolvedValue([{ code: 'TENANT_ADMIN' }]);
+  it('정상 로그인 시 HttpOnly session cookie를 설정하고 token은 body로 반환하지 않는다', async () => {
+    const result = await controller.login(
+      {
+        username: 'admin',
+        password: 'secret',
+      },
+      request,
+      response,
+    );
 
-    await expect(
-      controller.login({ username: 'admin', password: 'secret' }),
-    ).rejects.toThrow(new UnauthorizedException('Insufficient permissions'));
+    expect(adminSession.issueAdminToken).toHaveBeenCalledWith({
+      username: 'admin',
+      password: 'secret',
+      ipAddress: '203.0.113.10',
+      userAgent: undefined,
+      correlationId: undefined,
+    });
+    expect(response.cookie).toHaveBeenCalledWith(
+      ADMIN_SESSION_COOKIE_NAME,
+      'access-token',
+      expect.objectContaining({
+        httpOnly: true,
+        secure: true,
+        sameSite: 'lax',
+        path: '/',
+      }),
+    );
+    expect(response.cookie).toHaveBeenCalledWith(
+      ADMIN_REFRESH_COOKIE_NAME,
+      'refresh-token',
+      expect.objectContaining({
+        httpOnly: true,
+        secure: true,
+        sameSite: 'lax',
+        path: '/',
+      }),
+    );
+    expect(result).toEqual({
+      username: 'admin',
+      passwordChangeRequired: false,
+    });
   });
 
-  it('admin-portal client가 없으면 UnauthorizedException을 던진다', async () => {
-    providerBundle.clientFind.mockResolvedValue(null);
+  it('임시 비밀번호 관리자 로그인 시 passwordChangeRequired를 반환한다', async () => {
+    adminSession.issueAdminToken.mockResolvedValue({
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      username: 'admin',
+      passwordChangeRequired: true,
+    });
 
     await expect(
-      controller.login({ username: 'admin', password: 'secret' }),
-    ).rejects.toThrow(
-      new UnauthorizedException('admin-portal client not configured'),
+      controller.login(
+        { username: 'admin', password: 'temporary123' },
+        request,
+        response,
+      ),
+    ).resolves.toEqual({
+      username: 'admin',
+      passwordChangeRequired: true,
+    });
+  });
+
+  it('rate limit 차단 결과를 429 예외로 매핑한다', async () => {
+    adminSession.issueAdminToken.mockResolvedValue({
+      blocked: true,
+      reason: 'rate_limited',
+      retryAfterSec: 60,
+    });
+
+    await expect(
+      controller.login(
+        { username: 'admin', password: 'secret' },
+        request,
+        response,
+      ),
+    ).rejects.toMatchObject(new HttpException('Too many login attempts', 429));
+  });
+
+  it('임시 계정 잠금 결과를 423 예외로 매핑한다', async () => {
+    adminSession.issueAdminToken.mockResolvedValue({
+      blocked: true,
+      reason: 'temporarily_locked',
+      retryAfterSec: 900,
+    });
+
+    await expect(
+      controller.login(
+        { username: 'admin', password: 'secret' },
+        request,
+        response,
+      ),
+    ).rejects.toMatchObject(
+      new HttpException('Account temporarily locked', 423),
     );
   });
 
-  it('정상 로그인 시 access token을 발급해 반환한다', async () => {
-    const result = await controller.login({
-      username: 'admin',
-      password: 'secret',
-    });
+  it('현재 세션 조회 시 cookie token으로 세션을 조회한다', async () => {
+    const result = await controller.current({
+      headers: { cookie: `${ADMIN_SESSION_COOKIE_NAME}=access-token` },
+    } as any);
 
-    expect(tenantRepo.findByCode).toHaveBeenCalledWith('master');
-    expect(userQuery.authenticate).toHaveBeenCalledWith({
-      tenantId: 'tenant-1',
-      username: 'admin',
-      password: 'secret',
-    });
-    expect(adminQuery.getUserRoles).toHaveBeenCalledWith('tenant-1', 'user-1');
-    expect(registry.get).toHaveBeenCalledWith('master');
-    expect(providerBundle.clientFind).toHaveBeenCalledWith('__admin-portal__');
-    expect(providerBundle.AccessToken).toHaveBeenCalledWith({
-      accountId: 'user-1',
-      client: providerBundle.client,
-      scope: 'openid profile',
-    });
-    expect(providerBundle.save).toHaveBeenCalledTimes(1);
+    expect(adminSession.getAdminSession).toHaveBeenCalledWith('access-token');
     expect(result).toEqual({
-      token: 'access-token',
       username: 'admin',
+      passwordChangeRequired: false,
+    });
+  });
+
+  it('refresh cookie가 있으면 새 세션 쿠키를 재설정한다', async () => {
+    const result = await controller.refresh(
+      {
+        headers: { cookie: `${ADMIN_REFRESH_COOKIE_NAME}=refresh-token` },
+      } as any,
+      response,
+    );
+
+    expect(adminSession.refreshAdminSession).toHaveBeenCalledWith(
+      'refresh-token',
+    );
+    expect(response.cookie).toHaveBeenCalledWith(
+      ADMIN_SESSION_COOKIE_NAME,
+      'next-access-token',
+      expect.any(Object),
+    );
+    expect(response.cookie).toHaveBeenCalledWith(
+      ADMIN_REFRESH_COOKIE_NAME,
+      'next-refresh-token',
+      expect.any(Object),
+    );
+    expect(result).toEqual({
+      username: 'admin',
+      passwordChangeRequired: false,
+    });
+  });
+
+  it('refresh cookie가 없으면 UnauthorizedException을 던진다', async () => {
+    await expect(
+      controller.refresh({ headers: {} } as any, response),
+    ).rejects.toThrow(new UnauthorizedException('Invalid session'));
+  });
+
+  it('관리자 세션 비밀번호 변경을 port에 위임한다', async () => {
+    await expect(
+      controller.changePassword(
+        {
+          headers: { cookie: `${ADMIN_SESSION_COOKIE_NAME}=access-token` },
+        } as any,
+        {
+          currentPassword: 'temporary123',
+          newPassword: 'changed123',
+        },
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(adminSession.changePassword).toHaveBeenCalledWith('access-token', {
+      currentPassword: 'temporary123',
+      newPassword: 'changed123',
     });
   });
 
   it('logout은 정상 종료한다', async () => {
-    await expect(controller.logout()).resolves.toBeUndefined();
+    await expect(controller.logout(response)).resolves.toBeUndefined();
+    expect(response.clearCookie).toHaveBeenCalledWith(
+      ADMIN_SESSION_COOKIE_NAME,
+      expect.objectContaining({
+        httpOnly: true,
+        secure: true,
+        sameSite: 'lax',
+        path: '/',
+      }),
+    );
+    expect(response.clearCookie).toHaveBeenCalledWith(
+      ADMIN_REFRESH_COOKIE_NAME,
+      expect.objectContaining({
+        httpOnly: true,
+        secure: true,
+        sameSite: 'lax',
+        path: '/',
+      }),
+    );
   });
 });

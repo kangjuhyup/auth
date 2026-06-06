@@ -1,32 +1,41 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+
+const LEGACY_AUTH_STORAGE_KEY = 'auth-storage';
+
+const removeLegacyAuthStorage = () => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.removeItem(LEGACY_AUTH_STORAGE_KEY);
+  } catch {
+    // Ignore storage access errors; auth state remains memory-only.
+  }
+};
 
 interface AuthState {
   isAuthenticated: boolean;
-  token: string | null;
   username: string | null;
-  login: (username: string, token: string) => void;
+  passwordChangeRequired: boolean;
+  login: (username: string, passwordChangeRequired?: boolean) => void;
+  completePasswordChange: () => void;
   clearAuth: () => void;
 }
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set) => ({
+removeLegacyAuthStorage();
+
+export const useAuthStore = create<AuthState>((set) => ({
+  isAuthenticated: false,
+  username: null,
+  passwordChangeRequired: false,
+  login: (username, passwordChangeRequired = false) =>
+    set({ isAuthenticated: true, username, passwordChangeRequired }),
+  completePasswordChange: () => set({ passwordChangeRequired: false }),
+  clearAuth: () =>
+    set({
       isAuthenticated: false,
-      token: null,
       username: null,
-      login: (username, token) =>
-        set({ isAuthenticated: true, username, token }),
-      clearAuth: () =>
-        set({ isAuthenticated: false, username: null, token: null }),
+      passwordChangeRequired: false,
     }),
-    {
-      name: 'auth-storage',
-      partialize: (state) => ({
-        isAuthenticated: state.isAuthenticated,
-        token: state.token,
-        username: state.username,
-      }),
-    },
-  ),
-);
+}));

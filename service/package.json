@@ -1,6 +1,6 @@
 {
   "name": "@auth/service",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "license": "UNLICENSED",
   "engines": {
@@ -20,7 +20,8 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:arch": "depcruise src --config .dependency-cruiser.cjs --output-type err",
-    "test:e2e": "NODE_OPTIONS=--experimental-vm-modules yarn exec jest --config ./test/jest-e2e.json",
+    "openapi:export": "ts-node -r tsconfig-paths/register scripts/export-openapi-json.ts ../docs/static/openapi.json",
+    "test:e2e": "NODE_OPTIONS=--experimental-vm-modules yarn exec jest --watchman=false --config ./test/jest-e2e.json",
     "migration:up": "mikro-orm migration:up",
     "migration:down": "mikro-orm migration:rollback",
     "migration:create": "mikro-orm migration:create",
@@ -28,6 +29,8 @@
     "schema:fresh": "mikro-orm schema:drop --run --drop-migrations-table && mikro-orm migration:up"
   },
   "dependencies": {
+    "@kangjuhyup/rvlog": "^0.2.0",
+    "@kangjuhyup/rvlog-nest": "^1.0.1",
     "@mikro-orm/cli": "6.6.12",
     "@mikro-orm/core": "6.6.12",
     "@mikro-orm/migrations": "6.6.12",
@@ -42,6 +45,7 @@
     "@nestjs/serve-static": "^5.0.4",
     "@nestjs/swagger": "^11.2.6",
     "@nestjs/throttler": "^6.5.0",
+    "@node-saml/node-saml": "^5.1.0",
     "@simplewebauthn/server": "^13.3.0",
     "argon2": "^0.44.0",
     "class-transformer": "^0.5.1",
@@ -104,7 +108,14 @@
       "node_modules/"
     ],
     "collectCoverageFrom": [
-      "src/**/*.(t|j)s"
+      "src/**/*.(t|j)s",
+      "!src/main.ts",
+      "!src/**/*.module.ts",
+      "!src/**/index.ts",
+      "!src/application/**/ports/**/*",
+      "!src/infrastructure/mikro-orm/entities/**/*",
+      "!src/infrastructure/mikro-orm/migrations/**/*",
+      "!src/presentation/dto/**/*"
     ],
     "coverageDirectory": "./coverage",
     "verbose": true,

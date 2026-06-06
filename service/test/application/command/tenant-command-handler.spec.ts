@@ -1,7 +1,8 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { TenantCommandHandler } from '@application/commands/handlers/tenant-command.handler';
-import type { TenantRepository } from '@domain/repositories';
+import type { ScopeRepository, TenantRepository } from '@domain/repositories';
 import { TenantModel } from '@domain/models/tenant';
+import { ScopeModel } from '@domain/models/scope';
 
 function makeTenant(id = 'tenant-1'): TenantModel {
   const t = new TenantModel({ code: 'acme', name: 'ACME Corp' });
@@ -22,25 +23,62 @@ function createMockTenantRepo(): jest.Mocked<TenantRepository> {
   };
 }
 
+function createMockScopeRepo(): jest.Mocked<ScopeRepository> {
+  return {
+    findById: jest.fn(),
+    findByName: jest.fn().mockResolvedValue(null),
+    findByNames: jest.fn(),
+    list: jest.fn(),
+    listEnabledByTenantId: jest.fn(),
+    save: jest.fn().mockImplementation(async (s: ScopeModel) => {
+      if (!s.id) s.setPersistence(`scope-${s.name}`, new Date(), new Date());
+      return s;
+    }),
+    delete: jest.fn(),
+  };
+}
+
 describe('TenantCommandHandler', () => {
   let handler: TenantCommandHandler;
   let tenantRepo: jest.Mocked<TenantRepository>;
+  let scopeRepo: jest.Mocked<ScopeRepository>;
+  let auditRecorder: { recordAdminAction: jest.Mock };
 
   beforeEach(() => {
     jest.clearAllMocks();
     tenantRepo = createMockTenantRepo();
-    handler = new TenantCommandHandler(tenantRepo);
+    scopeRepo = createMockScopeRepo();
+    auditRecorder = {
+      recordAdminAction: jest.fn().mockResolvedValue(undefined),
+    };
+    handler = new TenantCommandHandler(
+      tenantRepo,
+      scopeRepo,
+      auditRecorder as any,
+    );
   });
 
   describe('createTenant', () => {
     it('code 중복이 없으면 save를 호출하고 id를 반환한다', async () => {
       tenantRepo.findByCode.mockResolvedValue(null);
 
-      const result = await handler.createTenant({ code: 'new', name: 'New Corp' });
+      const result = await handler.createTenant({
+        code: 'new',
+        name: 'New Corp',
+      });
 
       expect(tenantRepo.findByCode).toHaveBeenCalledWith('new');
       expect(tenantRepo.save).toHaveBeenCalledTimes(1);
+      expect(scopeRepo.save).toHaveBeenCalledTimes(3);
       expect(result.id).toBeDefined();
+      expect(auditRecorder.recordAdminAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: result.id,
+          action: 'CREATE',
+          resourceType: 'tenant',
+          resourceId: result.id,
+        }),
+      );
     });
 
     it('code가 이미 존재하면 ConflictException을 던진다', async () => {
@@ -60,6 +98,14 @@ describe('TenantCommandHandler', () => {
 
       expect(tenantRepo.findById).toHaveBeenCalledWith('tenant-1');
       expect(tenantRepo.save).toHaveBeenCalledTimes(1);
+      expect(auditRecorder.recordAdminAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          action: 'UPDATE',
+          resourceType: 'tenant',
+          resourceId: 'tenant-1',
+        }),
+      );
 
       expect(tenantRepo.findById.mock.invocationCallOrder[0]).toBeLessThan(
         tenantRepo.save.mock.invocationCallOrder[0],
@@ -89,6 +135,14 @@ describe('TenantCommandHandler', () => {
 
       expect(tenantRepo.findById).toHaveBeenCalledWith('tenant-1');
       expect(tenantRepo.delete).toHaveBeenCalledWith('tenant-1');
+      expect(auditRecorder.recordAdminAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          action: 'DELETE',
+          resourceType: 'tenant',
+          resourceId: 'tenant-1',
+        }),
+      );
 
       expect(tenantRepo.findById.mock.invocationCallOrder[0]).toBeLessThan(
         tenantRepo.delete.mock.invocationCallOrder[0],

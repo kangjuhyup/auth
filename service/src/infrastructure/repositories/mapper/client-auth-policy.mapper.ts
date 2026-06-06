@@ -1,5 +1,11 @@
 import { ClientAuthPolicyModel } from '@domain/models/client-auth-policy';
-import type { AuthMethod, MfaMethod } from '@domain/models/client-auth-policy';
+import type {
+  AuthMethod,
+  ClientLoginSessionModeOverride,
+  MfaMethod,
+  RefreshTokenReuseAction,
+} from '@domain/models/client-auth-policy';
+import type { SessionConflictAction } from '@domain/models/tenant-policy';
 import { ClientAuthPolicyOrmEntity } from '../../mikro-orm/entities/client-auth-policy';
 
 export class ClientAuthPolicyMapper {
@@ -15,6 +21,19 @@ export class ClientAuthPolicyMapper {
         maxSessionDurationSec: entity.maxSessionDurationSec ?? null,
         consentRequired: entity.consentRequired,
         requireAuthTime: entity.requireAuthTime,
+        allowedIdpProviderKeys: entity.allowedIdpProviderKeys ?? null,
+        reauthenticationIntervalSec: entity.reauthenticationIntervalSec ?? null,
+        refreshTokenRotationEnabled: entity.refreshTokenRotationEnabled ?? true,
+        refreshTokenReuseAction:
+          (entity.refreshTokenReuseAction as
+            | RefreshTokenReuseAction
+            | undefined) ?? 'revoke_grant',
+        loginSessionMode:
+          (entity.loginSessionMode as ClientLoginSessionModeOverride) ?? null,
+        maxConcurrentSessions: entity.maxConcurrentSessions ?? null,
+        sessionConflictAction:
+          (entity.sessionConflictAction as SessionConflictAction | undefined) ??
+          null,
       },
       entity.id,
     );
@@ -35,6 +54,13 @@ export class ClientAuthPolicyMapper {
     entity.maxSessionDurationSec = domain.maxSessionDurationSec;
     entity.consentRequired = domain.consentRequired;
     entity.requireAuthTime = domain.requireAuthTime;
+    entity.allowedIdpProviderKeys = domain.allowedIdpProviderKeys;
+    entity.reauthenticationIntervalSec = domain.reauthenticationIntervalSec;
+    entity.refreshTokenRotationEnabled = domain.refreshTokenRotationEnabled;
+    entity.refreshTokenReuseAction = domain.refreshTokenReuseAction;
+    entity.loginSessionMode = domain.loginSessionMode;
+    entity.maxConcurrentSessions = domain.maxConcurrentSessions;
+    entity.sessionConflictAction = domain.sessionConflictAction;
 
     if (domain.id) {
       entity.id = domain.id;

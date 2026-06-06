@@ -1,4 +1,4 @@
-import { Card, Form, Input, Button, Typography, Space, Alert } from 'antd';
+import { Card, Form, Input, Button, Typography, Space } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useLogin } from './hooks/useLogin';
 import type { LoginDto } from '@/types/auth.types';
@@ -29,16 +29,10 @@ export function LoginPage() {
             <Text type="secondary">OIDC Authorization Server</Text>
           </div>
 
-          <Alert
-            message="Development Mode"
-            description="Use credentials: admin / admin"
-            type="info"
-            showIcon
-          />
-
           <Form
             name="login"
             onFinish={onFinish}
+            initialValues={{ username: '', password: '' }}
             autoComplete="off"
             size="large"
           >
@@ -51,7 +45,7 @@ export function LoginPage() {
               <Input
                 prefix={<UserOutlined />}
                 placeholder="Username"
-                autoComplete="username"
+                autoComplete="off"
               />
             </Form.Item>
 
@@ -64,7 +58,7 @@ export function LoginPage() {
               <Input.Password
                 prefix={<LockOutlined />}
                 placeholder="Password"
-                autoComplete="current-password"
+                autoComplete="new-password"
               />
             </Form.Item>
 

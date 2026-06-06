@@ -1,10 +1,22 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { RoleCommandHandler } from '@application/commands/handlers/role-command.handler';
-import type { RoleRepository, PermissionRepository, RolePermissionRepository } from '@domain/repositories';
+import type {
+  RoleRepository,
+  PermissionRepository,
+  RolePermissionRepository,
+} from '@domain/repositories';
 import { RoleModel } from '@domain/models/role';
 
-function makeRole(id = 'role-1', tenantId = 'tenant-1'): RoleModel {
-  const r = new RoleModel({ tenantId, code: 'admin', name: 'Admin', description: null });
+function makeRole(
+  id = 'role-1',
+  tenantId = 'tenant-1',
+  code = 'admin',
+): RoleModel {
+  const r = new RoleModel({ tenantId, code, name: 'Admin', description: null });
   r.setPersistence(id, new Date(), new Date());
   return r;
 }
@@ -46,13 +58,22 @@ describe('RoleCommandHandler', () => {
   let roleRepo: jest.Mocked<RoleRepository>;
   let permissionRepo: jest.Mocked<PermissionRepository>;
   let rolePermissionRepo: jest.Mocked<RolePermissionRepository>;
+  let auditRecorder: { recordAdminAction: jest.Mock };
 
   beforeEach(() => {
     jest.clearAllMocks();
     roleRepo = createMockRoleRepo();
     permissionRepo = createMockPermissionRepo();
     rolePermissionRepo = createMockRolePermissionRepo();
-    handler = new RoleCommandHandler(roleRepo, permissionRepo, rolePermissionRepo);
+    auditRecorder = {
+      recordAdminAction: jest.fn().mockResolvedValue(undefined),
+    };
+    handler = new RoleCommandHandler(
+      roleRepo,
+      permissionRepo,
+      rolePermissionRepo,
+      auditRecorder as any,
+    );
   });
 
   describe('createRole', () => {
@@ -166,6 +187,29 @@ describe('RoleCommandHandler', () => {
         NotFoundException,
       );
 
+      expect(roleRepo.delete).not.toHaveBeenCalled();
+    });
+
+    it('SUPER_ADMIN 역할은 삭제할 수 없다', async () => {
+      roleRepo.findById.mockResolvedValue(
+        makeRole('role-super-admin', 'tenant-1', 'SUPER_ADMIN'),
+      );
+
+      await expect(
+        handler.deleteRole('tenant-1', 'role-super-admin'),
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(auditRecorder.recordAdminAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          category: 'SECURITY',
+          severity: 'WARN',
+          action: 'ACCESS_DENIED',
+          resourceType: 'role',
+          resourceId: 'role-super-admin',
+          success: false,
+        }),
+      );
       expect(roleRepo.delete).not.toHaveBeenCalled();
     });
   });

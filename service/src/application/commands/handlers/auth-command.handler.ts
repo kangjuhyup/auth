@@ -3,21 +3,40 @@ import {
   ChangePasswordDto,
   PasswordResetRequestDto,
   PasswordResetDto,
+  VerificationTokenDto,
+  TotpEnrollmentResponse,
+  TotpConfirmationDto,
+  TotpConfirmationResponse,
+  RotateRecoveryCodesResponse,
+  UpdateMfaPreferenceDto,
   UpdateProfileDto,
   SignupDto,
+  StartIdentityLinkDto,
+  StartIdentityLinkResponse,
+  CompleteIdentityLinkDto,
+  CompleteIdentityLinkResponse,
 } from '@application/dto';
 import { AuthCommandPort } from '../ports/auth-command.port';
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ulid } from 'ulid';
+import { randomBytes } from 'node:crypto';
 import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
+import { UserIdentityModel } from '@domain/models/user-identity';
 import { PasswordHashPort } from '@application/ports/password-hash.port';
 import { OtpHashPort } from '@application/ports/otp-hash.port';
 import { OtpTokenPort } from '@application/ports/otp-token.port';
 import { NotificationPort } from '@application/ports/notification.port';
+import { MfaVerificationPort } from '@application/ports/mfa-verification.port';
+import { IdpPort } from '@application/ports/idp.port';
+import { IdentityLinkSessionPort } from '@application/ports/identity-link-session.port';
 import { UserWriteRepositoryPort } from '../ports/user-write-repository.port';
 import { ConsentRepository } from '@domain/repositories/consent.repository';
+import { UserIdentityRepository } from '@domain/repositories/user-identity.repository';
+import { EventRepository } from '@domain/repositories/event.repository';
+import { IdentityProviderRepository } from '@domain/repositories/identity-provider.repository';
+import { EventModel } from '@domain/models/event';
 import { orThrow } from '@domain/utils';
 
 @Injectable()
@@ -30,8 +49,14 @@ export class AuthCommandHandler implements AuthCommandPort {
     private readonly otpHash: OtpHashPort,
     private readonly otpToken: OtpTokenPort,
     private readonly notification: NotificationPort,
+    private readonly mfaVerification: MfaVerificationPort,
     private readonly configService: ConfigService,
     private readonly consentRepo: ConsentRepository,
+    private readonly userIdentityRepo: UserIdentityRepository,
+    private readonly identityProviderRepo: IdentityProviderRepository,
+    private readonly idpPort: IdpPort,
+    private readonly identityLinkSession: IdentityLinkSessionPort,
+    private readonly eventRepo: EventRepository,
   ) {}
 
   async signup(tenantId: string, dto: SignupDto): Promise<{ userId: string }> {
@@ -91,7 +116,9 @@ export class AuthCommandHandler implements AuthCommandPort {
     userId: string,
     dto: ChangePasswordDto,
   ): Promise<void> {
-    this.logger.log(`Changing password for user ${userId} in tenant ${tenantId}`);
+    this.logger.log(
+      `Changing password for user ${userId} in tenant ${tenantId}`,
+    );
 
     const user = orThrow(
       await this.userWriteRepo.findById(userId),
@@ -106,6 +133,9 @@ export class AuthCommandHandler implements AuthCommandPort {
       currentCred.hashAlg,
     );
     if (!ok) throw new Error('InvalidPassword');
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException('New password must be different');
+    }
 
     const hashResult = await this.passwordHash.hash(dto.newPassword);
     const newCred = UserCredentialModel.password({
@@ -140,7 +170,9 @@ export class AuthCommandHandler implements AuthCommandPort {
     const rawToken = this.otpHash.generateToken(32);
     const tokenHash = this.otpHash.hash(rawToken);
 
-    const ttlSec = Number(this.configService.getOrThrow<string>('OTP_PASSWORD_RESET_TTL_SEC'));
+    const ttlSec = Number(
+      this.configService.getOrThrow<string>('OTP_PASSWORD_RESET_TTL_SEC'),
+    );
     const issuedAt = new Date();
     const expiresAt = new Date(issuedAt.getTime() + ttlSec * 1000);
 
@@ -224,12 +256,652 @@ export class AuthCommandHandler implements AuthCommandPort {
     });
   }
 
+  async requestEmailVerification(
+    tenantId: string,
+    userId: string,
+  ): Promise<void> {
+    this.logger.log(`Requesting email verification for user=${userId}`);
+
+    const user = this.assertActiveTenantUser(
+      await this.userWriteRepo.findById(userId),
+      tenantId,
+    );
+    if (!user.email) throw new BadRequestException('email is required');
+    if (user.emailVerified) return;
+
+    const rawToken = await this.createVerificationToken({
+      tenantId,
+      userId,
+      purpose: 'EMAIL_VERIFICATION',
+      contact: user.email,
+      ttlSec: this.getTtlSec('OTP_EMAIL_VERIFICATION_TTL_SEC', 900),
+    });
+
+    await this.notification.notify({
+      correlationId: ulid(),
+      tenantId,
+      userId: user.id,
+      to: { email: user.email },
+      template: 'auth.email_verification',
+      data: {
+        token: rawToken,
+        purpose: 'EMAIL_VERIFICATION',
+      },
+      channels: ['email'],
+    });
+  }
+
+  async verifyEmail(
+    tenantId: string,
+    userId: string,
+    dto: VerificationTokenDto,
+  ): Promise<void> {
+    const user = this.assertActiveTenantUser(
+      await this.userWriteRepo.findById(userId),
+      tenantId,
+    );
+    if (!user.email) throw new BadRequestException('email is required');
+
+    const tokenHash = this.hashVerificationToken({
+      token: dto.token,
+      contact: user.email,
+    });
+    const record = orThrow(
+      await this.otpToken.findValidByTokenHash({
+        tenantId,
+        purpose: 'EMAIL_VERIFICATION',
+        tokenHash,
+      }),
+      new Error('InvalidToken'),
+    );
+    if (record.userId !== userId) throw new Error('InvalidToken');
+
+    user.verifyEmail();
+    await this.userWriteRepo.save(user);
+    await this.otpToken.consume({
+      tenantId,
+      purpose: 'EMAIL_VERIFICATION',
+      otpTokenId: record.id,
+      consumedAt: new Date(),
+    });
+    await this.recordAudit({
+      tenantId,
+      userId,
+      category: 'USER',
+      action: 'UPDATE',
+      resourceType: 'user_contact',
+      resourceId: userId,
+      metadata: { contact: 'email', verified: true },
+    });
+  }
+
+  async requestPhoneVerification(
+    tenantId: string,
+    userId: string,
+  ): Promise<void> {
+    this.logger.log(`Requesting phone verification for user=${userId}`);
+
+    const user = this.assertActiveTenantUser(
+      await this.userWriteRepo.findById(userId),
+      tenantId,
+    );
+    if (!user.phone) throw new BadRequestException('phone is required');
+    if (user.phoneVerified) return;
+
+    const rawToken = await this.createVerificationToken({
+      tenantId,
+      userId,
+      purpose: 'PHONE_VERIFICATION',
+      contact: user.phone,
+      ttlSec: this.getTtlSec('OTP_PHONE_VERIFICATION_TTL_SEC', 300),
+    });
+
+    await this.notification.notify({
+      correlationId: ulid(),
+      tenantId,
+      userId: user.id,
+      to: { phone: user.phone },
+      template: 'auth.phone_verification',
+      data: {
+        token: rawToken,
+        purpose: 'PHONE_VERIFICATION',
+      },
+      channels: ['sms'],
+    });
+  }
+
+  async verifyPhone(
+    tenantId: string,
+    userId: string,
+    dto: VerificationTokenDto,
+  ): Promise<void> {
+    const user = this.assertActiveTenantUser(
+      await this.userWriteRepo.findById(userId),
+      tenantId,
+    );
+    if (!user.phone) throw new BadRequestException('phone is required');
+
+    const tokenHash = this.hashVerificationToken({
+      token: dto.token,
+      contact: user.phone,
+    });
+    const record = orThrow(
+      await this.otpToken.findValidByTokenHash({
+        tenantId,
+        purpose: 'PHONE_VERIFICATION',
+        tokenHash,
+      }),
+      new Error('InvalidToken'),
+    );
+    if (record.userId !== userId) throw new Error('InvalidToken');
+
+    user.verifyPhone();
+    await this.userWriteRepo.save(user);
+    await this.otpToken.consume({
+      tenantId,
+      purpose: 'PHONE_VERIFICATION',
+      otpTokenId: record.id,
+      consumedAt: new Date(),
+    });
+    await this.recordAudit({
+      tenantId,
+      userId,
+      category: 'USER',
+      action: 'UPDATE',
+      resourceType: 'user_contact',
+      resourceId: userId,
+      metadata: { contact: 'phone', verified: true },
+    });
+  }
+
+  async beginTotpEnrollment(
+    tenantId: string,
+    userId: string,
+  ): Promise<TotpEnrollmentResponse> {
+    const user = this.assertActiveTenantUser(
+      await this.userWriteRepo.findById(userId),
+      tenantId,
+    );
+
+    const secret = this.mfaVerification.generateTotpSecret();
+    const issuer = this.getStringConfig('OTP_TOTP_ISSUER', 'Auth');
+    const accountName = user.email ?? user.username;
+    const credential = UserCredentialModel.of({
+      type: 'totp',
+      secretHash: secret,
+      hashAlg: 'totp-sha1',
+      hashParams: {
+        issuer,
+        accountName,
+        pendingEnrollment: true,
+      },
+      hashVersion: 1,
+      enabled: false,
+    });
+
+    await this.userWriteRepo.createCredential(user.id, credential);
+
+    return TotpEnrollmentResponse.of({
+      secret,
+      otpauthUrl: this.mfaVerification.buildTotpUri({
+        issuer,
+        accountName,
+        secret,
+      }),
+    });
+  }
+
+  async confirmTotpEnrollment(
+    tenantId: string,
+    userId: string,
+    dto: TotpConfirmationDto,
+  ): Promise<TotpConfirmationResponse> {
+    const user = this.assertActiveTenantUser(
+      await this.userWriteRepo.findById(userId),
+      tenantId,
+    );
+
+    const pendingCredentials = await this.userWriteRepo.findCredentialsByType(
+      userId,
+      ['totp'],
+      { enabled: false },
+    );
+    const pending = pendingCredentials.find(
+      (credential) => credential.hashParams?.pendingEnrollment === true,
+    );
+    if (!pending) throw new Error('TotpEnrollmentNotFound');
+
+    const verified = this.mfaVerification.verifyTotp(
+      pending.secretHash,
+      dto.code,
+    );
+    if (!verified) {
+      await this.recordAudit({
+        tenantId,
+        userId,
+        category: 'SECURITY',
+        severity: 'WARN',
+        action: 'ACCESS_DENIED',
+        resourceType: 'mfa',
+        resourceId: 'totp',
+        success: false,
+        reason: 'InvalidTotpCode',
+        metadata: { method: 'totp', phase: 'enrollment' },
+      });
+      throw new Error('InvalidTotpCode');
+    }
+
+    const activeCredentials = await this.userWriteRepo.findCredentialsByType(
+      userId,
+      ['totp'],
+    );
+    for (const credential of activeCredentials) {
+      credential.disable();
+      await this.userWriteRepo.saveCredential(credential);
+    }
+
+    pending.enable();
+    pending.updateHashParams({
+      ...(pending.hashParams ?? {}),
+      pendingEnrollment: false,
+      enrolledAt: new Date().toISOString(),
+    });
+    await this.userWriteRepo.saveCredential(pending);
+
+    const recoveryCodes = await this.createRecoveryCodes(userId);
+    user.changeMfaEnabled(true);
+    await this.userWriteRepo.save(user);
+
+    await this.recordAudit({
+      tenantId,
+      userId,
+      category: 'SECURITY',
+      action: 'UPDATE',
+      resourceType: 'mfa',
+      resourceId: 'totp',
+      metadata: {
+        method: 'totp',
+        enabled: true,
+        recoveryCodeCount: recoveryCodes.length,
+      },
+    });
+    return TotpConfirmationResponse.of({ recoveryCodes });
+  }
+
+  async disableTotp(tenantId: string, userId: string): Promise<void> {
+    const user = this.assertActiveTenantUser(
+      await this.userWriteRepo.findById(userId),
+      tenantId,
+    );
+
+    const credentials = await this.userWriteRepo.findCredentialsByType(userId, [
+      'totp',
+      'recovery_code',
+    ]);
+    const retiredAt = new Date().toISOString();
+    for (const credential of credentials) {
+      credential.disable();
+      if (credential.type === 'recovery_code') {
+        credential.updateHashParams({
+          ...(credential.hashParams ?? {}),
+          retiredAt,
+        });
+      }
+      await this.userWriteRepo.saveCredential(credential);
+    }
+    user.changeMfaEnabled(false);
+    await this.userWriteRepo.save(user);
+    await this.recordAudit({
+      tenantId,
+      userId,
+      category: 'SECURITY',
+      action: 'UPDATE',
+      resourceType: 'mfa',
+      resourceId: 'totp',
+      metadata: { method: 'totp', enabled: false },
+    });
+  }
+
+  async rotateRecoveryCodes(
+    tenantId: string,
+    userId: string,
+  ): Promise<RotateRecoveryCodesResponse> {
+    this.assertActiveTenantUser(
+      await this.userWriteRepo.findById(userId),
+      tenantId,
+    );
+
+    const credentials = await this.userWriteRepo.findCredentialsByType(
+      userId,
+      ['recovery_code'],
+      { enabled: null },
+    );
+    let retiredCount = 0;
+    const retiredAt = new Date().toISOString();
+
+    for (const credential of credentials) {
+      if (credential.hashParams?.retiredAt) continue;
+
+      credential.disable();
+      credential.updateHashParams({
+        ...(credential.hashParams ?? {}),
+        retiredAt,
+      });
+      await this.userWriteRepo.saveCredential(credential);
+      retiredCount += 1;
+    }
+
+    const recoveryCodes = await this.createRecoveryCodes(userId);
+
+    await this.recordAudit({
+      tenantId,
+      userId,
+      category: 'SECURITY',
+      action: 'UPDATE',
+      resourceType: 'mfa-recovery-code',
+      resourceId: userId,
+      metadata: {
+        recoveryCodeCount: recoveryCodes.length,
+        retiredCount,
+      },
+    });
+
+    return RotateRecoveryCodesResponse.of({ recoveryCodes });
+  }
+
+  async updateMfaPreference(
+    tenantId: string,
+    userId: string,
+    dto: UpdateMfaPreferenceDto,
+  ): Promise<void> {
+    const user = this.assertActiveTenantUser(
+      await this.userWriteRepo.findById(userId),
+      tenantId,
+    );
+
+    if (dto.enabled) {
+      const credentials = await this.userWriteRepo.findCredentialsByType(
+        userId,
+        ['totp', 'webauthn', 'recovery_code'],
+      );
+      if (credentials.length === 0) {
+        throw new BadRequestException('MFA credential is required');
+      }
+    }
+
+    user.changeMfaEnabled(dto.enabled);
+    await this.userWriteRepo.save(user);
+    await this.recordAudit({
+      tenantId,
+      userId,
+      category: 'SECURITY',
+      action: 'UPDATE',
+      resourceType: 'mfa',
+      resourceId: 'preference',
+      metadata: { enabled: dto.enabled },
+    });
+  }
+
+  async startIdentityLink(
+    tenantId: string,
+    userId: string,
+    dto: StartIdentityLinkDto,
+  ): Promise<StartIdentityLinkResponse> {
+    this.assertActiveTenantUser(
+      await this.userWriteRepo.findById(userId),
+      tenantId,
+    );
+
+    const idpConfig = await this.identityProviderRepo.findByTenantAndProvider(
+      tenantId,
+      dto.provider,
+    );
+    if (!idpConfig || !idpConfig.enabled) {
+      throw new Error('IdentityProviderNotFound');
+    }
+    if (idpConfig.protocol !== 'oauth2') {
+      throw new BadRequestException(
+        'Only OAuth2 identity provider is supported',
+      );
+    }
+
+    const state = randomBytes(32).toString('base64url');
+    const returnTo = this.normalizeReturnTo(dto.returnTo);
+    await this.identityLinkSession.create(
+      {
+        state,
+        tenantId,
+        tenantCode: dto.tenantCode,
+        userId,
+        provider: dto.provider,
+        redirectUri: dto.redirectUri,
+        returnTo,
+        createdAt: new Date().toISOString(),
+      },
+      this.getTtlSec('IDENTITY_LINK_STATE_TTL_SEC', 300),
+    );
+
+    return StartIdentityLinkResponse.of({
+      authorizationUrl: this.idpPort.getAuthorizationUrl(
+        idpConfig.provider,
+        idpConfig.oauthConfig,
+        idpConfig.clientId,
+        dto.redirectUri,
+        state,
+      ),
+    });
+  }
+
+  async completeIdentityLink(
+    dto: CompleteIdentityLinkDto,
+  ): Promise<CompleteIdentityLinkResponse> {
+    if (!dto.state) {
+      return CompleteIdentityLinkResponse.of({
+        redirectTo: this.redirectWithIdentityLinkError(null, 'invalid_state'),
+      });
+    }
+
+    const session = await this.identityLinkSession.consume(dto.state);
+    if (!session) {
+      return CompleteIdentityLinkResponse.of({
+        redirectTo: this.redirectWithIdentityLinkError(null, 'invalid_state'),
+      });
+    }
+    if (dto.provider && dto.provider !== session.provider) {
+      return CompleteIdentityLinkResponse.of({
+        redirectTo: this.redirectWithIdentityLinkError(
+          session.returnTo,
+          'idp_provider_mismatch',
+        ),
+      });
+    }
+    if (dto.error) {
+      return CompleteIdentityLinkResponse.of({
+        redirectTo: this.redirectWithIdentityLinkError(
+          session.returnTo,
+          dto.error,
+        ),
+      });
+    }
+    if (!dto.code) {
+      return CompleteIdentityLinkResponse.of({
+        redirectTo: this.redirectWithIdentityLinkError(
+          session.returnTo,
+          'idp_no_code',
+        ),
+      });
+    }
+
+    const idpConfig = await this.identityProviderRepo.findByTenantAndProvider(
+      session.tenantId,
+      session.provider,
+    );
+    if (!idpConfig || !idpConfig.enabled || idpConfig.protocol !== 'oauth2') {
+      return CompleteIdentityLinkResponse.of({
+        redirectTo: this.redirectWithIdentityLinkError(
+          session.returnTo,
+          'idp_not_found',
+        ),
+      });
+    }
+
+    try {
+      const userInfo = await this.idpPort.exchangeCode(
+        idpConfig.provider,
+        idpConfig.oauthConfig,
+        idpConfig.clientId,
+        idpConfig.clientSecret,
+        dto.code,
+        session.redirectUri,
+      );
+      if (!userInfo.sub) {
+        return CompleteIdentityLinkResponse.of({
+          redirectTo: this.redirectWithIdentityLinkError(
+            session.returnTo,
+            'idp_missing_subject',
+          ),
+        });
+      }
+
+      const existing = await this.userIdentityRepo.findByProviderSub(
+        session.tenantId,
+        session.provider,
+        userInfo.sub,
+      );
+      if (existing && existing.userId !== session.userId) {
+        await this.recordAudit({
+          tenantId: session.tenantId,
+          userId: session.userId,
+          category: 'SECURITY',
+          severity: 'WARN',
+          action: 'ACCESS_DENIED',
+          resourceType: 'identity_provider_link',
+          resourceId: existing.id,
+          success: false,
+          reason: 'IdentityProviderAccountAlreadyLinked',
+          metadata: { provider: session.provider },
+        });
+        return CompleteIdentityLinkResponse.of({
+          redirectTo: this.redirectWithIdentityLinkError(
+            session.returnTo,
+            'idp_already_linked',
+          ),
+        });
+      }
+
+      const userLinks = await this.userIdentityRepo.listByUser(
+        session.tenantId,
+        session.userId,
+      );
+      const sameProviderLink = userLinks.find(
+        (identity) => identity.provider === session.provider,
+      );
+      if (sameProviderLink && sameProviderLink.providerSub !== userInfo.sub) {
+        return CompleteIdentityLinkResponse.of({
+          redirectTo: this.redirectWithIdentityLinkError(
+            session.returnTo,
+            'idp_provider_already_linked',
+          ),
+        });
+      }
+
+      if (!existing) {
+        await this.userIdentityRepo.save(
+          new UserIdentityModel({
+            tenantId: session.tenantId,
+            userId: session.userId,
+            provider: session.provider,
+            providerSub: userInfo.sub,
+            email: userInfo.email ?? null,
+            profileJson: userInfo.profile ?? null,
+            linkedAt: new Date(),
+          }),
+        );
+      }
+
+      await this.recordAudit({
+        tenantId: session.tenantId,
+        userId: session.userId,
+        category: 'SECURITY',
+        action: 'LINK_IDP',
+        resourceType: 'identity_provider_link',
+        resourceId: existing?.id ?? null,
+        metadata: {
+          provider: session.provider,
+          email: userInfo.email ?? null,
+          alreadyLinked: Boolean(existing),
+        },
+      });
+      return CompleteIdentityLinkResponse.of({
+        redirectTo: this.redirectWithIdentityLinkSuccess(
+          session.returnTo,
+          session.provider,
+        ),
+      });
+    } catch {
+      return CompleteIdentityLinkResponse.of({
+        redirectTo: this.redirectWithIdentityLinkError(
+          session.returnTo,
+          'idp_exchange_failed',
+        ),
+      });
+    }
+  }
+
+  async unlinkIdentity(
+    tenantId: string,
+    userId: string,
+    identityId: string,
+  ): Promise<void> {
+    const user = this.assertActiveTenantUser(
+      await this.userWriteRepo.findById(userId),
+      tenantId,
+    );
+    const identity = orThrow(
+      await this.userIdentityRepo.findByIdForUser(tenantId, userId, identityId),
+      new Error('IdentityLinkNotFound'),
+    );
+    const links = await this.userIdentityRepo.listByUser(tenantId, userId);
+
+    if (!user.passwordCredential && links.length <= 1) {
+      await this.recordAudit({
+        tenantId,
+        userId,
+        category: 'SECURITY',
+        severity: 'WARN',
+        action: 'ACCESS_DENIED',
+        resourceType: 'identity_provider_link',
+        resourceId: identity.id,
+        success: false,
+        reason: 'LastLoginMethodCannotBeUnlinked',
+        metadata: { provider: identity.provider },
+      });
+      throw new Error('LastLoginMethodCannotBeUnlinked');
+    }
+
+    await this.userIdentityRepo.delete(identity.id);
+    await this.recordAudit({
+      tenantId,
+      userId,
+      category: 'SECURITY',
+      action: 'UNLINK_IDP',
+      resourceType: 'identity_provider_link',
+      resourceId: identity.id,
+      metadata: {
+        provider: identity.provider,
+        email: identity.email ?? null,
+      },
+    });
+  }
+
   async updateProfile(
     tenantId: string,
     userId: string,
     dto: UpdateProfileDto,
   ): Promise<void> {
-    this.logger.log(`Updating profile for user ${userId} in tenant ${tenantId}`);
+    this.logger.log(
+      `Updating profile for user ${userId} in tenant ${tenantId}`,
+    );
 
     const user = orThrow(
       await this.userWriteRepo.findById(userId),
@@ -248,6 +920,150 @@ export class AuthCommandHandler implements AuthCommandPort {
     await this.userWriteRepo.save(user);
   }
 
+  private async createVerificationToken(params: {
+    tenantId: string;
+    userId: string;
+    purpose: 'EMAIL_VERIFICATION' | 'PHONE_VERIFICATION';
+    contact: string;
+    ttlSec: number;
+  }): Promise<string> {
+    const requestId = ulid();
+    const rawToken = this.otpHash.generateToken(32);
+    const tokenHash = this.hashVerificationToken({
+      token: rawToken,
+      contact: params.contact,
+    });
+    const issuedAt = new Date();
+    const expiresAt = new Date(issuedAt.getTime() + params.ttlSec * 1000);
+
+    await this.otpToken.create({
+      tenantId: params.tenantId,
+      userId: params.userId,
+      purpose: params.purpose,
+      requestId,
+      tokenHash,
+      issuedAt,
+      expiresAt,
+    });
+
+    return rawToken;
+  }
+
+  private hashVerificationToken(params: {
+    token: string;
+    contact: string;
+  }): string {
+    return this.otpHash.hash(`${params.contact.trim()}:${params.token.trim()}`);
+  }
+
+  private getTtlSec(key: string, fallback: number): number {
+    const raw = this.configService.get<string>(key);
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  }
+
+  private getStringConfig(key: string, fallback: string): string {
+    const value = this.configService.get<string>(key);
+    return value?.trim() ? value.trim() : fallback;
+  }
+
+  private normalizeReturnTo(returnTo: string | null | undefined): string {
+    if (!returnTo || !returnTo.startsWith('/') || returnTo.startsWith('//')) {
+      return '/admin/security';
+    }
+    return returnTo;
+  }
+
+  private redirectWithIdentityLinkSuccess(
+    returnTo: string | null | undefined,
+    provider: string,
+  ): string {
+    return this.addQueryParam(this.normalizeReturnTo(returnTo), {
+      identityLinked: provider,
+    });
+  }
+
+  private redirectWithIdentityLinkError(
+    returnTo: string | null | undefined,
+    error: string,
+  ): string {
+    return this.addQueryParam(this.normalizeReturnTo(returnTo), {
+      identityError: error,
+    });
+  }
+
+  private addQueryParam(path: string, params: Record<string, string>): string {
+    const url = new URL(path, 'http://localhost');
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
+    }
+    return `${url.pathname}${url.search}`;
+  }
+
+  private async createRecoveryCodes(userId: string): Promise<string[]> {
+    const batchId = ulid();
+    const issuedAt = new Date().toISOString();
+    const codes: string[] = [];
+    for (let i = 0; i < 10; i += 1) {
+      const code = this.otpHash.generateToken(10);
+      const hash = await this.passwordHash.hash(code);
+      const credential = UserCredentialModel.of({
+        type: 'recovery_code',
+        secretHash: hash.hash,
+        hashAlg: hash.alg,
+        hashParams: {
+          ...(hash.params ?? {}),
+          batchId,
+          issuedAt,
+        },
+        hashVersion: hash.version,
+        enabled: true,
+      });
+      await this.userWriteRepo.createCredential(userId, credential);
+      codes.push(code);
+    }
+    return codes;
+  }
+
+  private async recordAudit(params: {
+    tenantId: string;
+    userId?: string | null;
+    category: 'AUTH' | 'USER' | 'SECURITY';
+    severity?: 'INFO' | 'WARN' | 'ERROR';
+    action: 'UPDATE' | 'LINK_IDP' | 'UNLINK_IDP' | 'ACCESS_DENIED';
+    resourceType: string;
+    resourceId?: string | null;
+    success?: boolean;
+    reason?: string | null;
+    metadata?: Record<string, unknown> | null;
+  }): Promise<void> {
+    await this.eventRepo.save(
+      new EventModel({
+        tenantId: params.tenantId,
+        userId: params.userId ?? null,
+        category: params.category,
+        severity: params.severity ?? 'INFO',
+        action: params.action,
+        resourceType: params.resourceType,
+        resourceId: params.resourceId ?? null,
+        success: params.success ?? true,
+        reason: params.reason ?? null,
+        metadata: params.metadata ?? null,
+        occurredAt: new Date(),
+      }),
+    );
+  }
+
+  private assertActiveTenantUser(
+    user: UserModel | undefined,
+    tenantId: string,
+  ): UserModel {
+    const found = orThrow(user, new Error('UserNotFound'));
+    if (found.tenantId !== tenantId) throw new Error('TenantMismatch');
+    if (found.status === 'WITHDRAWN') throw new Error('UserAlreadyWithdrawn');
+    return found;
+  }
+
   async revokeConsent(
     tenantId: string,
     userId: string,
@@ -258,11 +1074,7 @@ export class AuthCommandHandler implements AuthCommandPort {
     );
 
     const consent = orThrow(
-      await this.consentRepo.findByTenantUserClient(
-        tenantId,
-        userId,
-        clientId,
-      ),
+      await this.consentRepo.findByTenantUserClient(tenantId, userId, clientId),
       new Error('ConsentNotFound'),
     );
     if (consent.isRevoked) return;

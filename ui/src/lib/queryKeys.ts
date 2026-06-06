@@ -9,12 +9,57 @@ export const queryKeys = {
       detail: (id: string) =>
         [...queryKeys.admin.tenants.all, 'detail', id] as const,
     },
+    auditLogs: {
+      all: ['admin', 'audit-logs'] as const,
+      list: (
+        tenantId: string,
+        filters: {
+          page?: number;
+          limit?: number;
+          from?: string;
+          to?: string;
+          userId?: string;
+          clientId?: string;
+          action?: string;
+          category?: string;
+          severity?: string;
+          correlationId?: string;
+        },
+      ) =>
+        [...queryKeys.admin.auditLogs.all, tenantId, 'list', filters] as const,
+    },
     clients: {
       all: ['admin', 'clients'] as const,
       list: (tenantId: string, filters: { page?: number; limit?: number }) =>
         [...queryKeys.admin.clients.all, tenantId, 'list', filters] as const,
       detail: (tenantId: string, id: string) =>
         [...queryKeys.admin.clients.all, tenantId, 'detail', id] as const,
+      authPolicy: (tenantId: string, id: string) =>
+        [...queryKeys.admin.clients.all, tenantId, 'auth-policy', id] as const,
+    },
+    scopes: {
+      all: ['admin', 'scopes'] as const,
+      list: (tenantId: string, filters: { page?: number; limit?: number }) =>
+        [...queryKeys.admin.scopes.all, tenantId, 'list', filters] as const,
+      detail: (tenantId: string, id: string) =>
+        [...queryKeys.admin.scopes.all, tenantId, 'detail', id] as const,
+    },
+    customGrants: {
+      all: ['admin', 'custom-grants'] as const,
+      list: (tenantId: string, filters: { page?: number; limit?: number }) =>
+        [
+          ...queryKeys.admin.customGrants.all,
+          tenantId,
+          'list',
+          filters,
+        ] as const,
+      detail: (tenantId: string, id: string) =>
+        [...queryKeys.admin.customGrants.all, tenantId, 'detail', id] as const,
+    },
+    policies: {
+      all: ['admin', 'policies'] as const,
+      tenant: (tenantId: string) =>
+        [...queryKeys.admin.policies.all, tenantId] as const,
     },
     roles: {
       all: ['admin', 'roles'] as const,
@@ -35,18 +80,64 @@ export const queryKeys = {
     identityProviders: {
       all: ['admin', 'identity-providers'] as const,
       list: (tenantId: string, filters: { page?: number; limit?: number }) =>
-        [...queryKeys.admin.identityProviders.all, tenantId, 'list', filters] as const,
+        [
+          ...queryKeys.admin.identityProviders.all,
+          tenantId,
+          'list',
+          filters,
+        ] as const,
       detail: (tenantId: string, id: string) =>
-        [...queryKeys.admin.identityProviders.all, tenantId, 'detail', id] as const,
+        [
+          ...queryKeys.admin.identityProviders.all,
+          tenantId,
+          'detail',
+          id,
+        ] as const,
     },
     users: {
       all: ['admin', 'users'] as const,
-      list: (tenantId: string, filters: { page?: number; limit?: number }) =>
-        [...queryKeys.admin.users.all, tenantId, 'list', filters] as const,
+      list: (
+        tenantId: string,
+        filters: { page?: number; limit?: number; search?: string },
+      ) => [...queryKeys.admin.users.all, tenantId, 'list', filters] as const,
       detail: (tenantId: string, id: string) =>
         [...queryKeys.admin.users.all, tenantId, 'detail', id] as const,
       roles: (tenantId: string, userId: string) =>
         [...queryKeys.admin.users.all, tenantId, 'roles', userId] as const,
+      sessions: (tenantId: string, userId: string) =>
+        [...queryKeys.admin.users.all, tenantId, 'sessions', userId] as const,
+      consents: (
+        tenantId: string,
+        userId: string,
+        filters: { page?: number; limit?: number },
+      ) =>
+        [
+          ...queryKeys.admin.users.all,
+          tenantId,
+          'consents',
+          userId,
+          filters,
+        ] as const,
+      consentHistory: (
+        tenantId: string,
+        userId: string,
+        filters: { page?: number; limit?: number },
+      ) =>
+        [
+          ...queryKeys.admin.users.all,
+          tenantId,
+          'consent-history',
+          userId,
+          filters,
+        ] as const,
     },
+  },
+  auth: {
+    adminSession: ['auth', 'admin-session'] as const,
+    profile: (tenantCode: string) => ['auth', tenantCode, 'profile'] as const,
+    recoveryCodeStatus: (tenantCode: string) =>
+      ['auth', tenantCode, 'recovery-code-status'] as const,
+    identityLinks: (tenantCode: string) =>
+      ['auth', tenantCode, 'identity-links'] as const,
   },
 } as const;

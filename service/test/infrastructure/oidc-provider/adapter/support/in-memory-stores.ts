@@ -1,4 +1,5 @@
 import { OidcModelOrmEntity } from '@infrastructure/mikro-orm/entities/oidc-model';
+import { OidcSessionIndexOrmEntity } from '@infrastructure/mikro-orm/entities/oidc-session-index';
 
 type StringEntry = {
   type: 'string';
@@ -80,7 +81,9 @@ export class InMemoryRedis {
   }
 
   private isExpired(entry: Entry): boolean {
-    return entry.expiresAt !== undefined && entry.expiresAt <= this.currentTime();
+    return (
+      entry.expiresAt !== undefined && entry.expiresAt <= this.currentTime()
+    );
   }
 
   private getEntry(key: string): Entry | undefined {
@@ -141,7 +144,10 @@ export class InMemoryRedis {
       return -1;
     }
 
-    return Math.max(0, Math.ceil((entry.expiresAt - this.currentTime()) / 1000));
+    return Math.max(
+      0,
+      Math.ceil((entry.expiresAt - this.currentTime()) / 1000),
+    );
   }
 
   async del(...keys: string[]): Promise<number> {
@@ -210,16 +216,31 @@ export class InMemoryRedis {
 type Where = Record<string, unknown>;
 
 function matchesWhere(
-  entity: OidcModelOrmEntity,
+  entity: OidcModelOrmEntity | OidcSessionIndexOrmEntity,
   where: Where,
 ): boolean {
-  return Object.entries(where).every(
-    ([key, value]) => (entity as unknown as Record<string, unknown>)[key] === value,
-  );
+  return Object.entries(where).every(([key, value]) => {
+    if (key === '$or' && Array.isArray(value)) {
+      return value.some((candidate) => matchesWhere(entity, candidate));
+    }
+
+    const actual = (entity as unknown as Record<string, unknown>)[key];
+    if (isRecord(value) && '$in' in value && Array.isArray(value.$in)) {
+      return value.$in.includes(actual);
+    }
+    if (isRecord(value) && '$gt' in value) {
+      return actual instanceof Date && value.$gt instanceof Date
+        ? actual > value.$gt
+        : String(actual) > String(value.$gt);
+    }
+
+    return actual === value;
+  });
 }
 
 class LightweightRdbStore {
-  rows: OidcModelOrmEntity[] = [];
+  oidcModels: OidcModelOrmEntity[] = [];
+  sessionIndexes: OidcSessionIndexOrmEntity[] = [];
 }
 
 export class LightweightEntityManager {
@@ -230,29 +251,69 @@ export class LightweightEntityManager {
   }
 
   async findOne(
-    _entity: typeof OidcModelOrmEntity,
+    entity: typeof OidcModelOrmEntity | typeof OidcSessionIndexOrmEntity,
     where: Where,
-  ): Promise<OidcModelOrmEntity | null> {
-    return this.store.rows.find((row) => matchesWhere(row, where)) ?? null;
+  ): Promise<OidcModelOrmEntity | OidcSessionIndexOrmEntity | null> {
+    return this.rowsFor(entity).find((row) => matchesWhere(row, where)) ?? null;
+  }
+
+  async find(
+    entity: typeof OidcModelOrmEntity | typeof OidcSessionIndexOrmEntity,
+    where: Where,
+    options?: { orderBy?: Record<string, 'ASC' | 'DESC'> },
+  ): Promise<Array<OidcModelOrmEntity | OidcSessionIndexOrmEntity>> {
+    const rows = this.rowsFor(entity).filter((row) => matchesWhere(row, where));
+    const [orderKey, direction] =
+      Object.entries(options?.orderBy ?? {})[0] ?? [];
+    if (orderKey) {
+      rows.sort((left, right) => {
+        const leftValue = (left as any)[orderKey];
+        const rightValue = (right as any)[orderKey];
+        const result =
+          leftValue instanceof Date && rightValue instanceof Date
+            ? leftValue.getTime() - rightValue.getTime()
+            : String(leftValue).localeCompare(String(rightValue));
+        return direction === 'DESC' ? -result : result;
+      });
+    }
+    return rows;
   }
 
   create(
-    EntityClass: typeof OidcModelOrmEntity,
-    data: Partial<OidcModelOrmEntity>,
-  ): OidcModelOrmEntity {
+    EntityClass: typeof OidcModelOrmEntity | typeof OidcSessionIndexOrmEntity,
+    data: Partial<OidcModelOrmEntity & OidcSessionIndexOrmEntity>,
+  ): OidcModelOrmEntity | OidcSessionIndexOrmEntity {
     const entity = Object.assign(new EntityClass(), data);
-    this.store.rows.push(entity);
+    this.rowsFor(EntityClass).push(entity);
     return entity;
   }
 
   async flush(): Promise<void> {}
 
   async nativeDelete(
-    _entity: typeof OidcModelOrmEntity,
+    entity: typeof OidcModelOrmEntity | typeof OidcSessionIndexOrmEntity,
     where: Where,
   ): Promise<number> {
-    const before = this.store.rows.length;
-    this.store.rows = this.store.rows.filter((row) => !matchesWhere(row, where));
-    return before - this.store.rows.length;
+    const rows = this.rowsFor(entity);
+    const before = rows.length;
+    const nextRows = rows.filter((row) => !matchesWhere(row, where));
+    if (entity === OidcSessionIndexOrmEntity) {
+      this.store.sessionIndexes = nextRows as OidcSessionIndexOrmEntity[];
+    } else {
+      this.store.oidcModels = nextRows as OidcModelOrmEntity[];
+    }
+    return before - nextRows.length;
   }
+
+  private rowsFor(
+    entity: typeof OidcModelOrmEntity | typeof OidcSessionIndexOrmEntity,
+  ): Array<OidcModelOrmEntity | OidcSessionIndexOrmEntity> {
+    return entity === OidcSessionIndexOrmEntity
+      ? this.store.sessionIndexes
+      : this.store.oidcModels;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, any> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

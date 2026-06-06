@@ -21,6 +21,7 @@ export class UserMapper {
       phone: entity.phone ?? null,
       phoneVerified: entity.phoneVerified,
       status: entity.status,
+      mfaEnabled: entity.mfaEnabled ?? false,
       passwordCredential: credential,
     }).setPersistence(
       entity.id,

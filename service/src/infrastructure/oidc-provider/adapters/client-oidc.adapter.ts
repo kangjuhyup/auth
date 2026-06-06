@@ -79,7 +79,7 @@ export class ClientOidcAdapter implements Adapter {
       client_id: client.clientId,
       client_secret: clientSecret,
       redirect_uris: client.redirectUris,
-      grant_types: client.grantTypes,
+      grant_types: toProviderGrantTypes(client.grantTypes),
       response_types: client.responseTypes,
       token_endpoint_auth_method: client.tokenEndpointAuthMethod,
       scope: client.scope,
@@ -89,4 +89,8 @@ export class ClientOidcAdapter implements Adapter {
       frontchannel_logout_uri: client.frontchannelLogoutUri ?? undefined,
     } as AdapterPayload;
   }
+}
+
+function toProviderGrantTypes(grantTypes: string[]): string[] {
+  return grantTypes.filter((grantType) => grantType !== 'refresh_token');
 }

@@ -1,10 +1,17 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { Transactional } from '@application/decorators/transactional.decorator';
 import { TransactionManagerPort } from '@application/ports/transaction-manager.port';
 import { PolicyCommandPort } from '../ports/policy-command.port';
+import type { AuditContext, UpdateTenantPoliciesDto } from '@application/dto';
 import { TenantRepository, TenantConfigRepository } from '@domain/repositories';
 import { TenantConfigModel } from '@domain/models/tenant-config';
 import { orThrow } from '@domain/utils';
+import { AuditRecorder } from '@application/services/audit-recorder';
 
 @Injectable()
 export class PolicyCommandHandler implements PolicyCommandPort {
@@ -14,12 +21,14 @@ export class PolicyCommandHandler implements PolicyCommandPort {
     private readonly tenantRepo: TenantRepository,
     private readonly tenantConfigRepo: TenantConfigRepository,
     protected readonly transactionManager: TransactionManagerPort,
+    private readonly auditRecorder?: AuditRecorder,
   ) {}
 
   @Transactional()
   async updatePolicies(
     tenantId: string,
-    policies: Record<string, unknown>,
+    policies: UpdateTenantPoliciesDto,
+    auditContext?: AuditContext,
   ): Promise<void> {
     if (!policies || typeof policies !== 'object' || Array.isArray(policies)) {
       throw new BadRequestException('Invalid policies payload');
@@ -46,6 +55,14 @@ export class PolicyCommandHandler implements PolicyCommandPort {
 
     config.updatePolicies(policies);
     await this.tenantConfigRepo.save(config);
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      action: 'CONFIG_CHANGE',
+      resourceType: 'tenant-policy',
+      resourceId: tenantId,
+      metadata: { sections: Object.keys(policies) },
+      auditContext,
+    });
 
     this.logger.log(`Updated policies for tenant=${tenantId}`);
   }

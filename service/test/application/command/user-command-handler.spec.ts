@@ -1,9 +1,18 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { UserCommandHandler } from '@application/commands/handlers/user-command.handler';
 import type { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
-import type { RoleRepository, RoleAssignmentRepository } from '@domain/repositories';
-import type { PasswordHashPort, HashResult, HashPolicy } from '@application/ports/password-hash.port';
+import type {
+  RoleRepository,
+  RoleAssignmentRepository,
+} from '@domain/repositories';
+import type {
+  PasswordHashPort,
+  HashResult,
+  HashPolicy,
+} from '@application/ports/password-hash.port';
+import type { UserSessionPort } from '@application/ports/user-session.port';
 import { UserModel } from '@domain/models/user';
+import { UserCredentialModel } from '@domain/models/user-credential';
 import { RoleModel } from '@domain/models/role';
 
 function makeUser(id = 'user-1', tenantId = 'tenant-1'): UserModel {
@@ -35,14 +44,24 @@ function createMockUserWriteRepo(): jest.Mocked<UserWriteRepositoryPort> {
     list: jest.fn().mockResolvedValue({ items: [], total: 0 }),
     save: jest.fn().mockResolvedValue(undefined),
     findCredentialsByType: jest.fn().mockResolvedValue([]),
+    createCredential: jest.fn().mockResolvedValue(undefined),
     saveCredential: jest.fn().mockResolvedValue(undefined),
   };
 }
 
 function createMockPasswordHash(): jest.Mocked<PasswordHashPort> {
-  const result: HashResult = { alg: 'argon2id', params: {}, version: 1, hash: 'hashed' };
+  const result: HashResult = {
+    alg: 'argon2id',
+    params: {},
+    version: 1,
+    hash: 'hashed',
+  };
   return {
-    defaultPolicy: jest.fn().mockReturnValue({ alg: 'argon2id', params: {}, version: 1 } as HashPolicy),
+    defaultPolicy: jest.fn().mockReturnValue({
+      alg: 'argon2id',
+      params: {},
+      version: 1,
+    } as HashPolicy),
     hash: jest.fn().mockResolvedValue(result),
     verify: jest.fn().mockResolvedValue(true),
   };
@@ -71,12 +90,22 @@ function createMockRoleAssignment(): jest.Mocked<RoleAssignmentRepository> {
   };
 }
 
+function createMockUserSession(): jest.Mocked<UserSessionPort> {
+  return {
+    listUserSessions: jest.fn().mockResolvedValue([]),
+    revokeUserSession: jest.fn().mockResolvedValue(1),
+    revokeUserSessions: jest.fn().mockResolvedValue(2),
+  };
+}
+
 describe('UserCommandHandler', () => {
   let handler: UserCommandHandler;
   let userWriteRepo: jest.Mocked<UserWriteRepositoryPort>;
   let roleRepo: jest.Mocked<RoleRepository>;
   let roleAssignment: jest.Mocked<RoleAssignmentRepository>;
   let passwordHash: jest.Mocked<PasswordHashPort>;
+  let userSession: jest.Mocked<UserSessionPort>;
+  let auditRecorder: { recordAdminAction: jest.Mock };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -84,7 +113,18 @@ describe('UserCommandHandler', () => {
     roleRepo = createMockRoleRepo();
     roleAssignment = createMockRoleAssignment();
     passwordHash = createMockPasswordHash();
-    handler = new UserCommandHandler(userWriteRepo, roleRepo, roleAssignment, passwordHash);
+    userSession = createMockUserSession();
+    auditRecorder = {
+      recordAdminAction: jest.fn().mockResolvedValue(undefined),
+    };
+    handler = new UserCommandHandler(
+      userWriteRepo,
+      roleRepo,
+      roleAssignment,
+      passwordHash,
+      userSession,
+      auditRecorder as any,
+    );
   });
 
   describe('assignRole', () => {
@@ -120,7 +160,9 @@ describe('UserCommandHandler', () => {
     });
 
     it('유저 tenantId 불일치 시 NotFoundException을 던진다', async () => {
-      userWriteRepo.findById.mockResolvedValue(makeUser('user-1', 'other-tenant'));
+      userWriteRepo.findById.mockResolvedValue(
+        makeUser('user-1', 'other-tenant'),
+      );
 
       await expect(
         handler.assignRole('tenant-1', 'user-1', 'role-1'),
@@ -166,7 +208,9 @@ describe('UserCommandHandler', () => {
     });
 
     it('유저 tenantId 불일치 시 NotFoundException을 던진다', async () => {
-      userWriteRepo.findById.mockResolvedValue(makeUser('user-1', 'other-tenant'));
+      userWriteRepo.findById.mockResolvedValue(
+        makeUser('user-1', 'other-tenant'),
+      );
 
       await expect(
         handler.removeRole('tenant-1', 'user-1', 'role-1'),
@@ -179,7 +223,10 @@ describe('UserCommandHandler', () => {
       userWriteRepo.findByUsername.mockResolvedValue(makeUser());
 
       await expect(
-        handler.createUser('tenant-1', { username: 'testuser', password: 'pw' } as any),
+        handler.createUser('tenant-1', {
+          username: 'testuser',
+          password: 'pw',
+        } as any),
       ).rejects.toThrow('UsernameAlreadyExists');
 
       expect(userWriteRepo.save).not.toHaveBeenCalled();
@@ -196,6 +243,46 @@ describe('UserCommandHandler', () => {
       expect(passwordHash.hash).toHaveBeenCalledWith('secure123');
       expect(userWriteRepo.save).toHaveBeenCalledTimes(1);
       expect(result.id).toBeTruthy();
+    });
+
+    it('temporaryPassword가 true면 비밀번호 변경 요구 credential로 저장한다', async () => {
+      userWriteRepo.findByUsername.mockResolvedValue(undefined);
+
+      await handler.createUser('tenant-1', {
+        username: 'newuser',
+        password: 'secure123',
+        temporaryPassword: true,
+      } as any);
+
+      const savedUser = userWriteRepo.save.mock.calls[0][0] as UserModel;
+      expect(savedUser.passwordCredential?.requiresPasswordChange()).toBe(true);
+    });
+
+    it('temporaryPassword를 생략하면 임시 비밀번호로 저장한다', async () => {
+      userWriteRepo.findByUsername.mockResolvedValue(undefined);
+
+      await handler.createUser('tenant-1', {
+        username: 'newuser',
+        password: 'secure123',
+      } as any);
+
+      const savedUser = userWriteRepo.save.mock.calls[0][0] as UserModel;
+      expect(savedUser.passwordCredential?.requiresPasswordChange()).toBe(true);
+    });
+
+    it('temporaryPassword가 false면 비밀번호 변경을 요구하지 않는다', async () => {
+      userWriteRepo.findByUsername.mockResolvedValue(undefined);
+
+      await handler.createUser('tenant-1', {
+        username: 'newuser',
+        password: 'secure123',
+        temporaryPassword: false,
+      } as any);
+
+      const savedUser = userWriteRepo.save.mock.calls[0][0] as UserModel;
+      expect(savedUser.passwordCredential?.requiresPasswordChange()).toBe(
+        false,
+      );
     });
 
     it('ACTIVE가 아닌 status를 주면 생성 직후 상태를 변경한다', async () => {
@@ -222,7 +309,9 @@ describe('UserCommandHandler', () => {
     });
 
     it('다른 tenant의 유저이면 NotFoundException을 던진다', async () => {
-      userWriteRepo.findById.mockResolvedValue(makeUser('user-1', 'other-tenant'));
+      userWriteRepo.findById.mockResolvedValue(
+        makeUser('user-1', 'other-tenant'),
+      );
 
       await expect(
         handler.updateUser('tenant-1', 'user-1', {} as any),
@@ -240,6 +329,58 @@ describe('UserCommandHandler', () => {
 
       expect(user.email).toBe('updated@ex.com');
       expect(user.status).toBe('LOCKED');
+      expect(userWriteRepo.save).toHaveBeenCalledWith(user);
+    });
+
+    it('MFA 활성화는 등록된 MFA credential이 있을 때만 허용한다', async () => {
+      const user = makeUser();
+      userWriteRepo.findById.mockResolvedValue(user);
+      userWriteRepo.findCredentialsByType.mockResolvedValue([
+        UserCredentialModel.of({
+          type: 'totp',
+          secretHash: 'totp-secret',
+          hashAlg: 'totp-sha1',
+          enabled: true,
+        }),
+      ]);
+
+      await handler.updateUser('tenant-1', 'user-1', {
+        mfaEnabled: true,
+      } as any);
+
+      expect(userWriteRepo.findCredentialsByType).toHaveBeenCalledWith(
+        'user-1',
+        ['totp', 'webauthn', 'recovery_code'],
+      );
+      expect(user.mfaEnabled).toBe(true);
+      expect(userWriteRepo.save).toHaveBeenCalledWith(user);
+    });
+
+    it('등록된 MFA credential이 없으면 MFA 활성화를 거부한다', async () => {
+      const user = makeUser();
+      userWriteRepo.findById.mockResolvedValue(user);
+      userWriteRepo.findCredentialsByType.mockResolvedValue([]);
+
+      await expect(
+        handler.updateUser('tenant-1', 'user-1', {
+          mfaEnabled: true,
+        } as any),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(userWriteRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('MFA 비활성화는 credential 조회 없이 저장한다', async () => {
+      const user = makeUser();
+      user.changeMfaEnabled(true);
+      userWriteRepo.findById.mockResolvedValue(user);
+
+      await handler.updateUser('tenant-1', 'user-1', {
+        mfaEnabled: false,
+      } as any);
+
+      expect(userWriteRepo.findCredentialsByType).not.toHaveBeenCalled();
+      expect(user.mfaEnabled).toBe(false);
       expect(userWriteRepo.save).toHaveBeenCalledWith(user);
     });
 
@@ -264,17 +405,19 @@ describe('UserCommandHandler', () => {
     it('유저가 없으면 NotFoundException을 던진다', async () => {
       userWriteRepo.findById.mockResolvedValue(undefined);
 
-      await expect(
-        handler.deleteUser('tenant-1', 'user-1'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(handler.deleteUser('tenant-1', 'user-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('다른 tenant의 유저이면 NotFoundException을 던진다', async () => {
-      userWriteRepo.findById.mockResolvedValue(makeUser('user-1', 'other-tenant'));
+      userWriteRepo.findById.mockResolvedValue(
+        makeUser('user-1', 'other-tenant'),
+      );
 
-      await expect(
-        handler.deleteUser('tenant-1', 'user-1'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(handler.deleteUser('tenant-1', 'user-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('성공 시 withdraw() 상태로 변경하고 save를 호출한다', async () => {
@@ -285,6 +428,69 @@ describe('UserCommandHandler', () => {
 
       expect(user.status).toBe('WITHDRAWN');
       expect(userWriteRepo.save).toHaveBeenCalledWith(user);
+    });
+  });
+
+  describe('revokeUserSession', () => {
+    it('유저가 존재하면 지정 세션을 폐기하고 감사 로그를 남긴다', async () => {
+      await handler.revokeUserSession('tenant-1', 'user-1', 'session-1');
+
+      expect(userSession.revokeUserSession).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+        sessionId: 'session-1',
+      });
+      expect(auditRecorder.recordAdminAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          category: 'SECURITY',
+          action: 'TOKEN_REVOKED',
+          resourceType: 'oidc-session',
+          resourceId: 'session-1',
+          reason: 'AdminUserSessionRevoked',
+          metadata: {
+            targetUserId: 'user-1',
+            revokedSessions: 1,
+          },
+        }),
+      );
+    });
+
+    it('유저 tenantId가 다르면 세션 폐기를 호출하지 않는다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeUser('user-1', 'other-tenant'),
+      );
+
+      await expect(
+        handler.revokeUserSession('tenant-1', 'user-1', 'session-1'),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(userSession.revokeUserSession).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('revokeUserSessions', () => {
+    it('유저의 전체 세션을 폐기하고 감사 로그를 남긴다', async () => {
+      await handler.revokeUserSessions('tenant-1', 'user-1');
+
+      expect(userSession.revokeUserSessions).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+      });
+      expect(auditRecorder.recordAdminAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          category: 'SECURITY',
+          action: 'TOKEN_REVOKED',
+          resourceType: 'oidc-session',
+          resourceId: 'user-1',
+          reason: 'AdminUserSessionsRevoked',
+          metadata: {
+            targetUserId: 'user-1',
+            revokedSessions: 2,
+          },
+        }),
+      );
     });
   });
 });

@@ -1,353 +1,269 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Inject,
-  OnModuleDestroy,
-  OnModuleInit,
-  Param,
-  Post,
-  Req,
-  Res,
-} from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req, Res } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
 import { resolve } from 'node:path';
 import { readFileSync, existsSync } from 'node:fs';
-import { OIDC_PROVIDER } from '@infrastructure/oidc-provider/oidc-provider.constants';
-import { OidcProviderRegistry } from '@infrastructure/oidc-provider/oidc-provider.registry';
-import { UserQueryPort } from '@application/queries/ports/user-query.port';
+import { InteractionCommandPort } from '@application/ports/interaction-command.port';
+import type { TenantContext } from '@application/dto';
 import {
-  ClientAuthPolicyRepository,
-  IdentityProviderRepository,
-  UserIdentityRepository,
-} from '@domain/repositories';
-import { ClientRepository } from '@domain/repositories';
-import { IdpPort } from '@application/ports/idp.port';
-import { randomBytes } from 'node:crypto';
+  InteractionLoginDto,
+  InteractionMfaDto,
+  InteractionPasswordChangeDto,
+  InteractionTotpConfirmationDto,
+  SamlCallbackDto,
+} from '@presentation/dto';
+import { ApiProduces, ApiTags } from '@nestjs/swagger';
+import {
+  ApiOkSchema,
+  ApiRedirectSchema,
+  OpenApiResponseSchemas,
+} from '@presentation/openapi-response';
 
 const SPA_INDEX_PATH = resolve(
   __dirname,
   '../../../interaction-ui/dist/index.html',
 );
 
+@ApiTags('Interaction')
 @Controller('t/:tenantCode/interaction')
-export class InteractionController implements OnModuleInit, OnModuleDestroy {
-  private readonly MFA_SESSION_TTL_MS = 10 * 60 * 1000;
-  private readonly MFA_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
-
-  private readonly mfaPendingSessions = new Map<
-    string,
-    { userId: string; tenantId: string; expiresAt: number }
-  >();
-  private mfaCleanupTimer: NodeJS.Timeout | undefined;
-
+export class InteractionController {
   private cachedSpaHtml: string | null = null;
 
   constructor(
-    @Inject(OIDC_PROVIDER)
-    private readonly registry: OidcProviderRegistry,
-    private readonly userQuery: UserQueryPort,
-    private readonly clientAuthPolicyRepo: ClientAuthPolicyRepository,
-    private readonly clientRepo: ClientRepository,
-    private readonly idpRepo: IdentityProviderRepository,
-    private readonly userIdentityRepo: UserIdentityRepository,
-    private readonly idpPort: IdpPort,
+    private readonly interactionCommand: InteractionCommandPort,
+    private readonly config: ConfigService,
   ) {}
 
-  onModuleInit() {
-    this.mfaCleanupTimer = setInterval(() => {
-      const now = Date.now();
-      for (const [uid, session] of this.mfaPendingSessions) {
-        if (session.expiresAt <= now) {
-          this.mfaPendingSessions.delete(uid);
-        }
-      }
-    }, this.MFA_CLEANUP_INTERVAL_MS);
-    this.mfaCleanupTimer.unref();
-  }
-
-  onModuleDestroy() {
-    if (this.mfaCleanupTimer) {
-      clearInterval(this.mfaCleanupTimer);
-    }
-  }
-
-  /* ─── SPA Entry Point ─── */
-
   @Get(':uid')
+  @ApiProduces('text/html')
+  @ApiOkSchema('Serve interaction UI', { type: 'string', format: 'html' })
   serveSpa(@Res() res: Response) {
-    if (!this.cachedSpaHtml) {
-      if (!existsSync(SPA_INDEX_PATH)) {
-        return res.status(404).json({ error: 'Interaction UI not built' });
-      }
-      this.cachedSpaHtml = readFileSync(SPA_INDEX_PATH, 'utf-8');
+    if (!existsSync(SPA_INDEX_PATH)) {
+      return res.status(404).json({ error: 'Interaction UI not built' });
     }
-    return res.type('html').send(this.cachedSpaHtml);
-  }
 
-  /* ─── JSON API Endpoints ─── */
+    const shouldCache = this.shouldCacheSpaHtml();
+    const spaHtml = shouldCache
+      ? (this.cachedSpaHtml ??= readFileSync(SPA_INDEX_PATH, 'utf-8'))
+      : readFileSync(SPA_INDEX_PATH, 'utf-8');
+
+    if (!shouldCache) {
+      res.setHeader('Cache-Control', 'no-store');
+    }
+
+    return res.type('html').send(spaHtml);
+  }
 
   @Get(':uid/api/details')
+  @ApiOkSchema(
+    'Get interaction details',
+    OpenApiResponseSchemas.interactionDetails,
+  )
   async getDetails(
     @Param('tenantCode') tenantCode: string,
     @Param('uid') uid: string,
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const provider = await this.registry.get(tenantCode);
-    const details = await provider.interactionDetails(req as any, res as any);
-    const { prompt, params } = details;
-    const clientId = String(params.client_id ?? '');
-    const tenant = (req as any).tenant as { id: string } | undefined;
-
-    let idpList: { provider: string; name: string }[] = [];
-    let mfaRequired = false;
-
-    if (tenant) {
-      const idps = await this.idpRepo.listEnabledByTenant(tenant.id);
-      idpList = idps.map((idp) => ({
-        provider: idp.provider,
-        name: idp.displayName,
-      }));
-
-      const client = await this.clientRepo.findByClientId(tenant.id, clientId);
-      if (client) {
-        const policy = await this.clientAuthPolicyRepo.findByClientRefId(
-          client.id,
-        );
-        if (policy) {
-          mfaRequired = policy.mfaRequired;
-        }
-      }
-    }
-
-    let missingScopes: string[] = [];
-    if (prompt.name === 'consent') {
-      missingScopes =
-        ((prompt.details as any).missingOIDCScope as string[] | undefined) ??
-        [];
-    }
-
-    return res.json({
+    const details = await this.interactionCommand.getDetails({
+      tenantCode,
       uid,
-      prompt: prompt.name,
-      clientId,
-      missingScopes,
-      mfaRequired,
-      idpList,
+      req,
+      res,
+      tenant: this.getTenant(req),
     });
+
+    return res.json(details);
   }
 
   @Post(':uid/api/login')
+  @ApiOkSchema(
+    'Submit interaction login',
+    OpenApiResponseSchemas.interactionResponse,
+  )
   async submitLogin(
     @Param('tenantCode') tenantCode: string,
     @Param('uid') uid: string,
-    @Body() body: { username?: string; password?: string },
+    @Body() body: InteractionLoginDto,
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const tenant = (req as any).tenant as { id: string } | undefined;
-    if (!tenant) {
-      return res.status(400).json({ error: 'tenant_not_found' });
-    }
-
-    const result = await this.userQuery.authenticate({
-      tenantId: tenant.id,
+    const result = await this.interactionCommand.submitLogin({
+      tenantCode,
+      uid,
       username: body.username ?? '',
       password: body.password ?? '',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+      correlationId:
+        (req as any).correlationId ??
+        req.get('x-correlation-id') ??
+        req.get('x-request-id'),
+      req,
+      res,
+      tenant: this.getTenant(req),
     });
-
-    if (!result) {
-      return res.status(401).json({ error: 'invalid_credentials' });
-    }
-
-    const provider = await this.registry.get(tenantCode);
-    const details = await provider.interactionDetails(req as any, res as any);
-    const clientId = String(details.params.client_id ?? '');
-
-    const client = await this.clientRepo.findByClientId(tenant.id, clientId);
-    if (client) {
-      const policy = await this.clientAuthPolicyRepo.findByClientRefId(
-        client.id,
-      );
-      if (policy?.mfaRequired) {
-        const methods = await this.userQuery.getMfaMethods(
-          tenant.id,
-          result.userId,
-        );
-
-        if (methods.length > 0) {
-          this.mfaPendingSessions.set(uid, {
-            userId: result.userId,
-            tenantId: tenant.id,
-            expiresAt: Date.now() + this.MFA_SESSION_TTL_MS,
-          });
-
-          return res.json({
-            success: true,
-            mfaRequired: true,
-            methods,
-          });
-        }
-      }
-    }
-
-    const redirectTo = await provider.interactionResult(
-      req as any,
-      res as any,
-      { login: { accountId: result.userId } },
-    );
-
-    return res.json({ success: true, mfaRequired: false, redirectTo });
+    return res.status(result.status ?? 200).json(result.body);
   }
 
   @Post(':uid/api/mfa')
+  @ApiOkSchema(
+    'Submit interaction MFA',
+    OpenApiResponseSchemas.interactionResponse,
+  )
   async submitMfa(
     @Param('tenantCode') tenantCode: string,
     @Param('uid') uid: string,
-    @Body()
-    body: {
-      method: 'totp' | 'webauthn' | 'recovery_code';
-      code?: string;
-      webauthnResponse?: Record<string, unknown>;
-    },
+    @Body() body: InteractionMfaDto,
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const pending = this.mfaPendingSessions.get(uid);
-    if (!pending || pending.expiresAt <= Date.now()) {
-      this.mfaPendingSessions.delete(uid);
-      return res.status(400).json({ error: 'no_pending_mfa' });
-    }
-
     const host = req.get('host') ?? 'localhost';
-    const rpId = host.split(':')[0];
-    const origin = `${req.protocol}://${host}`;
-
-    const verified = await this.userQuery.verifyMfa({
-      tenantId: pending.tenantId,
-      userId: pending.userId,
+    const result = await this.interactionCommand.submitMfa({
+      tenantCode,
+      uid,
       method: body.method,
       code: body.code,
       webauthnResponse: body.webauthnResponse,
-      rpId,
-      expectedOrigin: origin,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+      correlationId:
+        (req as any).correlationId ??
+        req.get('x-correlation-id') ??
+        req.get('x-request-id'),
+      req,
+      res,
+      tenant: this.getTenant(req),
+      rpId: host.split(':')[0],
+      expectedOrigin: `${req.protocol}://${host}`,
     });
+    return res.status(result.status ?? 200).json(result.body);
+  }
 
-    if (!verified) {
-      return res.status(401).json({ error: 'mfa_failed' });
-    }
+  @Post(':uid/api/mfa/totp/enroll')
+  @ApiOkSchema(
+    'Begin interaction TOTP enrollment',
+    OpenApiResponseSchemas.totpEnrollment,
+  )
+  async beginTotpEnrollment(
+    @Param('tenantCode') tenantCode: string,
+    @Param('uid') uid: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const result = await this.interactionCommand.beginTotpEnrollment({
+      tenantCode,
+      uid,
+      tenant: this.getTenant(req),
+    });
+    return res.status(result.status ?? 200).json(result.body);
+  }
 
-    this.mfaPendingSessions.delete(uid);
+  @Post(':uid/api/mfa/totp/confirm')
+  @ApiOkSchema(
+    'Confirm interaction TOTP enrollment',
+    OpenApiResponseSchemas.interactionResponse,
+  )
+  async confirmTotpEnrollment(
+    @Param('tenantCode') tenantCode: string,
+    @Param('uid') uid: string,
+    @Body() body: InteractionTotpConfirmationDto,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const result = await this.interactionCommand.confirmTotpEnrollment({
+      tenantCode,
+      uid,
+      code: body.code,
+      req,
+      res,
+      tenant: this.getTenant(req),
+    });
+    return res.status(result.status ?? 200).json(result.body);
+  }
 
-    const provider = await this.registry.get(tenantCode);
-    const redirectTo = await provider.interactionResult(
-      req as any,
-      res as any,
-      { login: { accountId: pending.userId } },
-    );
-
-    return res.json({ success: true, redirectTo });
+  @Post(':uid/api/password-change')
+  @ApiOkSchema(
+    'Submit required password change',
+    OpenApiResponseSchemas.interactionResponse,
+  )
+  async submitPasswordChange(
+    @Param('tenantCode') tenantCode: string,
+    @Param('uid') uid: string,
+    @Body() body: InteractionPasswordChangeDto,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const result = await this.interactionCommand.submitPasswordChange({
+      tenantCode,
+      uid,
+      currentPassword: body.currentPassword ?? '',
+      newPassword: body.newPassword ?? '',
+      req,
+      res,
+      tenant: this.getTenant(req),
+    });
+    return res.status(result.status ?? 200).json(result.body);
   }
 
   @Post(':uid/api/consent')
+  @ApiOkSchema('Submit interaction consent', OpenApiResponseSchemas.redirectTo)
   async submitConsent(
     @Param('tenantCode') tenantCode: string,
-    @Param('uid') uid: string,
+    @Param('uid') _uid: string,
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const provider = await this.registry.get(tenantCode);
-    const details = await provider.interactionDetails(req as any, res as any);
-    const { prompt, params, session } = details;
-
-    if (prompt.name !== 'consent' || !session) {
-      return res.status(400).json({
-        error: 'invalid_request',
-        message: 'No active consent interaction',
-      });
+    const result = await this.interactionCommand.submitConsent({
+      tenantCode,
+      req,
+      res,
+    });
+    if ('body' in result) {
+      return res.status(result.status ?? 200).json(result.body);
     }
 
-    const accountId = session.accountId;
-    const clientId = params.client_id as string;
-
-    let grant: InstanceType<typeof provider.Grant>;
-    if (details.grantId) {
-      const existing = await provider.Grant.find(details.grantId);
-      grant = existing ?? new provider.Grant({ accountId, clientId });
-    } else {
-      grant = new provider.Grant({ accountId, clientId });
-    }
-
-    const missingScope =
-      ((prompt.details as any).missingOIDCScope as string[] | undefined) ?? [];
-    if (missingScope.length) {
-      grant.addOIDCScope(missingScope.join(' '));
-    }
-
-    const grantId = await grant.save();
-
-    const redirectTo = await provider.interactionResult(
-      req as any,
-      res as any,
-      { consent: { grantId } },
-    );
-
-    return res.json({ success: true, redirectTo });
+    return res.json({ success: true, redirectTo: result.redirectTo });
   }
 
   @Get(':uid/api/abort')
+  @ApiOkSchema('Abort interaction', OpenApiResponseSchemas.redirectTo)
   async abortInteraction(
     @Param('tenantCode') tenantCode: string,
-    @Param('uid') uid: string,
+    @Param('uid') _uid: string,
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const provider = await this.registry.get(tenantCode);
-
-    const redirectTo = await provider.interactionResult(
-      req as any,
-      res as any,
-      {
-        error: 'access_denied',
-        error_description: 'End-User aborted interaction',
-      },
-    );
+    const { redirectTo } = await this.interactionCommand.abort({
+      tenantCode,
+      req,
+      res,
+    });
 
     return res.json({ redirectTo });
   }
 
-  /* ─── WebAuthn Options (pre-MFA) ─── */
-
   @Get(':uid/api/mfa/webauthn-options')
+  @ApiOkSchema(
+    'Get WebAuthn authentication options',
+    OpenApiResponseSchemas.webauthnOptions,
+  )
   async getWebAuthnOptions(
     @Param('uid') uid: string,
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const pending = this.mfaPendingSessions.get(uid);
-    if (!pending || pending.expiresAt <= Date.now()) {
-      this.mfaPendingSessions.delete(uid);
-      return res.status(400).json({ error: 'no_pending_mfa' });
-    }
-
     const host = req.get('host') ?? 'localhost';
-    const rpId = host.split(':')[0];
-
-    const options = await this.userQuery.verifyMfa({
-      tenantId: pending.tenantId,
-      userId: pending.userId,
-      method: 'webauthn',
-      rpId,
+    const result = await this.interactionCommand.getWebAuthnOptions({
+      uid,
+      rpId: host.split(':')[0],
       expectedOrigin: `${req.protocol}://${host}`,
     });
-
-    return res.json(options);
+    return res.status(result.status ?? 200).json(result.body);
   }
 
-  /* ─── IdP Endpoints ─── */
-
   @Get(':uid/idp/:provider')
+  @ApiRedirectSchema('Redirect to external identity provider')
   async redirectToIdp(
     @Param('tenantCode') tenantCode: string,
     @Param('uid') uid: string,
@@ -355,34 +271,23 @@ export class InteractionController implements OnModuleInit, OnModuleDestroy {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const tenant = (req as any).tenant as { id: string } | undefined;
-    if (!tenant) {
-      return res.status(400).json({ error: 'tenant_not_found' });
-    }
-
-    const idpConfig = await this.idpRepo.findByTenantAndProvider(
-      tenant.id,
+    const result = await this.interactionCommand.getIdpRedirect({
+      tenantCode,
+      uid,
       providerName,
-    );
-    if (!idpConfig || !idpConfig.enabled) {
-      return res.status(404).json({ error: 'idp_not_found' });
+      req,
+      res,
+      tenant: this.getTenant(req),
+    });
+    if ('body' in result) {
+      return res.status(result.status ?? 200).json(result.body);
     }
 
-    const state = `${uid}:${randomBytes(16).toString('hex')}`;
-    const callbackUrl = `${req.protocol}://${req.get('host')}/t/${tenantCode}/interaction/${uid}/idp/${providerName}/callback`;
-
-    const authUrl = this.idpPort.getAuthorizationUrl(
-      idpConfig.provider,
-      idpConfig.oauthConfig,
-      idpConfig.clientId,
-      callbackUrl,
-      state,
-    );
-
-    return res.redirect(authUrl);
+    return res.redirect(result.redirectTo);
   }
 
   @Get(':uid/idp/:provider/callback')
+  @ApiRedirectSchema('Handle external identity provider callback')
   async idpCallback(
     @Param('tenantCode') tenantCode: string,
     @Param('uid') uid: string,
@@ -390,63 +295,73 @@ export class InteractionController implements OnModuleInit, OnModuleDestroy {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const tenant = (req as any).tenant as { id: string } | undefined;
-    if (!tenant) {
-      return res.redirect(
-        `/t/${tenantCode}/interaction/${uid}?error=tenant_not_found`,
-      );
-    }
-
-    const code = req.query.code as string | undefined;
-    if (!code) {
-      return res.redirect(
-        `/t/${tenantCode}/interaction/${uid}?error=idp_no_code`,
-      );
-    }
-
-    const idpConfig = await this.idpRepo.findByTenantAndProvider(
-      tenant.id,
+    const result = await this.interactionCommand.handleIdpCallback({
+      tenantCode,
+      uid,
       providerName,
-    );
-    if (!idpConfig) {
-      return res.redirect(
-        `/t/${tenantCode}/interaction/${uid}?error=idp_not_found`,
-      );
+      req,
+      res,
+      tenant: this.getTenant(req),
+    });
+    if (result.redirectTo) {
+      return res.redirect(result.redirectTo);
+    }
+  }
+
+  @Get('saml/:provider/metadata')
+  @ApiProduces('application/samlmetadata+xml', 'application/json')
+  @ApiOkSchema('Get SAML SP metadata', { type: 'string', format: 'xml' })
+  async samlMetadata(
+    @Param('tenantCode') tenantCode: string,
+    @Param('provider') providerName: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const result = await this.interactionCommand.getSamlMetadata({
+      tenantCode,
+      providerName,
+      req,
+      tenant: this.getTenant(req),
+    });
+    if ('contentType' in result) {
+      return res.type(result.contentType).send(result.body);
     }
 
-    try {
-      const callbackUrl = `${req.protocol}://${req.get('host')}/t/${tenantCode}/interaction/${uid}/idp/${providerName}/callback`;
+    return res.status(result.status ?? 200).json(result.body);
+  }
 
-      const userInfo = await this.idpPort.exchangeCode(
-        idpConfig.provider,
-        idpConfig.oauthConfig,
-        idpConfig.clientId,
-        idpConfig.clientSecret,
-        code,
-        callbackUrl,
-      );
-
-      const identity = await this.userIdentityRepo.findByProviderSub(
-        tenant.id,
-        providerName,
-        userInfo.sub,
-      );
-
-      if (!identity) {
-        // TODO: 신규 유저 생성 또는 기존 유저 연결 로직
-        return res.redirect(
-          `/t/${tenantCode}/interaction/${uid}?error=idp_user_not_linked`,
-        );
-      }
-
-      const provider = await this.registry.get(tenantCode);
-      await provider.interactionFinished(req as any, res as any, {
-        login: { accountId: identity.userId },
-      });
-    } catch {
-      return res.redirect(
-        `/t/${tenantCode}/interaction/${uid}?error=idp_exchange_failed`,
-      );
+  @Post('saml/:provider/callback')
+  @ApiRedirectSchema('Handle SAML identity provider callback')
+  async samlCallback(
+    @Param('tenantCode') tenantCode: string,
+    @Param('provider') providerName: string,
+    @Body() body: SamlCallbackDto,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const result = await this.interactionCommand.handleSamlCallback({
+      tenantCode,
+      providerName,
+      relayState: body.RelayState,
+      samlResponse: body.SAMLResponse,
+      req,
+      res,
+      tenant: this.getTenant(req),
+    });
+    if ('body' in result) {
+      return res.status(result.status ?? 200).json(result.body);
     }
+
+    if (result.redirectTo) {
+      return res.redirect(result.redirectTo);
+    }
+  }
+
+  private getTenant(req: Request): TenantContext | undefined {
+    return (req as any).tenant as TenantContext | undefined;
+  }
+
+  private shouldCacheSpaHtml(): boolean {
+    return this.config.get<string>('INTERACTION_UI_CACHE_HTML') === 'true';
   }
 }

@@ -1,0 +1,6 @@
+interface:
+  display_name: 'Auth OIDC Protocol'
+  short_description: 'OIDC provider and protocol safety rules'
+  default_prompt: 'Use $auth-oidc-protocol to implement this OIDC flow without reimplementing provider logic.'
+policy:
+  allow_implicit_invocation: true

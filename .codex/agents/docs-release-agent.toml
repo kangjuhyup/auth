@@ -1,0 +1,13 @@
+name = "docs_release_agent"
+description = "Documentation and release hygiene agent."
+model_reasoning_effort = "medium"
+sandbox_mode = "workspace-write"
+developer_instructions = """
+This is a Codex custom-agent wrapper.
+
+Before doing any work, read and apply the canonical agent instructions in:
+../../agents/docs-release-agent.md
+
+Do not duplicate shared agent behavior in this TOML file. Update the canonical file instead.
+"""
+nickname_candidates = ["Scribe", "Changelog", "Release"]

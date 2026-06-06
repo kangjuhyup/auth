@@ -1,77 +1,95 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAuthStore } from '@/stores/auth.store';
 
 describe('useAuthStore', () => {
   beforeEach(() => {
+    localStorage.clear();
     useAuthStore.setState({
       isAuthenticated: false,
-      token: null,
       username: null,
+      passwordChangeRequired: false,
     });
   });
 
   describe('초기 상태', () => {
     it('인증되지 않은 상태로 시작한다', () => {
-      const { isAuthenticated, token, username } = useAuthStore.getState();
+      const { isAuthenticated, username, passwordChangeRequired } =
+        useAuthStore.getState();
       expect(isAuthenticated).toBe(false);
-      expect(token).toBeNull();
       expect(username).toBeNull();
+      expect(passwordChangeRequired).toBe(false);
     });
   });
 
   describe('login()', () => {
-    it('isAuthenticated, token, username 을 설정한다', () => {
-      useAuthStore.getState().login('alice', 'token-abc');
+    it('isAuthenticated, username 을 설정한다', () => {
+      useAuthStore.getState().login('alice');
 
-      const { isAuthenticated, token, username } = useAuthStore.getState();
+      const { isAuthenticated, username } = useAuthStore.getState();
       expect(isAuthenticated).toBe(true);
-      expect(token).toBe('token-abc');
       expect(username).toBe('alice');
+    });
+
+    it('passwordChangeRequired 상태를 설정한다', () => {
+      useAuthStore.getState().login('alice', true);
+
+      expect(useAuthStore.getState().passwordChangeRequired).toBe(true);
+    });
+  });
+
+  describe('completePasswordChange()', () => {
+    it('passwordChangeRequired 상태를 해제한다', () => {
+      useAuthStore.getState().login('alice', true);
+
+      useAuthStore.getState().completePasswordChange();
+
+      expect(useAuthStore.getState().passwordChangeRequired).toBe(false);
     });
   });
 
   describe('clearAuth()', () => {
     it('로그인 후 clearAuth() 를 호출하면 상태를 초기화한다', () => {
-      useAuthStore.getState().login('alice', 'token-abc');
+      useAuthStore.getState().login('alice');
       useAuthStore.getState().clearAuth();
 
-      const { isAuthenticated, token, username } = useAuthStore.getState();
+      const { isAuthenticated, username, passwordChangeRequired } =
+        useAuthStore.getState();
       expect(isAuthenticated).toBe(false);
-      expect(token).toBeNull();
       expect(username).toBeNull();
+      expect(passwordChangeRequired).toBe(false);
     });
   });
 
-  describe('localStorage persist', () => {
-    it('login() 후 localStorage 에 인증 정보가 저장된다', () => {
-      useAuthStore.getState().login('bob', 'token-xyz');
+  describe('token storage', () => {
+    it('login() 후 토큰을 localStorage 에 저장하지 않는다', () => {
+      useAuthStore.getState().login('bob');
 
-      const stored = JSON.parse(
-        localStorage.getItem('auth-storage') ?? '{}',
-      ) as {
-        state: { isAuthenticated: boolean; token: string; username: string };
-      };
-      expect(stored.state.isAuthenticated).toBe(true);
-      expect(stored.state.token).toBe('token-xyz');
-      expect(stored.state.username).toBe('bob');
+      expect(localStorage.getItem('auth-storage')).toBeNull();
     });
 
-    it('clearAuth() 후 localStorage 의 인증 정보가 초기화된다', () => {
-      useAuthStore.getState().login('bob', 'token-xyz');
+    it('clearAuth() 후에도 localStorage 에 인증 정보를 쓰지 않는다', () => {
+      useAuthStore.getState().login('bob');
       useAuthStore.getState().clearAuth();
 
-      const stored = JSON.parse(
-        localStorage.getItem('auth-storage') ?? '{}',
-      ) as {
-        state: {
-          isAuthenticated: boolean;
-          token: string | null;
-          username: string | null;
-        };
-      };
-      expect(stored.state.isAuthenticated).toBe(false);
-      expect(stored.state.token).toBeNull();
-      expect(stored.state.username).toBeNull();
+      expect(localStorage.getItem('auth-storage')).toBeNull();
+    });
+
+    it('기존 persist 저장소가 남아 있으면 모듈 로드 시 제거한다', async () => {
+      localStorage.setItem(
+        'auth-storage',
+        JSON.stringify({
+          state: {
+            isAuthenticated: true,
+            token: 'legacy-token',
+            username: 'legacy-admin',
+          },
+        }),
+      );
+
+      vi.resetModules();
+      await import('@/stores/auth.store');
+
+      expect(localStorage.getItem('auth-storage')).toBeNull();
     });
   });
 });

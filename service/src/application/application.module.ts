@@ -16,6 +16,10 @@ import { RoleCommandPort } from './commands/ports/role-command.port';
 import { RoleCommandHandler } from './commands/handlers/role-command.handler';
 import { PermissionCommandPort } from './commands/ports/permission-command.port';
 import { PermissionCommandHandler } from './commands/handlers/permission-command.handler';
+import { ScopeCommandPort } from './commands/ports/scope-command.port';
+import { ScopeCommandHandler } from './commands/handlers/scope-command.handler';
+import { CustomGrantCommandPort } from './commands/ports/custom-grant-command.port';
+import { CustomGrantCommandHandler } from './commands/handlers/custom-grant-command.handler';
 
 // Infrastructure Ports
 import { AdminQueryPort } from './queries/ports/admin-query.port';
@@ -25,17 +29,24 @@ import { AuthQueryHandler } from './queries/handlers/auth-query.handler';
 import { UserQueryPort } from './queries/ports/user-query.port';
 import { UserQueryHandler } from './queries/handlers/user-query.handler';
 import { ClientQueryPort } from './queries/ports/client-query.port';
+import { ObservabilityQueryPort } from './queries/ports/observability-query.port';
 
 // Domain Repositories
 import { ClientCommandPort } from './commands/ports/client-command.port';
 import { ClientCommandHandler } from './commands/handlers/client-command.handler';
 import { ClientQueryHandler } from './queries/handlers/client-query.handler';
+import { ObservabilityQueryHandler } from './queries/handlers/observability-query.handler';
 import { KeyCommandPort } from './commands/ports/key-command.port';
 import { KeyCommandHandler } from './commands/handlers/key-command.handler';
 import { PolicyCommandPort } from './commands/ports/policy-command.port';
 import { PolicyCommandHandler } from './commands/handlers/policy-command.handler';
 import { IdentityProviderCommandPort } from './commands/ports/identity-provider-command.port';
 import { IdentityProviderCommandHandler } from './commands/handlers/identity-provider-command.handler';
+import { AdminSessionPort } from './ports/admin-session.port';
+import { AdminSessionHandler } from './commands/handlers/admin-session.handler';
+import { InteractionCommandPort } from './ports/interaction-command.port';
+import { InteractionCommandHandler } from './commands/handlers/interaction-command.handler';
+import { AuditRecorder } from './services/audit-recorder';
 
 // MFA Strategies
 import {
@@ -72,6 +83,14 @@ const commands = [
     useClass: PermissionCommandHandler,
   },
   {
+    provide: ScopeCommandPort,
+    useClass: ScopeCommandHandler,
+  },
+  {
+    provide: CustomGrantCommandPort,
+    useClass: CustomGrantCommandHandler,
+  },
+  {
     provide: ClientCommandPort,
     useClass: ClientCommandHandler,
   },
@@ -86,6 +105,14 @@ const commands = [
   {
     provide: IdentityProviderCommandPort,
     useClass: IdentityProviderCommandHandler,
+  },
+  {
+    provide: AdminSessionPort,
+    useClass: AdminSessionHandler,
+  },
+  {
+    provide: InteractionCommandPort,
+    useClass: InteractionCommandHandler,
   },
 ];
 
@@ -118,11 +145,15 @@ const queries = [
     provide: ClientQueryPort,
     useClass: ClientQueryHandler,
   },
+  {
+    provide: ObservabilityQueryPort,
+    useClass: ObservabilityQueryHandler,
+  },
 ];
 
 @Module({
   imports: [InfrastructureModule],
-  providers: [...commands, ...queries],
-  exports: [...commands, ...queries],
+  providers: [AuditRecorder, ...commands, ...queries],
+  exports: [AuditRecorder, ...commands, ...queries],
 })
 export class ApplicationModule {}

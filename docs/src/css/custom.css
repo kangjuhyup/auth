@@ -1,0 +1,74 @@
+:root {
+  --ifm-color-primary: #1b6b93;
+  --ifm-color-primary-dark: #185f83;
+  --ifm-color-primary-darker: #165a7c;
+  --ifm-color-primary-darkest: #124a66;
+  --ifm-color-primary-light: #1e77a3;
+  --ifm-color-primary-lighter: #207caa;
+  --ifm-color-primary-lightest: #268cc0;
+  --ifm-font-family-base:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
+  --ifm-code-font-size: 92%;
+}
+
+.theme-doc-markdown {
+  --ifm-leading: 1.75;
+}
+
+.theme-doc-markdown table {
+  display: table;
+  width: 100%;
+}
+
+.theme-doc-markdown th {
+  white-space: nowrap;
+}
+
+.apiReferencePage {
+  min-height: calc(100vh - var(--ifm-navbar-height));
+}
+
+.apiReferencePage__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.apiReferencePage__header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.5rem;
+}
+
+.apiReferencePage__header p {
+  margin: 0;
+  color: var(--ifm-color-emphasis-700);
+}
+
+.redocApiReference {
+  min-height: calc(100vh - var(--ifm-navbar-height) - 90px);
+  overflow: hidden;
+}
+
+.redocApiReference__container {
+  min-height: calc(100vh - var(--ifm-navbar-height) - 90px);
+}
+
+.redocApiReference__error {
+  margin: 1rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--ifm-color-danger-light);
+  border-radius: 8px;
+  background: var(--ifm-color-danger-contrast-background);
+  color: var(--ifm-color-danger-darkest);
+}
+
+@media (max-width: 720px) {
+  .apiReferencePage__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

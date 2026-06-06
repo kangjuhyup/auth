@@ -19,10 +19,26 @@ import {
   PaginationQuery,
   PaginatedResult,
 } from '@presentation/dto';
-import { TenantContext } from '@application/dto';
+import {
+  AuditContext,
+  TenantContext,
+  CreatePermissionDto as AppCreatePermissionDto,
+  PaginationQuery as AppPaginationQuery,
+  UpdatePermissionDto as AppUpdatePermissionDto,
+} from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
+import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
+import {
+  ApiAdminResource,
+  ApiCreatedIdSchema,
+  ApiNoContentSchema,
+  ApiOkSchema,
+  ApiPaginatedSchema,
+  OpenApiResponseSchemas,
+} from '@presentation/openapi-response';
 
 @UseGuards(AdminGuard)
+@ApiAdminResource('Admin Permissions')
 @Controller('t/:tenantCode/admin/permissions')
 export class AdminPermissionController {
   constructor(
@@ -31,14 +47,19 @@ export class AdminPermissionController {
   ) {}
 
   @Get()
+  @ApiPaginatedSchema('List permissions', OpenApiResponseSchemas.permission)
   list(
     @Tenant() tenant: TenantContext,
     @Query() query: PaginationQuery,
   ): Promise<PaginatedResult<PermissionResponse>> {
-    return this.queryPort.getPermissions(tenant.id, query);
+    return this.queryPort.getPermissions(
+      tenant.id,
+      AppPaginationQuery.of(query),
+    );
   }
 
   @Get(':id')
+  @ApiOkSchema('Get permission', OpenApiResponseSchemas.permission)
   get(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -47,27 +68,47 @@ export class AdminPermissionController {
   }
 
   @Post()
+  @ApiCreatedIdSchema('Create permission')
   create(
     @Tenant() tenant: TenantContext,
     @Body() dto: CreatePermissionDto,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<{ id: string }> {
-    return this.commandPort.createPermission(tenant.id, dto);
+    const command = AppCreatePermissionDto.of(dto);
+    if (!auditContext) {
+      return this.commandPort.createPermission(tenant.id, command);
+    }
+    return this.commandPort.createPermission(tenant.id, command, auditContext);
   }
 
   @Put(':id')
+  @ApiNoContentSchema('Update permission')
   update(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
     @Body() dto: UpdatePermissionDto,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    return this.commandPort.updatePermission(tenant.id, id, dto);
+    const command = AppUpdatePermissionDto.of(dto);
+    if (!auditContext) {
+      return this.commandPort.updatePermission(tenant.id, id, command);
+    }
+    return this.commandPort.updatePermission(
+      tenant.id,
+      id,
+      command,
+      auditContext,
+    );
   }
 
   @Delete(':id')
+  @ApiNoContentSchema('Delete permission')
   delete(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    return this.commandPort.deletePermission(tenant.id, id);
+    if (!auditContext) return this.commandPort.deletePermission(tenant.id, id);
+    return this.commandPort.deletePermission(tenant.id, id, auditContext);
   }
 }

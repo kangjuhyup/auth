@@ -7,6 +7,9 @@ import {
   ClusterOutlined,
   LogoutOutlined,
   ApiOutlined,
+  FileSearchOutlined,
+  KeyOutlined,
+  ProfileOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useUiStore } from '@/stores/ui.store';
@@ -35,6 +38,16 @@ export function AdminLayout() {
       label: 'Clients',
     },
     {
+      key: '/admin/scopes',
+      icon: <ProfileOutlined />,
+      label: 'Scopes',
+    },
+    {
+      key: '/admin/custom-grants',
+      icon: <KeyOutlined />,
+      label: 'Custom grants',
+    },
+    {
       key: '/admin/identity-providers',
       icon: <ApiOutlined />,
       label: 'Identity providers',
@@ -53,6 +66,11 @@ export function AdminLayout() {
       key: '/admin/users',
       icon: <UserOutlined />,
       label: 'Users',
+    },
+    {
+      key: '/admin/audit-logs',
+      icon: <FileSearchOutlined />,
+      label: 'Audit logs',
     },
   ];
 

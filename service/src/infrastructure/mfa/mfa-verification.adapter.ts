@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { MfaVerificationPort } from '@application/ports/mfa-verification.port';
 import type { WebAuthnVerifyResult } from '@application/ports/mfa-verification.port';
 import {
@@ -10,6 +10,26 @@ import * as argon2 from 'argon2';
 
 @Injectable()
 export class MfaVerificationAdapter implements MfaVerificationPort {
+  generateTotpSecret(): string {
+    return this.base32Encode(randomBytes(20));
+  }
+
+  buildTotpUri(params: {
+    issuer: string;
+    accountName: string;
+    secret: string;
+  }): string {
+    const label = `${params.issuer}:${params.accountName}`;
+    const query = new URLSearchParams({
+      secret: params.secret,
+      issuer: params.issuer,
+      algorithm: 'SHA1',
+      digits: '6',
+      period: '30',
+    });
+    return `otpauth://totp/${encodeURIComponent(label)}?${query.toString()}`;
+  }
+
   verifyTotp(secret: string, code: string): boolean {
     return this.verifyTotpCode(secret, code);
   }
@@ -115,5 +135,20 @@ export class MfaVerificationAdapter implements MfaVerificationPort {
       bytes.push(parseInt(bits.substring(i, i + 8), 2));
     }
     return Buffer.from(bytes);
+  }
+
+  private base32Encode(buffer: Buffer): string {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    let bits = '';
+    for (const byte of buffer) {
+      bits += byte.toString(2).padStart(8, '0');
+    }
+
+    let encoded = '';
+    for (let i = 0; i < bits.length; i += 5) {
+      const chunk = bits.substring(i, i + 5).padEnd(5, '0');
+      encoded += alphabet[parseInt(chunk, 2)];
+    }
+    return encoded;
   }
 }

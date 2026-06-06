@@ -1,6 +1,6 @@
 {
   "name": "auth",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "license": "UNLICENSED",
   "packageManager": "yarn@4.12.0",
@@ -9,11 +9,16 @@
   },
   "workspaces": [
     "ui",
+    "docs",
     "service",
     "service/interaction-ui",
     "packages/*"
   ],
   "scripts": {
+    "docs:dev": "yarn workspace @auth/docs start",
+    "docs:openapi": "yarn workspace @auth/service openapi:export",
+    "docs:build": "yarn workspace @auth/docs build",
+    "docs:serve": "yarn workspace @auth/docs serve",
     "service:dev": "yarn workspace @auth/service start:dev",
     "service:build": "yarn workspace @auth/service build",
     "service:test": "yarn workspace @auth/service test",

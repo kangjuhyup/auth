@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { Logging, LogLevel, NoLog } from '@kangjuhyup/rvlog';
 import { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
 import type {
   UserClaimsView,
@@ -11,7 +12,9 @@ import { MFA_STRATEGIES } from '@application/queries/strategies';
 import type { MfaStrategy } from '@application/queries/strategies';
 
 @Injectable()
+@Logging({ level: LogLevel.DEBUG })
 export class UserQueryHandler implements UserQueryPort {
+  private readonly recoveryCodeLowThreshold = 2;
   private readonly mfaStrategies: Map<MfaMethodType, MfaStrategy>;
 
   constructor(
@@ -40,6 +43,8 @@ export class UserQueryHandler implements UserQueryPort {
       phone: user.phone ?? undefined,
       phoneVerified: user.phoneVerified,
       status: user.status,
+      mfaEnabled: user.mfaEnabled,
+      passwordChangeRequired: this.getPasswordChangeRequired(user),
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
@@ -56,8 +61,11 @@ export class UserQueryHandler implements UserQueryPort {
 
     return {
       sub: user.id,
+      username: user.username,
       email: user.email ?? undefined,
       email_verified: user.emailVerified,
+      phone: user.phone ?? undefined,
+      phone_verified: user.phoneVerified,
     };
   }
 
@@ -82,16 +90,23 @@ export class UserQueryHandler implements UserQueryPort {
       phone: user.phone ?? undefined,
       phoneVerified: user.phoneVerified,
       status: user.status,
+      mfaEnabled: user.mfaEnabled,
+      passwordChangeRequired: this.getPasswordChangeRequired(user),
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
   }
 
+  @NoLog
   async authenticate(params: {
     tenantId: string;
     username: string;
     password: string;
-  }): Promise<{ userId: string } | null> {
+  }): Promise<{
+    userId: string;
+    mfaEnabled: boolean;
+    passwordChangeRequired: boolean;
+  } | null> {
     const user = await this.userWriteRepository.findByUsername(
       params.tenantId,
       params.username,
@@ -112,7 +127,11 @@ export class UserQueryHandler implements UserQueryPort {
     );
     if (!ok) return null;
 
-    return { userId: user.id };
+    return {
+      userId: user.id,
+      mfaEnabled: user.mfaEnabled,
+      passwordChangeRequired: credential.requiresPasswordChange(),
+    };
   }
 
   async getMfaMethods(
@@ -134,6 +153,43 @@ export class UserQueryHandler implements UserQueryPort {
     return Array.from(methods);
   }
 
+  async getRecoveryCodeStatus(
+    tenantId: string,
+    userId: string,
+  ): Promise<{
+    remaining: number;
+    total: number;
+    used: number;
+    low: boolean;
+  }> {
+    const user = await this.userWriteRepository.findById(userId);
+    if (!user || user.tenantId !== tenantId) {
+      return { remaining: 0, total: 0, used: 0, low: false };
+    }
+
+    const credentials = await this.userWriteRepository.findCredentialsByType(
+      userId,
+      ['recovery_code'],
+      { enabled: null },
+    );
+    const currentBatch = credentials.filter(
+      (credential) => !credential.hashParams?.retiredAt,
+    );
+    const remaining = currentBatch.filter(
+      (credential) => credential.enabled,
+    ).length;
+    const total = currentBatch.length;
+    const used = total - remaining;
+
+    return {
+      remaining,
+      total,
+      used,
+      low: total > 0 && remaining <= this.recoveryCodeLowThreshold,
+    };
+  }
+
+  @NoLog
   async verifyMfa(params: {
     tenantId: string;
     userId: string;
@@ -156,5 +212,16 @@ export class UserQueryHandler implements UserQueryPort {
       rpId: params.rpId,
       expectedOrigin: params.expectedOrigin,
     });
+  }
+
+  @NoLog
+  private getPasswordChangeRequired(user: {
+    getPasswordCredential: () => { requiresPasswordChange: () => boolean };
+  }): boolean {
+    try {
+      return user.getPasswordCredential().requiresPasswordChange();
+    } catch {
+      return false;
+    }
   }
 }

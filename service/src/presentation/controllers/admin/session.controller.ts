@@ -2,80 +2,163 @@ import {
   Body,
   Controller,
   Delete,
+  Get,
+  HttpException,
   HttpCode,
-  Inject,
+  HttpStatus,
   Post,
+  Put,
+  Req,
+  Res,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import type { Request, Response } from 'express';
 import { AdminGuard } from '@presentation/http/admin.guard';
-import { UserQueryPort } from '@application/queries/ports/user-query.port';
-import { AdminQueryPort } from '@application/queries/ports';
-import { TenantRepository } from '@domain/repositories';
-import { OIDC_PROVIDER } from '@infrastructure/oidc-provider/oidc-provider.constants';
-import { OidcProviderRegistry } from '@infrastructure/oidc-provider/oidc-provider.registry';
+import { AdminSessionPort } from '@application/ports/admin-session.port';
+import {
+  clearAdminSessionCookies,
+  resolveAdminRefreshToken,
+  resolveAdminSessionToken,
+  setAdminRefreshCookie,
+  setAdminSessionCookie,
+} from '@presentation/http/admin-session-cookie';
+import { AdminLoginDto, ChangePasswordDto } from '@presentation/dto';
+import {
+  ApiAdminResource,
+  ApiNoContentSchema,
+  ApiOkSchema,
+  OpenApiResponseSchemas,
+} from '@presentation/openapi-response';
 
-interface AdminLoginDto {
-  username: string;
-  password: string;
+function pickFirst(value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    return typeof value[0] === 'string' ? value[0] : undefined;
+  }
+
+  return typeof value === 'string' ? value : undefined;
 }
 
-const MASTER_TENANT = 'master';
-const ADMIN_ROLE = 'SUPER_ADMIN';
-const ADMIN_CLIENT_ID = '__admin-portal__';
-
+@ApiAdminResource('Admin Session')
 @Controller('admin/session')
 export class AdminSessionController {
   constructor(
-    @Inject(OIDC_PROVIDER) private readonly registry: OidcProviderRegistry,
-    private readonly userQuery: UserQueryPort,
-    private readonly adminQuery: AdminQueryPort,
-    private readonly tenantRepo: TenantRepository,
+    private readonly adminSession: AdminSessionPort,
+    private readonly config: ConfigService,
   ) {}
 
   @Post()
-  async login(@Body() dto: AdminLoginDto): Promise<{ token: string; username: string }> {
-    const tenant = await this.tenantRepo.findByCode(MASTER_TENANT);
-    if (!tenant) {
-      throw new UnauthorizedException('master tenant not found');
-    }
-
-    const result = await this.userQuery.authenticate({
-      tenantId: tenant.id,
-      username: dto.username,
-      password: dto.password,
+  @ApiOkSchema(
+    'Issue admin session cookie',
+    OpenApiResponseSchemas.adminSession,
+  )
+  async login(
+    @Body() dto: AdminLoginDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<{ username: string; passwordChangeRequired: boolean }> {
+    const result = await this.adminSession.issueAdminToken({
+      ...dto,
+      ipAddress: request.ip,
+      userAgent: pickFirst(request.headers?.['user-agent']),
+      correlationId:
+        pickFirst(request.headers?.['x-correlation-id']) ??
+        pickFirst(request.headers?.['x-request-id']),
     });
-
     if (!result) {
       throw new UnauthorizedException('Invalid credentials');
     }
+    if ('blocked' in result) {
+      if (result.reason === 'rate_limited') {
+        throw new HttpException(
+          'Too many login attempts',
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
 
-    const roles = await this.adminQuery.getUserRoles(tenant.id, result.userId);
-    if (!roles.some((r) => r.code === ADMIN_ROLE)) {
-      throw new UnauthorizedException('Insufficient permissions');
+      throw new HttpException('Account temporarily locked', HttpStatus.LOCKED);
     }
 
-    const provider = await this.registry.get(MASTER_TENANT);
-    const client = await (provider as any).Client.find(ADMIN_CLIENT_ID);
-    if (!client) {
-      throw new UnauthorizedException('admin-portal client not configured');
+    setAdminSessionCookie(response, this.config, result.accessToken);
+    setAdminRefreshCookie(response, this.config, result.refreshToken);
+
+    return {
+      username: result.username,
+      passwordChangeRequired: result.passwordChangeRequired,
+    };
+  }
+
+  @Post('refresh')
+  @ApiOkSchema(
+    'Refresh admin session cookies',
+    OpenApiResponseSchemas.adminSession,
+  )
+  async refresh(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<{ username: string; passwordChangeRequired: boolean }> {
+    const refreshToken = resolveAdminRefreshToken(request);
+    if (!refreshToken) {
+      throw new UnauthorizedException('Invalid session');
     }
 
-    const at = new (provider as any).AccessToken({
-      accountId: result.userId,
-      client,
-      scope: 'openid profile',
-    });
+    const session = await this.adminSession.refreshAdminSession(refreshToken);
+    if (!session) {
+      throw new UnauthorizedException('Invalid session');
+    }
 
-    const token: string = await at.save();
-    return { token, username: dto.username };
+    setAdminSessionCookie(response, this.config, session.accessToken);
+    setAdminRefreshCookie(response, this.config, session.refreshToken);
+
+    return {
+      username: session.username,
+      passwordChangeRequired: session.passwordChangeRequired,
+    };
+  }
+
+  @Get()
+  @UseGuards(AdminGuard)
+  @ApiOkSchema('Get current admin session', OpenApiResponseSchemas.adminSession)
+  async current(
+    @Req() request: Request,
+  ): Promise<{ username: string; passwordChangeRequired: boolean }> {
+    const token = resolveAdminSessionToken(request);
+    if (!token) {
+      throw new UnauthorizedException('Invalid session');
+    }
+
+    const session = await this.adminSession.getAdminSession(token);
+    if (!session) {
+      throw new UnauthorizedException('Invalid session');
+    }
+
+    return {
+      username: session.username,
+      passwordChangeRequired: session.passwordChangeRequired,
+    };
+  }
+
+  @Put('password')
+  @UseGuards(AdminGuard)
+  @HttpCode(204)
+  @ApiNoContentSchema('Change admin password')
+  async changePassword(
+    @Req() request: Request,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<void> {
+    const token = resolveAdminSessionToken(request);
+    if (!token) {
+      throw new UnauthorizedException('Invalid session');
+    }
+
+    await this.adminSession.changePassword(token, dto);
   }
 
   @Delete()
-  @UseGuards(AdminGuard)
   @HttpCode(204)
-  async logout(): Promise<void> {
-    // Token is stored in the OIDC adapter — expiry is handled by TTL.
-    // Active revocation can be added here if needed.
+  @ApiNoContentSchema('Clear admin session')
+  async logout(@Res({ passthrough: true }) response: Response): Promise<void> {
+    clearAdminSessionCookies(response, this.config);
   }
 }

@@ -1,0 +1,6 @@
+interface:
+  display_name: 'Auth Naming'
+  short_description: 'Naming rules by service layer'
+  default_prompt: 'Use $auth-naming to name the new files and DTOs consistently.'
+policy:
+  allow_implicit_invocation: true

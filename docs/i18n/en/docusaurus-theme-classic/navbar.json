@@ -1,0 +1,14 @@
+{
+  "title": {
+    "message": "Auth Docs",
+    "description": "The title in the navbar"
+  },
+  "item.label.문서": {
+    "message": "Docs",
+    "description": "Navbar item with label 문서"
+  },
+  "item.label.API Reference": {
+    "message": "API Reference",
+    "description": "Navbar item with label API Reference"
+  }
+}

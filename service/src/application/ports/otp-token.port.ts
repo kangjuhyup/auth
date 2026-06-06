@@ -1,4 +1,7 @@
-export type OtpPurpose = 'PASSWORD_RESET';
+export type OtpPurpose =
+  | 'PASSWORD_RESET'
+  | 'EMAIL_VERIFICATION'
+  | 'PHONE_VERIFICATION';
 
 export type OtpTokenRecord = Readonly<{
   id: string;

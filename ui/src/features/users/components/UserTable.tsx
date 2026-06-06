@@ -1,5 +1,11 @@
 import { Table, Button, Space, Tag } from 'antd';
-import { EditOutlined, DeleteOutlined, TeamOutlined } from '@ant-design/icons';
+import {
+  AuditOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  LaptopOutlined,
+  TeamOutlined,
+} from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { UserResponse } from '@/types/user.types';
 import { useAdminUiStore } from '@/stores/adminUi.store';
@@ -21,7 +27,13 @@ export function UserTable({
   pageSize,
   onPageChange,
 }: UserTableProps) {
-  const { openEditModal, openDeleteModal, openRoleModal } = useAdminUiStore();
+  const {
+    openEditModal,
+    openDeleteModal,
+    openRoleModal,
+    openConsentModal,
+    openSessionModal,
+  } = useAdminUiStore();
 
   const columns: ColumnsType<UserResponse> = [
     {
@@ -67,9 +79,20 @@ export function UserTable({
       ),
     },
     {
+      title: 'MFA',
+      dataIndex: 'mfaEnabled',
+      key: 'mfaEnabled',
+      width: 100,
+      render: (enabled: boolean) => (
+        <Tag color={enabled ? 'green' : 'default'}>
+          {enabled ? 'Enabled' : 'Off'}
+        </Tag>
+      ),
+    },
+    {
       title: 'Actions',
       key: 'actions',
-      width: 180,
+      width: 220,
       render: (_, record) => (
         <Space>
           <Button
@@ -77,6 +100,18 @@ export function UserTable({
             icon={<TeamOutlined />}
             onClick={() => openRoleModal(record.id)}
             title="Manage Roles"
+          />
+          <Button
+            type="link"
+            icon={<AuditOutlined />}
+            onClick={() => openConsentModal(record.id)}
+            title="View Consents"
+          />
+          <Button
+            type="link"
+            icon={<LaptopOutlined />}
+            onClick={() => openSessionModal(record.id)}
+            title="Manage Sessions"
           />
           <Button
             type="link"

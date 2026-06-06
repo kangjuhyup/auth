@@ -1,3 +1,4 @@
+import { Getter } from '../decorators';
 import { PersistenceModel } from './persistence-model';
 import { UserCredentialModel } from './user-credential';
 
@@ -11,6 +12,7 @@ interface UserProps {
   phone?: string | null;
   phoneVerified: boolean;
   status: UserStatus;
+  mfaEnabled: boolean;
   passwordCredential?: UserCredentialModel;
 }
 
@@ -40,6 +42,7 @@ export class UserModel extends PersistenceModel<string, UserProps> {
         phone: params.phone ?? null,
         phoneVerified: false,
         status: 'ACTIVE',
+        mfaEnabled: false,
         passwordCredential: params.passwordCredential,
       },
       params.id,
@@ -55,6 +58,7 @@ export class UserModel extends PersistenceModel<string, UserProps> {
     phone?: string | null;
     phoneVerified: boolean;
     status: UserStatus;
+    mfaEnabled?: boolean;
     passwordCredential?: UserCredentialModel;
   }): UserModel {
     return new UserModel(
@@ -66,6 +70,7 @@ export class UserModel extends PersistenceModel<string, UserProps> {
         phone: params.phone ?? null,
         phoneVerified: params.phoneVerified,
         status: params.status,
+        mfaEnabled: params.mfaEnabled ?? false,
         passwordCredential: params.passwordCredential,
       },
       params.id,
@@ -98,10 +103,22 @@ export class UserModel extends PersistenceModel<string, UserProps> {
     this.etc.emailVerified = false;
   }
 
+  verifyEmail(): void {
+    if (this.status === 'WITHDRAWN') throw new Error('UserAlreadyWithdrawn');
+    if (!this.email) throw new Error('EmailNotSet');
+    this.etc.emailVerified = true;
+  }
+
   changePhone(phone: string | null): void {
     if (this.status === 'WITHDRAWN') throw new Error('UserAlreadyWithdrawn');
     this.etc.phone = phone;
     this.etc.phoneVerified = false;
+  }
+
+  verifyPhone(): void {
+    if (this.status === 'WITHDRAWN') throw new Error('UserAlreadyWithdrawn');
+    if (!this.phone) throw new Error('PhoneNotSet');
+    this.etc.phoneVerified = true;
   }
 
   changeStatus(status: UserStatus): void {
@@ -109,32 +126,39 @@ export class UserModel extends PersistenceModel<string, UserProps> {
     this.etc.status = status;
   }
 
+  changeMfaEnabled(enabled: boolean): void {
+    if (this.status === 'WITHDRAWN') throw new Error('UserAlreadyWithdrawn');
+    this.etc.mfaEnabled = enabled;
+  }
+
   /* ==============================
      Getters
   =============================== */
 
-  get tenantId(): string {
-    return this.etc.tenantId;
-  }
-  get username(): string {
-    return this.etc.username;
-  }
-  get email(): string | null | undefined {
-    return this.etc.email;
-  }
-  get emailVerified(): boolean {
-    return this.etc.emailVerified;
-  }
-  get phone(): string | null | undefined {
-    return this.etc.phone;
-  }
-  get phoneVerified(): boolean {
-    return this.etc.phoneVerified;
-  }
-  get status(): UserStatus {
-    return this.etc.status;
-  }
-  get passwordCredential(): UserCredentialModel | undefined {
-    return this.etc.passwordCredential;
-  }
+  @Getter()
+  declare readonly tenantId: string;
+
+  @Getter()
+  declare readonly username: string;
+
+  @Getter()
+  declare readonly email: string | null | undefined;
+
+  @Getter()
+  declare readonly emailVerified: boolean;
+
+  @Getter()
+  declare readonly phone: string | null | undefined;
+
+  @Getter()
+  declare readonly phoneVerified: boolean;
+
+  @Getter()
+  declare readonly status: UserStatus;
+
+  @Getter()
+  declare readonly mfaEnabled: boolean;
+
+  @Getter()
+  declare readonly passwordCredential: UserCredentialModel | undefined;
 }

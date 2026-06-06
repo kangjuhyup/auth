@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/kangjuhyup/auth/compare/auth-service-v0.1.0...auth-service-v0.1.1) (2026-04-05)
+
+
+### Miscellaneous Chores
+
+* **auth-service:** Synchronize auth versions
+
 ## [0.1.0](https://github.com/kangjuhyup/auth/compare/auth-service-v0.0.1...auth-service-v0.1.0) (2026-04-05)
 
 

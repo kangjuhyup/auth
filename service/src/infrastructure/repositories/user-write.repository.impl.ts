@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { EntityManager } from '@mikro-orm/core';
-import { UserWriteRepositoryPort, UserListQuery } from '@application/commands/ports/user-write-repository.port';
+import {
+  UserWriteRepositoryPort,
+  UserListQuery,
+  CredentialLookupOptions,
+} from '@application/commands/ports/user-write-repository.port';
 import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
 import type { CredentialType } from '@domain/models/user-credential';
@@ -81,9 +85,22 @@ export class UserWriteRepositoryImpl implements UserWriteRepositoryPort {
     query: UserListQuery,
   ): Promise<{ items: UserModel[]; total: number }> {
     const offset = (query.page - 1) * query.limit;
+    const where: Record<string, unknown> = {
+      tenant: query.tenantId as any,
+    };
+
+    if (query.search) {
+      const keyword = `%${query.search}%`;
+      where.$or = [
+        { username: { $ilike: keyword } },
+        { email: { $ilike: keyword } },
+        { phone: { $ilike: keyword } },
+      ];
+    }
+
     const [entities, total] = await this.em.findAndCount(
       UserOrmEntity,
-      { tenant: query.tenantId as any },
+      where as any,
       { populate: ['tenant', 'credentials'], limit: query.limit, offset },
     );
 
@@ -112,6 +129,7 @@ export class UserWriteRepositoryImpl implements UserWriteRepositoryPort {
           phone: user.phone ?? undefined,
           phoneVerified: user.phoneVerified,
           status: user.status,
+          mfaEnabled: user.mfaEnabled,
         });
         em.persist(entity);
       } else {
@@ -121,6 +139,7 @@ export class UserWriteRepositoryImpl implements UserWriteRepositoryPort {
         entity.emailVerified = user.emailVerified;
         entity.phone = user.phone ?? undefined;
         entity.phoneVerified = user.phoneVerified;
+        entity.mfaEnabled = user.mfaEnabled;
       }
 
       // credential 변경이 있는 경우 (signup / changePassword)
@@ -152,12 +171,23 @@ export class UserWriteRepositoryImpl implements UserWriteRepositoryPort {
   async findCredentialsByType(
     userId: string,
     types: CredentialType[],
+    options?: CredentialLookupOptions,
   ): Promise<UserCredentialModel[]> {
-    const entities = await this.em.find(UserCredentialOrmEntity, {
-      user: { id: userId },
-      type: { $in: types },
-      enabled: true,
-    });
+    const enabledFilter =
+      options?.enabled === null
+        ? {}
+        : options?.enabled === undefined
+          ? { enabled: true }
+          : { enabled: options.enabled };
+    const entities = await this.em.find(
+      UserCredentialOrmEntity,
+      {
+        user: { id: userId },
+        type: { $in: types },
+        ...enabledFilter,
+      },
+      { orderBy: { createdAt: 'DESC' } },
+    );
 
     return entities.map((e) => {
       const model = UserCredentialModel.of(
@@ -175,6 +205,24 @@ export class UserWriteRepositoryImpl implements UserWriteRepositoryPort {
       model.setPersistence(e.id, e.createdAt!, e.updatedAt!);
       return model;
     });
+  }
+
+  async createCredential(
+    userId: string,
+    credential: UserCredentialModel,
+  ): Promise<void> {
+    const entity = this.em.create(UserCredentialOrmEntity, {
+      user: this.em.getReference(UserOrmEntity, userId),
+      type: credential.type,
+      secretHash: credential.secretHash,
+      hashAlg: credential.hashAlg,
+      hashParams: credential.hashParams ?? undefined,
+      hashVersion: credential.hashVersion ?? undefined,
+      enabled: credential.enabled,
+      expiresAt: credential.expiresAt ?? undefined,
+    });
+    this.em.persist(entity);
+    await this.em.flush();
   }
 
   async saveCredential(credential: UserCredentialModel): Promise<void> {

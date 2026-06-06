@@ -27,6 +27,10 @@ export class RecoveryCodeMfaStrategy implements MfaStrategy {
         );
         if (isValid) {
           cred.disable();
+          cred.updateHashParams({
+            ...(cred.hashParams ?? {}),
+            usedAt: new Date().toISOString(),
+          });
           await this.userRepo.saveCredential(cred);
           return true;
         }

@@ -1,3 +1,5 @@
+import { Getter } from '../decorators';
+
 export type EventCategory =
   | 'AUTH'
   | 'USER'
@@ -39,6 +41,7 @@ export interface EventModelProps {
   reason?: string | null;
   ip?: Buffer | null;
   userAgent?: string | null;
+  correlationId?: string | null;
   metadata?: Record<string, unknown> | null;
   occurredAt: Date;
 }
@@ -56,61 +59,50 @@ export class EventModel {
     return this._id;
   }
 
-  get tenantId(): string {
-    return this.props.tenantId;
-  }
+  @Getter()
+  declare readonly tenantId: string;
 
-  get userId(): string | null | undefined {
-    return this.props.userId;
-  }
+  @Getter()
+  declare readonly userId: string | null | undefined;
 
-  get clientId(): string | null | undefined {
-    return this.props.clientId;
-  }
+  @Getter()
+  declare readonly clientId: string | null | undefined;
 
-  get category(): EventCategory {
-    return this.props.category;
-  }
+  @Getter()
+  declare readonly category: EventCategory;
 
-  get severity(): EventSeverity {
-    return this.props.severity;
-  }
+  @Getter()
+  declare readonly severity: EventSeverity;
 
-  get action(): EventAction {
-    return this.props.action;
-  }
+  @Getter()
+  declare readonly action: EventAction;
 
-  get resourceType(): string | null | undefined {
-    return this.props.resourceType;
-  }
+  @Getter()
+  declare readonly resourceType: string | null | undefined;
 
-  get resourceId(): string | null | undefined {
-    return this.props.resourceId;
-  }
+  @Getter()
+  declare readonly resourceId: string | null | undefined;
 
-  get success(): boolean {
-    return this.props.success;
-  }
+  @Getter()
+  declare readonly success: boolean;
 
-  get reason(): string | null | undefined {
-    return this.props.reason;
-  }
+  @Getter()
+  declare readonly reason: string | null | undefined;
 
-  get ip(): Buffer | null | undefined {
-    return this.props.ip;
-  }
+  @Getter()
+  declare readonly ip: Buffer | null | undefined;
 
-  get userAgent(): string | null | undefined {
-    return this.props.userAgent;
-  }
+  @Getter()
+  declare readonly userAgent: string | null | undefined;
 
-  get metadata(): Record<string, unknown> | null | undefined {
-    return this.props.metadata;
-  }
+  @Getter()
+  declare readonly correlationId: string | null | undefined;
 
-  get occurredAt(): Date {
-    return this.props.occurredAt;
-  }
+  @Getter()
+  declare readonly metadata: Record<string, unknown> | null | undefined;
+
+  @Getter()
+  declare readonly occurredAt: Date;
 
   setId(id: string): void {
     this._id = id;

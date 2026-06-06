@@ -1,0 +1,100 @@
+name: Main Container Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: main-container-deploy
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  PLATFORMS: linux/arm64
+
+jobs:
+  docker-publish:
+    name: Build and publish ${{ matrix.image_name }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image_name: auth-service
+            dockerfile: deploy/docker/Dockerfile.service
+          - image_name: auth-ui
+            dockerfile: deploy/docker/Dockerfile.ui
+    outputs:
+      repository_lc: ${{ steps.ns.outputs.repository_lc }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Lowercase image namespace
+        id: ns
+        run: |
+          R=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "repository_lc=$R" >> "$GITHUB_OUTPUT"
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Setup Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ steps.ns.outputs.repository_lc }}/${{ matrix.image_name }}
+          tags: |
+            type=raw,value=main
+            type=sha,prefix=main-,format=short
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          platforms: ${{ env.PLATFORMS }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=main-${{ matrix.image_name }}
+          cache-to: type=gha,mode=max,scope=main-${{ matrix.image_name }}
+
+  deploy-webhook:
+    name: Trigger deployment webhook
+    needs: docker-publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
+    steps:
+      - name: Skip when DEPLOY_WEBHOOK_URL is not configured
+        if: ${{ env.DEPLOY_WEBHOOK_URL == '' }}
+        run: echo "DEPLOY_WEBHOOK_URL is not configured. Images were published only."
+
+      - name: Trigger deployment webhook
+        if: ${{ env.DEPLOY_WEBHOOK_URL != '' }}
+        run: |
+          curl --fail --show-error --silent \
+            --request POST \
+            --header "content-type: application/json" \
+            --data "$PAYLOAD" \
+            "$DEPLOY_WEBHOOK_URL"
+        env:
+          PAYLOAD: >-
+            {"repository":"${{ github.repository }}","sha":"${{ github.sha }}","ref":"${{ github.ref_name }}","images":{"service":"${{ env.REGISTRY }}/${{ needs.docker-publish.outputs.repository_lc }}/auth-service:main","ui":"${{ env.REGISTRY }}/${{ needs.docker-publish.outputs.repository_lc }}/auth-ui:main"}}

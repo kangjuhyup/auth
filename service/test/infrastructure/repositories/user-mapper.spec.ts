@@ -1,5 +1,8 @@
 import { UserMapper } from '@infrastructure/repositories/mapper/user.mapper';
-import { UserOrmEntity, UserCredentialOrmEntity } from '@infrastructure/mikro-orm/entities';
+import {
+  UserOrmEntity,
+  UserCredentialOrmEntity,
+} from '@infrastructure/mikro-orm/entities';
 
 function makeUserEntity(): UserOrmEntity {
   return Object.assign(new UserOrmEntity(), {
@@ -11,6 +14,7 @@ function makeUserEntity(): UserOrmEntity {
     phone: '01012345678',
     phoneVerified: false,
     status: 'ACTIVE',
+    mfaEnabled: true,
     createdAt: new Date('2025-01-01'),
     updatedAt: new Date('2025-01-02'),
   });
@@ -32,7 +36,10 @@ function makeCredentialEntity(): UserCredentialOrmEntity {
 describe('UserMapper', () => {
   describe('toDomain', () => {
     it('활성 credential과 함께 유저 엔티티를 도메인 모델로 변환한다', () => {
-      const domain = UserMapper.toDomain(makeUserEntity(), makeCredentialEntity());
+      const domain = UserMapper.toDomain(
+        makeUserEntity(),
+        makeCredentialEntity(),
+      );
 
       expect(domain.id).toBe('user-1');
       expect(domain.tenantId).toBe('tenant-1');
@@ -42,6 +49,7 @@ describe('UserMapper', () => {
       expect(domain.phone).toBe('01012345678');
       expect(domain.phoneVerified).toBe(false);
       expect(domain.status).toBe('ACTIVE');
+      expect(domain.mfaEnabled).toBe(true);
       expect(domain.passwordCredential?.secretHash).toBe('hashed-password');
       expect(domain.createdAt).toEqual(new Date('2025-01-01'));
       expect(domain.updatedAt).toEqual(new Date('2025-01-02'));

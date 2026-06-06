@@ -45,6 +45,30 @@ describe('UserCredentialModel', () => {
       expect(cred.hashVersion).toBeUndefined();
     });
 
+    it('임시 비밀번호면 passwordChangeRequired 메타데이터를 저장한다', () => {
+      const cred = UserCredentialModel.password({
+        secretHash: 'hashed-value',
+        hashAlg: 'argon2id',
+        hashParams: { timeCost: 3 },
+        passwordChangeRequired: true,
+      });
+
+      expect(cred.hashParams).toEqual({
+        timeCost: 3,
+        passwordChangeRequired: true,
+      });
+      expect(cred.requiresPasswordChange()).toBe(true);
+    });
+
+    it('일반 비밀번호는 passwordChangeRequired가 false이다', () => {
+      const cred = UserCredentialModel.password({
+        secretHash: 'hashed-value',
+        hashAlg: 'argon2id',
+      });
+
+      expect(cred.requiresPasswordChange()).toBe(false);
+    });
+
     it('secretHash가 비어있으면 에러를 던진다', () => {
       expect(() =>
         UserCredentialModel.password({
@@ -61,6 +85,34 @@ describe('UserCredentialModel', () => {
           hashAlg: '',
         }),
       ).toThrow('HashAlgRequired');
+    });
+  });
+
+  describe('enable/disable', () => {
+    it('disabled credential을 enable할 수 있다', () => {
+      const cred = UserCredentialModel.of({
+        type: 'totp',
+        secretHash: 'JBSWY3DPEHPK3PXP',
+        hashAlg: 'totp-sha1',
+        enabled: false,
+      });
+
+      cred.enable();
+
+      expect(cred.enabled).toBe(true);
+    });
+
+    it('enabled credential을 disable할 수 있다', () => {
+      const cred = UserCredentialModel.of({
+        type: 'totp',
+        secretHash: 'JBSWY3DPEHPK3PXP',
+        hashAlg: 'totp-sha1',
+        enabled: true,
+      });
+
+      cred.disable();
+
+      expect(cred.enabled).toBe(false);
     });
   });
 });

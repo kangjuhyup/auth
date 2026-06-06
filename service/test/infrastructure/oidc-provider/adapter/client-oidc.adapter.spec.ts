@@ -17,6 +17,7 @@ function makeClient(
     applicationType: 'web' | 'native';
     backchannelLogoutUri: string | null;
     frontchannelLogoutUri: string | null;
+    grantTypes: string[];
   }> = {},
 ): ClientModel {
   const c = new ClientModel({
@@ -28,7 +29,7 @@ function makeClient(
     type: 'confidential',
     enabled: overrides.enabled ?? true,
     redirectUris: ['https://app.example.com/callback'],
-    grantTypes: ['authorization_code'],
+    grantTypes: overrides.grantTypes ?? ['authorization_code'],
     responseTypes: ['code'],
     tokenEndpointAuthMethod: 'client_secret_basic',
     scope: 'openid profile',
@@ -111,6 +112,18 @@ describe('ClientOidcAdapter', () => {
       expect(result!.application_type).toBe('web');
       expect(result!.backchannel_logout_uri).toBe('https://app.example.com/bc');
       expect(result!.frontchannel_logout_uri).toBeUndefined();
+    });
+
+    it('provider client metadata에서는 refresh_token grant를 제외한다', async () => {
+      clientRepo.findByClientId.mockResolvedValue(
+        makeClient({
+          grantTypes: ['authorization_code', 'refresh_token'],
+        }),
+      );
+
+      const result = await adapter.find('my-app');
+
+      expect(result!.grant_types).toEqual(['authorization_code']);
     });
 
     it('secretEnc가 있으면 복호화하여 client_secret에 넣는다', async () => {

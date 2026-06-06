@@ -1,7 +1,7 @@
 # Auth Platform
 
-멀티테넌트 인증 플랫폼으로, **OAuth 2.0 / OpenID Connect(OIDC) 서버**와 **관리 UI**, **로그인·동의용 interaction SPA**로 구성됩니다.  
-`node-oidc-provider`를 프로토콜 엔진으로 사용하며, 테넌트 단위 격리, 클라이언트 정책, 외부 IdP(OAuth2) 연동, MFA 등을 제공합니다.
+Multi-tenant 인증 플랫폼으로, **OAuth 2.0 / OpenID Connect(OIDC) 서버**와 **관리 UI**, **로그인·동의용 interaction SPA**로 구성됩니다.
+`node-oidc-provider`를 프로토콜 엔진으로 사용하며, Tenant 단위 격리, Client 정책, 외부 IdP(OAuth2) 연동, MFA 등을 제공합니다.
 
 ---
 
@@ -12,6 +12,7 @@ auth/
 ├── service/                 # NestJS 백엔드 (OIDC + 관리 API + interaction 정적 서빙)
 │   └── interaction-ui/      # 로그인·동의·MFA 화면 (Vite + React, 빌드 산출물을 Nest가 서빙)
 ├── ui/                      # React 관리자 콘솔 (Vite + Ant Design)
+├── docs/                    # AuthDocs (Docusaurus + Markdown 원본)
 ├── docker-compose.yml       # 로컬 PostgreSQL·Redis
 ├── docker-compose.e2e.yml   # E2E 전용 DB·Redis
 └── package.json             # Yarn Workspaces 루트
@@ -31,7 +32,7 @@ service/src/
 
 ### `ui` — 관리자 콘솔
 
-테넌트·클라이언트·사용자·권한·역할·그룹·정책·**Identity Provider** 등을 관리하는 SPA입니다. API는 테넌트 컨텍스트가 필요한 경로가 `/t/:tenantCode/admin/...` 형태입니다.
+Tenant·Client·사용자·권한·역할·그룹·정책·**Identity Provider** 등을 관리하는 SPA입니다. API는 Tenant context가 필요한 경로가 `/t/:tenantCode/admin/...` 형태입니다.
 
 ### `service/interaction-ui` — OIDC Interaction 화면
 
@@ -42,34 +43,34 @@ OIDC authorize 흐름 중 **로그인·동의·MFA**를 담당하는 별도 Vite
 
 ## 주요 기능
 
-| 영역 | 설명 |
-|------|------|
-| **멀티테넌시** | 테넌트별 독립 OIDC issuer (`/t/:tenantCode/oidc`) |
-| **OIDC/OAuth2** | Authorization Code + **PKCE(필수)**, Token, Userinfo, Revoke, Session End |
-| **클라이언트 관리** | confidential·public·service 타입, 리소스 인디케이터, 동의 생략(`skipConsent`) |
-| **클라이언트 인증 정책** | 허용 로그인 방식, MFA, 세션·동의 정책 등 |
-| **사용자/권한** | 사용자, 역할, 권한, 그룹 |
-| **Interaction** | `/t/:tenantCode/interaction/:uid` — 비밀번호 로그인, **외부 IdP 버튼**, 동의, MFA |
-| **외부 IdP** | 테넌트별 OAuth2 연동 — 내장 키(`google`, `kakao`, `naver`, `apple`) 또는 **임의 slug + `oauth_config` JSON** |
-| **관리자 세션** | `POST /admin/session` — `master` 테넌트의 `SUPER_ADMIN` + OIDC admin 클라이언트로 액세스 토큰 발급 |
-| **스토리지** | PostgreSQL / MySQL / MSSQL + Redis (`rdb` · `redis` · `hybrid` 어댑터) |
-| **암호화** | Argon2id·PBKDF2 비밀번호 해시, 대칭 암호화, JWKS 키 관리 |
+| 영역                 | 설명                                                                                                                   |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **Multi-tenancy**    | Tenant별 독립 OIDC issuer (`/t/:tenantCode/oidc`)                                                                      |
+| **OIDC/OAuth2**      | Authorization Code + **PKCE(필수)**, Token, Userinfo, Revoke, Session End                                              |
+| **Client 관리**      | confidential·public·service 타입, resource indicator, 동의 생략(`skipConsent`)                                         |
+| **Client 인증 정책** | 허용 로그인 방식, MFA, 세션·동의 정책 등                                                                               |
+| **사용자/권한**      | 사용자, 역할, 권한, 그룹                                                                                               |
+| **Interaction**      | `/t/:tenantCode/interaction/:uid` — 비밀번호 로그인, **외부 IdP 버튼**, 동의, MFA                                      |
+| **외부 IdP**         | Tenant별 OAuth2 연동 — 내장 키(`google`, `kakao`, `naver`, `apple`) 또는 **임의 slug + `oauth_config` JSON**           |
+| **관리자 세션**      | `POST /admin/session` — `master` Tenant의 `SUPER_ADMIN` 로그인 후 `admin_session` + `admin_refresh` HttpOnly 쿠키 발급 |
+| **스토리지**         | PostgreSQL / MySQL / MSSQL + Redis (`rdb` · `redis` · `hybrid` 어댑터)                                                 |
+| **암호화**           | Argon2id·PBKDF2 비밀번호 해시, 대칭 암호화, JWKS 키 관리                                                               |
 
 ---
 
 ## 기술 스택
 
-| 구분 | 기술 |
-|------|------|
-| 런타임 | Node.js 24+ |
-| 백엔드 | NestJS 11 |
-| ORM | MikroORM 6 |
-| OIDC | node-oidc-provider 9 |
-| 데이터베이스 | PostgreSQL 16 (MySQL / MSSQL 지원) |
-| 캐시 | Redis 7 |
-| 관리 UI | React 19, Vite, Ant Design |
-| Interaction UI | React 19, Vite |
-| 패키지 관리 | Yarn Berry (Workspaces + PnP) |
+| 구분           | 기술                               |
+| -------------- | ---------------------------------- |
+| 런타임         | Node.js 24+                        |
+| 백엔드         | NestJS 11                          |
+| ORM            | MikroORM 6                         |
+| OIDC           | node-oidc-provider 9               |
+| 데이터베이스   | PostgreSQL 16 (MySQL / MSSQL 지원) |
+| 캐시           | Redis 7                            |
+| 관리 UI        | React 19, Vite, Ant Design         |
+| Interaction UI | React 19, Vite                     |
+| 패키지 관리    | Yarn Berry (Workspaces + PnP)      |
 
 ---
 
@@ -136,17 +137,17 @@ Interaction 화면을 수정한 뒤에는 다시 `yarn interaction-ui:build` 하
 
 ## OIDC·Interaction URL
 
-| 용도 | 메서드 | 경로 |
-|------|--------|------|
-| Discovery | GET | `/t/:tenantCode/oidc/.well-known/openid-configuration` |
-| Authorize | GET | `/t/:tenantCode/oidc/auth` |
-| Token | POST | `/t/:tenantCode/oidc/token` |
-| Userinfo | GET | `/t/:tenantCode/oidc/userinfo` |
-| Revoke | POST | `/t/:tenantCode/oidc/revoke` |
-| Session end | GET | `/t/:tenantCode/oidc/session/end` |
-| Interaction SPA | GET | `/t/:tenantCode/interaction/:uid` |
-| 외부 IdP 시작 | GET | `/t/:tenantCode/interaction/:uid/idp/:provider` |
-| 외부 IdP 콜백 | GET | `/t/:tenantCode/interaction/:uid/idp/:provider/callback` |
+| 용도            | 메서드 | 경로                                                     |
+| --------------- | ------ | -------------------------------------------------------- |
+| Discovery       | GET    | `/t/:tenantCode/oidc/.well-known/openid-configuration`   |
+| Authorize       | GET    | `/t/:tenantCode/oidc/auth`                               |
+| Token           | POST   | `/t/:tenantCode/oidc/token`                              |
+| Userinfo        | GET    | `/t/:tenantCode/oidc/userinfo`                           |
+| Revoke          | POST   | `/t/:tenantCode/oidc/revoke`                             |
+| Session end     | GET    | `/t/:tenantCode/oidc/session/end`                        |
+| Interaction SPA | GET    | `/t/:tenantCode/interaction/:uid`                        |
+| 외부 IdP 시작   | GET    | `/t/:tenantCode/interaction/:uid/idp/:provider`          |
+| 외부 IdP 콜백   | GET    | `/t/:tenantCode/interaction/:uid/idp/:provider/callback` |
 
 Authorize는 **PKCE(`code_challenge` / `code_challenge_method=S256`)가 필요**합니다.  
 브라우저로 interaction UI를 보려면 authorize URL로 진입해 리다이렉트된 `/interaction/:uid`를 사용합니다.
@@ -155,13 +156,22 @@ Authorize는 **PKCE(`code_challenge` / `code_challenge_method=S256`)가 필요**
 
 ## 관리 API 개요
 
-관리자 브라우저 세션은 `POST /admin/session`(바디: `username`, `password`)으로 발급한 Bearer 토큰을 사용합니다.  
-테넌트별 리소스는 경로에 테넌트 코드가 들어갑니다.
+관리자 브라우저 세션은 **HttpOnly cookie 기반**입니다.  
+`POST /admin/session` 로그인 시 access token 성격의 `admin_session` 쿠키와 refresh token 성격의 `admin_refresh` 쿠키를 함께 발급합니다.
 
-| 범위 | 예시 |
-|------|------|
-| 플랫폼(마스터) 테넌트 | `GET/POST /admin/tenants` |
-| 테넌트 스코프 | `GET/POST /t/:tenantCode/admin/clients`, `.../users`, `.../roles`, `.../groups`, `.../permissions`, `.../policies`, `.../keys`, `.../audit-logs`, `.../identity-providers` 등 |
+- `GET /admin/session`: 현재 관리자 세션 조회
+- `POST /admin/session/refresh`: `admin_refresh` 쿠키로 세션 재발급
+- `PUT /admin/session/password`: 현재 관리자 비밀번호 변경
+- `DELETE /admin/session`: 세션 쿠키 삭제
+
+관리 UI는 관리자 API 호출이 `401`을 반환하면 `POST /admin/session/refresh`를 **한 번 자동 시도**하고, 성공 시 원래 요청을 재시도합니다. refresh도 실패하면 로그인 화면으로 이동합니다.
+
+Tenant별 리소스는 경로에 Tenant code가 들어갑니다.
+
+| 범위                  | 예시                                                                                                                                                                          |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 플랫폼(master) Tenant | `GET/POST /admin/tenants`                                                                                                                                                     |
+| Tenant scope          | `GET/POST /t/:tenantCode/admin/clients`, `.../users`, `.../roles`, `.../groups`, `.../permissions`, `.../policies`, `.../keys`, `.../audit-logs`, `.../identity-providers` 등 |
 
 전체 목록은 Swagger 또는 `service/src/presentation/controllers/admin` 을 참고하면 됩니다.
 
@@ -185,8 +195,31 @@ yarn service:test:e2e:infra:down
 
 ## 문서
 
-| 문서 | 경로 |
-|------|------|
-| OIDC 아키텍처 | [`service/docs/OIDC.md`](service/docs/OIDC.md) |
-| Interaction UI 커스터마이징 | [`service/docs/INTERACTION_UI.md`](service/docs/INTERACTION_UI.md) |
-| 데이터베이스 | [`service/DATABASE.md`](service/DATABASE.md) |
+AuthDocs의 Markdown 원본은 [`docs/docs`](docs/docs)에 있습니다. 각 워크스페이스의 `docs` 디렉토리는 앱별 개발/운영 로컬 문서만 둡니다.
+
+| 영역                | 문서                                                                                           |
+| ------------------- | ---------------------------------------------------------------------------------------------- |
+| AuthDocs 시작점     | [`docs/docs/intro.md`](docs/docs/intro.md)                                                     |
+| 문서 맵             | [`docs/docs/document-map.md`](docs/docs/document-map.md)                                       |
+| 핵심 개념           | [`docs/docs/concepts.md`](docs/docs/concepts.md)                                               |
+| Tenant 개요         | [`docs/docs/concepts/tenant/overview.md`](docs/docs/concepts/tenant/overview.md)               |
+| Tenant 정책         | [`docs/docs/concepts/tenant/policies.md`](docs/docs/concepts/tenant/policies.md)               |
+| Client 개요         | [`docs/docs/concepts/client/overview.md`](docs/docs/concepts/client/overview.md)               |
+| Client 정책         | [`docs/docs/concepts/client/policies.md`](docs/docs/concepts/client/policies.md)               |
+| Grant 개요          | [`docs/docs/concepts/client/grants/overview.md`](docs/docs/concepts/client/grants/overview.md) |
+| Scope 개요          | [`docs/docs/concepts/client/scopes.md`](docs/docs/concepts/client/scopes.md)                   |
+| OIDC 인증 흐름      | [`docs/docs/concepts/oidc-flow.md`](docs/docs/concepts/oidc-flow.md)                           |
+| 커스텀 Grant        | [`docs/docs/concepts/client/grants/custom.md`](docs/docs/concepts/client/grants/custom.md)     |
+| 관리자 UI 문서      | [`docs/docs/ui/overview.md`](docs/docs/ui/overview.md)                                         |
+| Interaction UI 문서 | [`docs/docs/ui/interaction-ui.md`](docs/docs/ui/interaction-ui.md)                             |
+| Redoc API 문서      | [`docs/docs/api/redoc.md`](docs/docs/api/redoc.md)                                             |
+
+로컬 개발 문서:
+
+| 영역              | 문서                                                                                           |
+| ----------------- | ---------------------------------------------------------------------------------------------- |
+| Service           | [`service/docs/README.md`](service/docs/README.md)                                             |
+| Service OIDC 구현 | [`service/docs/OIDC.md`](service/docs/OIDC.md)                                                 |
+| Database          | [`service/docs/DATABASE.md`](service/docs/DATABASE.md)                                         |
+| Admin UI          | [`ui/docs/README.md`](ui/docs/README.md)                                                       |
+| Interaction UI    | [`service/interaction-ui/docs/CUSTOMIZATION.md`](service/interaction-ui/docs/CUSTOMIZATION.md) |

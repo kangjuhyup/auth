@@ -1,3 +1,4 @@
+/* global module */
 /** dependency-cruiser 금지 규칙 (단일 출처). */
 const forbidden = [
   /* ---------- 레이어 간 (헥사고날) ---------- */
@@ -5,10 +6,9 @@ const forbidden = [
     name: 'no-domain-to-outer-layers',
     severity: 'error',
     comment:
-      'domain 은 application / infrastructure / presentation 에 의존하면 안 됩니다. (domain.module.ts 제외)',
+      'domain 은 application / infrastructure / presentation 에 의존하면 안 됩니다.',
     from: {
       path: '^src/domain',
-      pathNot: 'domain\\.module\\.ts$',
     },
     to: {
       path: '^src/(application|infrastructure|presentation)/',
@@ -17,10 +17,9 @@ const forbidden = [
   {
     name: 'no-domain-to-nest-outside-module',
     severity: 'error',
-    comment: 'domain 내부(모듈 파일 제외)에서는 @nestjs 에 직접 의존하지 않습니다.',
+    comment: 'domain 내부에서는 @nestjs 에 직접 의존하지 않습니다.',
     from: {
       path: '^src/domain',
-      pathNot: 'domain\\.module\\.ts$',
     },
     to: {
       path: 'node_modules/@nestjs/',
@@ -54,24 +53,28 @@ const forbidden = [
   {
     name: 'no-presentation-to-infrastructure',
     severity: 'error',
-    comment:
-      'presentation 은 기본적으로 infrastructure 에 의존하지 않습니다. (OIDC 예외 파일 pathNot)',
+    comment: 'presentation 은 infrastructure 에 직접 의존하지 않습니다.',
     from: {
       path: '^src/presentation',
-      pathNot:
-        '(session\\.controller|admin\\.guard|interaction\\.controller|oidc\\.middleware)\\.ts$',
     },
     to: {
       path: '^src/infrastructure/',
     },
   },
   {
+    name: 'no-presentation-to-domain',
+    severity: 'error',
+    comment:
+      'presentation 은 domain 에 직접 의존하지 않고 application port/query/command 를 경유합니다.',
+    from: { path: '^src/presentation' },
+    to: { path: '^src/domain/' },
+  },
+  {
     name: 'no-infrastructure-to-presentation',
     severity: 'error',
-    comment: 'infrastructure 는 presentation 에 의존하지 않습니다. (oidc-provider.module 예외)',
+    comment: 'infrastructure 는 presentation 에 의존하지 않습니다.',
     from: {
       path: '^src/infrastructure',
-      pathNot: 'oidc-provider/oidc-provider\\.module\\.ts$',
     },
     to: {
       path: '^src/presentation/',
@@ -82,14 +85,16 @@ const forbidden = [
   {
     name: 'domain-models-not-to-repositories',
     severity: 'error',
-    comment: 'domain/models 는 domain/repositories 를 참조하지 않습니다 (모델이 저장소 추상에 묶이지 않도록).',
+    comment:
+      'domain/models 는 domain/repositories 를 참조하지 않습니다 (모델이 저장소 추상에 묶이지 않도록).',
     from: { path: '^src/domain/models' },
     to: { path: '^src/domain/repositories/' },
   },
   {
     name: 'domain-repositories-not-to-utils',
     severity: 'error',
-    comment: 'domain/repositories 는 domain/utils 에 의존하지 않습니다 (리포지토리 인터페이스는 얇게 유지).',
+    comment:
+      'domain/repositories 는 domain/utils 에 의존하지 않습니다 (리포지토리 인터페이스는 얇게 유지).',
     from: { path: '^src/domain/repositories' },
     to: { path: '^src/domain/utils/' },
   },
@@ -119,7 +124,8 @@ const forbidden = [
   {
     name: 'command-handlers-not-to-query-strategies',
     severity: 'error',
-    comment: 'command handlers 는 MFA 등 query strategies 에 직접 의존하지 않습니다.',
+    comment:
+      'command handlers 는 MFA 등 query strategies 에 직접 의존하지 않습니다.',
     from: { path: '^src/application/commands/handlers/' },
     to: { path: '^src/application/queries/strategies/' },
   },
@@ -135,7 +141,8 @@ const forbidden = [
   {
     name: 'application-not-to-mikro-orm',
     severity: 'error',
-    comment: 'application 레이어는 MikroORM 에 직접 의존하지 않습니다 (영속성은 infrastructure).',
+    comment:
+      'application 레이어는 MikroORM 에 직접 의존하지 않습니다 (영속성은 infrastructure).',
     from: {
       path: '^src/application',
       pathNot: 'application\\.module\\.ts$',
@@ -154,7 +161,8 @@ const forbidden = [
   {
     name: 'presentation-dto-not-to-handlers',
     severity: 'error',
-    comment: 'presentation/dto 는 application 핸들러에 직접 의존하지 않습니다 (포트·DTO만 사용).',
+    comment:
+      'presentation/dto 는 application 핸들러에 직접 의존하지 않습니다 (포트·DTO만 사용).',
     from: { path: '^src/presentation/dto/' },
     to: { path: '^src/application/(commands|queries)/handlers/' },
   },

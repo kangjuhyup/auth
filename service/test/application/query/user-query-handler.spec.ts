@@ -1,11 +1,16 @@
 import { UserQueryHandler } from '@application/queries/handlers/user-query.handler';
 import type { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
-import type { PasswordHashPort, HashPolicy } from '@application/ports/password-hash.port';
+import type {
+  PasswordHashPort,
+  HashPolicy,
+} from '@application/ports/password-hash.port';
 import type { MfaStrategy } from '@application/queries/strategies';
 import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
 
-function makeUser(overrides: Partial<Parameters<typeof UserModel.of>[0]> = {}): UserModel {
+function makeUser(
+  overrides: Partial<Parameters<typeof UserModel.of>[0]> = {},
+): UserModel {
   return UserModel.of({
     id: 'user-1',
     tenantId: 'tenant-1',
@@ -31,6 +36,7 @@ function createMockUserRepo(): jest.Mocked<UserWriteRepositoryPort> {
     list: jest.fn().mockResolvedValue({ items: [], total: 0 }),
     save: jest.fn().mockResolvedValue(undefined),
     findCredentialsByType: jest.fn().mockResolvedValue([]),
+    createCredential: jest.fn().mockResolvedValue(undefined),
     saveCredential: jest.fn().mockResolvedValue(undefined),
   };
 }
@@ -53,7 +59,10 @@ describe('UserQueryHandler', () => {
     jest.clearAllMocks();
     userRepo = createMockUserRepo();
     passwordHash = createMockPasswordHash();
-    totpStrategy = { method: 'totp', verify: jest.fn().mockResolvedValue(true) };
+    totpStrategy = {
+      method: 'totp',
+      verify: jest.fn().mockResolvedValue(true),
+    };
     handler = new UserQueryHandler(userRepo, passwordHash, [totpStrategy]);
   });
 
@@ -61,17 +70,24 @@ describe('UserQueryHandler', () => {
     it('user 없음 → null', async () => {
       userRepo.findById.mockResolvedValue(undefined);
 
-      expect(await handler.findProfile({ tenantId: 'tenant-1', userId: 'user-1' })).toBeNull();
+      expect(
+        await handler.findProfile({ tenantId: 'tenant-1', userId: 'user-1' }),
+      ).toBeNull();
     });
 
     it('tenant 불일치 → null', async () => {
       userRepo.findById.mockResolvedValue(makeUser({ tenantId: 'other' }));
 
-      expect(await handler.findProfile({ tenantId: 'tenant-1', userId: 'user-1' })).toBeNull();
+      expect(
+        await handler.findProfile({ tenantId: 'tenant-1', userId: 'user-1' }),
+      ).toBeNull();
     });
 
     it('성공 → UserProfileView 필드 매핑', async () => {
-      const result = await handler.findProfile({ tenantId: 'tenant-1', userId: 'user-1' });
+      const result = await handler.findProfile({
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+      });
 
       expect(result).toMatchObject({
         userId: 'user-1',
@@ -80,6 +96,26 @@ describe('UserQueryHandler', () => {
         email: 'user@example.com',
         emailVerified: true,
         status: 'ACTIVE',
+        mfaEnabled: false,
+        passwordChangeRequired: false,
+      });
+    });
+
+    it('임시 비밀번호 credential이면 passwordChangeRequired를 반환한다', async () => {
+      userRepo.findById.mockResolvedValue(
+        makeUser({
+          passwordCredential: UserCredentialModel.password({
+            secretHash: 'hashed-pw',
+            hashAlg: 'argon2id',
+            passwordChangeRequired: true,
+          }),
+        }),
+      );
+
+      await expect(
+        handler.findProfile({ tenantId: 'tenant-1', userId: 'user-1' }),
+      ).resolves.toMatchObject({
+        passwordChangeRequired: true,
       });
     });
   });
@@ -88,19 +124,33 @@ describe('UserQueryHandler', () => {
     it('user 없음 → null', async () => {
       userRepo.findById.mockResolvedValue(undefined);
 
-      expect(await handler.findClaimsBySub({ tenantId: 'tenant-1', sub: 'user-1' })).toBeNull();
+      expect(
+        await handler.findClaimsBySub({ tenantId: 'tenant-1', sub: 'user-1' }),
+      ).toBeNull();
     });
 
     it('tenant 불일치 → null', async () => {
       userRepo.findById.mockResolvedValue(makeUser({ tenantId: 'other' }));
 
-      expect(await handler.findClaimsBySub({ tenantId: 'tenant-1', sub: 'user-1' })).toBeNull();
+      expect(
+        await handler.findClaimsBySub({ tenantId: 'tenant-1', sub: 'user-1' }),
+      ).toBeNull();
     });
 
     it('성공 → sub/email/email_verified 매핑', async () => {
-      const result = await handler.findClaimsBySub({ tenantId: 'tenant-1', sub: 'user-1' });
+      const result = await handler.findClaimsBySub({
+        tenantId: 'tenant-1',
+        sub: 'user-1',
+      });
 
-      expect(result).toEqual({ sub: 'user-1', email: 'user@example.com', email_verified: true });
+      expect(result).toEqual({
+        sub: 'user-1',
+        username: 'testuser',
+        email: 'user@example.com',
+        email_verified: true,
+        phone: undefined,
+        phone_verified: false,
+      });
     });
   });
 
@@ -108,13 +158,22 @@ describe('UserQueryHandler', () => {
     it('user 없음 → null', async () => {
       userRepo.findByUsername.mockResolvedValue(undefined);
 
-      expect(await handler.findByUsername({ tenantId: 'tenant-1', username: 'testuser' })).toBeNull();
+      expect(
+        await handler.findByUsername({
+          tenantId: 'tenant-1',
+          username: 'testuser',
+        }),
+      ).toBeNull();
     });
 
     it('성공 → UserProfileView 반환', async () => {
-      const result = await handler.findByUsername({ tenantId: 'tenant-1', username: 'testuser' });
+      const result = await handler.findByUsername({
+        tenantId: 'tenant-1',
+        username: 'testuser',
+      });
 
       expect(result?.username).toBe('testuser');
+      expect(result?.passwordChangeRequired).toBe(false);
     });
   });
 
@@ -122,31 +181,91 @@ describe('UserQueryHandler', () => {
     it('user 없음 → null', async () => {
       userRepo.findByUsername.mockResolvedValue(undefined);
 
-      expect(await handler.authenticate({ tenantId: 'tenant-1', username: 'u', password: 'pw' })).toBeNull();
+      expect(
+        await handler.authenticate({
+          tenantId: 'tenant-1',
+          username: 'u',
+          password: 'pw',
+        }),
+      ).toBeNull();
     });
 
     it('ACTIVE 아닌 상태 → null', async () => {
       userRepo.findByUsername.mockResolvedValue(makeUser({ status: 'LOCKED' }));
 
-      expect(await handler.authenticate({ tenantId: 'tenant-1', username: 'u', password: 'pw' })).toBeNull();
+      expect(
+        await handler.authenticate({
+          tenantId: 'tenant-1',
+          username: 'u',
+          password: 'pw',
+        }),
+      ).toBeNull();
     });
 
     it('password credential 없음 → null', async () => {
-      userRepo.findByUsername.mockResolvedValue(makeUser({ passwordCredential: undefined }));
+      userRepo.findByUsername.mockResolvedValue(
+        makeUser({ passwordCredential: undefined }),
+      );
 
-      expect(await handler.authenticate({ tenantId: 'tenant-1', username: 'u', password: 'pw' })).toBeNull();
+      expect(
+        await handler.authenticate({
+          tenantId: 'tenant-1',
+          username: 'u',
+          password: 'pw',
+        }),
+      ).toBeNull();
     });
 
     it('비밀번호 불일치 → null', async () => {
       passwordHash.verify.mockResolvedValue(false);
 
-      expect(await handler.authenticate({ tenantId: 'tenant-1', username: 'u', password: 'wrong' })).toBeNull();
+      expect(
+        await handler.authenticate({
+          tenantId: 'tenant-1',
+          username: 'u',
+          password: 'wrong',
+        }),
+      ).toBeNull();
     });
 
-    it('성공 → { userId } 반환', async () => {
-      const result = await handler.authenticate({ tenantId: 'tenant-1', username: 'u', password: 'correct' });
+    it('성공 → { userId, mfaEnabled, passwordChangeRequired } 반환', async () => {
+      userRepo.findByUsername.mockResolvedValue(makeUser({ mfaEnabled: true }));
 
-      expect(result).toEqual({ userId: 'user-1' });
+      const result = await handler.authenticate({
+        tenantId: 'tenant-1',
+        username: 'u',
+        password: 'correct',
+      });
+
+      expect(result).toEqual({
+        userId: 'user-1',
+        mfaEnabled: true,
+        passwordChangeRequired: false,
+      });
+    });
+
+    it('임시 비밀번호 credential이면 passwordChangeRequired를 반환한다', async () => {
+      userRepo.findByUsername.mockResolvedValue(
+        makeUser({
+          passwordCredential: UserCredentialModel.password({
+            secretHash: 'hashed-pw',
+            hashAlg: 'argon2id',
+            passwordChangeRequired: true,
+          }),
+        }),
+      );
+
+      const result = await handler.authenticate({
+        tenantId: 'tenant-1',
+        username: 'u',
+        password: 'correct',
+      });
+
+      expect(result).toEqual({
+        userId: 'user-1',
+        mfaEnabled: false,
+        passwordChangeRequired: true,
+      });
     });
   });
 
@@ -165,9 +284,24 @@ describe('UserQueryHandler', () => {
 
     it('중복된 credential type은 한 번만 반환', async () => {
       userRepo.findCredentialsByType.mockResolvedValue([
-        UserCredentialModel.of({ type: 'totp', secretHash: 's1', hashAlg: 'sha1', enabled: true }),
-        UserCredentialModel.of({ type: 'totp', secretHash: 's2', hashAlg: 'sha1', enabled: true }),
-        UserCredentialModel.of({ type: 'webauthn', secretHash: 's3', hashAlg: 'ES256', enabled: true }),
+        UserCredentialModel.of({
+          type: 'totp',
+          secretHash: 's1',
+          hashAlg: 'sha1',
+          enabled: true,
+        }),
+        UserCredentialModel.of({
+          type: 'totp',
+          secretHash: 's2',
+          hashAlg: 'sha1',
+          enabled: true,
+        }),
+        UserCredentialModel.of({
+          type: 'webauthn',
+          secretHash: 's3',
+          hashAlg: 'ES256',
+          enabled: true,
+        }),
       ]);
 
       const result = await handler.getMfaMethods('tenant-1', 'user-1');
@@ -178,27 +312,97 @@ describe('UserQueryHandler', () => {
     });
   });
 
+  describe('getRecoveryCodeStatus', () => {
+    it('user 없음 → 0 상태', async () => {
+      userRepo.findById.mockResolvedValue(undefined);
+
+      await expect(
+        handler.getRecoveryCodeStatus('tenant-1', 'user-1'),
+      ).resolves.toEqual({ remaining: 0, total: 0, used: 0, low: false });
+    });
+
+    it('현재 배치 기준 remaining/total/low를 계산한다', async () => {
+      userRepo.findCredentialsByType.mockResolvedValue([
+        UserCredentialModel.of({
+          type: 'recovery_code',
+          secretHash: 'active-1',
+          hashAlg: 'argon2id',
+          hashParams: { batchId: 'batch-1' },
+          enabled: true,
+        }),
+        UserCredentialModel.of({
+          type: 'recovery_code',
+          secretHash: 'used-1',
+          hashAlg: 'argon2id',
+          hashParams: { batchId: 'batch-1', usedAt: '2026-05-24T00:00:00Z' },
+          enabled: false,
+        }),
+        UserCredentialModel.of({
+          type: 'recovery_code',
+          secretHash: 'retired-1',
+          hashAlg: 'argon2id',
+          hashParams: { retiredAt: '2026-05-23T00:00:00Z' },
+          enabled: false,
+        }),
+      ]);
+
+      await expect(
+        handler.getRecoveryCodeStatus('tenant-1', 'user-1'),
+      ).resolves.toEqual({ remaining: 1, total: 2, used: 1, low: true });
+      expect(userRepo.findCredentialsByType).toHaveBeenCalledWith(
+        'user-1',
+        ['recovery_code'],
+        { enabled: null },
+      );
+    });
+  });
+
   describe('verifyMfa', () => {
     it('user 없음 → false', async () => {
       userRepo.findById.mockResolvedValue(undefined);
 
-      expect(await handler.verifyMfa({ tenantId: 'tenant-1', userId: 'user-1', method: 'totp', code: '123' })).toBe(false);
+      expect(
+        await handler.verifyMfa({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          method: 'totp',
+          code: '123',
+        }),
+      ).toBe(false);
     });
 
     it('tenant 불일치 → false', async () => {
       userRepo.findById.mockResolvedValue(makeUser({ tenantId: 'other' }));
 
-      expect(await handler.verifyMfa({ tenantId: 'tenant-1', userId: 'user-1', method: 'totp', code: '123' })).toBe(false);
+      expect(
+        await handler.verifyMfa({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          method: 'totp',
+          code: '123',
+        }),
+      ).toBe(false);
     });
 
     it('등록되지 않은 strategy → false', async () => {
-      expect(await handler.verifyMfa({ tenantId: 'tenant-1', userId: 'user-1', method: 'webauthn' })).toBe(false);
+      expect(
+        await handler.verifyMfa({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          method: 'webauthn',
+        }),
+      ).toBe(false);
     });
 
     it('strategy.verify 결과를 그대로 반환', async () => {
       totpStrategy.verify.mockResolvedValue(true);
 
-      const result = await handler.verifyMfa({ tenantId: 'tenant-1', userId: 'user-1', method: 'totp', code: '123456' });
+      const result = await handler.verifyMfa({
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+        method: 'totp',
+        code: '123456',
+      });
 
       expect(totpStrategy.verify).toHaveBeenCalledTimes(1);
       expect(result).toBe(true);

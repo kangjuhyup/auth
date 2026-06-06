@@ -2,13 +2,20 @@ import { Module, Global } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OidcProviderModule } from './oidc-provider/oidc-provider.module';
 import { NotificationModule } from './notification/notification.module';
+import { RedisModule } from './redis/redis.module';
 import { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
 import { UserWriteRepositoryImpl } from './repositories/user-write.repository.impl';
+import { AdminSessionTokenPort } from '@application/ports/admin-session-token.port';
+import { LoginAttemptPolicyPort } from '@application/ports/login-attempt-policy.port';
+import { OidcInteractionPort } from '@application/ports/oidc-interaction.port';
+import { TenantContextPort } from '@application/ports/tenant-context.port';
 import {
   TenantRepository,
   GroupRepository,
   RoleRepository,
   PermissionRepository,
+  ScopeRepository,
+  CustomGrantRepository,
   RoleAssignmentRepository,
   RolePermissionRepository,
   ClientRepository,
@@ -25,6 +32,8 @@ import { TenantRepositoryImpl } from './repositories/tenant.repository.impl';
 import { GroupRepositoryImpl } from './repositories/group.repository.impl';
 import { RoleRepositoryImpl } from './repositories/role.repository.impl';
 import { PermissionRepositoryImpl } from './repositories/permission.repository.impl';
+import { ScopeRepositoryImpl } from './repositories/scope.repository.impl';
+import { CustomGrantRepositoryImpl } from './repositories/custom-grant.repository.impl';
 import { RoleAssignmentRepositoryImpl } from './repositories/role-assignment.repository.impl';
 import { RolePermissionRepositoryImpl } from './repositories/role-permission.repository.impl';
 import { ClientRepositoryImpl } from './repositories/client.repository.impl';
@@ -55,9 +64,28 @@ import { SymmetricCryptoAdapter } from './crypto/symmetric/symmetric-crypto.adap
 
 // IdP & MFA
 import { IdpPort } from '@application/ports/idp.port';
+import { SamlSpPort } from '@application/ports/saml-sp.port';
 import { MfaVerificationPort } from '@application/ports/mfa-verification.port';
 import { OAuth2IdpAdapter } from './idp/oauth2-idp.adapter';
+import { SamlSpAdapter } from './idp/saml-sp.adapter';
 import { MfaVerificationAdapter } from './mfa/mfa-verification.adapter';
+import { TenantContextAdapter } from './tenancy/tenant-context.adapter';
+import { RedisLoginAttemptPolicyAdapter } from './security/login-attempt/redis-login-attempt-policy.adapter';
+import { AdminSessionTokenAdapter } from './oidc-provider/admin-session-token.adapter';
+import { OidcInteractionAdapter } from './oidc-provider/oidc-interaction.adapter';
+import { RedisLoginAttemptStore } from './stores/redis/redis-login-attempt.store';
+import { RedisSamlCacheProviderFactory } from './stores/redis/redis-saml-cache-provider.factory';
+import { RedisSamlRelayStateStore } from './stores/redis/redis-saml-relay-state.store';
+import { ReadinessCheckPort } from '@application/ports/readiness-check.port';
+import { InfrastructureReadinessAdapter } from './observability/infrastructure-readiness.adapter';
+import { IdentityLinkSessionPort } from '@application/ports/identity-link-session.port';
+import { RedisIdentityLinkSessionRepository } from './repositories/redis-identity-link-session.repository';
+import { GrantTypeRegistryPort } from '@application/ports/grant-type-registry.port';
+import { OidcGrantTypeRegistryAdapter } from './oidc-provider/grant-type-registry.adapter';
+import { ScopeRegistryPort } from '@application/ports/scope-registry.port';
+import { OidcScopeRegistryAdapter } from './oidc-provider/scope-registry.adapter';
+import { ScopeClaimResolverPort } from '@application/ports/scope-claim-resolver.port';
+import { OidcScopeClaimResolverAdapter } from './oidc-provider/scope-claim-resolver.adapter';
 
 // Password Hash Implementations
 import { Argon2idHash } from './crypto/password/impl/argon2-hash';
@@ -65,7 +93,7 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
 
 @Global()
 @Module({
-  imports: [OidcProviderModule, NotificationModule],
+  imports: [OidcProviderModule, NotificationModule, RedisModule],
   providers: [
     {
       provide: TenantRepository,
@@ -82,6 +110,14 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     {
       provide: PermissionRepository,
       useClass: PermissionRepositoryImpl,
+    },
+    {
+      provide: ScopeRepository,
+      useClass: ScopeRepositoryImpl,
+    },
+    {
+      provide: CustomGrantRepository,
+      useClass: CustomGrantRepositoryImpl,
     },
     {
       provide: RoleAssignmentRepository,
@@ -132,8 +168,51 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
       useClass: UserWriteRepositoryImpl,
     },
     {
+      provide: TenantContextPort,
+      useClass: TenantContextAdapter,
+    },
+    {
+      provide: AdminSessionTokenPort,
+      useClass: AdminSessionTokenAdapter,
+    },
+    {
+      provide: LoginAttemptPolicyPort,
+      useClass: RedisLoginAttemptPolicyAdapter,
+    },
+    {
+      provide: IdentityLinkSessionPort,
+      useClass: RedisIdentityLinkSessionRepository,
+    },
+    RedisLoginAttemptStore,
+    {
+      provide: OidcInteractionPort,
+      useClass: OidcInteractionAdapter,
+    },
+    {
+      provide: GrantTypeRegistryPort,
+      useClass: OidcGrantTypeRegistryAdapter,
+    },
+    {
+      provide: ScopeRegistryPort,
+      useClass: OidcScopeRegistryAdapter,
+    },
+    {
+      provide: ScopeClaimResolverPort,
+      useClass: OidcScopeClaimResolverAdapter,
+    },
+    {
       provide: IdpPort,
       useClass: OAuth2IdpAdapter,
+    },
+    {
+      provide: SamlSpPort,
+      useClass: SamlSpAdapter,
+    },
+    RedisSamlRelayStateStore,
+    RedisSamlCacheProviderFactory,
+    {
+      provide: ReadinessCheckPort,
+      useClass: InfrastructureReadinessAdapter,
     },
     {
       provide: MfaVerificationPort,
@@ -191,10 +270,20 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     OidcProviderModule,
     NotificationModule,
     UserWriteRepositoryPort,
+    TenantContextPort,
+    AdminSessionTokenPort,
+    LoginAttemptPolicyPort,
+    IdentityLinkSessionPort,
+    OidcInteractionPort,
+    GrantTypeRegistryPort,
+    ScopeRegistryPort,
+    ScopeClaimResolverPort,
     TenantRepository,
     GroupRepository,
     RoleRepository,
     PermissionRepository,
+    ScopeRepository,
+    CustomGrantRepository,
     RoleAssignmentRepository,
     RolePermissionRepository,
     ClientRepository,
@@ -205,6 +294,7 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     EventRepository,
     RoleInheritRepository,
     IdentityProviderRepository,
+    SamlSpPort,
     UserIdentityRepository,
     IdpPort,
     MfaVerificationPort,
@@ -214,6 +304,7 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     TransactionManagerPort,
     JwksKeyCryptoPort,
     SymmetricCryptoPort,
+    ReadinessCheckPort,
   ],
 })
 export class InfrastructureModule {}

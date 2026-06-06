@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/kangjuhyup/auth/compare/auth-ui-v0.1.0...auth-ui-v0.1.1) (2026-04-05)
+
+
+### Bug Fixes
+
+* **ui:** Ant Design 폼 타입 및 mockApi 업데이트 TS 오류 수정 ([459e1f6](https://github.com/kangjuhyup/auth/commit/459e1f6b3a3c977421f425c6d1de9cc1f25c3a1e))
+
 ## [0.1.0](https://github.com/kangjuhyup/auth/compare/auth-ui-v0.0.1...auth-ui-v0.1.0) (2026-04-05)
 
 

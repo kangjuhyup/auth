@@ -12,17 +12,33 @@ import {
 import { AdminGuard } from '@presentation/http/admin.guard';
 import { IdentityProviderCommandPort } from '@application/commands/ports/identity-provider-command.port';
 import { AdminQueryPort } from '@application/queries/ports';
-import type { IdentityProviderResponse } from '@application/dto';
+import {
+  AuditContext,
+  CreateIdentityProviderDto as AppCreateIdentityProviderDto,
+  IdentityProviderResponse,
+  PaginationQuery as AppPaginationQuery,
+  TenantContext,
+  UpdateIdentityProviderDto as AppUpdateIdentityProviderDto,
+} from '@application/dto';
 import {
   CreateIdentityProviderDto,
   UpdateIdentityProviderDto,
   PaginationQuery,
   PaginatedResult,
 } from '@presentation/dto';
-import { TenantContext } from '@application/dto';
 import { Tenant } from '../../http/tenant.decorator';
+import { AdminAuditContext } from '@presentation/http/admin-audit-context.decorator';
+import {
+  ApiAdminResource,
+  ApiCreatedIdSchema,
+  ApiNoContentSchema,
+  ApiOkSchema,
+  ApiPaginatedSchema,
+  OpenApiResponseSchemas,
+} from '@presentation/openapi-response';
 
 @UseGuards(AdminGuard)
+@ApiAdminResource('Admin Identity Providers')
 @Controller('t/:tenantCode/admin/identity-providers')
 export class AdminIdentityProviderController {
   constructor(
@@ -31,14 +47,22 @@ export class AdminIdentityProviderController {
   ) {}
 
   @Get()
+  @ApiPaginatedSchema(
+    'List identity providers',
+    OpenApiResponseSchemas.identityProvider,
+  )
   list(
     @Tenant() tenant: TenantContext,
     @Query() query: PaginationQuery,
   ): Promise<PaginatedResult<IdentityProviderResponse>> {
-    return this.queryPort.getIdentityProviders(tenant.id, query);
+    return this.queryPort.getIdentityProviders(
+      tenant.id,
+      AppPaginationQuery.of(query),
+    );
   }
 
   @Get(':id')
+  @ApiOkSchema('Get identity provider', OpenApiResponseSchemas.identityProvider)
   get(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
@@ -47,27 +71,53 @@ export class AdminIdentityProviderController {
   }
 
   @Post()
+  @ApiCreatedIdSchema('Create identity provider')
   create(
     @Tenant() tenant: TenantContext,
     @Body() dto: CreateIdentityProviderDto,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<{ id: string }> {
-    return this.commandPort.createIdentityProvider(tenant.id, dto);
+    const command = AppCreateIdentityProviderDto.of(dto);
+    if (!auditContext) {
+      return this.commandPort.createIdentityProvider(tenant.id, command);
+    }
+    return this.commandPort.createIdentityProvider(
+      tenant.id,
+      command,
+      auditContext,
+    );
   }
 
   @Put(':id')
+  @ApiNoContentSchema('Update identity provider')
   update(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
     @Body() dto: UpdateIdentityProviderDto,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    return this.commandPort.updateIdentityProvider(tenant.id, id, dto);
+    const command = AppUpdateIdentityProviderDto.of(dto);
+    if (!auditContext) {
+      return this.commandPort.updateIdentityProvider(tenant.id, id, command);
+    }
+    return this.commandPort.updateIdentityProvider(
+      tenant.id,
+      id,
+      command,
+      auditContext,
+    );
   }
 
   @Delete(':id')
+  @ApiNoContentSchema('Delete identity provider')
   delete(
     @Tenant() tenant: TenantContext,
     @Param('id') id: string,
+    @AdminAuditContext() auditContext?: AuditContext,
   ): Promise<void> {
-    return this.commandPort.deleteIdentityProvider(tenant.id, id);
+    if (!auditContext) {
+      return this.commandPort.deleteIdentityProvider(tenant.id, id);
+    }
+    return this.commandPort.deleteIdentityProvider(tenant.id, id, auditContext);
   }
 }

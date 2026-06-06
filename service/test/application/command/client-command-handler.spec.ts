@@ -1,8 +1,18 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { ClientCommandHandler } from '@application/commands/handlers/client-command.handler';
-import type { ClientRepository } from '@domain/repositories';
+import type {
+  ClientAuthPolicyRepository,
+  ClientRepository,
+} from '@domain/repositories';
 import type { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
+import type { GrantTypeRegistryPort } from '@application/ports/grant-type-registry.port';
+import type { ScopeRegistryPort } from '@application/ports/scope-registry.port';
 import { ClientModel } from '@domain/models/client';
+import { ClientAuthPolicyModel } from '@domain/models/client-auth-policy';
 
 function makeClient(id = 'client-1', tenantId = 'tenant-1'): ClientModel {
   const c = new ClientModel({
@@ -23,9 +33,31 @@ function makeClient(id = 'client-1', tenantId = 'tenant-1'): ClientModel {
     frontchannelLogoutUri: null,
     allowedResources: [],
     skipConsent: false,
+    accessTokenTtlSec: null,
+    refreshTokenTtlSec: null,
   });
   c.setPersistence(id, new Date(), new Date());
   return c;
+}
+
+function makeClientAuthPolicy(clientRefId = 'client-1'): ClientAuthPolicyModel {
+  const policy = new ClientAuthPolicyModel({
+    tenantId: 'tenant-1',
+    clientRefId,
+    allowedAuthMethods: ['password'],
+    defaultAcr: 'urn:auth:pwd',
+    mfaRequired: false,
+    allowedMfaMethods: ['totp'],
+    maxSessionDurationSec: null,
+    consentRequired: true,
+    requireAuthTime: false,
+    allowedIdpProviderKeys: null,
+    reauthenticationIntervalSec: null,
+    refreshTokenRotationEnabled: true,
+    refreshTokenReuseAction: 'revoke_grant',
+  });
+  policy.setPersistence('policy-1', new Date(), new Date());
+  return policy;
 }
 
 function createMockClientRepo(): jest.Mocked<ClientRepository> {
@@ -41,6 +73,14 @@ function createMockClientRepo(): jest.Mocked<ClientRepository> {
   };
 }
 
+function createMockClientAuthPolicyRepo(): jest.Mocked<ClientAuthPolicyRepository> {
+  return {
+    findByClientRefId: jest.fn().mockResolvedValue(makeClientAuthPolicy()),
+    save: jest.fn().mockImplementation(async (p: ClientAuthPolicyModel) => p),
+    deleteByClientRefId: jest.fn().mockResolvedValue(undefined),
+  } as any;
+}
+
 function createMockCrypto(): jest.Mocked<SymmetricCryptoPort> {
   return {
     encrypt: jest.fn().mockImplementation((v: string) => `enc:${v}`),
@@ -48,16 +88,53 @@ function createMockCrypto(): jest.Mocked<SymmetricCryptoPort> {
   };
 }
 
+function createMockGrantTypeRegistry(): jest.Mocked<GrantTypeRegistryPort> {
+  return {
+    listSupportedGrantTypes: jest
+      .fn()
+      .mockResolvedValue([
+        'authorization_code',
+        'refresh_token',
+        'client_credentials',
+        'implicit',
+      ]),
+    listDefinitions: jest.fn(),
+    validateClientGrantTypes: jest.fn().mockResolvedValue([]),
+  };
+}
+
+function createMockScopeRegistry(): jest.Mocked<ScopeRegistryPort> {
+  return {
+    listSupportedScopes: jest
+      .fn()
+      .mockResolvedValue(['openid', 'profile', 'email', 'orders:read']),
+    listDefinitions: jest.fn(),
+    validateClientScopes: jest.fn().mockResolvedValue([]),
+  };
+}
+
 describe('ClientCommandHandler', () => {
   let handler: ClientCommandHandler;
   let clientRepo: jest.Mocked<ClientRepository>;
+  let clientAuthPolicyRepo: jest.Mocked<ClientAuthPolicyRepository>;
   let crypto: jest.Mocked<SymmetricCryptoPort>;
+  let grantTypeRegistry: jest.Mocked<GrantTypeRegistryPort>;
+  let scopeRegistry: jest.Mocked<ScopeRegistryPort>;
 
   beforeEach(() => {
     jest.clearAllMocks();
     clientRepo = createMockClientRepo();
+    clientAuthPolicyRepo = createMockClientAuthPolicyRepo();
     crypto = createMockCrypto();
-    handler = new ClientCommandHandler(clientRepo, crypto);
+    grantTypeRegistry = createMockGrantTypeRegistry();
+    scopeRegistry = createMockScopeRegistry();
+    handler = new ClientCommandHandler(
+      clientRepo,
+      clientAuthPolicyRepo,
+      crypto,
+      grantTypeRegistry,
+      scopeRegistry,
+    );
   });
 
   describe('createClient', () => {
@@ -72,6 +149,18 @@ describe('ClientCommandHandler', () => {
         'new-app',
       );
       expect(clientRepo.save).toHaveBeenCalledTimes(1);
+      expect(clientAuthPolicyRepo.save).toHaveBeenCalledTimes(1);
+      expect(grantTypeRegistry.validateClientGrantTypes).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        clientType: 'public',
+        applicationType: 'web',
+        tokenEndpointAuthMethod: 'none',
+        grantTypes: ['authorization_code'],
+      });
+      expect(scopeRegistry.validateClientScopes).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        scopes: ['openid'],
+      });
       expect(result.id).toBeDefined();
     });
 
@@ -120,6 +209,8 @@ describe('ClientCommandHandler', () => {
       expect(saved.backchannelLogoutUri).toBeNull();
       expect(saved.frontchannelLogoutUri).toBeNull();
       expect(saved.allowedResources).toEqual([]);
+      expect(saved.accessTokenTtlSec).toBeNull();
+      expect(saved.refreshTokenTtlSec).toBeNull();
     });
 
     it('신규 필드를 명시적으로 전달할 수 있다', async () => {
@@ -130,6 +221,8 @@ describe('ClientCommandHandler', () => {
         backchannelLogoutUri: 'https://app.example.com/bc-logout',
         frontchannelLogoutUri: 'https://app.example.com/fc-logout',
         allowedResources: ['https://api.example.com'],
+        accessTokenTtlSec: 900,
+        refreshTokenTtlSec: 86400,
       });
 
       const saved = clientRepo.save.mock.calls[0][0] as ClientModel;
@@ -141,6 +234,56 @@ describe('ClientCommandHandler', () => {
         'https://app.example.com/fc-logout',
       );
       expect(saved.allowedResources).toEqual(['https://api.example.com']);
+      expect(saved.accessTokenTtlSec).toBe(900);
+      expect(saved.refreshTokenTtlSec).toBe(86400);
+    });
+
+    it('허용되지 않은 grant type 정책이면 BadRequestException을 던진다', async () => {
+      grantTypeRegistry.validateClientGrantTypes.mockResolvedValue([
+        { grantType: 'client_credentials', reason: 'client_auth_required' },
+      ]);
+
+      await expect(
+        handler.createClient('tenant-1', {
+          clientId: 'bad-client',
+          name: 'Bad Client',
+          grantTypes: ['client_credentials'],
+          tokenEndpointAuthMethod: 'none',
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(clientRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('custom scope가 registry에 등록되어 있으면 정규화해 저장한다', async () => {
+      await handler.createClient('tenant-1', {
+        clientId: 'custom-scope-client',
+        name: 'Custom Scope Client',
+        scope: 'openid  orders:read   profile orders:read',
+      });
+
+      expect(scopeRegistry.validateClientScopes).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        scopes: ['openid', 'orders:read', 'profile'],
+      });
+      const saved = clientRepo.save.mock.calls[0][0] as ClientModel;
+      expect(saved.scope).toBe('openid orders:read profile');
+    });
+
+    it('지원하지 않는 scope 정책이면 BadRequestException을 던진다', async () => {
+      scopeRegistry.validateClientScopes.mockResolvedValue([
+        { scope: 'payments:write', reason: 'unsupported' },
+      ]);
+
+      await expect(
+        handler.createClient('tenant-1', {
+          clientId: 'bad-scope-client',
+          name: 'Bad Scope Client',
+          scope: 'openid payments:write',
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(clientRepo.save).not.toHaveBeenCalled();
     });
   });
 
@@ -226,6 +369,8 @@ describe('ClientCommandHandler', () => {
         scope: 'openid profile email',
         postLogoutRedirectUris: ['https://updated.example.com/logout'],
         skipConsent: true,
+        accessTokenTtlSec: 1200,
+        refreshTokenTtlSec: null,
       });
 
       const saved = clientRepo.save.mock.calls[0][0] as ClientModel;
@@ -233,10 +378,7 @@ describe('ClientCommandHandler', () => {
       expect(saved.redirectUris).toEqual([
         'https://updated.example.com/callback',
       ]);
-      expect(saved.grantTypes).toEqual([
-        'authorization_code',
-        'refresh_token',
-      ]);
+      expect(saved.grantTypes).toEqual(['authorization_code', 'refresh_token']);
       expect(saved.responseTypes).toEqual(['code']);
       expect(saved.tokenEndpointAuthMethod).toBe('client_secret_post');
       expect(saved.scope).toBe('openid profile email');
@@ -244,6 +386,147 @@ describe('ClientCommandHandler', () => {
         'https://updated.example.com/logout',
       ]);
       expect(saved.skipConsent).toBe(true);
+      expect(saved.accessTokenTtlSec).toBe(1200);
+      expect(saved.refreshTokenTtlSec).toBeNull();
+    });
+
+    it('scope 변경 시 registry 정책으로 검증한 뒤 정규화한다', async () => {
+      await handler.updateClient('tenant-1', 'client-1', {
+        scope: 'openid  orders:read orders:read',
+      });
+
+      expect(scopeRegistry.validateClientScopes).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        scopes: ['openid', 'orders:read'],
+      });
+      const saved = clientRepo.save.mock.calls[0][0] as ClientModel;
+      expect(saved.scope).toBe('openid orders:read');
+    });
+
+    it('grantTypes 변경 시 최종 client 정책을 검증한다', async () => {
+      await handler.updateClient('tenant-1', 'client-1', {
+        grantTypes: ['authorization_code', 'refresh_token'],
+      });
+
+      expect(grantTypeRegistry.validateClientGrantTypes).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        clientType: 'public',
+        applicationType: 'web',
+        tokenEndpointAuthMethod: 'none',
+        grantTypes: ['authorization_code', 'refresh_token'],
+      });
+    });
+
+    it('grantTypes 변경이 정책에 맞지 않으면 저장하지 않는다', async () => {
+      grantTypeRegistry.validateClientGrantTypes.mockResolvedValue([
+        {
+          grantType: 'refresh_token',
+          reason: 'required_grant_missing',
+          requiredGrantType: 'authorization_code',
+        },
+      ]);
+
+      await expect(
+        handler.updateClient('tenant-1', 'client-1', {
+          grantTypes: ['refresh_token'],
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(clientRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('updateClientAuthPolicy', () => {
+    it('클라이언트별 refresh token 정책을 수정한다', async () => {
+      const policy = makeClientAuthPolicy('client-1');
+      clientAuthPolicyRepo.findByClientRefId.mockResolvedValue(policy);
+
+      await handler.updateClientAuthPolicy('tenant-1', 'client-1', {
+        refreshTokenRotationEnabled: false,
+        refreshTokenReuseAction: 'revoke_grant',
+      });
+
+      expect(clientRepo.findById).toHaveBeenCalledWith('client-1');
+      expect(clientAuthPolicyRepo.findByClientRefId).toHaveBeenCalledWith(
+        'client-1',
+      );
+      expect(clientAuthPolicyRepo.save).toHaveBeenCalledWith(policy);
+      expect(policy.refreshTokenRotationEnabled).toBe(false);
+      expect(policy.refreshTokenReuseAction).toBe('revoke_grant');
+    });
+
+    it('클라이언트별 IdP와 재인증 override를 수정한다', async () => {
+      const policy = makeClientAuthPolicy('client-1');
+      clientAuthPolicyRepo.findByClientRefId.mockResolvedValue(policy);
+
+      await handler.updateClientAuthPolicy('tenant-1', 'client-1', {
+        allowedIdpProviderKeys: ['okta'],
+        reauthenticationIntervalSec: 1800,
+      });
+
+      expect(clientAuthPolicyRepo.save).toHaveBeenCalledWith(policy);
+      expect(policy.allowedIdpProviderKeys).toEqual(['okta']);
+      expect(policy.reauthenticationIntervalSec).toBe(1800);
+    });
+
+    it('클라이언트별 single login override를 수정한다', async () => {
+      const policy = makeClientAuthPolicy('client-1');
+      clientAuthPolicyRepo.findByClientRefId.mockResolvedValue(policy);
+
+      await handler.updateClientAuthPolicy('tenant-1', 'client-1', {
+        loginSessionMode: 'single',
+        maxConcurrentSessions: 1,
+        sessionConflictAction: 'deny_new_login',
+      });
+
+      expect(clientAuthPolicyRepo.save).toHaveBeenCalledWith(policy);
+      expect(policy.loginSessionMode).toBe('single');
+      expect(policy.maxConcurrentSessions).toBe(1);
+      expect(policy.sessionConflictAction).toBe('deny_new_login');
+    });
+
+    it('single login override를 null로 돌려 tenant 정책 상속으로 복귀한다', async () => {
+      const policy = makeClientAuthPolicy('client-1');
+      policy.changeLoginSessionMode('single');
+      policy.changeMaxConcurrentSessions(1);
+      policy.changeSessionConflictAction('deny_new_login');
+      clientAuthPolicyRepo.findByClientRefId.mockResolvedValue(policy);
+
+      await handler.updateClientAuthPolicy('tenant-1', 'client-1', {
+        loginSessionMode: null,
+        maxConcurrentSessions: null,
+        sessionConflictAction: null,
+      });
+
+      expect(policy.loginSessionMode).toBeNull();
+      expect(policy.maxConcurrentSessions).toBeNull();
+      expect(policy.sessionConflictAction).toBeNull();
+    });
+
+    it('기존 정책이 없으면 기본 정책을 생성한 뒤 수정한다', async () => {
+      clientAuthPolicyRepo.findByClientRefId.mockResolvedValue(null);
+
+      await handler.updateClientAuthPolicy('tenant-1', 'client-1', {
+        mfaRequired: true,
+        refreshTokenRotationEnabled: true,
+      });
+
+      const saved = clientAuthPolicyRepo.save.mock.calls[0][0];
+      expect(saved.clientRefId).toBe('client-1');
+      expect(saved.mfaRequired).toBe(true);
+      expect(saved.refreshTokenRotationEnabled).toBe(true);
+    });
+
+    it('클라이언트가 없으면 NotFoundException을 던진다', async () => {
+      clientRepo.findById.mockResolvedValue(null);
+
+      await expect(
+        handler.updateClientAuthPolicy('tenant-1', 'no-such', {
+          refreshTokenRotationEnabled: true,
+        }),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(clientAuthPolicyRepo.save).not.toHaveBeenCalled();
     });
   });
 

@@ -3,8 +3,11 @@ import { mockApi } from '@/lib/mockApi';
 import type { PaginatedResult } from '@/types/pagination.types';
 import type {
   UserResponse,
+  UserConsentResponse,
+  UserSessionResponse,
   CreateUserDto,
   UpdateUserDto,
+  UserListQuery,
 } from '@/types/user.types';
 import type { RoleResponse } from '@/types/role.types';
 
@@ -13,10 +16,12 @@ const USE_MOCK = import.meta.env.VITE_USE_MOCK_API === 'true';
 export const userApi = {
   list: (
     tenantCode: string,
-    params: { page?: number; limit?: number },
+    params: UserListQuery,
   ): Promise<PaginatedResult<UserResponse>> => {
     if (USE_MOCK) return mockApi.users.list(params);
-    return apiClient.get(`/t/${tenantCode}/admin/users`, { params });
+    return apiClient.get(`/t/${tenantCode}/admin/users`, {
+      params: { ...params },
+    });
   },
 
   get: (tenantCode: string, id: string): Promise<UserResponse> => {
@@ -29,7 +34,11 @@ export const userApi = {
     return apiClient.post(`/t/${tenantCode}/admin/users`, dto);
   },
 
-  update: (tenantCode: string, id: string, dto: UpdateUserDto): Promise<void> => {
+  update: (
+    tenantCode: string,
+    id: string,
+    dto: UpdateUserDto,
+  ): Promise<void> => {
     if (USE_MOCK) return mockApi.users.update(id, dto);
     return apiClient.put(`/t/${tenantCode}/admin/users/${id}`, dto);
   },
@@ -44,13 +53,72 @@ export const userApi = {
     return apiClient.get(`/t/${tenantCode}/admin/users/${userId}/roles`);
   },
 
-  addRole: (tenantCode: string, userId: string, roleId: string): Promise<void> => {
-    if (USE_MOCK) return mockApi.users.addRole(userId, roleId);
-    return apiClient.post(`/t/${tenantCode}/admin/users/${userId}/roles/${roleId}`);
+  getSessions: (
+    tenantCode: string,
+    userId: string,
+  ): Promise<UserSessionResponse[]> => {
+    if (USE_MOCK) return mockApi.users.getSessions(userId);
+    return apiClient.get(`/t/${tenantCode}/admin/users/${userId}/sessions`);
   },
 
-  removeRole: (tenantCode: string, userId: string, roleId: string): Promise<void> => {
+  revokeSession: (
+    tenantCode: string,
+    userId: string,
+    sessionId: string,
+  ): Promise<void> => {
+    if (USE_MOCK) return mockApi.users.revokeSession(userId, sessionId);
+    return apiClient.delete(
+      `/t/${tenantCode}/admin/users/${userId}/sessions/${sessionId}`,
+    );
+  },
+
+  revokeSessions: (tenantCode: string, userId: string): Promise<void> => {
+    if (USE_MOCK) return mockApi.users.revokeSessions(userId);
+    return apiClient.delete(`/t/${tenantCode}/admin/users/${userId}/sessions`);
+  },
+
+  getConsents: (
+    tenantCode: string,
+    userId: string,
+    params: { page?: number; limit?: number },
+  ): Promise<PaginatedResult<UserConsentResponse>> => {
+    if (USE_MOCK) return mockApi.users.getConsents(userId, params);
+    return apiClient.get(`/t/${tenantCode}/admin/users/${userId}/consents`, {
+      params,
+    });
+  },
+
+  getConsentHistory: (
+    tenantCode: string,
+    userId: string,
+    params: { page?: number; limit?: number },
+  ): Promise<PaginatedResult<UserConsentResponse>> => {
+    if (USE_MOCK) return mockApi.users.getConsentHistory(userId, params);
+    return apiClient.get(
+      `/t/${tenantCode}/admin/users/${userId}/consents/history`,
+      { params },
+    );
+  },
+
+  addRole: (
+    tenantCode: string,
+    userId: string,
+    roleId: string,
+  ): Promise<void> => {
+    if (USE_MOCK) return mockApi.users.addRole(userId, roleId);
+    return apiClient.post(
+      `/t/${tenantCode}/admin/users/${userId}/roles/${roleId}`,
+    );
+  },
+
+  removeRole: (
+    tenantCode: string,
+    userId: string,
+    roleId: string,
+  ): Promise<void> => {
     if (USE_MOCK) return mockApi.users.removeRole(userId, roleId);
-    return apiClient.delete(`/t/${tenantCode}/admin/users/${userId}/roles/${roleId}`);
+    return apiClient.delete(
+      `/t/${tenantCode}/admin/users/${userId}/roles/${roleId}`,
+    );
   },
 };

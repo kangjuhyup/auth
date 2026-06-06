@@ -11,11 +11,19 @@ import type {
   OtpTokenRecord,
 } from '@application/ports/otp-token.port';
 import type { NotificationPort } from '@application/ports/notification.port';
+import type { MfaVerificationPort } from '@application/ports/mfa-verification.port';
+import type { IdpPort } from '@application/ports/idp.port';
+import type { IdentityLinkSessionPort } from '@application/ports/identity-link-session.port';
 import type { ConfigService } from '@nestjs/config';
 import type { ConsentRepository } from '@domain/repositories/consent.repository';
+import type { UserIdentityRepository } from '@domain/repositories/user-identity.repository';
+import type { EventRepository } from '@domain/repositories/event.repository';
+import type { IdentityProviderRepository } from '@domain/repositories/identity-provider.repository';
 import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
 import { ConsentModel } from '@domain/models/consent';
+import { UserIdentityModel } from '@domain/models/user-identity';
+import { IdentityProviderModel } from '@domain/models/identity-provider';
 
 function makeActiveUser(
   overrides?: Partial<Parameters<typeof UserModel.of>[0]>,
@@ -48,6 +56,7 @@ function createMockUserWriteRepo(): jest.Mocked<UserWriteRepositoryPort> {
     list: jest.fn().mockResolvedValue({ items: [], total: 0 }),
     save: jest.fn().mockResolvedValue(undefined),
     findCredentialsByType: jest.fn().mockResolvedValue([]),
+    createCredential: jest.fn().mockResolvedValue(undefined),
     saveCredential: jest.fn().mockResolvedValue(undefined),
   };
 }
@@ -62,6 +71,112 @@ function createMockConsentRepo(): jest.Mocked<ConsentRepository> {
   };
 }
 
+function makeIdentity(
+  overrides?: Partial<ConstructorParameters<typeof UserIdentityModel>[0]>,
+  id = 'identity-1',
+): UserIdentityModel {
+  return new UserIdentityModel(
+    {
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      provider: 'google',
+      providerSub: 'google-sub-1',
+      email: 'john@example.com',
+      profileJson: null,
+      linkedAt: new Date('2025-01-01T00:00:00.000Z'),
+      ...overrides,
+    },
+    id,
+  );
+}
+
+function createMockUserIdentityRepo(): jest.Mocked<UserIdentityRepository> {
+  const identity = makeIdentity();
+  return {
+    findByProviderSub: jest.fn().mockResolvedValue(null),
+    findByIdForUser: jest.fn().mockResolvedValue(identity),
+    listByUser: jest.fn().mockResolvedValue([identity]),
+    save: jest.fn().mockResolvedValue(identity),
+    delete: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
+function makeIdentityProvider(
+  overrides?: Partial<ConstructorParameters<typeof IdentityProviderModel>[0]>,
+): IdentityProviderModel {
+  return new IdentityProviderModel(
+    {
+      tenantId: 'tenant-1',
+      provider: 'google',
+      protocol: 'oauth2',
+      displayName: 'Google',
+      clientId: 'google-client',
+      clientSecret: 'google-secret',
+      redirectUri: 'https://auth.example/callback',
+      enabled: true,
+      oauthConfig: {
+        authorizationUrl: 'https://idp.example/authorize',
+        tokenUrl: 'https://idp.example/token',
+        userinfoUrl: 'https://idp.example/userinfo',
+        scopes: ['openid', 'email'],
+        subField: 'sub',
+        emailField: 'email',
+      },
+      ...overrides,
+    },
+    'idp-1',
+  );
+}
+
+function createMockIdentityProviderRepo(): jest.Mocked<IdentityProviderRepository> {
+  const provider = makeIdentityProvider();
+  return {
+    findByTenantAndProvider: jest.fn().mockResolvedValue(provider),
+    listEnabledByTenant: jest.fn().mockResolvedValue([provider]),
+    listByTenant: jest.fn().mockResolvedValue({ items: [provider], total: 1 }),
+    findByIdForTenant: jest.fn().mockResolvedValue(provider),
+    save: jest.fn().mockResolvedValue(provider),
+    delete: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
+function createMockIdpPort(): jest.Mocked<IdpPort> {
+  return {
+    getAuthorizationUrl: jest
+      .fn()
+      .mockReturnValue('https://idp.example/authorize?state=state-1'),
+    exchangeCode: jest.fn().mockResolvedValue({
+      sub: 'google-sub-1',
+      email: 'john@example.com',
+      profile: { sub: 'google-sub-1', email: 'john@example.com' },
+    }),
+  };
+}
+
+function createMockIdentityLinkSession(): jest.Mocked<IdentityLinkSessionPort> {
+  return {
+    create: jest.fn().mockResolvedValue(undefined),
+    consume: jest.fn().mockResolvedValue({
+      state: 'state-1',
+      tenantId: 'tenant-1',
+      tenantCode: 'acme',
+      userId: 'user-1',
+      provider: 'google',
+      redirectUri:
+        'https://auth.example/auth/identity-links/google/callback?tenantCode=acme',
+      returnTo: '/admin/security',
+      createdAt: '2026-05-24T00:00:00.000Z',
+    }),
+  };
+}
+
+function createMockEventRepo(): jest.Mocked<EventRepository> {
+  return {
+    list: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+    save: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
 function createMockPasswordHash(): jest.Mocked<PasswordHashPort> {
   const result: HashResult = {
     alg: 'argon2id',
@@ -70,13 +185,11 @@ function createMockPasswordHash(): jest.Mocked<PasswordHashPort> {
     hash: 'hashed-password',
   };
   return {
-    defaultPolicy: jest
-      .fn()
-      .mockReturnValue({
-        alg: 'argon2id',
-        params: {},
-        version: 1,
-      } as HashPolicy),
+    defaultPolicy: jest.fn().mockReturnValue({
+      alg: 'argon2id',
+      params: {},
+      version: 1,
+    } as HashPolicy),
     hash: jest.fn().mockResolvedValue(result),
     verify: jest.fn().mockResolvedValue(true),
   };
@@ -106,9 +219,36 @@ function createMockOtpToken(): jest.Mocked<OtpTokenPort> {
   };
 }
 
+function makeOtpRecord(overrides?: Partial<OtpTokenRecord>): OtpTokenRecord {
+  return {
+    id: 'token-1',
+    tenantId: 'tenant-1',
+    userId: 'user-1',
+    purpose: 'PASSWORD_RESET',
+    requestId: 'request-1',
+    expiresAt: new Date(Date.now() + 60_000),
+    consumedAt: null,
+    ...overrides,
+  };
+}
+
 function createMockNotification(): jest.Mocked<NotificationPort> {
   return {
     notify: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
+function createMockMfaVerification(): jest.Mocked<MfaVerificationPort> {
+  return {
+    generateTotpSecret: jest.fn().mockReturnValue('JBSWY3DPEHPK3PXP'),
+    buildTotpUri: jest.fn().mockReturnValue('otpauth://totp/Auth%3Ajohn'),
+    verifyTotp: jest.fn().mockReturnValue(true),
+    generateWebAuthnAuthOptions: jest.fn().mockResolvedValue({}),
+    verifyWebAuthn: jest.fn().mockResolvedValue({
+      verified: true,
+      newCounter: 1,
+    }),
+    verifyRecoveryCode: jest.fn().mockResolvedValue(true),
   };
 }
 
@@ -119,8 +259,14 @@ describe('AuthCommandHandler', () => {
   let otpHash: jest.Mocked<OtpHashPort>;
   let otpToken: jest.Mocked<OtpTokenPort>;
   let notification: jest.Mocked<NotificationPort>;
+  let mfaVerification: jest.Mocked<MfaVerificationPort>;
   let configService: jest.Mocked<ConfigService>;
   let consentRepo: jest.Mocked<ConsentRepository>;
+  let userIdentityRepo: jest.Mocked<UserIdentityRepository>;
+  let identityProviderRepo: jest.Mocked<IdentityProviderRepository>;
+  let idpPort: jest.Mocked<IdpPort>;
+  let identityLinkSession: jest.Mocked<IdentityLinkSessionPort>;
+  let eventRepo: jest.Mocked<EventRepository>;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -129,8 +275,15 @@ describe('AuthCommandHandler', () => {
     otpHash = createMockOtpHash();
     otpToken = createMockOtpToken();
     notification = createMockNotification();
+    mfaVerification = createMockMfaVerification();
     consentRepo = createMockConsentRepo();
+    userIdentityRepo = createMockUserIdentityRepo();
+    identityProviderRepo = createMockIdentityProviderRepo();
+    idpPort = createMockIdpPort();
+    identityLinkSession = createMockIdentityLinkSession();
+    eventRepo = createMockEventRepo();
     configService = {
+      get: jest.fn().mockReturnValue(undefined),
       getOrThrow: jest.fn().mockReturnValue('600'),
     } as any;
 
@@ -140,8 +293,14 @@ describe('AuthCommandHandler', () => {
       otpHash,
       otpToken,
       notification,
+      mfaVerification,
       configService,
       consentRepo,
+      userIdentityRepo,
+      identityProviderRepo,
+      idpPort,
+      identityLinkSession,
+      eventRepo,
     );
   });
 
@@ -191,6 +350,18 @@ describe('AuthCommandHandler', () => {
         handler.withdraw('tenant-1', 'user-1', { password: 'pw' } as any),
       ).rejects.toThrow();
 
+      expect(userWriteRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('새 비밀번호가 현재 비밀번호와 같으면 변경을 거부한다', async () => {
+      await expect(
+        handler.changePassword('tenant-1', 'user-1', {
+          currentPassword: 'same-password',
+          newPassword: 'same-password',
+        } as any),
+      ).rejects.toThrow('New password must be different');
+
+      expect(passwordHash.hash).not.toHaveBeenCalled();
       expect(userWriteRepo.save).not.toHaveBeenCalled();
     });
 
@@ -455,6 +626,955 @@ describe('AuthCommandHandler', () => {
     });
   });
 
+  describe('email verification', () => {
+    it('requestEmailVerification은 EMAIL_VERIFICATION 토큰을 만들고 email 알림을 보낸다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({
+          email: 'john@example.com',
+          emailVerified: false,
+        }),
+      );
+
+      await handler.requestEmailVerification('tenant-1', 'user-1');
+
+      expect(otpHash.generateToken).toHaveBeenCalledTimes(1);
+      expect(otpHash.hash).toHaveBeenCalledWith('john@example.com:plain-token');
+      expect(otpToken.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          purpose: 'EMAIL_VERIFICATION',
+          tokenHash: 'hashed-token',
+        }),
+      );
+      expect(notification.notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          channels: ['email'],
+          to: {
+            email: 'john@example.com',
+            phone: undefined,
+          },
+          template: 'auth.email_verification',
+          data: expect.objectContaining({
+            token: 'plain-token',
+            purpose: 'EMAIL_VERIFICATION',
+          }),
+        }),
+      );
+    });
+
+    it('이미 email 인증이 끝났으면 토큰과 알림을 만들지 않는다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({
+          email: 'john@example.com',
+          emailVerified: true,
+        }),
+      );
+
+      await handler.requestEmailVerification('tenant-1', 'user-1');
+
+      expect(otpToken.create).not.toHaveBeenCalled();
+      expect(notification.notify).not.toHaveBeenCalled();
+    });
+
+    it('email이 없으면 BadRequestException을 던지고 토큰을 만들지 않는다', async () => {
+      userWriteRepo.findById.mockResolvedValue(makeActiveUser({ email: null }));
+
+      await expect(
+        handler.requestEmailVerification('tenant-1', 'user-1'),
+      ).rejects.toThrow('email is required');
+
+      expect(otpToken.create).not.toHaveBeenCalled();
+      expect(notification.notify).not.toHaveBeenCalled();
+    });
+
+    it('verifyEmail은 contact-bound token을 검증하고 user를 저장한 뒤 토큰을 consume한다', async () => {
+      const user = makeActiveUser({
+        email: 'john@example.com',
+        emailVerified: false,
+      });
+      userWriteRepo.findById.mockResolvedValue(user);
+      otpToken.findValidByTokenHash.mockResolvedValue(
+        makeOtpRecord({ purpose: 'EMAIL_VERIFICATION' }),
+      );
+
+      await handler.verifyEmail('tenant-1', 'user-1', {
+        token: 'plain-token',
+      });
+
+      expect(otpHash.hash).toHaveBeenCalledWith('john@example.com:plain-token');
+      expect(otpToken.findValidByTokenHash).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        purpose: 'EMAIL_VERIFICATION',
+        tokenHash: 'hashed-token',
+      });
+      expect(user.emailVerified).toBe(true);
+      expect(userWriteRepo.save).toHaveBeenCalledWith(user);
+      expect(otpToken.consume).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          purpose: 'EMAIL_VERIFICATION',
+          otpTokenId: 'token-1',
+        }),
+      );
+      expect(eventRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          category: 'USER',
+          action: 'UPDATE',
+          resourceType: 'user_contact',
+          resourceId: 'user-1',
+          success: true,
+          metadata: { contact: 'email', verified: true },
+        }),
+      );
+    });
+
+    it('verifyEmail에서 유효한 토큰이 없으면 저장/consume하지 않는다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({ email: 'john@example.com' }),
+      );
+      otpToken.findValidByTokenHash.mockResolvedValue(undefined);
+
+      await expect(
+        handler.verifyEmail('tenant-1', 'user-1', {
+          token: 'bad-token',
+        }),
+      ).rejects.toThrow('InvalidToken');
+
+      expect(userWriteRepo.save).not.toHaveBeenCalled();
+      expect(otpToken.consume).not.toHaveBeenCalled();
+    });
+
+    it('verifyEmail에서 토큰 user가 다르면 저장/consume하지 않는다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({ email: 'john@example.com' }),
+      );
+      otpToken.findValidByTokenHash.mockResolvedValue(
+        makeOtpRecord({
+          purpose: 'EMAIL_VERIFICATION',
+          userId: 'other-user',
+        }),
+      );
+
+      await expect(
+        handler.verifyEmail('tenant-1', 'user-1', {
+          token: 'plain-token',
+        }),
+      ).rejects.toThrow('InvalidToken');
+
+      expect(userWriteRepo.save).not.toHaveBeenCalled();
+      expect(otpToken.consume).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('phone verification', () => {
+    it('requestPhoneVerification은 PHONE_VERIFICATION 토큰을 만들고 sms 알림을 보낸다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({
+          phone: '+821012345678',
+          phoneVerified: false,
+        }),
+      );
+
+      await handler.requestPhoneVerification('tenant-1', 'user-1');
+
+      expect(otpHash.generateToken).toHaveBeenCalledTimes(1);
+      expect(otpHash.hash).toHaveBeenCalledWith('+821012345678:plain-token');
+      expect(otpToken.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          purpose: 'PHONE_VERIFICATION',
+          tokenHash: 'hashed-token',
+        }),
+      );
+      expect(notification.notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          channels: ['sms'],
+          to: {
+            email: undefined,
+            phone: '+821012345678',
+          },
+          template: 'auth.phone_verification',
+          data: expect.objectContaining({
+            token: 'plain-token',
+            purpose: 'PHONE_VERIFICATION',
+          }),
+        }),
+      );
+    });
+
+    it('이미 phone 인증이 끝났으면 토큰과 알림을 만들지 않는다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({
+          phone: '+821012345678',
+          phoneVerified: true,
+        }),
+      );
+
+      await handler.requestPhoneVerification('tenant-1', 'user-1');
+
+      expect(otpToken.create).not.toHaveBeenCalled();
+      expect(notification.notify).not.toHaveBeenCalled();
+    });
+
+    it('phone이 없으면 BadRequestException을 던지고 토큰을 만들지 않는다', async () => {
+      userWriteRepo.findById.mockResolvedValue(makeActiveUser({ phone: null }));
+
+      await expect(
+        handler.requestPhoneVerification('tenant-1', 'user-1'),
+      ).rejects.toThrow('phone is required');
+
+      expect(otpToken.create).not.toHaveBeenCalled();
+      expect(notification.notify).not.toHaveBeenCalled();
+    });
+
+    it('verifyPhone은 contact-bound token을 검증하고 user를 저장한 뒤 토큰을 consume한다', async () => {
+      const user = makeActiveUser({
+        phone: '+821012345678',
+        phoneVerified: false,
+      });
+      userWriteRepo.findById.mockResolvedValue(user);
+      otpToken.findValidByTokenHash.mockResolvedValue(
+        makeOtpRecord({ purpose: 'PHONE_VERIFICATION' }),
+      );
+
+      await handler.verifyPhone('tenant-1', 'user-1', {
+        token: 'plain-token',
+      });
+
+      expect(otpHash.hash).toHaveBeenCalledWith('+821012345678:plain-token');
+      expect(otpToken.findValidByTokenHash).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        purpose: 'PHONE_VERIFICATION',
+        tokenHash: 'hashed-token',
+      });
+      expect(user.phoneVerified).toBe(true);
+      expect(userWriteRepo.save).toHaveBeenCalledWith(user);
+      expect(otpToken.consume).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          purpose: 'PHONE_VERIFICATION',
+          otpTokenId: 'token-1',
+        }),
+      );
+      expect(eventRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          category: 'USER',
+          action: 'UPDATE',
+          resourceType: 'user_contact',
+          resourceId: 'user-1',
+          success: true,
+          metadata: { contact: 'phone', verified: true },
+        }),
+      );
+    });
+
+    it('verifyPhone에서 유효한 토큰이 없으면 저장/consume하지 않는다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({ phone: '+821012345678' }),
+      );
+      otpToken.findValidByTokenHash.mockResolvedValue(undefined);
+
+      await expect(
+        handler.verifyPhone('tenant-1', 'user-1', {
+          token: 'bad-token',
+        }),
+      ).rejects.toThrow('InvalidToken');
+
+      expect(userWriteRepo.save).not.toHaveBeenCalled();
+      expect(otpToken.consume).not.toHaveBeenCalled();
+    });
+
+    it('verifyPhone에서 토큰 user가 다르면 저장/consume하지 않는다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({ phone: '+821012345678' }),
+      );
+      otpToken.findValidByTokenHash.mockResolvedValue(
+        makeOtpRecord({
+          purpose: 'PHONE_VERIFICATION',
+          userId: 'other-user',
+        }),
+      );
+
+      await expect(
+        handler.verifyPhone('tenant-1', 'user-1', {
+          token: 'plain-token',
+        }),
+      ).rejects.toThrow('InvalidToken');
+
+      expect(userWriteRepo.save).not.toHaveBeenCalled();
+      expect(otpToken.consume).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('TOTP MFA enrollment', () => {
+    it('beginTotpEnrollment은 disabled TOTP credential을 만들고 secret/otpauthUrl을 반환한다', async () => {
+      configService.get.mockImplementation((key: string) =>
+        key === 'OTP_TOTP_ISSUER' ? 'ExampleAuth' : undefined,
+      );
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({
+          username: 'john',
+          email: 'john@example.com',
+        }),
+      );
+
+      const result = await handler.beginTotpEnrollment('tenant-1', 'user-1');
+
+      expect(mfaVerification.generateTotpSecret).toHaveBeenCalledTimes(1);
+      expect(userWriteRepo.createCredential).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({
+          type: 'totp',
+          secretHash: 'JBSWY3DPEHPK3PXP',
+          hashAlg: 'totp-sha1',
+          enabled: false,
+        }),
+      );
+      expect(mfaVerification.buildTotpUri).toHaveBeenCalledWith({
+        issuer: 'ExampleAuth',
+        accountName: 'john@example.com',
+        secret: 'JBSWY3DPEHPK3PXP',
+      });
+      expect(result).toEqual({
+        secret: 'JBSWY3DPEHPK3PXP',
+        otpauthUrl: 'otpauth://totp/Auth%3Ajohn',
+      });
+    });
+
+    it('beginTotpEnrollment은 tenant가 다르면 credential을 만들지 않는다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({ tenantId: 'other-tenant' }),
+      );
+
+      await expect(
+        handler.beginTotpEnrollment('tenant-1', 'user-1'),
+      ).rejects.toThrow('TenantMismatch');
+
+      expect(userWriteRepo.createCredential).not.toHaveBeenCalled();
+    });
+
+    it('confirmTotpEnrollment은 pending TOTP를 활성화하고 recovery code를 발급한다', async () => {
+      const pending = UserCredentialModel.of(
+        {
+          type: 'totp',
+          secretHash: 'JBSWY3DPEHPK3PXP',
+          hashAlg: 'totp-sha1',
+          hashParams: { pendingEnrollment: true },
+          hashVersion: 1,
+          enabled: false,
+        },
+        'pending-totp',
+      );
+      const active = UserCredentialModel.of(
+        {
+          type: 'totp',
+          secretHash: 'OLDSECRET',
+          hashAlg: 'totp-sha1',
+          enabled: true,
+        },
+        'active-totp',
+      );
+      userWriteRepo.findCredentialsByType
+        .mockResolvedValueOnce([pending])
+        .mockResolvedValueOnce([active]);
+      otpHash.generateToken.mockReturnValue('recovery-code');
+
+      const result = await handler.confirmTotpEnrollment('tenant-1', 'user-1', {
+        code: '123456',
+      });
+
+      expect(mfaVerification.verifyTotp).toHaveBeenCalledWith(
+        'JBSWY3DPEHPK3PXP',
+        '123456',
+      );
+      expect(active.enabled).toBe(false);
+      expect(pending.enabled).toBe(true);
+      expect(pending.hashParams).toEqual(
+        expect.objectContaining({ pendingEnrollment: false }),
+      );
+      expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(active);
+      expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(pending);
+      expect(userWriteRepo.createCredential).toHaveBeenCalledTimes(10);
+      expect(userWriteRepo.createCredential).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({
+          type: 'recovery_code',
+          hashParams: expect.objectContaining({
+            batchId: expect.any(String),
+            issuedAt: expect.any(String),
+          }),
+        }),
+      );
+      expect(userWriteRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ mfaEnabled: true }),
+      );
+      expect(result.recoveryCodes).toHaveLength(10);
+      expect(result.recoveryCodes).toEqual(
+        Array.from({ length: 10 }, () => 'recovery-code'),
+      );
+      expect(eventRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          category: 'SECURITY',
+          action: 'UPDATE',
+          resourceType: 'mfa',
+          resourceId: 'totp',
+          success: true,
+          metadata: expect.objectContaining({
+            method: 'totp',
+            enabled: true,
+            recoveryCodeCount: 10,
+          }),
+        }),
+      );
+    });
+
+    it('confirmTotpEnrollment은 pending credential이 없으면 실패한다', async () => {
+      userWriteRepo.findCredentialsByType.mockResolvedValueOnce([]);
+
+      await expect(
+        handler.confirmTotpEnrollment('tenant-1', 'user-1', {
+          code: '123456',
+        }),
+      ).rejects.toThrow('TotpEnrollmentNotFound');
+
+      expect(userWriteRepo.saveCredential).not.toHaveBeenCalled();
+      expect(userWriteRepo.createCredential).not.toHaveBeenCalled();
+      expect(eventRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('confirmTotpEnrollment은 disabled지만 enrollment pending이 아니면 실패한다', async () => {
+      const disabledTotp = UserCredentialModel.of(
+        {
+          type: 'totp',
+          secretHash: 'JBSWY3DPEHPK3PXP',
+          hashAlg: 'totp-sha1',
+          hashParams: { pendingEnrollment: false },
+          enabled: false,
+        },
+        'disabled-totp',
+      );
+      userWriteRepo.findCredentialsByType.mockResolvedValueOnce([disabledTotp]);
+
+      await expect(
+        handler.confirmTotpEnrollment('tenant-1', 'user-1', {
+          code: '123456',
+        }),
+      ).rejects.toThrow('TotpEnrollmentNotFound');
+
+      expect(userWriteRepo.saveCredential).not.toHaveBeenCalled();
+      expect(userWriteRepo.createCredential).not.toHaveBeenCalled();
+      expect(eventRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('confirmTotpEnrollment은 잘못된 코드면 credential을 변경하지 않는다', async () => {
+      const pending = UserCredentialModel.of(
+        {
+          type: 'totp',
+          secretHash: 'JBSWY3DPEHPK3PXP',
+          hashAlg: 'totp-sha1',
+          hashParams: { pendingEnrollment: true },
+          enabled: false,
+        },
+        'pending-totp',
+      );
+      userWriteRepo.findCredentialsByType.mockResolvedValueOnce([pending]);
+      mfaVerification.verifyTotp.mockReturnValue(false);
+
+      await expect(
+        handler.confirmTotpEnrollment('tenant-1', 'user-1', {
+          code: '000000',
+        }),
+      ).rejects.toThrow('InvalidTotpCode');
+
+      expect(userWriteRepo.saveCredential).not.toHaveBeenCalled();
+      expect(userWriteRepo.createCredential).not.toHaveBeenCalled();
+      expect(eventRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          category: 'SECURITY',
+          severity: 'WARN',
+          action: 'ACCESS_DENIED',
+          resourceType: 'mfa',
+          resourceId: 'totp',
+          success: false,
+          reason: 'InvalidTotpCode',
+          metadata: { method: 'totp', phase: 'enrollment' },
+        }),
+      );
+    });
+
+    it('disableTotp은 활성 TOTP와 recovery code credential을 비활성화한다', async () => {
+      const totp = UserCredentialModel.of(
+        {
+          type: 'totp',
+          secretHash: 'JBSWY3DPEHPK3PXP',
+          hashAlg: 'totp-sha1',
+          enabled: true,
+        },
+        'totp-1',
+      );
+      const recoveryCode = UserCredentialModel.of(
+        {
+          type: 'recovery_code',
+          secretHash: 'hashed-code',
+          hashAlg: 'argon2id',
+          enabled: true,
+        },
+        'recovery-1',
+      );
+      userWriteRepo.findCredentialsByType.mockResolvedValueOnce([
+        totp,
+        recoveryCode,
+      ]);
+
+      await handler.disableTotp('tenant-1', 'user-1');
+
+      expect(userWriteRepo.findCredentialsByType).toHaveBeenCalledWith(
+        'user-1',
+        ['totp', 'recovery_code'],
+      );
+      expect(totp.enabled).toBe(false);
+      expect(recoveryCode.enabled).toBe(false);
+      expect(recoveryCode.hashParams).toEqual(
+        expect.objectContaining({ retiredAt: expect.any(String) }),
+      );
+      expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(totp);
+      expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(recoveryCode);
+      expect(userWriteRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ mfaEnabled: false }),
+      );
+      expect(eventRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          category: 'SECURITY',
+          action: 'UPDATE',
+          resourceType: 'mfa',
+          resourceId: 'totp',
+          success: true,
+          metadata: { method: 'totp', enabled: false },
+        }),
+      );
+    });
+
+    it('rotateRecoveryCodes는 현재 recovery code를 폐기하고 새 코드를 발급한다', async () => {
+      const activeRecoveryCode = UserCredentialModel.of(
+        {
+          type: 'recovery_code',
+          secretHash: 'hashed-code',
+          hashAlg: 'argon2id',
+          hashParams: { batchId: 'old-batch' },
+          enabled: true,
+        },
+        'recovery-1',
+      );
+      const usedRecoveryCode = UserCredentialModel.of(
+        {
+          type: 'recovery_code',
+          secretHash: 'used-code',
+          hashAlg: 'argon2id',
+          hashParams: {
+            batchId: 'old-batch',
+            usedAt: '2026-05-24T00:00:00.000Z',
+          },
+          enabled: false,
+        },
+        'recovery-2',
+      );
+      const retiredRecoveryCode = UserCredentialModel.of(
+        {
+          type: 'recovery_code',
+          secretHash: 'retired-code',
+          hashAlg: 'argon2id',
+          hashParams: { retiredAt: '2026-05-23T00:00:00.000Z' },
+          enabled: false,
+        },
+        'recovery-3',
+      );
+      userWriteRepo.findCredentialsByType.mockResolvedValueOnce([
+        activeRecoveryCode,
+        usedRecoveryCode,
+        retiredRecoveryCode,
+      ]);
+      otpHash.generateToken.mockReturnValue('new-recovery-code');
+
+      const result = await handler.rotateRecoveryCodes('tenant-1', 'user-1');
+
+      expect(userWriteRepo.findCredentialsByType).toHaveBeenCalledWith(
+        'user-1',
+        ['recovery_code'],
+        { enabled: null },
+      );
+      expect(activeRecoveryCode.enabled).toBe(false);
+      expect(activeRecoveryCode.hashParams).toEqual(
+        expect.objectContaining({ retiredAt: expect.any(String) }),
+      );
+      expect(usedRecoveryCode.hashParams).toEqual(
+        expect.objectContaining({ retiredAt: expect.any(String) }),
+      );
+      expect(retiredRecoveryCode.hashParams).toEqual({
+        retiredAt: '2026-05-23T00:00:00.000Z',
+      });
+      expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(
+        activeRecoveryCode,
+      );
+      expect(userWriteRepo.saveCredential).toHaveBeenCalledWith(
+        usedRecoveryCode,
+      );
+      expect(userWriteRepo.saveCredential).not.toHaveBeenCalledWith(
+        retiredRecoveryCode,
+      );
+      expect(userWriteRepo.createCredential).toHaveBeenCalledTimes(10);
+      expect(result.recoveryCodes).toEqual(
+        Array.from({ length: 10 }, () => 'new-recovery-code'),
+      );
+      expect(eventRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          category: 'SECURITY',
+          action: 'UPDATE',
+          resourceType: 'mfa-recovery-code',
+          resourceId: 'user-1',
+          success: true,
+          metadata: {
+            recoveryCodeCount: 10,
+            retiredCount: 2,
+          },
+        }),
+      );
+    });
+
+    it('updateMfaPreference는 등록된 MFA credential이 있으면 MFA 로그인을 활성화한다', async () => {
+      const user = makeActiveUser();
+      userWriteRepo.findById.mockResolvedValue(user);
+      userWriteRepo.findCredentialsByType.mockResolvedValue([
+        UserCredentialModel.of({
+          type: 'totp',
+          secretHash: 'JBSWY3DPEHPK3PXP',
+          hashAlg: 'totp-sha1',
+          enabled: true,
+        }),
+      ]);
+
+      await handler.updateMfaPreference('tenant-1', 'user-1', {
+        enabled: true,
+      });
+
+      expect(userWriteRepo.findCredentialsByType).toHaveBeenCalledWith(
+        'user-1',
+        ['totp', 'webauthn', 'recovery_code'],
+      );
+      expect(user.mfaEnabled).toBe(true);
+      expect(userWriteRepo.save).toHaveBeenCalledWith(user);
+      expect(eventRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          category: 'SECURITY',
+          action: 'UPDATE',
+          resourceType: 'mfa',
+          resourceId: 'preference',
+          metadata: { enabled: true },
+        }),
+      );
+    });
+
+    it('updateMfaPreference는 등록된 MFA credential이 없으면 활성화를 거부한다', async () => {
+      userWriteRepo.findCredentialsByType.mockResolvedValue([]);
+
+      await expect(
+        handler.updateMfaPreference('tenant-1', 'user-1', { enabled: true }),
+      ).rejects.toThrow('MFA credential is required');
+
+      expect(userWriteRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('updateMfaPreference는 MFA 로그인 비활성화 시 credential을 삭제하지 않는다', async () => {
+      const user = makeActiveUser({ mfaEnabled: true });
+      userWriteRepo.findById.mockResolvedValue(user);
+
+      await handler.updateMfaPreference('tenant-1', 'user-1', {
+        enabled: false,
+      });
+
+      expect(userWriteRepo.findCredentialsByType).not.toHaveBeenCalled();
+      expect(user.mfaEnabled).toBe(false);
+      expect(userWriteRepo.save).toHaveBeenCalledWith(user);
+    });
+  });
+
+  describe('identity link flow', () => {
+    it('startIdentityLink는 state 세션을 저장하고 IdP authorization URL을 반환한다', async () => {
+      const result = await handler.startIdentityLink('tenant-1', 'user-1', {
+        provider: 'google',
+        tenantCode: 'acme',
+        redirectUri:
+          'https://auth.example/auth/identity-links/google/callback?tenantCode=acme',
+        returnTo: '/admin/security',
+      });
+
+      expect(identityProviderRepo.findByTenantAndProvider).toHaveBeenCalledWith(
+        'tenant-1',
+        'google',
+      );
+      expect(identityLinkSession.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          tenantCode: 'acme',
+          userId: 'user-1',
+          provider: 'google',
+          redirectUri:
+            'https://auth.example/auth/identity-links/google/callback?tenantCode=acme',
+          returnTo: '/admin/security',
+        }),
+        300,
+      );
+      expect(idpPort.getAuthorizationUrl).toHaveBeenCalledWith(
+        'google',
+        expect.any(Object),
+        'google-client',
+        'https://auth.example/auth/identity-links/google/callback?tenantCode=acme',
+        expect.any(String),
+      );
+      expect(result).toEqual({
+        authorizationUrl: 'https://idp.example/authorize?state=state-1',
+      });
+    });
+
+    it('startIdentityLink는 외부 returnTo를 기본 보안 설정 경로로 치환한다', async () => {
+      await handler.startIdentityLink('tenant-1', 'user-1', {
+        provider: 'google',
+        tenantCode: 'acme',
+        redirectUri:
+          'https://auth.example/auth/identity-links/google/callback?tenantCode=acme',
+        returnTo: 'https://evil.example/callback',
+      });
+
+      expect(identityLinkSession.create).toHaveBeenCalledWith(
+        expect.objectContaining({ returnTo: '/admin/security' }),
+        expect.any(Number),
+      );
+    });
+
+    it('completeIdentityLink는 state를 소비하고 외부 계정을 현재 사용자에게 연결한다', async () => {
+      userIdentityRepo.findByProviderSub.mockResolvedValue(null);
+      userIdentityRepo.listByUser.mockResolvedValue([]);
+
+      const result = await handler.completeIdentityLink({
+        provider: 'google',
+        state: 'state-1',
+        code: 'authorization-code',
+      });
+
+      expect(identityLinkSession.consume).toHaveBeenCalledWith('state-1');
+      expect(idpPort.exchangeCode).toHaveBeenCalledWith(
+        'google',
+        expect.any(Object),
+        'google-client',
+        'google-secret',
+        'authorization-code',
+        'https://auth.example/auth/identity-links/google/callback?tenantCode=acme',
+      );
+      expect(userIdentityRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          provider: 'google',
+          providerSub: 'google-sub-1',
+          email: 'john@example.com',
+        }),
+      );
+      expect(eventRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          category: 'SECURITY',
+          action: 'LINK_IDP',
+          resourceType: 'identity_provider_link',
+          metadata: {
+            provider: 'google',
+            email: 'john@example.com',
+            alreadyLinked: false,
+          },
+        }),
+      );
+      expect(result).toEqual({
+        redirectTo: '/admin/security?identityLinked=google',
+      });
+    });
+
+    it('completeIdentityLink는 다른 사용자에게 연결된 provider sub이면 저장하지 않는다', async () => {
+      userIdentityRepo.findByProviderSub.mockResolvedValue(
+        makeIdentity({ userId: 'other-user' }, 'identity-other'),
+      );
+
+      const result = await handler.completeIdentityLink({
+        provider: 'google',
+        state: 'state-1',
+        code: 'authorization-code',
+      });
+
+      expect(userIdentityRepo.save).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        redirectTo: '/admin/security?identityError=idp_already_linked',
+      });
+      expect(eventRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'ACCESS_DENIED',
+          reason: 'IdentityProviderAccountAlreadyLinked',
+          success: false,
+        }),
+      );
+    });
+
+    it('completeIdentityLink는 현재 사용자의 같은 provider가 다른 sub에 연결되어 있으면 차단한다', async () => {
+      userIdentityRepo.findByProviderSub.mockResolvedValue(null);
+      userIdentityRepo.listByUser.mockResolvedValue([
+        makeIdentity({ providerSub: 'other-google-sub' }, 'identity-2'),
+      ]);
+
+      const result = await handler.completeIdentityLink({
+        provider: 'google',
+        state: 'state-1',
+        code: 'authorization-code',
+      });
+
+      expect(userIdentityRepo.save).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        redirectTo: '/admin/security?identityError=idp_provider_already_linked',
+      });
+    });
+
+    it('completeIdentityLink는 state가 없거나 만료되면 기본 경로로 실패 redirect를 반환한다', async () => {
+      identityLinkSession.consume.mockResolvedValue(null);
+
+      await expect(
+        handler.completeIdentityLink({ state: null, code: 'code' }),
+      ).resolves.toEqual({
+        redirectTo: '/admin/security?identityError=invalid_state',
+      });
+      await expect(
+        handler.completeIdentityLink({ state: 'expired', code: 'code' }),
+      ).resolves.toEqual({
+        redirectTo: '/admin/security?identityError=invalid_state',
+      });
+    });
+  });
+
+  describe('unlinkIdentity', () => {
+    it('identity가 현재 사용자에 속하면 연결을 해제한다', async () => {
+      const identity = makeIdentity({}, 'identity-1');
+      userIdentityRepo.findByIdForUser.mockResolvedValue(identity);
+      userIdentityRepo.listByUser.mockResolvedValue([identity]);
+
+      await handler.unlinkIdentity('tenant-1', 'user-1', 'identity-1');
+
+      expect(userIdentityRepo.findByIdForUser).toHaveBeenCalledWith(
+        'tenant-1',
+        'user-1',
+        'identity-1',
+      );
+      expect(userIdentityRepo.delete).toHaveBeenCalledWith('identity-1');
+      expect(eventRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          category: 'SECURITY',
+          action: 'UNLINK_IDP',
+          resourceType: 'identity_provider_link',
+          resourceId: 'identity-1',
+          success: true,
+          metadata: {
+            provider: 'google',
+            email: 'john@example.com',
+          },
+        }),
+      );
+    });
+
+    it('identity가 없으면 delete를 호출하지 않는다', async () => {
+      userIdentityRepo.findByIdForUser.mockResolvedValue(null);
+
+      await expect(
+        handler.unlinkIdentity('tenant-1', 'user-1', 'missing'),
+      ).rejects.toThrow('IdentityLinkNotFound');
+
+      expect(userIdentityRepo.delete).not.toHaveBeenCalled();
+    });
+
+    it('tenant가 다르면 identity 조회 없이 실패한다', async () => {
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({ tenantId: 'other-tenant' }),
+      );
+
+      await expect(
+        handler.unlinkIdentity('tenant-1', 'user-1', 'identity-1'),
+      ).rejects.toThrow('TenantMismatch');
+
+      expect(userIdentityRepo.findByIdForUser).not.toHaveBeenCalled();
+      expect(userIdentityRepo.delete).not.toHaveBeenCalled();
+      expect(eventRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('마지막 로그인 수단이면 연결을 해제하지 않는다', async () => {
+      const identity = makeIdentity({}, 'identity-1');
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({ passwordCredential: undefined }),
+      );
+      userIdentityRepo.findByIdForUser.mockResolvedValue(identity);
+      userIdentityRepo.listByUser.mockResolvedValue([identity]);
+
+      await expect(
+        handler.unlinkIdentity('tenant-1', 'user-1', 'identity-1'),
+      ).rejects.toThrow('LastLoginMethodCannotBeUnlinked');
+
+      expect(userIdentityRepo.delete).not.toHaveBeenCalled();
+      expect(eventRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          category: 'SECURITY',
+          severity: 'WARN',
+          action: 'ACCESS_DENIED',
+          resourceType: 'identity_provider_link',
+          resourceId: 'identity-1',
+          success: false,
+          reason: 'LastLoginMethodCannotBeUnlinked',
+          metadata: { provider: 'google' },
+        }),
+      );
+    });
+
+    it('비밀번호가 없어도 다른 IdP 연결이 남아 있으면 해제할 수 있다', async () => {
+      const identity = makeIdentity({}, 'identity-1');
+      const otherIdentity = makeIdentity(
+        { provider: 'github', providerSub: 'github-sub-1' },
+        'identity-2',
+      );
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({ passwordCredential: undefined }),
+      );
+      userIdentityRepo.findByIdForUser.mockResolvedValue(identity);
+      userIdentityRepo.listByUser.mockResolvedValue([identity, otherIdentity]);
+
+      await handler.unlinkIdentity('tenant-1', 'user-1', 'identity-1');
+
+      expect(userIdentityRepo.delete).toHaveBeenCalledWith('identity-1');
+    });
+  });
+
   describe('updateProfile', () => {
     it('유저가 없으면 UserNotFound를 던진다', async () => {
       userWriteRepo.findById.mockResolvedValue(undefined);
@@ -465,7 +1585,9 @@ describe('AuthCommandHandler', () => {
     });
 
     it('tenant 불일치 시 TenantMismatch를 던진다', async () => {
-      userWriteRepo.findById.mockResolvedValue(makeActiveUser({ tenantId: 'other' }));
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({ tenantId: 'other' }),
+      );
 
       await expect(
         handler.updateProfile('tenant-1', 'user-1', {} as any),
@@ -473,7 +1595,9 @@ describe('AuthCommandHandler', () => {
     });
 
     it('WITHDRAWN 유저는 UserAlreadyWithdrawn을 던진다', async () => {
-      userWriteRepo.findById.mockResolvedValue(makeActiveUser({ status: 'WITHDRAWN' }));
+      userWriteRepo.findById.mockResolvedValue(
+        makeActiveUser({ status: 'WITHDRAWN' }),
+      );
 
       await expect(
         handler.updateProfile('tenant-1', 'user-1', {} as any),

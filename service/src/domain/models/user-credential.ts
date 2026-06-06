@@ -1,3 +1,4 @@
+import { Getter } from '../decorators';
 import { PersistenceModel } from './persistence-model';
 
 export type CredentialType = 'password' | 'totp' | 'webauthn' | 'recovery_code';
@@ -27,30 +28,45 @@ export class UserCredentialModel extends PersistenceModel<
     hashAlg: string;
     hashParams?: Record<string, unknown> | null;
     hashVersion?: number | null;
+    passwordChangeRequired?: boolean;
   }): UserCredentialModel {
     if (!params.secretHash) throw new Error('SecretHashRequired');
     if (!params.hashAlg) throw new Error('HashAlgRequired');
+
+    const hashParams = {
+      ...(params.hashParams ?? {}),
+      ...(params.passwordChangeRequired
+        ? { passwordChangeRequired: true }
+        : {}),
+    };
 
     return new UserCredentialModel({
       type: 'password',
       secretHash: params.secretHash,
       hashAlg: params.hashAlg,
-      hashParams: params.hashParams,
+      hashParams: Object.keys(hashParams).length > 0 ? hashParams : undefined,
       hashVersion: params.hashVersion,
       enabled: true,
     });
   }
 
-  static of(params: {
-    type: CredentialType;
-    secretHash: string;
-    hashAlg: string;
-    hashParams?: Record<string, unknown> | null;
-    hashVersion?: number | null;
-    enabled: boolean;
-    expiresAt?: Date | null;
-  }, id?: string): UserCredentialModel {
+  static of(
+    params: {
+      type: CredentialType;
+      secretHash: string;
+      hashAlg: string;
+      hashParams?: Record<string, unknown> | null;
+      hashVersion?: number | null;
+      enabled: boolean;
+      expiresAt?: Date | null;
+    },
+    id?: string,
+  ): UserCredentialModel {
     return new UserCredentialModel(params, id);
+  }
+
+  enable(): void {
+    this.etc.enabled = true;
   }
 
   disable(): void {
@@ -61,27 +77,31 @@ export class UserCredentialModel extends PersistenceModel<
     this.etc.hashParams = params;
   }
 
-  get type(): CredentialType {
-    return this.etc.type;
-  }
-  get secretHash(): string {
-    return this.etc.secretHash;
-  }
-
-  get hashAlg(): string {
-    return this.etc.hashAlg;
-  }
-  get hashParams(): Record<string, unknown> | null | undefined {
-    return this.etc.hashParams;
-  }
-  get hashVersion(): number | null | undefined {
-    return this.etc.hashVersion;
+  requiresPasswordChange(): boolean {
+    return (
+      this.type === 'password' &&
+      this.hashParams?.passwordChangeRequired === true
+    );
   }
 
-  get enabled(): boolean {
-    return this.etc.enabled;
-  }
-  get expiresAt(): Date | null | undefined {
-    return this.etc.expiresAt;
-  }
+  @Getter()
+  declare readonly type: CredentialType;
+
+  @Getter()
+  declare readonly secretHash: string;
+
+  @Getter()
+  declare readonly hashAlg: string;
+
+  @Getter()
+  declare readonly hashParams: Record<string, unknown> | null | undefined;
+
+  @Getter()
+  declare readonly hashVersion: number | null | undefined;
+
+  @Getter()
+  declare readonly enabled: boolean;
+
+  @Getter()
+  declare readonly expiresAt: Date | null | undefined;
 }

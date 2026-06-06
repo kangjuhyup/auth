@@ -3,208 +3,41 @@ jest.mock('node:fs', () => ({
   readFileSync: jest.fn(),
 }));
 
-jest.mock('node:crypto', () => ({
-  randomBytes: jest.fn(() =>
-    Buffer.from('00112233445566778899aabbccddeeff', 'hex'),
-  ),
-}));
-
 import { existsSync, readFileSync } from 'node:fs';
 import { InteractionController } from '@presentation/controllers/interaction.controller';
-import { ClientModel } from '@domain/models/client';
-import { ClientAuthPolicyModel } from '@domain/models/client-auth-policy';
-import { IdentityProviderModel, type IdpProvider } from '@domain/models/identity-provider';
-import { UserIdentityModel } from '@domain/models/user-identity';
 import {
   createMockRequest,
   createMockResponse,
   makeTenantContext,
 } from './support/controller-test-helpers';
 
-function makeClient(id = 'client-ref-1', clientId = 'web-app'): ClientModel {
-  const client = new ClientModel({
-    tenantId: 'tenant-1',
-    clientId,
-    secretEnc: null,
-    name: 'Web App',
-    type: 'public',
-    enabled: true,
-    redirectUris: ['https://app.example.com/callback'],
-    grantTypes: ['authorization_code'],
-    responseTypes: ['code'],
-    tokenEndpointAuthMethod: 'none',
-    scope: 'openid profile',
-    postLogoutRedirectUris: [],
-    applicationType: 'web',
-    backchannelLogoutUri: null,
-    frontchannelLogoutUri: null,
-    allowedResources: [],
-    skipConsent: false,
-  });
-
-  client.setPersistence(id, new Date(), new Date());
-  return client;
-}
-
-function makePolicy(
-  clientRefId = 'client-ref-1',
-  mfaRequired = true,
-): ClientAuthPolicyModel {
-  return new ClientAuthPolicyModel(
-    {
-      tenantId: 'tenant-1',
-      clientRefId,
-      allowedAuthMethods: ['password'],
-      defaultAcr: 'urn:acr:loa1',
-      mfaRequired,
-      allowedMfaMethods: ['totp'],
-      maxSessionDurationSec: null,
-      consentRequired: true,
-      requireAuthTime: false,
-    },
-    'policy-1',
-  );
-}
-
-function makeIdp(
-  provider: IdpProvider,
-  displayName: string,
-  enabled = true,
-): IdentityProviderModel {
-  const idp = new IdentityProviderModel({
-    tenantId: 'tenant-1',
-    provider,
-    displayName,
-    clientId: `${provider}-client`,
-    clientSecret: `${provider}-secret`,
-    redirectUri: `https://auth.example.com/${provider}/callback`,
-    enabled,
-    oauthConfig: null,
-  });
-
-  idp.setPersistence(`idp-${provider}`, new Date(), new Date());
-  return idp;
-}
-
-function makeIdentity(
-  provider: IdpProvider = 'google',
-  providerSub = 'google-sub',
-): UserIdentityModel {
-  const identity = new UserIdentityModel({
-    tenantId: 'tenant-1',
-    userId: 'user-1',
-    provider,
-    providerSub,
-    email: 'user@example.com',
-    profileJson: { sub: providerSub },
-    linkedAt: new Date(),
-  });
-
-  identity.setPersistence('identity-1', new Date(), new Date());
-  return identity;
-}
-
-function createMockProvider() {
-  const interactionDetails = jest.fn();
-  const interactionResult = jest.fn();
-  const interactionFinished = jest.fn().mockResolvedValue(undefined);
-  const clientFind = jest.fn();
-  const accessTokenSave = jest.fn().mockResolvedValue('access-token');
-  const AccessToken = jest
-    .fn()
-    .mockImplementation(function (this: any, payload: Record<string, unknown>) {
-      this.payload = payload;
-      this.save = accessTokenSave;
-    });
-
-  const grantInstances: any[] = [];
-  const Grant: any = jest
-    .fn()
-    .mockImplementation(function (this: any, params: Record<string, unknown>) {
-      this.params = params;
-      this.addOIDCScope = jest.fn();
-      this.save = jest.fn().mockResolvedValue('grant-1');
-      grantInstances.push(this);
-    });
-  Grant.find = jest.fn().mockResolvedValue(null);
-
-  return {
-    provider: {
-      interactionDetails,
-      interactionResult,
-      interactionFinished,
-      Client: { find: clientFind },
-      AccessToken,
-      Grant,
-    } as any,
-    interactionDetails,
-    interactionResult,
-    interactionFinished,
-    clientFind,
-    accessTokenSave,
-    AccessToken,
-    Grant,
-    grantInstances,
-  };
-}
-
 describe('InteractionController', () => {
   let controller: InteractionController;
-  let registry: any;
-  let userQuery: any;
-  let clientAuthPolicyRepo: any;
-  let clientRepo: any;
-  let idpRepo: any;
-  let userIdentityRepo: any;
-  let idpPort: any;
-  let providerBundle: ReturnType<typeof createMockProvider>;
+  let interactionCommand: any;
+  let config: { get: jest.Mock };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    providerBundle = createMockProvider();
-    registry = {
-      get: jest.fn().mockResolvedValue(providerBundle.provider),
+    config = {
+      get: jest.fn(),
     };
-    userQuery = {
-      findProfile: jest.fn(),
-      findClaimsBySub: jest.fn(),
-      findByUsername: jest.fn(),
-      authenticate: jest.fn(),
-      getMfaMethods: jest.fn(),
-      verifyMfa: jest.fn(),
-    };
-    clientAuthPolicyRepo = {
-      findByClientRefId: jest.fn(),
-    };
-    clientRepo = {
-      findById: jest.fn(),
-      findByClientId: jest.fn(),
-      list: jest.fn(),
-      save: jest.fn(),
-      delete: jest.fn(),
-    };
-    idpRepo = {
-      findByTenantAndProvider: jest.fn(),
-      listEnabledByTenant: jest.fn(),
-    };
-    userIdentityRepo = {
-      findByProviderSub: jest.fn(),
-      save: jest.fn(),
-    };
-    idpPort = {
-      getAuthorizationUrl: jest.fn(),
-      exchangeCode: jest.fn(),
+    interactionCommand = {
+      getDetails: jest.fn(),
+      submitLogin: jest.fn(),
+      submitMfa: jest.fn(),
+      beginTotpEnrollment: jest.fn(),
+      confirmTotpEnrollment: jest.fn(),
+      submitPasswordChange: jest.fn(),
+      submitConsent: jest.fn(),
+      abort: jest.fn(),
+      getWebAuthnOptions: jest.fn(),
+      getIdpRedirect: jest.fn(),
+      handleIdpCallback: jest.fn(),
+      getSamlMetadata: jest.fn(),
+      handleSamlCallback: jest.fn(),
     };
 
-    controller = new InteractionController(
-      registry,
-      userQuery,
-      clientAuthPolicyRepo,
-      clientRepo,
-      idpRepo,
-      userIdentityRepo,
-      idpPort,
-    );
+    controller = new InteractionController(interactionCommand, config as any);
   });
 
   describe('serveSpa', () => {
@@ -222,16 +55,17 @@ describe('InteractionController', () => {
       });
     });
 
-    it('빌드된 UI가 있으면 HTML을 읽어 캐시하고 반환한다', () => {
+    it('명시적으로 HTML 캐시를 켜면 빌드된 UI HTML을 읽어 캐시하고 반환한다', () => {
       const html = '<html><body>interaction-ui</body></html>';
       const res1 = createMockResponse();
       const res2 = createMockResponse();
+      config.get.mockReturnValue('true');
       (existsSync as jest.MockedFunction<typeof existsSync>).mockReturnValue(
         true,
       );
-      (readFileSync as jest.MockedFunction<typeof readFileSync>).mockReturnValue(
-        html,
-      );
+      (
+        readFileSync as jest.MockedFunction<typeof readFileSync>
+      ).mockReturnValue(html);
 
       controller.serveSpa(res1);
       controller.serveSpa(res2);
@@ -240,49 +74,70 @@ describe('InteractionController', () => {
       expect(res1.type).toHaveBeenCalledWith('html');
       expect(res1.send).toHaveBeenCalledWith(html);
       expect(res2.send).toHaveBeenCalledWith(html);
+      expect(res1.setHeader).not.toHaveBeenCalledWith(
+        'Cache-Control',
+        'no-store',
+      );
+    });
+
+    it('기본값은 최신 UI HTML을 매 요청마다 읽고 no-store로 반환한다', () => {
+      const html1 = '<html><body>interaction-ui-v1</body></html>';
+      const html2 = '<html><body>interaction-ui-v2</body></html>';
+      const res1 = createMockResponse();
+      const res2 = createMockResponse();
+      config.get.mockReturnValue(undefined);
+      (existsSync as jest.MockedFunction<typeof existsSync>).mockReturnValue(
+        true,
+      );
+      (readFileSync as jest.MockedFunction<typeof readFileSync>)
+        .mockReturnValueOnce(html1)
+        .mockReturnValueOnce(html2);
+
+      controller.serveSpa(res1);
+      controller.serveSpa(res2);
+
+      expect(readFileSync).toHaveBeenCalledTimes(2);
+      expect(res1.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
+      expect(res2.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
+      expect(res1.send).toHaveBeenCalledWith(html1);
+      expect(res2.send).toHaveBeenCalledWith(html2);
     });
   });
 
-  describe('getDetails', () => {
-    it('interaction 상세와 IdP/MFA 정보를 조합해 반환한다', async () => {
-      const req = createMockRequest({ tenant: makeTenantContext() }) as any;
-      const res = createMockResponse();
-      providerBundle.interactionDetails.mockResolvedValue({
-        prompt: {
-          name: 'consent',
-          details: { missingOIDCScope: ['openid', 'profile'] },
-        },
-        params: { client_id: 'web-app' },
-      });
-      idpRepo.listEnabledByTenant.mockResolvedValue([
-        makeIdp('google', 'Google'),
-        makeIdp('kakao', 'Kakao'),
-      ]);
-      clientRepo.findByClientId.mockResolvedValue(makeClient());
-      clientAuthPolicyRepo.findByClientRefId.mockResolvedValue(makePolicy());
+  it('getDetails는 interaction flow 결과를 반환한다', async () => {
+    const tenant = makeTenantContext();
+    const req = createMockRequest({ tenant }) as any;
+    const res = createMockResponse();
+    const details = {
+      uid: 'uid-1',
+      prompt: 'login',
+      clientId: 'web-app',
+      missingScopes: [],
+      mfaRequired: false,
+      idpList: [],
+    };
+    interactionCommand.getDetails.mockResolvedValue(details);
 
-      await controller.getDetails('acme', 'uid-1', req, res);
+    await controller.getDetails('acme', 'uid-1', req, res);
 
-      expect(registry.get).toHaveBeenCalledWith('acme');
-      expect(providerBundle.interactionDetails).toHaveBeenCalledWith(req, res);
-      expect(res.json).toHaveBeenCalledWith({
-        uid: 'uid-1',
-        prompt: 'consent',
-        clientId: 'web-app',
-        missingScopes: ['openid', 'profile'],
-        mfaRequired: true,
-        idpList: [
-          { provider: 'google', name: 'Google' },
-          { provider: 'kakao', name: 'Kakao' },
-        ],
-      });
+    expect(interactionCommand.getDetails).toHaveBeenCalledWith({
+      tenantCode: 'acme',
+      uid: 'uid-1',
+      req,
+      res,
+      tenant,
     });
+    expect(res.json).toHaveBeenCalledWith(details);
   });
 
   describe('submitLogin', () => {
     it('tenant가 없으면 400 응답을 반환한다', async () => {
       const req = createMockRequest() as any;
       const res = createMockResponse();
+      interactionCommand.submitLogin.mockResolvedValue({
+        status: 400,
+        body: { error: 'tenant_not_found' },
+      });
 
       await controller.submitLogin(
         'acme',
@@ -292,6 +147,18 @@ describe('InteractionController', () => {
         res,
       );
 
+      expect(interactionCommand.submitLogin).toHaveBeenCalledWith({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        username: 'john',
+        password: 'secret',
+        ipAddress: undefined,
+        userAgent: undefined,
+        correlationId: undefined,
+        req,
+        res,
+        tenant: undefined,
+      });
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith({ error: 'tenant_not_found' });
     });
@@ -299,7 +166,10 @@ describe('InteractionController', () => {
     it('인증에 실패하면 401 응답을 반환한다', async () => {
       const req = createMockRequest({ tenant: makeTenantContext() }) as any;
       const res = createMockResponse();
-      userQuery.authenticate.mockResolvedValue(null);
+      interactionCommand.submitLogin.mockResolvedValue({
+        status: 401,
+        body: { error: 'invalid_credentials' },
+      });
 
       await controller.submitLogin(
         'acme',
@@ -309,10 +179,17 @@ describe('InteractionController', () => {
         res,
       );
 
-      expect(userQuery.authenticate).toHaveBeenCalledWith({
-        tenantId: 'tenant-1',
+      expect(interactionCommand.submitLogin).toHaveBeenCalledWith({
+        tenantCode: 'acme',
+        uid: 'uid-1',
         username: 'john',
         password: 'wrong',
+        ipAddress: undefined,
+        userAgent: undefined,
+        correlationId: undefined,
+        req,
+        res,
+        tenant: makeTenantContext(),
       });
       expect(res.status).toHaveBeenCalledWith(401);
       expect(res.json).toHaveBeenCalledWith({ error: 'invalid_credentials' });
@@ -321,13 +198,13 @@ describe('InteractionController', () => {
     it('MFA가 필요하면 pending 세션을 저장하고 MFA 정보를 반환한다', async () => {
       const req = createMockRequest({ tenant: makeTenantContext() }) as any;
       const res = createMockResponse();
-      userQuery.authenticate.mockResolvedValue({ userId: 'user-1' });
-      userQuery.getMfaMethods.mockResolvedValue(['totp']);
-      providerBundle.interactionDetails.mockResolvedValue({
-        params: { client_id: 'web-app' },
+      interactionCommand.submitLogin.mockResolvedValue({
+        body: {
+          success: true,
+          mfaRequired: true,
+          methods: ['totp'],
+        },
       });
-      clientRepo.findByClientId.mockResolvedValue(makeClient());
-      clientAuthPolicyRepo.findByClientRefId.mockResolvedValue(makePolicy());
 
       await controller.submitLogin(
         'acme',
@@ -342,25 +219,18 @@ describe('InteractionController', () => {
         mfaRequired: true,
         methods: ['totp'],
       });
-      expect(
-        ((controller as any).mfaPendingSessions as Map<string, unknown>).has(
-          'uid-1',
-        ),
-      ).toBe(true);
     });
 
-    it('MFA가 필요 없으면 interaction 결과 redirect를 반환한다', async () => {
+    it('MFA가 필요 없으면 interaction completion redirect를 반환한다', async () => {
       const req = createMockRequest({ tenant: makeTenantContext() }) as any;
       const res = createMockResponse();
-      userQuery.authenticate.mockResolvedValue({ userId: 'user-1' });
-      providerBundle.interactionDetails.mockResolvedValue({
-        params: { client_id: 'web-app' },
+      interactionCommand.submitLogin.mockResolvedValue({
+        body: {
+          success: true,
+          mfaRequired: false,
+          redirectTo: '/interaction/continue',
+        },
       });
-      clientRepo.findByClientId.mockResolvedValue(makeClient());
-      clientAuthPolicyRepo.findByClientRefId.mockResolvedValue(
-        makePolicy('client-ref-1', false),
-      );
-      providerBundle.interactionResult.mockResolvedValue('/interaction/continue');
 
       await controller.submitLogin(
         'acme',
@@ -370,8 +240,17 @@ describe('InteractionController', () => {
         res,
       );
 
-      expect(providerBundle.interactionResult).toHaveBeenCalledWith(req, res, {
-        login: { accountId: 'user-1' },
+      expect(interactionCommand.submitLogin).toHaveBeenCalledWith({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        username: 'john',
+        password: 'secret',
+        ipAddress: undefined,
+        userAgent: undefined,
+        correlationId: undefined,
+        req,
+        res,
+        tenant: makeTenantContext(),
       });
       expect(res.json).toHaveBeenCalledWith({
         success: true,
@@ -379,12 +258,55 @@ describe('InteractionController', () => {
         redirectTo: '/interaction/continue',
       });
     });
+
+    it('body 기본값과 request metadata를 submitLogin에 전달한다', async () => {
+      const tenant = makeTenantContext();
+      const req = createMockRequest({
+        tenant,
+        ip: '203.0.113.10',
+        get: jest.fn((name: string) => {
+          const headers: Record<string, string | undefined> = {
+            'user-agent': 'jest',
+            'x-correlation-id': 'req-from-header',
+            'x-request-id': 'req-from-request-id',
+          };
+          return headers[name.toLowerCase()];
+        }) as any,
+      }) as any;
+      req.correlationId = 'req-from-middleware';
+      const res = createMockResponse();
+      interactionCommand.submitLogin.mockResolvedValue({
+        status: undefined,
+        body: { success: true },
+      });
+
+      await controller.submitLogin('acme', 'uid-1', {}, req, res);
+
+      expect(interactionCommand.submitLogin).toHaveBeenCalledWith({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        username: '',
+        password: '',
+        ipAddress: '203.0.113.10',
+        userAgent: 'jest',
+        correlationId: 'req-from-middleware',
+        req,
+        res,
+        tenant,
+      });
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({ success: true });
+    });
   });
 
   describe('submitMfa', () => {
     it('pending MFA 세션이 없으면 400 응답을 반환한다', async () => {
       const req = createMockRequest() as any;
       const res = createMockResponse();
+      interactionCommand.submitMfa.mockResolvedValue({
+        status: 400,
+        body: { error: 'no_pending_mfa' },
+      });
 
       await controller.submitMfa(
         'acme',
@@ -398,42 +320,15 @@ describe('InteractionController', () => {
       expect(res.json).toHaveBeenCalledWith({ error: 'no_pending_mfa' });
     });
 
-    it('MFA 검증에 실패하면 401 응답을 반환한다', async () => {
-      const req = createMockRequest() as any;
-      const res = createMockResponse();
-      ((controller as any).mfaPendingSessions as Map<string, unknown>).set(
-        'uid-1',
-        {
-          userId: 'user-1',
-          tenantId: 'tenant-1',
-        },
-      );
-      userQuery.verifyMfa.mockResolvedValue(false);
-
-      await controller.submitMfa(
-        'acme',
-        'uid-1',
-        { method: 'totp', code: '123456' },
-        req,
-        res,
-      );
-
-      expect(res.status).toHaveBeenCalledWith(401);
-      expect(res.json).toHaveBeenCalledWith({ error: 'mfa_failed' });
-    });
-
     it('MFA 검증에 성공하면 pending 세션을 제거하고 redirect를 반환한다', async () => {
       const req = createMockRequest({ host: 'auth.example.com' }) as any;
       const res = createMockResponse();
-      ((controller as any).mfaPendingSessions as Map<string, unknown>).set(
-        'uid-1',
-        {
-          userId: 'user-1',
-          tenantId: 'tenant-1',
+      interactionCommand.submitMfa.mockResolvedValue({
+        body: {
+          success: true,
+          redirectTo: '/interaction/done',
         },
-      );
-      userQuery.verifyMfa.mockResolvedValue(true);
-      providerBundle.interactionResult.mockResolvedValue('/interaction/done');
+      });
 
       await controller.submitMfa(
         'acme',
@@ -443,20 +338,154 @@ describe('InteractionController', () => {
         res,
       );
 
-      expect(userQuery.verifyMfa).toHaveBeenCalledWith({
-        tenantId: 'tenant-1',
-        userId: 'user-1',
+      expect(interactionCommand.submitMfa).toHaveBeenCalledWith({
+        tenantCode: 'acme',
+        uid: 'uid-1',
         method: 'totp',
         code: '123456',
         webauthnResponse: undefined,
+        ipAddress: undefined,
+        userAgent: undefined,
+        correlationId: undefined,
+        req,
+        res,
         rpId: 'auth.example.com',
         expectedOrigin: 'https://auth.example.com',
       });
-      expect(
-        ((controller as any).mfaPendingSessions as Map<string, unknown>).has(
-          'uid-1',
-        ),
-      ).toBe(false);
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        redirectTo: '/interaction/done',
+      });
+    });
+
+    it('host header가 없으면 localhost를 WebAuthn RP 기준으로 사용한다', async () => {
+      const req = createMockRequest({
+        get: jest.fn(() => undefined),
+        protocol: 'http',
+      }) as any;
+      const res = createMockResponse();
+      interactionCommand.submitMfa.mockResolvedValue({
+        body: { success: true },
+      });
+
+      await controller.submitMfa(
+        'acme',
+        'uid-1',
+        { method: 'webauthn', webauthnResponse: { id: 'credential-1' } },
+        req,
+        res,
+      );
+
+      expect(interactionCommand.submitMfa).toHaveBeenCalledWith({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        method: 'webauthn',
+        code: undefined,
+        webauthnResponse: { id: 'credential-1' },
+        ipAddress: undefined,
+        userAgent: undefined,
+        correlationId: undefined,
+        req,
+        res,
+        rpId: 'localhost',
+        expectedOrigin: 'http://localhost',
+      });
+    });
+  });
+
+  describe('interaction TOTP enrollment', () => {
+    it('beginTotpEnrollment은 tenant context와 함께 command port에 위임한다', async () => {
+      const tenant = makeTenantContext();
+      const req = createMockRequest({ tenant }) as any;
+      const res = createMockResponse();
+      interactionCommand.beginTotpEnrollment.mockResolvedValue({
+        body: {
+          success: true,
+          secret: 'totp-secret',
+          otpauthUrl: 'otpauth://totp/Auth:john',
+        },
+      });
+
+      await controller.beginTotpEnrollment('acme', 'uid-1', req, res);
+
+      expect(interactionCommand.beginTotpEnrollment).toHaveBeenCalledWith({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        tenant,
+      });
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        secret: 'totp-secret',
+        otpauthUrl: 'otpauth://totp/Auth:john',
+      });
+    });
+
+    it('confirmTotpEnrollment은 검증 코드를 command port에 위임한다', async () => {
+      const tenant = makeTenantContext();
+      const req = createMockRequest({ tenant }) as any;
+      const res = createMockResponse();
+      interactionCommand.confirmTotpEnrollment.mockResolvedValue({
+        body: {
+          success: true,
+          recoveryCodes: ['code-1'],
+          redirectTo: '/interaction/done',
+        },
+      });
+
+      await controller.confirmTotpEnrollment(
+        'acme',
+        'uid-1',
+        { code: '123456' },
+        req,
+        res,
+      );
+
+      expect(interactionCommand.confirmTotpEnrollment).toHaveBeenCalledWith({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        code: '123456',
+        req,
+        res,
+        tenant,
+      });
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        recoveryCodes: ['code-1'],
+        redirectTo: '/interaction/done',
+      });
+    });
+  });
+
+  describe('submitPasswordChange', () => {
+    it('password-change 요청을 command port에 위임한다', async () => {
+      const req = createMockRequest() as any;
+      const res = createMockResponse();
+      interactionCommand.submitPasswordChange.mockResolvedValue({
+        body: { success: true, redirectTo: '/interaction/done' },
+      });
+
+      await controller.submitPasswordChange(
+        'acme',
+        'uid-1',
+        {
+          currentPassword: 'temporary123',
+          newPassword: 'new-password123',
+        },
+        req,
+        res,
+      );
+
+      expect(interactionCommand.submitPasswordChange).toHaveBeenCalledWith({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        currentPassword: 'temporary123',
+        newPassword: 'new-password123',
+        req,
+        res,
+        tenant: undefined,
+      });
       expect(res.json).toHaveBeenCalledWith({
         success: true,
         redirectTo: '/interaction/done',
@@ -464,338 +493,224 @@ describe('InteractionController', () => {
     });
   });
 
-  describe('submitConsent', () => {
-    it('유효한 consent interaction이 아니면 400 응답을 반환한다', async () => {
-      const req = createMockRequest() as any;
-      const res = createMockResponse();
-      providerBundle.interactionDetails.mockResolvedValue({
-        prompt: { name: 'login', details: {} },
-        params: { client_id: 'web-app' },
-        session: null,
-      });
-
-      await controller.submitConsent('acme', 'uid-1', req, res);
-
-      expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        error: 'invalid_request',
-        message: 'No active consent interaction',
-      });
+  it('submitConsent는 port의 JSON 오류를 HTTP 오류로 매핑한다', async () => {
+    const req = createMockRequest() as any;
+    const res = createMockResponse();
+    interactionCommand.submitConsent.mockResolvedValue({
+      status: 400,
+      body: { error: 'invalid_request' },
     });
 
-    it('기존 grant가 있으면 재사용하고 missing scope를 추가한다', async () => {
-      const req = createMockRequest() as any;
-      const res = createMockResponse();
-      const existingGrant = {
-        addOIDCScope: jest.fn(),
-        save: jest.fn().mockResolvedValue('grant-existing'),
-      };
-      providerBundle.interactionDetails.mockResolvedValue({
-        prompt: {
-          name: 'consent',
-          details: { missingOIDCScope: ['openid', 'profile'] },
-        },
-        params: { client_id: 'web-app' },
-        session: { accountId: 'user-1' },
-        grantId: 'grant-1',
-      });
-      providerBundle.Grant.find.mockResolvedValue(existingGrant);
-      providerBundle.interactionResult.mockResolvedValue('/interaction/consent');
+    await controller.submitConsent('acme', 'uid-1', req, res);
 
-      await controller.submitConsent('acme', 'uid-1', req, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: 'invalid_request' });
+  });
 
-      expect(providerBundle.Grant.find).toHaveBeenCalledWith('grant-1');
-      expect(existingGrant.addOIDCScope).toHaveBeenCalledWith(
-        'openid profile',
-      );
-      expect(existingGrant.save).toHaveBeenCalledTimes(1);
-      expect(providerBundle.interactionResult).toHaveBeenCalledWith(req, res, {
-        consent: { grantId: 'grant-existing' },
-      });
-      expect(res.json).toHaveBeenCalledWith({
-        success: true,
-        redirectTo: '/interaction/consent',
-      });
+  it('submitConsent는 성공 redirect 결과를 JSON으로 반환한다', async () => {
+    const req = createMockRequest() as any;
+    const res = createMockResponse();
+    interactionCommand.submitConsent.mockResolvedValue({
+      redirectTo: '/interaction/complete',
     });
 
-    it('grantId가 없으면 신규 grant를 생성한다', async () => {
-      const req = createMockRequest() as any;
-      const res = createMockResponse();
-      providerBundle.interactionDetails.mockResolvedValue({
-        prompt: { name: 'consent', details: {} },
-        params: { client_id: 'web-app' },
-        session: { accountId: 'user-1' },
-      });
-      providerBundle.interactionResult.mockResolvedValue('/interaction/consent');
+    await controller.submitConsent('acme', 'uid-1', req, res);
 
-      await controller.submitConsent('acme', 'uid-1', req, res);
-
-      expect(providerBundle.Grant).toHaveBeenCalledWith({
-        accountId: 'user-1',
-        clientId: 'web-app',
-      });
-      expect(providerBundle.grantInstances[0].save).toHaveBeenCalledTimes(1);
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      redirectTo: '/interaction/complete',
     });
   });
 
-  describe('abortInteraction', () => {
-    it('access_denied 결과 redirect를 반환한다', async () => {
-      const req = createMockRequest() as any;
-      const res = createMockResponse();
-      providerBundle.interactionResult.mockResolvedValue('/interaction/abort');
+  it('abortInteraction은 port redirect를 반환한다', async () => {
+    const req = createMockRequest() as any;
+    const res = createMockResponse();
+    interactionCommand.abort.mockResolvedValue({
+      redirectTo: '/interaction/abort',
+    });
 
-      await controller.abortInteraction('acme', 'uid-1', req, res);
+    await controller.abortInteraction('acme', 'uid-1', req, res);
 
-      expect(providerBundle.interactionResult).toHaveBeenCalledWith(req, res, {
-        error: 'access_denied',
-        error_description: 'End-User aborted interaction',
-      });
-      expect(res.json).toHaveBeenCalledWith({
-        redirectTo: '/interaction/abort',
-      });
+    expect(res.json).toHaveBeenCalledWith({
+      redirectTo: '/interaction/abort',
     });
   });
 
-  describe('getWebAuthnOptions', () => {
-    it('pending MFA 세션이 없으면 400 응답을 반환한다', async () => {
-      const req = createMockRequest() as any;
-      const res = createMockResponse();
-
-      await controller.getWebAuthnOptions('uid-1', req, res);
-
-      expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({ error: 'no_pending_mfa' });
+  it('redirectToIdp는 port redirect를 HTTP redirect로 매핑한다', async () => {
+    const tenant = makeTenantContext();
+    const req = createMockRequest({ tenant }) as any;
+    const res = createMockResponse();
+    interactionCommand.getIdpRedirect.mockResolvedValue({
+      redirectTo: 'https://accounts.example.com/oauth',
     });
 
-    it('pending MFA 세션이 있으면 WebAuthn 옵션을 반환한다', async () => {
-      const req = createMockRequest({ host: 'auth.example.com' }) as any;
-      const res = createMockResponse();
-      const options = { challenge: 'challenge-1' };
-      ((controller as any).mfaPendingSessions as Map<string, unknown>).set(
-        'uid-1',
-        {
-          userId: 'user-1',
-          tenantId: 'tenant-1',
-        },
-      );
-      userQuery.verifyMfa.mockResolvedValue(options as any);
+    await controller.redirectToIdp('acme', 'uid-1', 'google', req, res);
 
-      await controller.getWebAuthnOptions('uid-1', req, res);
-
-      expect(userQuery.verifyMfa).toHaveBeenCalledWith({
-        tenantId: 'tenant-1',
-        userId: 'user-1',
-        method: 'webauthn',
-        rpId: 'auth.example.com',
-        expectedOrigin: 'https://auth.example.com',
-      });
-      expect(res.json).toHaveBeenCalledWith(options);
+    expect(interactionCommand.getIdpRedirect).toHaveBeenCalledWith({
+      tenantCode: 'acme',
+      uid: 'uid-1',
+      providerName: 'google',
+      req,
+      res,
+      tenant,
     });
+    expect(res.redirect).toHaveBeenCalledWith(
+      'https://accounts.example.com/oauth',
+    );
   });
 
-  describe('redirectToIdp', () => {
-    it('tenant가 없으면 400 응답을 반환한다', async () => {
-      const req = createMockRequest() as any;
-      const res = createMockResponse();
-
-      await controller.redirectToIdp('acme', 'uid-1', 'google', req, res);
-
-      expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({ error: 'tenant_not_found' });
+  it('redirectToIdp는 port 오류 body를 HTTP 오류로 매핑한다', async () => {
+    const req = createMockRequest({ tenant: makeTenantContext() }) as any;
+    const res = createMockResponse();
+    interactionCommand.getIdpRedirect.mockResolvedValue({
+      status: 404,
+      body: { error: 'idp_not_found' },
     });
 
-    it('DB에 해당 provider 행이 없으면 404(idp_not_found)를 반환한다', async () => {
-      const req = createMockRequest({ tenant: makeTenantContext() }) as any;
-      const res = createMockResponse();
-      idpRepo.findByTenantAndProvider.mockResolvedValue(null);
+    await controller.redirectToIdp('acme', 'uid-1', 'google', req, res);
 
-      await controller.redirectToIdp('acme', 'uid-1', 'unknown-idp', req, res);
-
-      expect(idpRepo.findByTenantAndProvider).toHaveBeenCalledWith(
-        'tenant-1',
-        'unknown-idp',
-      );
-      expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith({ error: 'idp_not_found' });
-    });
-
-    it('IdP 설정이 없거나 비활성이면 404 응답을 반환한다', async () => {
-      const req = createMockRequest({ tenant: makeTenantContext() }) as any;
-      const res = createMockResponse();
-      idpRepo.findByTenantAndProvider.mockResolvedValue(null);
-
-      await controller.redirectToIdp('acme', 'uid-1', 'google', req, res);
-
-      expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith({ error: 'idp_not_found' });
-    });
-
-    it('정상 설정이면 IdP authorization URL로 redirect한다', async () => {
-      const req = createMockRequest({
-        tenant: makeTenantContext(),
-        host: 'auth.example.com',
-      }) as any;
-      const res = createMockResponse();
-      idpRepo.findByTenantAndProvider.mockResolvedValue(
-        makeIdp('google', 'Google'),
-      );
-      idpPort.getAuthorizationUrl.mockReturnValue(
-        'https://accounts.example.com/oauth',
-      );
-
-      await controller.redirectToIdp('acme', 'uid-1', 'google', req, res);
-
-      expect(idpPort.getAuthorizationUrl).toHaveBeenCalledWith(
-        'google',
-        null,
-        'google-client',
-        'https://auth.example.com/t/acme/interaction/uid-1/idp/google/callback',
-        'uid-1:00112233445566778899aabbccddeeff',
-      );
-      expect(res.redirect).toHaveBeenCalledWith(
-        'https://accounts.example.com/oauth',
-      );
-    });
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith({ error: 'idp_not_found' });
   });
 
-  describe('idpCallback', () => {
-    it('tenant가 없으면 tenant_not_found 에러로 redirect한다', async () => {
-      const req = createMockRequest() as any;
-      const res = createMockResponse();
-
-      await controller.idpCallback('acme', 'uid-1', 'google', req, res);
-
-      expect(res.redirect).toHaveBeenCalledWith(
-        '/t/acme/interaction/uid-1?error=tenant_not_found',
-      );
+  it('idpCallback은 redirect 결과가 있으면 HTTP redirect로 매핑한다', async () => {
+    const req = createMockRequest({ tenant: makeTenantContext() }) as any;
+    const res = createMockResponse();
+    interactionCommand.handleIdpCallback.mockResolvedValue({
+      redirectTo: '/interaction/continue',
     });
 
-    it('DB에 해당 provider 행이 없으면 idp_not_found 로 redirect한다', async () => {
-      const req = createMockRequest({
-        tenant: makeTenantContext(),
-        query: { code: 'auth-code' },
-      }) as any;
-      const res = createMockResponse();
-      idpRepo.findByTenantAndProvider.mockResolvedValue(null);
+    await controller.idpCallback('acme', 'uid-1', 'google', req, res);
 
-      await controller.idpCallback('acme', 'uid-1', 'unknown-idp', req, res);
+    expect(interactionCommand.handleIdpCallback).toHaveBeenCalledWith({
+      tenantCode: 'acme',
+      uid: 'uid-1',
+      providerName: 'google',
+      req,
+      res,
+      tenant: makeTenantContext(),
+    });
+    expect(res.redirect).toHaveBeenCalledWith('/interaction/continue');
+  });
 
-      expect(idpRepo.findByTenantAndProvider).toHaveBeenCalledWith(
-        'tenant-1',
-        'unknown-idp',
-      );
-      expect(res.redirect).toHaveBeenCalledWith(
-        '/t/acme/interaction/uid-1?error=idp_not_found',
-      );
+  it('idpCallback은 redirect 결과가 없으면 응답을 추가로 쓰지 않는다', async () => {
+    const req = createMockRequest({ tenant: makeTenantContext() }) as any;
+    const res = createMockResponse();
+    interactionCommand.handleIdpCallback.mockResolvedValue({});
+
+    await controller.idpCallback('acme', 'uid-1', 'google', req, res);
+
+    expect(res.redirect).not.toHaveBeenCalled();
+  });
+
+  it('getWebAuthnOptions는 host와 protocol을 RP metadata로 전달한다', async () => {
+    const req = createMockRequest({ host: 'auth.example.com:8443' }) as any;
+    const res = createMockResponse();
+    interactionCommand.getWebAuthnOptions.mockResolvedValue({
+      status: undefined,
+      body: { challenge: 'challenge-1' },
     });
 
-    it('authorization code가 없으면 idp_no_code 에러로 redirect한다', async () => {
-      const req = createMockRequest({
-        tenant: makeTenantContext(),
-        query: {},
-      }) as any;
-      const res = createMockResponse();
+    await controller.getWebAuthnOptions('uid-1', req, res);
 
-      await controller.idpCallback('acme', 'uid-1', 'google', req, res);
+    expect(interactionCommand.getWebAuthnOptions).toHaveBeenCalledWith({
+      uid: 'uid-1',
+      rpId: 'auth.example.com',
+      expectedOrigin: 'https://auth.example.com:8443',
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({ challenge: 'challenge-1' });
+  });
 
-      expect(res.redirect).toHaveBeenCalledWith(
-        '/t/acme/interaction/uid-1?error=idp_no_code',
-      );
+  it('samlMetadata는 XML 결과를 content-type과 함께 반환한다', async () => {
+    const req = createMockRequest({ tenant: makeTenantContext() }) as any;
+    const res = createMockResponse();
+    interactionCommand.getSamlMetadata.mockResolvedValue({
+      contentType: 'application/samlmetadata+xml',
+      body: '<EntityDescriptor />',
     });
 
-    it('IdP 설정이 없으면 idp_not_found 에러로 redirect한다', async () => {
-      const req = createMockRequest({
-        tenant: makeTenantContext(),
-        query: { code: 'auth-code' },
-      }) as any;
-      const res = createMockResponse();
-      idpRepo.findByTenantAndProvider.mockResolvedValue(null);
+    await controller.samlMetadata('acme', 'okta', req, res);
 
-      await controller.idpCallback('acme', 'uid-1', 'google', req, res);
+    expect(res.type).toHaveBeenCalledWith('application/samlmetadata+xml');
+    expect(res.send).toHaveBeenCalledWith('<EntityDescriptor />');
+  });
 
-      expect(res.redirect).toHaveBeenCalledWith(
-        '/t/acme/interaction/uid-1?error=idp_not_found',
-      );
+  it('samlMetadata는 오류 body를 JSON 응답으로 반환한다', async () => {
+    const req = createMockRequest({ tenant: makeTenantContext() }) as any;
+    const res = createMockResponse();
+    interactionCommand.getSamlMetadata.mockResolvedValue({
+      status: 404,
+      body: { error: 'idp_not_found' },
     });
 
-    it('IdP 코드 교환이 실패하면 idp_exchange_failed 에러로 redirect한다', async () => {
-      const req = createMockRequest({
-        tenant: makeTenantContext(),
-        query: { code: 'auth-code' },
-        host: 'auth.example.com',
-      }) as any;
-      const res = createMockResponse();
-      idpRepo.findByTenantAndProvider.mockResolvedValue(
-        makeIdp('google', 'Google'),
-      );
-      idpPort.exchangeCode.mockRejectedValue(new Error('exchange failed'));
+    await controller.samlMetadata('acme', 'okta', req, res);
 
-      await controller.idpCallback('acme', 'uid-1', 'google', req, res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith({ error: 'idp_not_found' });
+  });
 
-      expect(res.redirect).toHaveBeenCalledWith(
-        '/t/acme/interaction/uid-1?error=idp_exchange_failed',
-      );
+  it('samlCallback은 오류 body를 HTTP 오류로 매핑한다', async () => {
+    const req = createMockRequest({ tenant: makeTenantContext() }) as any;
+    const res = createMockResponse();
+    interactionCommand.handleSamlCallback.mockResolvedValue({
+      status: 400,
+      body: { error: 'invalid_saml_response' },
     });
 
-    it('연결된 유저가 없으면 idp_user_not_linked 에러로 redirect한다', async () => {
-      const req = createMockRequest({
-        tenant: makeTenantContext(),
-        query: { code: 'auth-code' },
-        host: 'auth.example.com',
-      }) as any;
-      const res = createMockResponse();
-      idpRepo.findByTenantAndProvider.mockResolvedValue(
-        makeIdp('google', 'Google'),
-      );
-      idpPort.exchangeCode.mockResolvedValue({
-        sub: 'google-sub',
-        email: 'user@example.com',
-      });
-      userIdentityRepo.findByProviderSub.mockResolvedValue(null);
+    await controller.samlCallback(
+      'acme',
+      'okta',
+      { RelayState: 'state-1', SAMLResponse: 'response-1' },
+      req,
+      res,
+    );
 
-      await controller.idpCallback('acme', 'uid-1', 'google', req, res);
+    expect(interactionCommand.handleSamlCallback).toHaveBeenCalledWith({
+      tenantCode: 'acme',
+      providerName: 'okta',
+      relayState: 'state-1',
+      samlResponse: 'response-1',
+      req,
+      res,
+      tenant: makeTenantContext(),
+    });
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: 'invalid_saml_response' });
+  });
 
-      expect(res.redirect).toHaveBeenCalledWith(
-        '/t/acme/interaction/uid-1?error=idp_user_not_linked',
-      );
+  it('samlCallback은 redirect 결과가 있으면 HTTP redirect로 매핑한다', async () => {
+    const req = createMockRequest({ tenant: makeTenantContext() }) as any;
+    const res = createMockResponse();
+    interactionCommand.handleSamlCallback.mockResolvedValue({
+      redirectTo: '/interaction/continue',
     });
 
-    it('연결된 유저가 있으면 interactionFinished를 호출한다', async () => {
-      const req = createMockRequest({
-        tenant: makeTenantContext(),
-        query: { code: 'auth-code' },
-        host: 'auth.example.com',
-      }) as any;
-      const res = createMockResponse();
-      idpRepo.findByTenantAndProvider.mockResolvedValue(
-        makeIdp('google', 'Google'),
-      );
-      idpPort.exchangeCode.mockResolvedValue({
-        sub: 'google-sub',
-        email: 'user@example.com',
-      });
-      userIdentityRepo.findByProviderSub.mockResolvedValue(makeIdentity());
+    await controller.samlCallback(
+      'acme',
+      'okta',
+      { RelayState: undefined, SAMLResponse: 'response-1' },
+      req,
+      res,
+    );
 
-      await expect(
-        controller.idpCallback('acme', 'uid-1', 'google', req, res),
-      ).resolves.toBeUndefined();
+    expect(res.redirect).toHaveBeenCalledWith('/interaction/continue');
+  });
 
-      expect(idpPort.exchangeCode).toHaveBeenCalledWith(
-        'google',
-        null,
-        'google-client',
-        'google-secret',
-        'auth-code',
-        'https://auth.example.com/t/acme/interaction/uid-1/idp/google/callback',
-      );
-      expect(userIdentityRepo.findByProviderSub).toHaveBeenCalledWith(
-        'tenant-1',
-        'google',
-        'google-sub',
-      );
-      expect(providerBundle.interactionFinished).toHaveBeenCalledWith(req, res, {
-        login: { accountId: 'user-1' },
-      });
-    });
+  it('samlCallback은 redirect 결과가 없으면 응답을 추가로 쓰지 않는다', async () => {
+    const req = createMockRequest({ tenant: makeTenantContext() }) as any;
+    const res = createMockResponse();
+    interactionCommand.handleSamlCallback.mockResolvedValue({});
+
+    await controller.samlCallback(
+      'acme',
+      'okta',
+      { RelayState: undefined, SAMLResponse: 'response-1' },
+      req,
+      res,
+    );
+
+    expect(res.redirect).not.toHaveBeenCalled();
+    expect(res.json).not.toHaveBeenCalled();
   });
 });

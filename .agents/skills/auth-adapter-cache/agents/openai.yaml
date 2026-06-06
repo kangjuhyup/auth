@@ -1,0 +1,6 @@
+interface:
+  display_name: 'Auth Adapter Cache'
+  short_description: 'MikroORM and Redis adapter guardrails'
+  default_prompt: 'Use $auth-adapter-cache to design this repository or cache change safely.'
+policy:
+  allow_implicit_invocation: true

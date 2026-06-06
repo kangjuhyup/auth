@@ -10,7 +10,9 @@ describe('UserModel', () => {
       hashVersion: 1,
     });
 
-  function makeActiveUser(overrides?: Partial<Parameters<typeof UserModel.of>[0]>): UserModel {
+  function makeActiveUser(
+    overrides?: Partial<Parameters<typeof UserModel.of>[0]>,
+  ): UserModel {
     return UserModel.of({
       id: 'user-1',
       tenantId: 'tenant-1',
@@ -65,6 +67,7 @@ describe('UserModel', () => {
 
       expect(user.emailVerified).toBe(false);
       expect(user.phoneVerified).toBe(false);
+      expect(user.mfaEnabled).toBe(false);
     });
 
     it('username 앞뒤 공백을 제거한다', () => {
@@ -93,10 +96,31 @@ describe('UserModel', () => {
 
   describe('UserModel.of (DB 로드)', () => {
     it('지정한 속성 그대로 복원된다', () => {
-      const user = makeActiveUser({ status: 'LOCKED', emailVerified: true });
+      const user = makeActiveUser({
+        status: 'LOCKED',
+        emailVerified: true,
+        mfaEnabled: true,
+      });
 
       expect(user.status).toBe('LOCKED');
       expect(user.emailVerified).toBe(true);
+      expect(user.mfaEnabled).toBe(true);
+    });
+  });
+
+  describe('changeMfaEnabled', () => {
+    it('MFA 사용 여부를 변경한다', () => {
+      const user = makeActiveUser();
+
+      user.changeMfaEnabled(true);
+
+      expect(user.mfaEnabled).toBe(true);
+    });
+
+    it('WITHDRAWN 상태면 UserAlreadyWithdrawn을 던진다', () => {
+      const user = makeActiveUser({ status: 'WITHDRAWN' });
+
+      expect(() => user.changeMfaEnabled(true)).toThrow('UserAlreadyWithdrawn');
     });
   });
 
@@ -148,6 +172,62 @@ describe('UserModel', () => {
       });
 
       expect(() => user.changePassword(newCred)).toThrow();
+    });
+  });
+
+  describe('verifyEmail', () => {
+    it('email 인증 상태를 true로 변경한다', () => {
+      const user = makeActiveUser({
+        email: 'john@example.com',
+        emailVerified: false,
+      });
+
+      user.verifyEmail();
+
+      expect(user.emailVerified).toBe(true);
+    });
+
+    it('email이 없으면 EmailNotSet을 던진다', () => {
+      const user = makeActiveUser({ email: null });
+
+      expect(() => user.verifyEmail()).toThrow('EmailNotSet');
+    });
+
+    it('WITHDRAWN 상태면 UserAlreadyWithdrawn을 던진다', () => {
+      const user = makeActiveUser({
+        email: 'john@example.com',
+        status: 'WITHDRAWN',
+      });
+
+      expect(() => user.verifyEmail()).toThrow('UserAlreadyWithdrawn');
+    });
+  });
+
+  describe('verifyPhone', () => {
+    it('phone 인증 상태를 true로 변경한다', () => {
+      const user = makeActiveUser({
+        phone: '+821012345678',
+        phoneVerified: false,
+      });
+
+      user.verifyPhone();
+
+      expect(user.phoneVerified).toBe(true);
+    });
+
+    it('phone이 없으면 PhoneNotSet을 던진다', () => {
+      const user = makeActiveUser({ phone: null });
+
+      expect(() => user.verifyPhone()).toThrow('PhoneNotSet');
+    });
+
+    it('WITHDRAWN 상태면 UserAlreadyWithdrawn을 던진다', () => {
+      const user = makeActiveUser({
+        phone: '+821012345678',
+        status: 'WITHDRAWN',
+      });
+
+      expect(() => user.verifyPhone()).toThrow('UserAlreadyWithdrawn');
     });
   });
 });
