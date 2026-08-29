@@ -4,23 +4,23 @@ import {
 } from './bootstrap-process-state';
 import { BootstrapProcessRepository } from './ports/bootstrap-process.repository';
 
-type BootstrapKnownFailureCode = Exclude<
-  BootstrapFailureCode,
-  'BOOTSTRAP_STEP_FAILED'
->;
+export type BootstrapKnownFailureCode =
+  | 'ADMIN_CREDENTIALS_REQUIRED'
+  | 'ADMIN_PORTAL_CONFLICT';
 
-export class BootstrapKnownFailure extends Error {
-  readonly code: BootstrapKnownFailureCode;
+const knownFailureTokens = new WeakMap<object, BootstrapKnownFailureCode>();
 
-  private constructor(code: BootstrapKnownFailureCode) {
-    super(code);
-    this.name = 'BootstrapKnownFailure';
-    this.code = code;
+export function createBootstrapKnownFailure(
+  code: BootstrapKnownFailureCode,
+): object {
+  const token = Object.freeze({});
+  if (
+    code === 'ADMIN_CREDENTIALS_REQUIRED' ||
+    code === 'ADMIN_PORTAL_CONFLICT'
+  ) {
+    knownFailureTokens.set(token, code);
   }
-
-  static of(code: BootstrapKnownFailureCode): BootstrapKnownFailure {
-    return new BootstrapKnownFailure(code);
-  }
+  return token;
 }
 
 export class BootstrapProcessError extends Error {
@@ -47,40 +47,47 @@ export class BootstrapStepRunner {
   }): Promise<void> {
     let caughtFailureCode: BootstrapFailureCode | undefined;
 
-    await this.repository.withLockedState(
-      {
-        processKey: params.processKey,
-        initialStep: params.initialStep,
-      },
-      async (state) => {
-        let shouldRun: boolean;
-        try {
-          shouldRun = state.shouldRunStep(
-            params.expectedStep,
-            params.nextStep,
-            params.steps,
-          );
-        } catch {
-          caughtFailureCode = 'BOOTSTRAP_STEP_FAILED';
-          return;
-        }
-        if (!shouldRun) {
-          return;
-        }
+    try {
+      await this.repository.withLockedState(
+        {
+          processKey: params.processKey,
+          initialStep: params.initialStep,
+        },
+        async (state) => {
+          let shouldRun: boolean;
+          try {
+            shouldRun = state.shouldRunStep(
+              params.expectedStep,
+              params.nextStep,
+              params.steps,
+            );
+          } catch {
+            caughtFailureCode = 'BOOTSTRAP_STEP_FAILED';
+            return;
+          }
+          if (!shouldRun) {
+            return;
+          }
 
-        state.beginAttempt();
-        try {
-          await params.work();
-          state.advance(params.expectedStep, params.nextStep, params.steps);
-        } catch (error: unknown) {
-          caughtFailureCode =
-            error instanceof BootstrapKnownFailure
-              ? error.code
-              : 'BOOTSTRAP_STEP_FAILED';
-          state.fail(caughtFailureCode);
-        }
-      },
-    );
+          try {
+            state.beginAttempt();
+          } catch {
+            caughtFailureCode = 'BOOTSTRAP_STEP_FAILED';
+            return;
+          }
+
+          try {
+            await params.work();
+            state.advance(params.expectedStep, params.nextStep, params.steps);
+          } catch (error: unknown) {
+            caughtFailureCode = this.knownFailureCode(error);
+            state.fail(caughtFailureCode);
+          }
+        },
+      );
+    } catch {
+      throw new BootstrapProcessError('BOOTSTRAP_STEP_FAILED');
+    }
 
     if (caughtFailureCode) {
       throw new BootstrapProcessError(caughtFailureCode);
@@ -93,14 +100,25 @@ export class BootstrapStepRunner {
     expectedStep: string;
     steps: readonly string[];
   }): Promise<void> {
-    await this.repository.withLockedState(
-      {
-        processKey: params.processKey,
-        initialStep: params.initialStep,
-      },
-      async (state) => {
-        state.complete(params.expectedStep, params.steps);
-      },
-    );
+    try {
+      await this.repository.withLockedState(
+        {
+          processKey: params.processKey,
+          initialStep: params.initialStep,
+        },
+        async (state) => {
+          state.complete(params.expectedStep, params.steps);
+        },
+      );
+    } catch {
+      throw new BootstrapProcessError('BOOTSTRAP_STEP_FAILED');
+    }
+  }
+
+  private knownFailureCode(error: unknown): BootstrapFailureCode {
+    if (typeof error === 'object' && error !== null) {
+      return knownFailureTokens.get(error) ?? 'BOOTSTRAP_STEP_FAILED';
+    }
+    return 'BOOTSTRAP_STEP_FAILED';
   }
 }

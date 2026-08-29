@@ -12,7 +12,11 @@ import {
 } from '@application/dto';
 import { ScopeRepository, TenantRepository } from '@domain/repositories';
 import { TenantModel } from '@domain/models/tenant';
-import { BUILT_IN_OIDC_SCOPES, ScopeModel } from '@domain/models/scope';
+import {
+  BUILT_IN_OIDC_SCOPES,
+  type BuiltInOidcScope,
+  ScopeModel,
+} from '@domain/models/scope';
 import { orThrow } from '@domain/utils';
 import { AuditRecorder } from '@application/services/audit-recorder';
 
@@ -37,7 +41,7 @@ export class TenantCommandHandler implements TenantCommandPort {
 
     const tenant = new TenantModel({ code: dto.code, name: dto.name });
     const saved = await this.tenantRepo.save(tenant);
-    await this.seedBuiltInScopes(saved.id);
+    await this.seedBuiltInScopes(saved.id, BUILT_IN_OIDC_SCOPES, auditContext);
     await this.auditRecorder?.recordAdminAction({
       tenantId: saved.id,
       action: 'CREATE',
@@ -50,11 +54,32 @@ export class TenantCommandHandler implements TenantCommandPort {
     return { id: saved.id };
   }
 
-  private async seedBuiltInScopes(tenantId: string): Promise<void> {
-    for (const scope of BUILT_IN_OIDC_SCOPES) {
+  async ensureBuiltInScopes(
+    tenantId: string,
+    scopeNames: readonly BuiltInOidcScope[],
+    auditContext?: AuditContext,
+  ): Promise<void> {
+    await this.seedBuiltInScopes(tenantId, scopeNames, auditContext);
+  }
+
+  private async seedBuiltInScopes(
+    tenantId: string,
+    scopeNames: readonly BuiltInOidcScope[],
+    auditContext?: AuditContext,
+  ): Promise<void> {
+    for (const scope of scopeNames) {
       const existing = await this.scopeRepo.findByName(tenantId, scope);
-      if (existing) continue;
-      await this.scopeRepo.save(
+      if (existing) {
+        if (
+          existing.tenantId !== tenantId ||
+          existing.name !== scope ||
+          !existing.builtIn
+        ) {
+          throw new ConflictException('Built-in scope identity conflict');
+        }
+        continue;
+      }
+      const saved = await this.scopeRepo.save(
         new ScopeModel({
           tenantId,
           name: scope,
@@ -65,6 +90,15 @@ export class TenantCommandHandler implements TenantCommandPort {
           builtIn: true,
         }),
       );
+      await this.auditRecorder?.recordAdminAction({
+        tenantId,
+        category: 'SYSTEM',
+        action: 'CREATE',
+        resourceType: 'scope',
+        resourceId: saved.id,
+        metadata: { name: saved.name, builtIn: true },
+        auditContext,
+      });
     }
   }
 

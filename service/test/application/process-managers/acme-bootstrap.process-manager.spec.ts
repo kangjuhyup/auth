@@ -43,6 +43,7 @@ describe('AcmeBootstrapProcessManager', () => {
     } as jest.Mocked<TenantRepository>;
     const tenantCommand = {
       createTenant: jest.fn().mockResolvedValue({ id: 'tenant-acme' }),
+      ensureBuiltInScopes: jest.fn().mockResolvedValue(undefined),
       updateTenant: jest.fn().mockResolvedValue(undefined),
       deleteTenant: jest.fn().mockResolvedValue(undefined),
     } as jest.Mocked<TenantCommandPort>;

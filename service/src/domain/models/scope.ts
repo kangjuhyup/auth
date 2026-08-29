@@ -2,6 +2,7 @@ import { Getter } from '../decorators';
 import { PersistenceModel } from './persistence-model';
 
 export const BUILT_IN_OIDC_SCOPES = ['openid', 'profile', 'email'] as const;
+export type BuiltInOidcScope = (typeof BUILT_IN_OIDC_SCOPES)[number];
 
 const SCOPE_TOKEN_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$/;
 

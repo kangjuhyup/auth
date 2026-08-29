@@ -3,6 +3,7 @@ import {
   CreateTenantDto,
   UpdateTenantDto,
 } from '@application/dto';
+import type { BuiltInOidcScope } from '@domain/models/scope';
 
 export abstract class TenantCommandPort {
   /**
@@ -13,6 +14,12 @@ export abstract class TenantCommandPort {
     dto: CreateTenantDto,
     auditContext?: AuditContext,
   ): Promise<{ id: string }>;
+
+  abstract ensureBuiltInScopes(
+    tenantId: string,
+    scopeNames: readonly BuiltInOidcScope[],
+    auditContext?: AuditContext,
+  ): Promise<void>;
 
   /**
    * Update an existing tenant

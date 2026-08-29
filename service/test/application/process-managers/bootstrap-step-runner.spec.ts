@@ -3,9 +3,9 @@ import {
   type BootstrapFailureCode,
 } from '@application/process-managers/bootstrap-process-state';
 import {
-  BootstrapKnownFailure,
   BootstrapProcessError,
   BootstrapStepRunner,
+  createBootstrapKnownFailure,
 } from '@application/process-managers/bootstrap-step-runner';
 import type { BootstrapProcessRepository } from '@application/process-managers/ports/bootstrap-process.repository';
 
@@ -146,10 +146,73 @@ describe('BootstrapStepRunner', () => {
         steps: ['tenant', 'role', 'completed'],
         work: jest
           .fn()
-          .mockRejectedValue(BootstrapKnownFailure.of(failureCode)),
+          .mockRejectedValue(createBootstrapKnownFailure(failureCode)),
       }),
     ).rejects.toMatchObject({ code: failureCode, message: failureCode });
     expect(state.lastFailureCode).toBe(failureCode);
+  });
+
+  it('creates opaque known-failure tokens without serializable fields', () => {
+    const token = createBootstrapKnownFailure('ADMIN_CREDENTIALS_REQUIRED');
+
+    expect(Object.getOwnPropertyNames(token)).toEqual([]);
+    expect(JSON.stringify(token)).toBe('{}');
+    expect(token).not.toBeInstanceOf(Error);
+    expect(token).not.toHaveProperty('code');
+    expect(token).not.toHaveProperty('message');
+    expect(token).not.toHaveProperty('stack');
+    expect(token).not.toHaveProperty('cause');
+  });
+
+  it.each([
+    {},
+    { code: 'ADMIN_CREDENTIALS_REQUIRED' },
+    { message: 'ADMIN_PORTAL_CONFLICT' },
+    Object.create(
+      Object.getPrototypeOf(
+        createBootstrapKnownFailure('ADMIN_CREDENTIALS_REQUIRED'),
+      ),
+    ),
+  ])('does not trust a forged known-failure token %#', async (forged) => {
+    const state = BootstrapProcessState.start('bootstrap:admin:v1', 'tenant');
+    const { runner } = createRunner(state);
+
+    await expect(
+      runner.run({
+        processKey: 'bootstrap:admin:v1',
+        initialStep: 'tenant',
+        expectedStep: 'tenant',
+        nextStep: 'completed',
+        steps: acmeSteps,
+        work: jest.fn().mockRejectedValue(forged),
+      }),
+    ).rejects.toMatchObject({
+      code: 'BOOTSTRAP_STEP_FAILED',
+      message: 'BOOTSTRAP_STEP_FAILED',
+    });
+    expect(state.lastFailureCode).toBe('BOOTSTRAP_STEP_FAILED');
+  });
+
+  it('does not trust a future code passed through an untyped factory call', async () => {
+    const state = BootstrapProcessState.start('bootstrap:admin:v1', 'tenant');
+    const fail = jest.spyOn(state, 'fail');
+    const { runner } = createRunner(state);
+    const token = createBootstrapKnownFailure('FUTURE_SAFE_CODE' as never);
+
+    await expect(
+      runner.run({
+        processKey: 'bootstrap:admin:v1',
+        initialStep: 'tenant',
+        expectedStep: 'tenant',
+        nextStep: 'completed',
+        steps: acmeSteps,
+        work: jest.fn().mockRejectedValue(token),
+      }),
+    ).rejects.toMatchObject({
+      code: 'BOOTSTRAP_STEP_FAILED',
+      message: 'BOOTSTRAP_STEP_FAILED',
+    });
+    expect(fail).toHaveBeenCalledWith('BOOTSTRAP_STEP_FAILED');
   });
 
   it('keeps an unexpected error in a known-precondition step generic', async () => {
@@ -186,6 +249,133 @@ describe('BootstrapStepRunner', () => {
     expect(error.code).toBe('BOOTSTRAP_STEP_FAILED');
     expect(error.message).toBe('BOOTSTRAP_STEP_FAILED');
     expect(error.stack).not.toContain('password=secret');
+  });
+
+  it('sanitizes repository load or lock failures without executing work', async () => {
+    const state = BootstrapProcessState.start('bootstrap:admin:v1', 'tenant');
+    const { runner, repository } = createRunner(state);
+    const rawError = new Error('lock failed password=secret database.internal');
+    const work = jest.fn().mockResolvedValue(undefined);
+    repository.withLockedState.mockRejectedValue(rawError);
+
+    const caught = await runner
+      .run({
+        processKey: 'bootstrap:admin:v1',
+        initialStep: 'tenant',
+        expectedStep: 'tenant',
+        nextStep: 'completed',
+        steps: acmeSteps,
+        work,
+      })
+      .catch((error: unknown) => error);
+
+    expect(caught).toMatchObject({
+      name: 'BootstrapProcessError',
+      code: 'BOOTSTRAP_STEP_FAILED',
+      message: 'BOOTSTRAP_STEP_FAILED',
+    });
+    expect((caught as Error).stack).not.toContain(rawError.message);
+    expect(caught).not.toHaveProperty('cause');
+    expect(work).not.toHaveBeenCalled();
+    expect(state.retryCount).toBe(0);
+  });
+
+  it('sanitizes repository flush failures without replay or double state mutation', async () => {
+    const state = BootstrapProcessState.start('bootstrap:admin:v1', 'tenant');
+    const { runner, repository } = createRunner(state);
+    const rawError = new Error(
+      'flush failed password=secret database.internal',
+    );
+    const work = jest.fn().mockResolvedValue(undefined);
+    repository.withLockedState.mockImplementation(
+      async (_params, lockedWork) => {
+        await lockedWork(state);
+        throw rawError;
+      },
+    );
+
+    const caught = await runner
+      .run({
+        processKey: 'bootstrap:admin:v1',
+        initialStep: 'tenant',
+        expectedStep: 'tenant',
+        nextStep: 'completed',
+        steps: acmeSteps,
+        work,
+      })
+      .catch((error: unknown) => error);
+
+    expect(caught).toMatchObject({
+      code: 'BOOTSTRAP_STEP_FAILED',
+      message: 'BOOTSTRAP_STEP_FAILED',
+    });
+    expect((caught as Error).stack).not.toContain(rawError.message);
+    expect(work).toHaveBeenCalledTimes(1);
+    expect(state.step).toBe('completed');
+    expect(state.status).toBe('pending');
+    expect(state.retryCount).toBe(0);
+    expect(state.lastFailureCode).toBeNull();
+  });
+
+  it('sanitizes begin-attempt failures without trying to fail the state again', async () => {
+    const state = BootstrapProcessState.rehydrate({
+      processKey: 'bootstrap:admin:v1',
+      step: 'tenant',
+      status: 'running',
+      retryCount: 4,
+      lastFailureCode: null,
+    });
+    const { runner } = createRunner(state);
+    const work = jest.fn().mockResolvedValue(undefined);
+
+    const caught = await runner
+      .run({
+        processKey: 'bootstrap:admin:v1',
+        initialStep: 'tenant',
+        expectedStep: 'tenant',
+        nextStep: 'completed',
+        steps: acmeSteps,
+        work,
+      })
+      .catch((error: unknown) => error);
+
+    expect(caught).toMatchObject({
+      code: 'BOOTSTRAP_STEP_FAILED',
+      message: 'BOOTSTRAP_STEP_FAILED',
+    });
+    expect((caught as Error).stack).not.toContain('already running');
+    expect(work).not.toHaveBeenCalled();
+    expect(state.status).toBe('running');
+    expect(state.retryCount).toBe(4);
+  });
+
+  it('sanitizes transition failures and records a single failed attempt', async () => {
+    const state = BootstrapProcessState.start('bootstrap:admin:v1', 'tenant');
+    const { runner } = createRunner(state);
+    const rawError = new Error('transition password=secret database.internal');
+    jest.spyOn(state, 'advance').mockImplementation(() => {
+      throw rawError;
+    });
+
+    const caught = await runner
+      .run({
+        processKey: 'bootstrap:admin:v1',
+        initialStep: 'tenant',
+        expectedStep: 'tenant',
+        nextStep: 'completed',
+        steps: acmeSteps,
+        work: jest.fn().mockResolvedValue(undefined),
+      })
+      .catch((error: unknown) => error);
+
+    expect(caught).toMatchObject({
+      code: 'BOOTSTRAP_STEP_FAILED',
+      message: 'BOOTSTRAP_STEP_FAILED',
+    });
+    expect((caught as Error).stack).not.toContain(rawError.message);
+    expect(state.status).toBe('failed');
+    expect(state.retryCount).toBe(1);
+    expect(state.lastFailureCode).toBe('BOOTSTRAP_STEP_FAILED');
   });
 
   it.each([
@@ -282,6 +472,63 @@ describe('BootstrapStepRunner', () => {
     });
 
     expect(state.status).toBe('completed');
+  });
+
+  it('sanitizes a secret-bearing repository failure during completion', async () => {
+    const state = BootstrapProcessState.rehydrate({
+      processKey: 'bootstrap:acme:v1',
+      step: 'completed',
+      status: 'pending',
+      retryCount: 0,
+      lastFailureCode: null,
+    });
+    const { runner, repository } = createRunner(state);
+    const rawError = new Error(
+      'complete lock password=secret database.internal',
+    );
+    repository.withLockedState.mockRejectedValue(rawError);
+
+    const caught = await runner
+      .complete({
+        processKey: 'bootstrap:acme:v1',
+        initialStep: 'tenant',
+        expectedStep: 'completed',
+        steps: acmeSteps,
+      })
+      .catch((error: unknown) => error);
+
+    expect(caught).toMatchObject({
+      name: 'BootstrapProcessError',
+      code: 'BOOTSTRAP_STEP_FAILED',
+      message: 'BOOTSTRAP_STEP_FAILED',
+    });
+    expect((caught as Error).stack).not.toContain(rawError.message);
+    expect(caught).not.toHaveProperty('cause');
+    expect(state.status).toBe('pending');
+  });
+
+  it('sanitizes state transition errors during completion', async () => {
+    const state = BootstrapProcessState.start('bootstrap:acme:v1', 'tenant');
+    const { runner } = createRunner(state);
+
+    const caught = await runner
+      .complete({
+        processKey: 'bootstrap:acme:v1',
+        initialStep: 'tenant',
+        expectedStep: 'completed',
+        steps: acmeSteps,
+      })
+      .catch((error: unknown) => error);
+
+    expect(caught).toMatchObject({
+      code: 'BOOTSTRAP_STEP_FAILED',
+      message: 'BOOTSTRAP_STEP_FAILED',
+    });
+    expect((caught as Error).stack).not.toContain(
+      'completion step is not terminal',
+    );
+    expect(state.status).toBe('pending');
+    expect(state.retryCount).toBe(0);
   });
 });
 

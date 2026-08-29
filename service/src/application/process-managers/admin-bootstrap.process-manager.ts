@@ -11,15 +11,23 @@ import {
   CreateUserDto,
 } from '@application/dto';
 import type { ClientModel } from '@domain/models/client';
+import type { RoleModel } from '@domain/models/role';
+import {
+  BUILT_IN_OIDC_SCOPES,
+  type BuiltInOidcScope,
+} from '@domain/models/scope';
+import type { TenantModel } from '@domain/models/tenant';
+import type { UserModel } from '@domain/models/user';
 import type {
   ClientRepository,
   RoleAssignmentRepository,
   RoleRepository,
+  ScopeRepository,
   TenantRepository,
 } from '@domain/repositories';
 import {
-  BootstrapKnownFailure,
   BootstrapStepRunner,
+  createBootstrapKnownFailure,
 } from './bootstrap-step-runner';
 import {
   AdminBootstrapPort,
@@ -44,6 +52,7 @@ export class AdminBootstrapProcessManager implements AdminBootstrapPort {
     private readonly roleCommand: RoleCommandPort,
     private readonly clientCommand: ClientCommandPort,
     private readonly tenantRepository: TenantRepository,
+    private readonly scopeRepository: ScopeRepository,
     private readonly userRepository: UserWriteRepositoryPort,
     private readonly roleRepository: RoleRepository,
     private readonly assignmentRepository: RoleAssignmentRepository,
@@ -60,7 +69,35 @@ export class AdminBootstrapProcessManager implements AdminBootstrapPort {
       nextStep: 'role',
       steps: STEPS,
       work: async () => {
-        if (await this.tenantRepository.findByCode('master')) {
+        const existing = await this.tenantRepository.findByCode('master');
+        if (existing) {
+          this.assertMasterTenant(existing);
+          const existingScopes = await this.scopeRepository.findByNames(
+            existing.id,
+            [...BUILT_IN_OIDC_SCOPES],
+          );
+          const existingScopeNames = new Set<string>();
+          for (const scope of existingScopes) {
+            if (
+              scope.tenantId !== existing.id ||
+              !this.isBuiltInScopeName(scope.name) ||
+              !scope.builtIn ||
+              existingScopeNames.has(scope.name)
+            ) {
+              throw new Error('Bootstrap lookup identity mismatch');
+            }
+            existingScopeNames.add(scope.name);
+          }
+          const missingScopes = BUILT_IN_OIDC_SCOPES.filter(
+            (scope) => !existingScopeNames.has(scope),
+          );
+          if (missingScopes.length > 0) {
+            await this.tenantCommand.ensureBuiltInScopes(
+              existing.id,
+              missingScopes,
+              auditContext,
+            );
+          }
           return;
         }
 
@@ -79,7 +116,7 @@ export class AdminBootstrapProcessManager implements AdminBootstrapPort {
       steps: STEPS,
       work: async () => {
         const tenant = await this.requireMasterTenant();
-        if (await this.roleRepository.findByCode(tenant.id, 'SUPER_ADMIN')) {
+        if (await this.findSuperAdminRole(tenant.id)) {
           return;
         }
 
@@ -103,13 +140,11 @@ export class AdminBootstrapProcessManager implements AdminBootstrapPort {
       steps: STEPS,
       work: async () => {
         const tenant = await this.requireMasterTenant();
-        if (
-          await this.userRepository.findByUsername(tenant.id, input.username)
-        ) {
+        if (await this.findAdminUser(tenant.id, input.username)) {
           return;
         }
         if (!input.password) {
-          throw BootstrapKnownFailure.of('ADMIN_CREDENTIALS_REQUIRED');
+          throw createBootstrapKnownFailure('ADMIN_CREDENTIALS_REQUIRED');
         }
 
         await this.userCommand.createUser(
@@ -133,17 +168,8 @@ export class AdminBootstrapProcessManager implements AdminBootstrapPort {
       steps: STEPS,
       work: async () => {
         const tenant = await this.requireMasterTenant();
-        const user = await this.userRepository.findByUsername(
-          tenant.id,
-          input.username,
-        );
-        const role = await this.roleRepository.findByCode(
-          tenant.id,
-          'SUPER_ADMIN',
-        );
-        if (!user || !role) {
-          throw new Error('Bootstrap prerequisite missing');
-        }
+        const user = await this.requireAdminUser(tenant.id, input.username);
+        const role = await this.requireSuperAdminRole(tenant.id);
         if (
           await this.assignmentRepository.existsForUser({
             userId: user.id,
@@ -176,7 +202,7 @@ export class AdminBootstrapProcessManager implements AdminBootstrapPort {
         );
         if (existing) {
           if (!this.isCompatiblePortal(existing, tenant.id, input.adminUiUrl)) {
-            throw BootstrapKnownFailure.of('ADMIN_PORTAL_CONFLICT');
+            throw createBootstrapKnownFailure('ADMIN_PORTAL_CONFLICT');
           }
           return;
         }
@@ -197,12 +223,63 @@ export class AdminBootstrapProcessManager implements AdminBootstrapPort {
     });
   }
 
-  private async requireMasterTenant() {
+  private async requireMasterTenant(): Promise<TenantModel> {
     const tenant = await this.tenantRepository.findByCode('master');
     if (!tenant) {
       throw new Error('Bootstrap prerequisite missing');
     }
+    this.assertMasterTenant(tenant);
     return tenant;
+  }
+
+  private assertMasterTenant(tenant: TenantModel): void {
+    if (tenant.code !== 'master') {
+      throw new Error('Bootstrap lookup identity mismatch');
+    }
+  }
+
+  private isBuiltInScopeName(name: string): name is BuiltInOidcScope {
+    return (BUILT_IN_OIDC_SCOPES as readonly string[]).includes(name);
+  }
+
+  private async findSuperAdminRole(
+    tenantId: string,
+  ): Promise<RoleModel | null> {
+    const role = await this.roleRepository.findByCode(tenantId, 'SUPER_ADMIN');
+    if (role && (role.tenantId !== tenantId || role.code !== 'SUPER_ADMIN')) {
+      throw new Error('Bootstrap lookup identity mismatch');
+    }
+    return role;
+  }
+
+  private async requireSuperAdminRole(tenantId: string): Promise<RoleModel> {
+    const role = await this.findSuperAdminRole(tenantId);
+    if (!role) {
+      throw new Error('Bootstrap prerequisite missing');
+    }
+    return role;
+  }
+
+  private async findAdminUser(
+    tenantId: string,
+    username: string,
+  ): Promise<UserModel | undefined> {
+    const user = await this.userRepository.findByUsername(tenantId, username);
+    if (user && (user.tenantId !== tenantId || user.username !== username)) {
+      throw new Error('Bootstrap lookup identity mismatch');
+    }
+    return user;
+  }
+
+  private async requireAdminUser(
+    tenantId: string,
+    username: string,
+  ): Promise<UserModel> {
+    const user = await this.findAdminUser(tenantId, username);
+    if (!user) {
+      throw new Error('Bootstrap prerequisite missing');
+    }
+    return user;
   }
 
   private createPortalDto(adminUiUrl: string): CreateClientDto {

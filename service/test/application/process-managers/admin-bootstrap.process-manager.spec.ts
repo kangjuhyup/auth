@@ -17,12 +17,14 @@ import type { AdminBootstrapInput } from '@application/process-managers/ports/ad
 import type { BootstrapProcessRepository } from '@application/process-managers/ports/bootstrap-process.repository';
 import { ClientModel } from '@domain/models/client';
 import { RoleModel } from '@domain/models/role';
+import { ScopeModel } from '@domain/models/scope';
 import { TenantModel } from '@domain/models/tenant';
 import { UserModel } from '@domain/models/user';
 import type {
   ClientRepository,
   RoleAssignmentRepository,
   RoleRepository,
+  ScopeRepository,
   TenantRepository,
 } from '@domain/repositories';
 
@@ -43,37 +45,78 @@ describe('AdminBootstrapProcessManager', () => {
   };
   const auditContext = AuditContext.of({ correlationId: processKey });
 
-  function makeTenant(): TenantModel {
-    return new TenantModel({ code: 'master', name: 'Master' }).setPersistence(
-      'tenant-master',
+  function makeTenant(
+    overrides: Partial<{ id: string; code: string; name: string }> = {},
+  ): TenantModel {
+    return new TenantModel({
+      code: overrides.code ?? 'master',
+      name: overrides.name ?? 'Master',
+    }).setPersistence(
+      overrides.id ?? 'tenant-master',
       new Date('2026-08-29T00:00:00.000Z'),
       new Date('2026-08-29T00:00:00.000Z'),
     );
   }
 
-  function makeRole(): RoleModel {
+  function makeRole(
+    overrides: Partial<{
+      id: string;
+      tenantId: string;
+      code: string;
+      name: string;
+    }> = {},
+  ): RoleModel {
     return new RoleModel({
-      tenantId: 'tenant-master',
-      code: 'SUPER_ADMIN',
-      name: 'Super Admin',
+      tenantId: overrides.tenantId ?? 'tenant-master',
+      code: overrides.code ?? 'SUPER_ADMIN',
+      name: overrides.name ?? 'Super Admin',
       description: '플랫폼 최고 관리자',
     }).setPersistence(
-      'role-super-admin',
+      overrides.id ?? 'role-super-admin',
       new Date('2026-08-29T00:00:00.000Z'),
       new Date('2026-08-29T00:00:00.000Z'),
     );
   }
 
-  function makeUser(username = 'admin'): UserModel {
+  function makeUser(
+    overrides: Partial<{
+      id: string;
+      tenantId: string;
+      username: string;
+    }> = {},
+  ): UserModel {
     return UserModel.of({
-      id: 'user-admin',
-      tenantId: 'tenant-master',
-      username,
+      id: overrides.id ?? 'user-admin',
+      tenantId: overrides.tenantId ?? 'tenant-master',
+      username: overrides.username ?? 'admin',
       email: 'admin@localhost',
       emailVerified: true,
       phoneVerified: false,
       status: 'ACTIVE',
     });
+  }
+
+  function makeScope(
+    name: 'openid' | 'profile' | 'email',
+    overrides: Partial<{
+      tenantId: string;
+      name: string;
+      builtIn: boolean;
+    }> = {},
+  ): ScopeModel {
+    return new ScopeModel({
+      tenantId: overrides.tenantId ?? 'tenant-master',
+      name: overrides.name ?? name,
+      displayName: name,
+      description: null,
+      claimKeys: [],
+      enabled: true,
+      builtIn: overrides.builtIn ?? true,
+    }).setPersistence(
+      `scope-${name}`,
+      new Date('2026-08-29T00:00:00.000Z'),
+      new Date('2026-08-29T00:00:00.000Z'),
+    );
   }
 
   function makePortal(
@@ -114,6 +157,7 @@ describe('AdminBootstrapProcessManager', () => {
     user?: UserModel;
     assignmentExists?: boolean;
     client?: ClientModel | null;
+    scopes?: ScopeModel[];
   }) {
     const state =
       params?.state ?? BootstrapProcessState.start(processKey, 'tenant');
@@ -122,6 +166,11 @@ describe('AdminBootstrapProcessManager', () => {
     let user = params?.user;
     let client = params?.client === undefined ? makePortal() : params.client;
     let assignmentExists = params?.assignmentExists ?? true;
+    const scopes = params?.scopes ?? [
+      makeScope('openid'),
+      makeScope('profile'),
+      makeScope('email'),
+    ];
 
     const processRepository = {
       withLockedState: jest.fn(async (_params, work) => work(state)),
@@ -141,6 +190,15 @@ describe('AdminBootstrapProcessManager', () => {
       save: jest.fn(),
       delete: jest.fn(),
     } as unknown as jest.Mocked<RoleRepository>;
+    const scopeRepository = {
+      findById: jest.fn(),
+      findByName: jest.fn(),
+      findByNames: jest.fn(async () => scopes),
+      list: jest.fn(),
+      listEnabledByTenantId: jest.fn(),
+      save: jest.fn(),
+      delete: jest.fn(),
+    } as unknown as jest.Mocked<ScopeRepository>;
     const userRepository = {
       findById: jest.fn(),
       findByUsername: jest.fn(async () => user),
@@ -173,6 +231,7 @@ describe('AdminBootstrapProcessManager', () => {
         tenant = makeTenant();
         return { id: tenant.id };
       }),
+      ensureBuiltInScopes: jest.fn().mockResolvedValue(undefined),
       updateTenant: jest.fn(),
       deleteTenant: jest.fn(),
     } as unknown as jest.Mocked<TenantCommandPort>;
@@ -216,6 +275,7 @@ describe('AdminBootstrapProcessManager', () => {
       roleCommand,
       clientCommand,
       tenantRepository,
+      scopeRepository,
       userRepository,
       roleRepository,
       assignmentRepository,
@@ -227,6 +287,7 @@ describe('AdminBootstrapProcessManager', () => {
       state,
       runner,
       tenantRepository,
+      scopeRepository,
       userRepository,
       roleRepository,
       assignmentRepository,
@@ -335,6 +396,238 @@ describe('AdminBootstrapProcessManager', () => {
     expect(subject.clientRepository.save).not.toHaveBeenCalled();
   });
 
+  it('keeps an existing correctly bound master tenant without creating it', async () => {
+    const subject = createSubject({
+      tenant: makeTenant(),
+      user: makeUser(),
+      assignmentExists: true,
+      client: makePortal(),
+    });
+
+    await subject.manager.bootstrap(input);
+
+    expect(subject.tenantRepository.findByCode).toHaveBeenCalledWith('master');
+    expect(subject.tenantCommand.createTenant).not.toHaveBeenCalled();
+    expect(subject.tenantCommand.updateTenant).not.toHaveBeenCalled();
+    expect(subject.tenantCommand.deleteTenant).not.toHaveBeenCalled();
+    expect(subject.tenantCommand.ensureBuiltInScopes).not.toHaveBeenCalled();
+    expect(subject.scopeRepository.save).not.toHaveBeenCalled();
+    expect(subject.state.status).toBe('completed');
+  });
+
+  it('repairs only missing built-in scopes through the tenant command port', async () => {
+    const subject = createSubject({
+      tenant: makeTenant(),
+      scopes: [makeScope('openid')],
+      user: makeUser(),
+      assignmentExists: true,
+      client: makePortal(),
+    });
+
+    await subject.manager.bootstrap(input);
+
+    expect(subject.scopeRepository.findByNames).toHaveBeenCalledWith(
+      'tenant-master',
+      ['openid', 'profile', 'email'],
+    );
+    expect(subject.tenantCommand.ensureBuiltInScopes).toHaveBeenCalledWith(
+      'tenant-master',
+      ['profile', 'email'],
+      auditContext,
+    );
+    expect(subject.scopeRepository.save).not.toHaveBeenCalled();
+    expect(subject.state.status).toBe('completed');
+  });
+
+  it('requests all built-in scopes when an existing master has none', async () => {
+    const subject = createSubject({
+      tenant: makeTenant(),
+      scopes: [],
+      user: makeUser(),
+      assignmentExists: true,
+      client: makePortal(),
+    });
+
+    await subject.manager.bootstrap(input);
+
+    expect(subject.tenantCommand.ensureBuiltInScopes).toHaveBeenCalledWith(
+      'tenant-master',
+      ['openid', 'profile', 'email'],
+      auditContext,
+    );
+    expect(subject.scopeRepository.save).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['tenant', makeScope('openid', { tenantId: 'tenant-other' })],
+    ['name', makeScope('openid', { name: 'orders:read' })],
+    ['built-in flag', makeScope('openid', { builtIn: false })],
+  ])(
+    'fails generically on a built-in scope lookup with wrong %s binding',
+    async (_field, scope) => {
+      const subject = createSubject({
+        tenant: makeTenant(),
+        scopes: [scope],
+        user: makeUser(),
+      });
+
+      await expect(subject.manager.bootstrap(input)).rejects.toMatchObject({
+        code: 'BOOTSTRAP_STEP_FAILED',
+        message: 'BOOTSTRAP_STEP_FAILED',
+      });
+
+      expect(subject.tenantCommand.ensureBuiltInScopes).not.toHaveBeenCalled();
+      expect(subject.roleRepository.findByCode).not.toHaveBeenCalled();
+      expect(subject.userCommand.assignRole).not.toHaveBeenCalled();
+      expect(subject.clientRepository.findByClientId).not.toHaveBeenCalled();
+      expect(subject.scopeRepository.save).not.toHaveBeenCalled();
+      expect(subject.state.status).toBe('failed');
+    },
+  );
+
+  it('keeps an existing correctly bound SUPER_ADMIN role without creating it', async () => {
+    const state = BootstrapProcessState.rehydrate({
+      processKey,
+      step: 'role',
+      status: 'pending',
+      retryCount: 0,
+      lastFailureCode: null,
+    });
+    const subject = createSubject({
+      state,
+      role: makeRole(),
+      user: makeUser(),
+      assignmentExists: true,
+      client: makePortal(),
+    });
+
+    await subject.manager.bootstrap(input);
+
+    expect(subject.roleRepository.findByCode).toHaveBeenCalledWith(
+      'tenant-master',
+      'SUPER_ADMIN',
+    );
+    expect(subject.roleCommand.createRole).not.toHaveBeenCalled();
+    expect(subject.roleCommand.updateRole).not.toHaveBeenCalled();
+    expect(subject.roleCommand.deleteRole).not.toHaveBeenCalled();
+    expect(state.status).toBe('completed');
+  });
+
+  it('fails generically on a wrongly bound master lookup before downstream work', async () => {
+    const subject = createSubject({
+      tenant: makeTenant({ code: 'other' }),
+      user: makeUser(),
+    });
+
+    await expect(subject.manager.bootstrap(input)).rejects.toMatchObject({
+      code: 'BOOTSTRAP_STEP_FAILED',
+      message: 'BOOTSTRAP_STEP_FAILED',
+    });
+
+    expect(subject.tenantCommand.createTenant).not.toHaveBeenCalled();
+    expect(subject.roleRepository.findByCode).not.toHaveBeenCalled();
+    expect(subject.roleCommand.createRole).not.toHaveBeenCalled();
+    expect(subject.userCommand.createUser).not.toHaveBeenCalled();
+    expect(subject.userCommand.assignRole).not.toHaveBeenCalled();
+    expect(subject.clientRepository.findByClientId).not.toHaveBeenCalled();
+    expect(subject.clientCommand.createClient).not.toHaveBeenCalled();
+    expect(subject.state.status).toBe('failed');
+  });
+
+  it.each([
+    ['tenantId', makeRole({ tenantId: 'tenant-other' })],
+    ['code', makeRole({ code: 'OTHER_ADMIN' })],
+  ])(
+    'fails generically on a SUPER_ADMIN lookup with wrong %s before user work',
+    async (_field, driftedRole) => {
+      const state = BootstrapProcessState.rehydrate({
+        processKey,
+        step: 'role',
+        status: 'pending',
+        retryCount: 0,
+        lastFailureCode: null,
+      });
+      const subject = createSubject({ state, role: driftedRole });
+
+      await expect(subject.manager.bootstrap(input)).rejects.toMatchObject({
+        code: 'BOOTSTRAP_STEP_FAILED',
+        message: 'BOOTSTRAP_STEP_FAILED',
+      });
+
+      expect(subject.roleCommand.createRole).not.toHaveBeenCalled();
+      expect(subject.userRepository.findByUsername).not.toHaveBeenCalled();
+      expect(subject.userCommand.createUser).not.toHaveBeenCalled();
+      expect(subject.userCommand.assignRole).not.toHaveBeenCalled();
+      expect(subject.clientRepository.findByClientId).not.toHaveBeenCalled();
+      expect(subject.clientCommand.createClient).not.toHaveBeenCalled();
+      expect(state.status).toBe('failed');
+    },
+  );
+
+  it.each([
+    ['tenantId', makeUser({ tenantId: 'tenant-other' })],
+    ['username', makeUser({ username: 'other-admin' })],
+  ])(
+    'fails generically on an administrator lookup with wrong %s before assignment work',
+    async (_field, driftedUser) => {
+      const state = BootstrapProcessState.rehydrate({
+        processKey,
+        step: 'user',
+        status: 'pending',
+        retryCount: 0,
+        lastFailureCode: null,
+      });
+      const subject = createSubject({ state, user: driftedUser });
+
+      await expect(subject.manager.bootstrap(input)).rejects.toMatchObject({
+        code: 'BOOTSTRAP_STEP_FAILED',
+        message: 'BOOTSTRAP_STEP_FAILED',
+      });
+
+      expect(subject.userCommand.createUser).not.toHaveBeenCalled();
+      expect(subject.assignmentRepository.existsForUser).not.toHaveBeenCalled();
+      expect(subject.userCommand.assignRole).not.toHaveBeenCalled();
+      expect(subject.clientRepository.findByClientId).not.toHaveBeenCalled();
+      expect(subject.clientCommand.createClient).not.toHaveBeenCalled();
+      expect(state.status).toBe('failed');
+    },
+  );
+
+  it.each([
+    ['role tenant', { role: makeRole({ tenantId: 'tenant-other' }) }],
+    ['role code', { role: makeRole({ code: 'OTHER_ADMIN' }) }],
+    ['user tenant', { user: makeUser({ tenantId: 'tenant-other' }) }],
+    ['username', { user: makeUser({ username: 'other-admin' }) }],
+  ])(
+    'rejects wrong %s identity when reloading assignment prerequisites',
+    async (_identity, resources) => {
+      const state = BootstrapProcessState.rehydrate({
+        processKey,
+        step: 'role-assignment',
+        status: 'pending',
+        retryCount: 0,
+        lastFailureCode: null,
+      });
+      const subject = createSubject({
+        state,
+        user: makeUser(),
+        role: makeRole(),
+        ...resources,
+      });
+
+      await expect(subject.manager.bootstrap(input)).rejects.toMatchObject({
+        code: 'BOOTSTRAP_STEP_FAILED',
+        message: 'BOOTSTRAP_STEP_FAILED',
+      });
+
+      expect(subject.assignmentRepository.existsForUser).not.toHaveBeenCalled();
+      expect(subject.userCommand.assignRole).not.toHaveBeenCalled();
+      expect(subject.clientRepository.findByClientId).not.toHaveBeenCalled();
+      expect(subject.clientCommand.createClient).not.toHaveBeenCalled();
+      expect(state.status).toBe('failed');
+    },
+  );
+
   it('fails the user step with a safe credentials code when a missing user has no password', async () => {
     const state = BootstrapProcessState.rehydrate({
       processKey,
@@ -369,7 +662,7 @@ describe('AdminBootstrapProcessManager', () => {
     });
     const subject = createSubject({
       state,
-      user: makeUser('existing-admin'),
+      user: makeUser({ username: 'existing-admin' }),
       assignmentExists: true,
       client: makePortal(),
     });
