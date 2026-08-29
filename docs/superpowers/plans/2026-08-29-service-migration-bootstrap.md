@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build an authorization-server image that runs compiled migrations before HTTP startup and exposes idempotent compiled administrator and `acme` / `e-vote` bootstrap commands.
+**Goal:** Build an authorization-server image that runs compiled migrations before HTTP startup and exposes idempotent compiled administrator and `acme` tenant bootstrap commands.
 
-**Architecture:** A thin Node CLI initializes MikroORM with `Migrator`, while a POSIX Docker entrypoint runs that CLI and then `exec`s the service. Administrator and vote setup use application process managers, existing aggregate command ports, write-side repositories, and a locked MikroORM-backed process-state port so retries and concurrent invocations are idempotent.
+**Architecture:** A thin Node CLI initializes MikroORM with `Migrator`, while a POSIX Docker entrypoint runs that CLI and then `exec`s the service. Administrator and `acme` setup use application process managers, existing aggregate command ports, write-side repositories, and a locked MikroORM-backed process-state port so retries and concurrent invocations are idempotent.
 
 **Tech Stack:** Node.js 24, TypeScript, NestJS 11, MikroORM 6.6.12, PostgreSQL/MySQL/MSSQL migrations, Yarn 4.12.0, Jest 29, Docker/Alpine.
 
@@ -20,7 +20,7 @@
 - Bootstrap writes go through application command ports. Write-side repositories may be read only to decide whether a command is needed.
 - Do not use projections or Redis to decide bootstrap invariants.
 - Do not log database URLs, database passwords, administrator passwords, client secrets, tokens, raw exceptions, or exception stacks.
-- Bind `e-vote` to the resolved `acme` tenant. The specified localhost HTTP redirect is local-only.
+- The `acme` bootstrap creates only the tenant and its built-in scopes. It must not create an OIDC client or application.
 - Unit tests do not load Nest modules. Use narrow fakes only for external or persistence boundaries.
 
 ---
@@ -29,11 +29,11 @@
 
 - `service/src/cli/migrate.ts`: injectable compiled migration runner.
 - `deploy/docker/service-entrypoint.sh`: fail-fast migration then signal-safe `exec`.
-- `service/src/application/process-managers/`: pure process state, step runner, and admin/vote workflows.
+- `service/src/application/process-managers/`: pure process state, step runner, and admin/acme workflows.
 - `service/src/application/process-managers/ports/`: application bootstrap and persistence ports.
 - `service/src/infrastructure/mikro-orm/entities/bootstrap-process.ts`: persistence entity.
 - `service/src/infrastructure/repositories/`: process-state and cross-tenant lookup adapters.
-- `service/src/cli/bootstrap-runtime.ts` and `bootstrap-{admin,vote}.ts`: compiled operator commands.
+- `service/src/cli/bootstrap-runtime.ts` and `bootstrap-{admin,acme}.ts`: compiled operator commands.
 - `service/test/cli`, `service/test/application/process-managers`, and `service/test/infrastructure/repositories`: TDD coverage.
 - `deploy/docker/Dockerfile.service` and `service/package.json`: focused runtime packaging.
 - `README.md`, `service/.env.example`, and deploy manifests: operator contract.
@@ -308,21 +308,21 @@ git commit -m "feat(docker): 서비스 시작 전 migration 실행"
 Cover successful one-step advance, completed rerun no-op, and unexpected error retry state.
 
 ```typescript
-const state = BootstrapProcessState.start('bootstrap:vote:v1', 'tenant');
+const state = BootstrapProcessState.start('bootstrap:acme:v1', 'tenant');
 const repository = {
   withLockedState: jest.fn(async (_params, work) => work(state)),
 };
 const runner = new BootstrapStepRunner(repository as never);
 
 await runner.run({
-  processKey: 'bootstrap:vote:v1',
+  processKey: 'bootstrap:acme:v1',
   initialStep: 'tenant',
   expectedStep: 'tenant',
-  nextStep: 'client',
+  nextStep: 'completed',
   work: jest.fn().mockResolvedValue(undefined),
 });
 
-expect(state.step).toBe('client');
+expect(state.step).toBe('completed');
 expect(state.status).toBe('pending');
 ```
 
@@ -354,8 +354,6 @@ export type BootstrapProcessStatus =
 export type BootstrapFailureCode =
   | 'ADMIN_CREDENTIALS_REQUIRED'
   | 'ADMIN_PORTAL_CONFLICT'
-  | 'VOTE_CLIENT_CONFLICT'
-  | 'VOTE_CLIENT_TENANT_CONFLICT'
   | 'BOOTSTRAP_STEP_FAILED';
 
 export abstract class BootstrapProcessRepository {
@@ -424,10 +422,10 @@ The concurrency mutation must fail:
 ```typescript
 expect(entityManager.findOne).toHaveBeenCalledWith(
   BootstrapProcessOrmEntity,
-  { processKey: 'bootstrap:vote:v1' },
+  { processKey: 'bootstrap:acme:v1' },
   { lockMode: LockMode.PESSIMISTIC_WRITE },
 );
-expect(entity.step).toBe('client');
+expect(entity.step).toBe('completed');
 expect(entityManager.flush).toHaveBeenCalledTimes(1);
 ```
 
@@ -454,72 +452,48 @@ git commit -m "feat(service): bootstrap process 상태 저장"
 
 ---
 
-### Task 4: Idempotent `acme` / `e-vote` workflow
+### Task 4: Idempotent `acme` tenant workflow
 
 **Files:**
 
-- Create: `service/src/application/process-managers/ports/vote-bootstrap.port.ts`
-- Create: `service/src/application/ports/bootstrap-client-lookup.port.ts`
-- Create: `service/src/application/process-managers/vote-bootstrap.process-manager.ts`
-- Create: `service/src/infrastructure/repositories/bootstrap-client-lookup.adapter.ts`
-- Create: `service/test/application/process-managers/vote-bootstrap.process-manager.spec.ts`
-- Create: `service/test/infrastructure/repositories/bootstrap-client-lookup.adapter.spec.ts`
+- Create: `service/src/application/process-managers/ports/acme-bootstrap.port.ts`
+- Create: `service/src/application/process-managers/acme-bootstrap.process-manager.ts`
+- Create: `service/test/application/process-managers/acme-bootstrap.process-manager.spec.ts`
 
 **Interfaces:**
 
-- Consumes: `BootstrapStepRunner`, tenant/client command ports, `TenantRepository`, and `ClientRepository`.
-- Produces: `VoteBootstrapPort.bootstrap(): Promise<void>` and `BootstrapClientLookupPort.findTenantIdsByClientId(clientId): Promise<string[]>`.
+- Consumes: `BootstrapStepRunner`, the tenant command port, and `TenantRepository`.
+- Produces: `AcmeBootstrapPort.bootstrap(): Promise<void>`.
 
 - [ ] **Step 1: Write failing workflow tests**
 
-Exact desired client:
+Exact desired tenant:
 
 ```typescript
-CreateClientDto.of({
-  clientId: 'e-vote',
-  name: 'e-vote',
-  type: 'public',
-  redirectUris: ['http://localhost:3001/api/auth/callback/e-vote'],
-  grantTypes: ['authorization_code', 'refresh_token'],
-  responseTypes: ['code'],
-  tokenEndpointAuthMethod: 'none',
-  scope: 'openid profile email',
-  applicationType: 'web',
-});
+CreateTenantDto.of({ code: 'acme', name: 'Acme' });
 ```
 
-Add independent cases proving missing tenant creates tenant before client; exact existing data causes no write; missing client causes only creation; any mismatched redirect/grant/scope/type/application/response/auth field fails with `VOTE_CLIENT_CONFLICT`; another-tenant-only client fails with `VOTE_CLIENT_TENANT_CONFLICT`; completed state makes rerun a no-op.
+Add independent cases proving a missing tenant creates `acme` through the tenant command port, an existing tenant causes no write or rename, and completed state makes rerun a no-op. Assert no client/application port is part of the workflow.
 
 - [ ] **Step 2: Verify RED**
 
 ```bash
-yarn workspace @auth/service test --runInBand --watchman=false test/application/process-managers/vote-bootstrap.process-manager.spec.ts
+yarn workspace @auth/service test --runInBand --watchman=false test/application/process-managers/acme-bootstrap.process-manager.spec.ts
 ```
 
 Expected: FAIL because workflow files do not exist.
 
 - [ ] **Step 3: Implement workflow**
 
-Use process key `bootstrap:vote:v1` and steps `tenant → client → completed`. Only a missing `acme` invokes `createTenant`. Reload `acme` before the client step, reject cross-tenant conflicts, create only when absent, and compare every literal above when present. Never call `updateClient`.
+Use process key `bootstrap:acme:v1` and steps `tenant → completed`. Only a missing `acme` invokes `createTenant`. Existing tenant data is never overwritten. The existing tenant command path remains responsible for built-in scopes.
 
-- [ ] **Step 4: Implement cross-tenant lookup under test**
-
-The adapter uses a forked EntityManager query on `ClientOrmEntity`, populates tenant, and returns distinct tenant IDs. Persistence entities stay in infrastructure.
-
-```typescript
-expect(await adapter.findTenantIdsByClientId('e-vote')).toEqual([
-  'tenant-acme',
-  'tenant-other',
-]);
-```
-
-- [ ] **Step 5: Verify GREEN and commit**
+- [ ] **Step 4: Verify GREEN and commit**
 
 ```bash
-yarn workspace @auth/service test --runInBand --watchman=false test/application/process-managers/vote-bootstrap.process-manager.spec.ts test/infrastructure/repositories/bootstrap-client-lookup.adapter.spec.ts
+yarn workspace @auth/service test --runInBand --watchman=false test/application/process-managers/acme-bootstrap.process-manager.spec.ts
 yarn workspace @auth/service build
-git add service/src/application/process-managers/ports/vote-bootstrap.port.ts service/src/application/process-managers/vote-bootstrap.process-manager.ts service/src/application/ports/bootstrap-client-lookup.port.ts service/src/infrastructure/repositories/bootstrap-client-lookup.adapter.ts service/test/application/process-managers/vote-bootstrap.process-manager.spec.ts service/test/infrastructure/repositories/bootstrap-client-lookup.adapter.spec.ts
-git commit -m "feat(service): e-vote bootstrap process 추가"
+git add service/src/application/process-managers/ports/acme-bootstrap.port.ts service/src/application/process-managers/acme-bootstrap.process-manager.ts service/test/application/process-managers/acme-bootstrap.process-manager.spec.ts
+git commit -m "feat(service): acme tenant bootstrap process 추가"
 ```
 
 ---
@@ -588,7 +562,7 @@ git commit -m "feat(service): 관리자 bootstrap process 추가"
 
 - Create: `service/src/cli/bootstrap-runtime.ts`
 - Create: `service/src/cli/bootstrap-admin.ts`
-- Create: `service/src/cli/bootstrap-vote.ts`
+- Create: `service/src/cli/bootstrap-acme.ts`
 - Create: `service/test/cli/bootstrap-runtime.spec.ts`
 - Modify: `service/src/application/application.module.ts`
 - Modify: `service/src/infrastructure/infrastructure.module.ts`
@@ -596,8 +570,8 @@ git commit -m "feat(service): 관리자 bootstrap process 추가"
 
 **Interfaces:**
 
-- Consumes: `AppModule`, `MikroORM`, `AdminBootstrapPort`, `VoteBootstrapPort`, and Tasks 3-5 providers.
-- Produces: `runBootstrapCommand` and compiled admin/vote executables.
+- Consumes: `AppModule`, `MikroORM`, `AdminBootstrapPort`, `AcmeBootstrapPort`, and Tasks 3-5 providers.
+- Produces: `runBootstrapCommand` and compiled admin/acme executables.
 
 - [ ] **Step 1: Write failing runtime tests**
 
@@ -608,7 +582,7 @@ const code = await runBootstrapCommand({
   createContext,
   requestContext,
   execute: work,
-  failureMessage: 'Vote bootstrap failed',
+  failureMessage: 'Acme bootstrap failed',
   error,
 });
 
@@ -629,7 +603,7 @@ Expected: FAIL because runtime file does not exist.
 
 - [ ] **Step 3: Implement runtime and wrappers**
 
-`runBootstrapCommand` accepts `execute(appContext): Promise<void>`, creates an application context from `AppModule`, obtains `MikroORM`, calls `RequestContext.create(orm.em, () => execute(appContext))`, closes in `finally`, and returns zero/one. The wrappers resolve `AdminBootstrapPort` or `VoteBootstrapPort` from the supplied application context inside `execute`, so they never create a second Nest context.
+`runBootstrapCommand` accepts `execute(appContext): Promise<void>`, creates an application context from `AppModule`, obtains `MikroORM`, calls `RequestContext.create(orm.em, () => execute(appContext))`, closes in `finally`, and returns zero/one. The wrappers resolve `AdminBootstrapPort` or `AcmeBootstrapPort` from the supplied application context inside `execute`, so they never create a second Nest context.
 
 Admin input:
 
@@ -643,7 +617,7 @@ Admin input:
 }
 ```
 
-Vote has no secret input. Both assign `process.exitCode` only under the main-module guard.
+Acme has no secret input. Both assign `process.exitCode` only under the main-module guard.
 
 - [ ] **Step 4: Bind providers and scripts**
 
@@ -654,18 +628,18 @@ Add:
 ```json
 {
   "bootstrap:admin:prod": "node dist/cli/bootstrap-admin.js",
-  "bootstrap:vote:prod": "node dist/cli/bootstrap-vote.js"
+  "bootstrap:acme:prod": "node dist/cli/bootstrap-acme.js"
 }
 ```
 
 - [ ] **Step 5: Verify and commit**
 
 ```bash
-yarn workspace @auth/service test --runInBand --watchman=false test/cli/bootstrap-runtime.spec.ts test/application/process-managers/admin-bootstrap.process-manager.spec.ts test/application/process-managers/vote-bootstrap.process-manager.spec.ts
+yarn workspace @auth/service test --runInBand --watchman=false test/cli/bootstrap-runtime.spec.ts test/application/process-managers/admin-bootstrap.process-manager.spec.ts test/application/process-managers/acme-bootstrap.process-manager.spec.ts
 yarn workspace @auth/service test:arch
 yarn workspace @auth/service build
 test -f service/dist/cli/bootstrap-admin.js
-test -f service/dist/cli/bootstrap-vote.js
+test -f service/dist/cli/bootstrap-acme.js
 git add service/src/cli service/test/cli/bootstrap-runtime.spec.ts service/src/application/application.module.ts service/src/infrastructure/infrastructure.module.ts service/package.json
 git commit -m "feat(service): 운영 bootstrap CLI 연결"
 ```
@@ -699,11 +673,11 @@ State bootstraps are explicit and not run on every replica.
 ```bash
 node service/dist/cli/migrate.js
 node service/dist/cli/bootstrap-admin.js
-node service/dist/cli/bootstrap-vote.js
+node service/dist/cli/bootstrap-acme.js
 node service/dist/main.js
 ```
 
-Keep Yarn MikroORM CLI under development-only instructions. List exact e-vote metadata and the no-overwrite rule.
+Keep Yarn MikroORM CLI under development-only instructions. State that the acme bootstrap creates only the tenant and built-in scopes, never an OIDC client/application, and document the no-overwrite rule.
 
 - [ ] **Step 3: Format and commit**
 
@@ -793,10 +767,10 @@ Run administrator bootstrap:
 docker run --rm --network auth-migration-verification-20260829 -e NODE_ENV=production -e DB_DRIVER=postgresql -e DB_HOST=auth-migration-postgres-20260829 -e DB_PORT=5432 -e DB_NAME=auth -e DB_USER=postgres -e DB_PASSWORD=verification-db-password -e ADMIN_USERNAME=admin -e ADMIN_PASSWORD='Admin1234!' -e ADMIN_UI_URL=http://localhost:5173 -e REDIS_URL=redis://auth-migration-redis-20260829:6379 -e OIDC_ISSUER=http://localhost:33000 -e OIDC_COOKIE_KEYS=verification-cookie-key-one-32-characters,verification-cookie-key-two-32-characters -e JWKS_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef -e OTP_TOKEN_SECRET=verification-otp-token-secret-32-characters auth-service:migration-bootstrap-verification node dist/cli/bootstrap-admin.js
 ```
 
-Run vote bootstrap:
+Run acme bootstrap:
 
 ```bash
-docker run --rm --network auth-migration-verification-20260829 -e NODE_ENV=production -e DB_DRIVER=postgresql -e DB_HOST=auth-migration-postgres-20260829 -e DB_PORT=5432 -e DB_NAME=auth -e DB_USER=postgres -e DB_PASSWORD=verification-db-password -e ADMIN_USERNAME=admin -e ADMIN_PASSWORD='Admin1234!' -e ADMIN_UI_URL=http://localhost:5173 -e REDIS_URL=redis://auth-migration-redis-20260829:6379 -e OIDC_ISSUER=http://localhost:33000 -e OIDC_COOKIE_KEYS=verification-cookie-key-one-32-characters,verification-cookie-key-two-32-characters -e JWKS_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef -e OTP_TOKEN_SECRET=verification-otp-token-secret-32-characters auth-service:migration-bootstrap-verification node dist/cli/bootstrap-vote.js
+docker run --rm --network auth-migration-verification-20260829 -e NODE_ENV=production -e DB_DRIVER=postgresql -e DB_HOST=auth-migration-postgres-20260829 -e DB_PORT=5432 -e DB_NAME=auth -e DB_USER=postgres -e DB_PASSWORD=verification-db-password -e ADMIN_USERNAME=admin -e ADMIN_PASSWORD='Admin1234!' -e ADMIN_UI_URL=http://localhost:5173 -e REDIS_URL=redis://auth-migration-redis-20260829:6379 -e OIDC_ISSUER=http://localhost:33000 -e OIDC_COOKIE_KEYS=verification-cookie-key-one-32-characters,verification-cookie-key-two-32-characters -e JWKS_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef -e OTP_TOKEN_SECRET=verification-otp-token-secret-32-characters auth-service:migration-bootstrap-verification node dist/cli/bootstrap-acme.js
 ```
 
 The image entrypoint applies pending migrations before each command.
@@ -804,12 +778,13 @@ The image entrypoint applies pending migrations before each command.
 - [ ] **Step 7: Query literal data and counts**
 
 ```bash
-docker exec auth-migration-postgres-20260829 psql -U postgres -d auth -c "SELECT t.code, c.client_id, c.type, c.token_endpoint_auth_method, c.redirect_uris, c.grant_types, c.response_types, c.scope, c.application_type FROM client c JOIN tenant t ON t.id = c.tenant_id WHERE t.code = 'acme' AND c.client_id = 'e-vote';"
+docker exec auth-migration-postgres-20260829 psql -U postgres -d auth -c "SELECT code, name FROM tenant WHERE code = 'acme';"
+docker exec auth-migration-postgres-20260829 psql -U postgres -d auth -c "SELECT COUNT(*) AS e_vote_clients FROM client WHERE client_id = 'e-vote';"
 docker exec auth-migration-postgres-20260829 psql -U postgres -d auth -c "SELECT process_key, step, status, retry_count, last_failure_code FROM bootstrap_process ORDER BY process_key;"
-docker exec auth-migration-postgres-20260829 psql -U postgres -d auth -c "SELECT (SELECT COUNT(*) FROM tenant WHERE code IN ('master', 'acme')) AS tenants, (SELECT COUNT(*) FROM client WHERE client_id IN ('__admin-portal__', 'e-vote')) AS clients, (SELECT COUNT(*) FROM \"user\" u JOIN tenant t ON t.id = u.tenant_id WHERE t.code = 'master' AND u.username = 'admin') AS admins;"
+docker exec auth-migration-postgres-20260829 psql -U postgres -d auth -c "SELECT (SELECT COUNT(*) FROM tenant WHERE code IN ('master', 'acme')) AS tenants, (SELECT COUNT(*) FROM client WHERE client_id = '__admin-portal__') AS clients, (SELECT COUNT(*) FROM \"user\" u JOIN tenant t ON t.id = u.tenant_id WHERE t.code = 'master' AND u.username = 'admin') AS admins;"
 ```
 
-Expected: Task 4 literals, completed process rows, tenants=2, clients=2, admins=1.
+Expected: `acme` exists, `e_vote_clients=0`, completed process rows, tenants=2, clients=1, admins=1.
 
 - [ ] **Step 8: Prove idempotency and restart**
 

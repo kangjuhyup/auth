@@ -2,7 +2,7 @@
 
 ## Goal
 
-Package the authorization server image so a production container can run compiled MikroORM migrations without Yarn, TypeScript, `ts-node`, or the MikroORM CLI. Preserve every deployed migration file, keep the legacy administrator environment variables for fresh-database migration compatibility, and add explicit idempotent bootstrap commands for the administrator and local `acme` / `e-vote` data.
+Package the authorization server image so a production container can run compiled MikroORM migrations without Yarn, TypeScript, `ts-node`, or the MikroORM CLI. Preserve every deployed migration file, keep the legacy administrator environment variables for fresh-database migration compatibility, and add explicit idempotent bootstrap commands for the administrator and local `acme` tenant.
 
 ## Scope
 
@@ -34,7 +34,7 @@ The service package will expose these commands:
 {
   "migration:up:prod": "node dist/cli/migrate.js",
   "bootstrap:admin:prod": "node dist/cli/bootstrap-admin.js",
-  "bootstrap:vote:prod": "node dist/cli/bootstrap-vote.js"
+  "bootstrap:acme:prod": "node dist/cli/bootstrap-acme.js"
 }
 ```
 
@@ -89,7 +89,7 @@ The old Nest-coupled `DB_MIGRATIONS_RUN_ON_STARTUP` path and configuration are r
 
 Bootstrap writes must not bypass the application layer. The compiled CLI wrappers create a Nest application context, establish a MikroORM request context, resolve bootstrap application ports, execute the requested process, and close the context in `finally`.
 
-Because administrator and vote setup span multiple aggregates, each is implemented as an application process manager. Process progress is persisted through an application port and a MikroORM adapter in a `bootstrap_process` table. A new forward-only schema migration creates this table for PostgreSQL, MySQL, and MSSQL; no existing migration is edited.
+Administrator and `acme` setup are implemented as application process managers so every write continues through application command ports and retries remain explicit. Process progress is persisted through an application port and a MikroORM adapter in a `bootstrap_process` table. A new forward-only schema migration creates this table for PostgreSQL, MySQL, and MSSQL; no existing migration is edited.
 
 Each record contains a unique process key, current step, status, retry count, last non-sensitive failure code, and timestamps. The unique process key prevents duplicate concurrent bootstrap runs. Steps are monotonic and independently idempotent, so partial success is resumed without compensating deletion. Bootstrap never treats a projection or Redis value as authoritative; it checks write-side repositories.
 
@@ -109,27 +109,16 @@ Existing users, credentials, roles, assignments, and client metadata are not ove
 
 On a fresh database, the preserved legacy migration creates these records first, so the administrator bootstrap is normally a no-op. The separate command supports future deployments and repair of an already-migrated schema without adding more environment data to schema migrations.
 
-### Vote bootstrap
+### Acme tenant bootstrap
 
-`bootstrap:vote:prod` ensures this desired local setup:
+`bootstrap:acme:prod` ensures this desired local setup:
 
 ```text
 tenant code: acme
 tenant name: Acme
-client_id: e-vote
-client name: e-vote
-type: public
-token_endpoint_auth_method: none
-redirect_uri: http://localhost:3001/api/auth/callback/e-vote
-grant_types: authorization_code, refresh_token
-response_types: code
-scope: openid profile email
-application_type: web
 ```
 
-The localhost HTTP redirect is accepted only for this local bootstrap profile. node-oidc-provider remains responsible for runtime redirect URI and PKCE validation; the bootstrap does not reimplement protocol checks. Public-client PKCE remains S256-only through existing provider configuration.
-
-If `acme` or `e-vote` already exists, the process verifies tenant binding and exits without changing the existing record. It does not silently reconcile or overwrite redirect URIs, grants, scopes, client type, or authentication method. A conflicting cross-tenant or incompatible existing client produces a non-zero exit and a sanitized reason so an operator must resolve the conflict explicitly.
+If `acme` already exists, the process exits without changing or renaming the existing tenant. If it is missing, the process creates only the tenant and its built-in scopes through the existing tenant command path. It does not create an OIDC client or application.
 
 ## Error Handling and Security
 
@@ -137,9 +126,7 @@ If `acme` or `e-vote` already exists, the process verifies tenant binding and ex
 - Bootstrap failure returns a non-zero exit code and leaves completed idempotent steps intact for retry.
 - Database passwords, URLs containing credentials, administrator passwords, client secrets, tokens, authorization codes, and raw exception objects are never logged.
 - Allowed operational identifiers include process name, step, tenant code, and client ID.
-- `e-vote` is public and has no client secret.
-- Repository lookups bind `e-vote` to the resolved `acme` tenant ID; a client found under another tenant never satisfies the bootstrap.
-- Existing client/admin configuration is never overwritten merely because the bootstrap is rerun.
+- Existing tenant/admin configuration is never overwritten merely because the bootstrap is rerun.
 
 ## Tests
 
@@ -149,7 +136,7 @@ Unit tests cover:
 
 - compiled migration runner initializes with `Migrator`, calls `up`, closes on success/failure, and emits only sanitized failure output;
 - administrator process resumes from every step, does not reset an existing password, and persists retry state without exposing secrets;
-- vote process creates the tenant before the client, uses the exact approved metadata, is idempotent on rerun, and rejects tenant/client conflicts;
+- acme process creates only the tenant and its built-in scopes and is idempotent on rerun;
 - process state persistence and concurrency protection;
 - Docker entrypoint stops before service startup when migration exits non-zero and uses `exec` after success.
 
@@ -163,8 +150,8 @@ Verification uses a new PostgreSQL 16 container and a freshly built service imag
 2. Start the service container with database settings plus the legacy administrator variables.
 3. Confirm startup migration exits successfully before the HTTP server listens.
 4. Query PostgreSQL for the MikroORM migration table and expected schema.
-5. Run `bootstrap:admin:prod` and `bootstrap:vote:prod` using the same image.
-6. Query write tables for `master`, the administrator, `acme`, and the exact `e-vote` client metadata.
+5. Run `bootstrap:admin:prod` and `bootstrap:acme:prod` using the same image.
+6. Query write tables for `master`, the administrator, and `acme`, and confirm no `e-vote` client was created.
 7. Run both bootstrap commands again and confirm row counts and stored values do not change.
 8. Restart the service container and confirm migration is a no-op followed by normal startup.
 9. Run focused unit/integration tests, the full service unit suite, the service build, and the architecture dependency check.
@@ -178,4 +165,5 @@ Temporary containers, networks, and volumes created for verification are removed
 - migrating the monorepo from Yarn to pnpm;
 - automatically running environment bootstrap on every service replica;
 - changing OIDC endpoints, token issuance, grant validation, PKCE implementation, or redirect validation;
-- automatically overwriting drifted administrator or client data.
+- automatically overwriting drifted administrator or tenant data;
+- creating an `e-vote` OIDC client or application.
