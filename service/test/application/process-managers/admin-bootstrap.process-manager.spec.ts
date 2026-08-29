@@ -20,6 +20,7 @@ import { RoleModel } from '@domain/models/role';
 import { ScopeModel } from '@domain/models/scope';
 import { TenantModel } from '@domain/models/tenant';
 import { UserModel } from '@domain/models/user';
+import { UserCredentialModel } from '@domain/models/user-credential';
 import type {
   ClientRepository,
   RoleAssignmentRepository,
@@ -83,6 +84,8 @@ describe('AdminBootstrapProcessManager', () => {
       id: string;
       tenantId: string;
       username: string;
+      status: 'ACTIVE' | 'LOCKED' | 'DISABLED' | 'WITHDRAWN';
+      passwordCredential: UserCredentialModel | null;
     }> = {},
   ): UserModel {
     return UserModel.of({
@@ -92,7 +95,20 @@ describe('AdminBootstrapProcessManager', () => {
       email: 'admin@localhost',
       emailVerified: true,
       phoneVerified: false,
-      status: 'ACTIVE',
+      status: overrides.status ?? 'ACTIVE',
+      passwordCredential:
+        overrides.passwordCredential === null
+          ? undefined
+          : (overrides.passwordCredential ?? makePasswordCredential()),
+    });
+  }
+
+  function makePasswordCredential(enabled = true): UserCredentialModel {
+    return UserCredentialModel.of({
+      type: 'password',
+      secretHash: 'existing-password-hash',
+      hashAlg: 'argon2id',
+      enabled,
     });
   }
 
@@ -681,6 +697,46 @@ describe('AdminBootstrapProcessManager', () => {
     expect(subject.userRepository.saveCredential).not.toHaveBeenCalled();
     expect(state.status).toBe('completed');
   });
+
+  it.each([
+    ['inactive', makeUser({ status: 'DISABLED' })],
+    ['passwordless', makeUser({ passwordCredential: null })],
+    [
+      'disabled password',
+      makeUser({ passwordCredential: makePasswordCredential(false) }),
+    ],
+  ])(
+    'fails safely for an existing %s administrator without assigning a role',
+    async (_case, existingUser) => {
+      const state = BootstrapProcessState.rehydrate({
+        processKey,
+        step: 'user',
+        status: 'pending',
+        retryCount: 0,
+        lastFailureCode: null,
+      });
+      const subject = createSubject({
+        state,
+        user: existingUser,
+        assignmentExists: false,
+      });
+
+      await expect(subject.manager.bootstrap(input)).rejects.toMatchObject({
+        name: 'BootstrapProcessError',
+        message: 'ADMIN_USER_CONFLICT',
+        code: 'ADMIN_USER_CONFLICT',
+      });
+
+      expect(subject.userCommand.createUser).not.toHaveBeenCalled();
+      expect(subject.userRepository.createCredential).not.toHaveBeenCalled();
+      expect(subject.userRepository.saveCredential).not.toHaveBeenCalled();
+      expect(subject.assignmentRepository.existsForUser).not.toHaveBeenCalled();
+      expect(subject.userCommand.assignRole).not.toHaveBeenCalled();
+      expect(state.step).toBe('user');
+      expect(state.status).toBe('failed');
+      expect(state.lastFailureCode).toBe('ADMIN_USER_CONFLICT');
+    },
+  );
 
   it('creates only a missing role assignment through the user command port', async () => {
     const state = BootstrapProcessState.rehydrate({

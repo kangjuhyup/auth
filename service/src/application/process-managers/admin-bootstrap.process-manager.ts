@@ -268,6 +268,14 @@ export class AdminBootstrapProcessManager implements AdminBootstrapPort {
     if (user && (user.tenantId !== tenantId || user.username !== username)) {
       throw new Error('Bootstrap lookup identity mismatch');
     }
+    if (
+      user &&
+      (user.status !== 'ACTIVE' ||
+        user.passwordCredential?.type !== 'password' ||
+        !user.passwordCredential.enabled)
+    ) {
+      throw createBootstrapKnownFailure('ADMIN_USER_CONFLICT');
+    }
     return user;
   }
 

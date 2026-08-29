@@ -7,11 +7,13 @@ export type BootstrapProcessStatus =
 export type BootstrapFailureCode =
   | 'ADMIN_CREDENTIALS_REQUIRED'
   | 'ADMIN_PORTAL_CONFLICT'
+  | 'ADMIN_USER_CONFLICT'
   | 'BOOTSTRAP_STEP_FAILED';
 
 const BOOTSTRAP_FAILURE_CODES = new Set<BootstrapFailureCode>([
   'ADMIN_CREDENTIALS_REQUIRED',
   'ADMIN_PORTAL_CONFLICT',
+  'ADMIN_USER_CONFLICT',
   'BOOTSTRAP_STEP_FAILED',
 ]);
 
