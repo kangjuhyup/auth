@@ -701,13 +701,14 @@ State bootstraps are explicit and not run on every replica.
 - [ ] **Step 2: Document commands**
 
 ```bash
-node service/dist/cli/migrate.js
-node service/dist/cli/bootstrap-admin.js
-node service/dist/cli/bootstrap-acme.js
-node service/dist/main.js
+cd service
+node dist/cli/migrate.js
+node dist/cli/bootstrap-admin.js
+node dist/cli/bootstrap-acme.js
+node dist/main.js
 ```
 
-Keep Yarn MikroORM CLI under development-only instructions. State that the acme bootstrap creates only the tenant and built-in scopes, never an OIDC client/application, and document the no-overwrite rule.
+Keep Yarn MikroORM CLI under development-only instructions. State that a missing `acme` tenant is created with built-in scopes, while an existing `acme` tenant and its scopes remain untouched. It never creates an OIDC client/application. Document the no-overwrite rule.
 
 - [ ] **Step 3: Format and commit**
 
