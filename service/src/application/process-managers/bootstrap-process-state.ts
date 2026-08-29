@@ -68,10 +68,37 @@ export class BootstrapProcessState {
     this.lastFailureCode = null;
   }
 
-  advance(nextStep: string): void {
+  shouldRunStep(expectedStep: string, steps: readonly string[]): boolean {
+    if (this.status === 'completed') {
+      return false;
+    }
+
+    const currentIndex = this.stepIndex(this.step, steps);
+    const expectedIndex = this.stepIndex(expectedStep, steps);
+    if (currentIndex > expectedIndex) {
+      return false;
+    }
+    if (currentIndex < expectedIndex) {
+      throw new Error('Bootstrap process is behind the expected step');
+    }
+
+    return true;
+  }
+
+  advance(
+    expectedStep: string,
+    nextStep: string,
+    steps: readonly string[],
+  ): void {
     this.assertRunning();
-    if (nextStep === this.step) {
-      throw new Error('Bootstrap process step must advance');
+    const currentIndex = this.stepIndex(this.step, steps);
+    const expectedIndex = this.stepIndex(expectedStep, steps);
+    const nextIndex = this.stepIndex(nextStep, steps);
+    if (currentIndex !== expectedIndex) {
+      throw new Error('Bootstrap process step does not match expected step');
+    }
+    if (nextIndex !== currentIndex + 1) {
+      throw new Error('Bootstrap process next step is not a legal successor');
     }
 
     this.step = nextStep;
@@ -87,12 +114,18 @@ export class BootstrapProcessState {
     this.lastFailureCode = toBootstrapFailureCode(failureCode);
   }
 
-  complete(): void {
+  complete(expectedStep: string, steps: readonly string[]): void {
     if (this.status === 'completed') {
       return;
     }
-    if (this.status !== 'pending' || this.step !== 'completed') {
+    if (this.status !== 'pending') {
       throw new Error('Bootstrap process is not ready to complete');
+    }
+
+    const currentIndex = this.stepIndex(this.step, steps);
+    const expectedIndex = this.stepIndex(expectedStep, steps);
+    if (currentIndex !== expectedIndex || expectedIndex !== steps.length - 1) {
+      throw new Error('Bootstrap process completion step is not terminal');
     }
 
     this.status = 'completed';
@@ -103,5 +136,17 @@ export class BootstrapProcessState {
     if (this.status !== 'running') {
       throw new Error('Bootstrap process is not running');
     }
+  }
+
+  private stepIndex(step: string, steps: readonly string[]): number {
+    if (steps.length === 0 || new Set(steps).size !== steps.length) {
+      throw new Error('Bootstrap process step plan is invalid');
+    }
+
+    const index = steps.indexOf(step);
+    if (index === -1) {
+      throw new Error('Bootstrap process step is not in the step plan');
+    }
+    return index;
   }
 }

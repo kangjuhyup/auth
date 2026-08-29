@@ -88,7 +88,7 @@ describe('BootstrapProcessRepositoryImpl', () => {
       { processKey: 'bootstrap:acme:v1', initialStep: 'tenant' },
       async (state) => {
         state.beginAttempt();
-        state.advance('completed');
+        state.advance('tenant', 'completed', ['tenant', 'completed']);
       },
     );
 
@@ -110,7 +110,7 @@ describe('BootstrapProcessRepositoryImpl', () => {
     entityManager.findOne.mockResolvedValue(null);
     const work = jest.fn(async (state) => {
       state.beginAttempt();
-      state.advance('completed');
+      state.advance('tenant', 'completed', ['tenant', 'completed']);
     });
     const { repository } = createRepository([entityManager]);
 
@@ -141,7 +141,7 @@ describe('BootstrapProcessRepositoryImpl', () => {
     retryEntityManager.findOne.mockResolvedValue(winningEntity);
     const work = jest.fn(async (state) => {
       state.beginAttempt();
-      state.advance('completed');
+      state.advance('tenant', 'completed', ['tenant', 'completed']);
     });
     const { repository, transactional } = createRepository([
       losingEntityManager,
@@ -164,6 +164,34 @@ describe('BootstrapProcessRepositoryImpl', () => {
     expect(retryEntityManager.flush).toHaveBeenCalledTimes(1);
   });
 
+  it('does not replay work when a unique error occurs after callback entry', async () => {
+    const firstEntityManager = createTransactionManager();
+    firstEntityManager.findOne.mockResolvedValue(createEntity());
+    const retryEntityManager = createTransactionManager();
+    retryEntityManager.findOne.mockResolvedValue(createEntity());
+    const callbackError = new UniqueConstraintViolationException(
+      new Error('callback unique failure'),
+    );
+    const work = jest
+      .fn()
+      .mockRejectedValueOnce(callbackError)
+      .mockResolvedValueOnce(undefined);
+    const { repository, transactional } = createRepository([
+      firstEntityManager,
+      retryEntityManager,
+    ]);
+
+    await expect(
+      repository.withLockedState(
+        { processKey: 'bootstrap:acme:v1', initialStep: 'tenant' },
+        work,
+      ),
+    ).rejects.toBe(callbackError);
+
+    expect(work).toHaveBeenCalledTimes(1);
+    expect(transactional).toHaveBeenCalledTimes(1);
+  });
+
   it('persists a sanitized failure without raw exception details', async () => {
     const entity = createEntity();
     const entityManager = createTransactionManager();
@@ -177,6 +205,7 @@ describe('BootstrapProcessRepositoryImpl', () => {
         initialStep: 'tenant',
         expectedStep: 'tenant',
         nextStep: 'completed',
+        steps: ['tenant', 'completed'],
         work: jest
           .fn()
           .mockRejectedValue(

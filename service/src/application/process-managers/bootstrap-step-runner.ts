@@ -8,9 +8,10 @@ export class BootstrapProcessError extends Error {
   readonly code: BootstrapFailureCode;
 
   constructor(code: BootstrapFailureCode) {
-    super(code);
+    const safeCode = toBootstrapFailureCode(code);
+    super(safeCode);
     this.name = 'BootstrapProcessError';
-    this.code = code;
+    this.code = safeCode;
   }
 }
 
@@ -22,6 +23,7 @@ export class BootstrapStepRunner {
     initialStep: string;
     expectedStep: string;
     nextStep: string;
+    steps: readonly string[];
     work: () => Promise<void>;
     failureCode?: BootstrapFailureCode;
   }): Promise<void> {
@@ -33,17 +35,14 @@ export class BootstrapStepRunner {
         initialStep: params.initialStep,
       },
       async (state) => {
-        if (
-          state.status === 'completed' ||
-          state.step !== params.expectedStep
-        ) {
+        if (!state.shouldRunStep(params.expectedStep, params.steps)) {
           return;
         }
 
         state.beginAttempt();
         try {
           await params.work();
-          state.advance(params.nextStep);
+          state.advance(params.expectedStep, params.nextStep, params.steps);
         } catch {
           caughtFailureCode = toBootstrapFailureCode(params.failureCode);
           state.fail(caughtFailureCode);
@@ -54,5 +53,22 @@ export class BootstrapStepRunner {
     if (caughtFailureCode) {
       throw new BootstrapProcessError(caughtFailureCode);
     }
+  }
+
+  async complete(params: {
+    processKey: string;
+    initialStep: string;
+    expectedStep: string;
+    steps: readonly string[];
+  }): Promise<void> {
+    await this.repository.withLockedState(
+      {
+        processKey: params.processKey,
+        initialStep: params.initialStep,
+      },
+      async (state) => {
+        state.complete(params.expectedStep, params.steps);
+      },
+    );
   }
 }

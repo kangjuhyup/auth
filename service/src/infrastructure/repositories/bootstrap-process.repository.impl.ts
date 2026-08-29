@@ -13,6 +13,8 @@ import {
 import { BootstrapProcessRepository } from '@application/process-managers/ports/bootstrap-process.repository';
 import { BootstrapProcessOrmEntity } from '../mikro-orm/entities/bootstrap-process';
 
+class BootstrapProcessInsertRaceError extends Error {}
+
 @Injectable()
 export class BootstrapProcessRepositoryImpl implements BootstrapProcessRepository {
   constructor(private readonly orm: MikroORM) {}
@@ -29,7 +31,7 @@ export class BootstrapProcessRepositoryImpl implements BootstrapProcessRepositor
           this.executeLocked(transactionalEm, params, work, false),
         );
       } catch (error) {
-        if (!(error instanceof UniqueConstraintViolationException)) {
+        if (!(error instanceof BootstrapProcessInsertRaceError)) {
           throw error;
         }
 
@@ -64,7 +66,14 @@ export class BootstrapProcessRepositoryImpl implements BootstrapProcessRepositor
       entity.retryCount = 0;
       entity.lastFailureCode = null;
       em.persist(entity);
-      await em.flush();
+      try {
+        await em.flush();
+      } catch (error) {
+        if (error instanceof UniqueConstraintViolationException) {
+          throw new BootstrapProcessInsertRaceError();
+        }
+        throw error;
+      }
     }
 
     const state = BootstrapProcessState.rehydrate({

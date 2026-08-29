@@ -9,6 +9,8 @@ import {
 import type { BootstrapProcessRepository } from '@application/process-managers/ports/bootstrap-process.repository';
 
 describe('BootstrapStepRunner', () => {
+  const acmeSteps = ['tenant', 'completed'] as const;
+
   function createRunner(state: BootstrapProcessState): {
     runner: BootstrapStepRunner;
     repository: jest.Mocked<BootstrapProcessRepository>;
@@ -33,6 +35,7 @@ describe('BootstrapStepRunner', () => {
       initialStep: 'tenant',
       expectedStep: 'tenant',
       nextStep: 'completed',
+      steps: acmeSteps,
       work,
     });
 
@@ -59,6 +62,7 @@ describe('BootstrapStepRunner', () => {
       initialStep: 'tenant',
       expectedStep: 'tenant',
       nextStep: 'completed',
+      steps: acmeSteps,
       work,
     });
 
@@ -82,6 +86,7 @@ describe('BootstrapStepRunner', () => {
       initialStep: 'tenant',
       expectedStep: 'tenant',
       nextStep: 'role',
+      steps: ['tenant', 'role', 'user', 'completed'],
       work,
     });
 
@@ -101,15 +106,22 @@ describe('BootstrapStepRunner', () => {
       initialStep: 'tenant',
       expectedStep: 'tenant',
       nextStep: 'completed',
+      steps: acmeSteps,
       work: jest.fn().mockRejectedValue(rawError),
     });
 
-    await expect(result).rejects.toMatchObject({
+    const caughtError = await result.catch((error: unknown) => error);
+
+    expect(caughtError).toMatchObject({
       name: 'BootstrapProcessError',
       message: 'BOOTSTRAP_STEP_FAILED',
       code: 'BOOTSTRAP_STEP_FAILED',
     });
-    await expect(result).rejects.toBeInstanceOf(BootstrapProcessError);
+    expect(caughtError).toBeInstanceOf(BootstrapProcessError);
+    expect(caughtError).not.toBe(rawError);
+    expect(caughtError).not.toHaveProperty('cause');
+    expect((caughtError as Error).stack).not.toContain(rawError.message);
+    expect(Object.values(caughtError as object)).not.toContain(rawError);
     expect(state.status).toBe('failed');
     expect(state.retryCount).toBe(1);
     expect(state.lastFailureCode).toBe('BOOTSTRAP_STEP_FAILED');
@@ -130,11 +142,89 @@ describe('BootstrapStepRunner', () => {
         initialStep: 'tenant',
         expectedStep: 'tenant',
         nextStep: 'role',
+        steps: ['tenant', 'role', 'completed'],
         failureCode,
         work: jest.fn().mockRejectedValue(new Error('secret')),
       }),
     ).rejects.toMatchObject({ code: failureCode, message: failureCode });
     expect(state.lastFailureCode).toBe(failureCode);
+  });
+
+  it('normalizes an untyped error code before exposing it', () => {
+    const error = new BootstrapProcessError('password=secret' as never);
+
+    expect(error.code).toBe('BOOTSTRAP_STEP_FAILED');
+    expect(error.message).toBe('BOOTSTRAP_STEP_FAILED');
+    expect(error.stack).not.toContain('password=secret');
+  });
+
+  it('rejects a runner transition to an earlier plan step', async () => {
+    const state = BootstrapProcessState.rehydrate({
+      processKey: 'bootstrap:admin:v1',
+      step: 'role',
+      status: 'pending',
+      retryCount: 0,
+      lastFailureCode: null,
+    });
+    const { runner } = createRunner(state);
+
+    await expect(
+      runner.run({
+        processKey: 'bootstrap:admin:v1',
+        initialStep: 'tenant',
+        expectedStep: 'role',
+        nextStep: 'tenant',
+        steps: ['tenant', 'role', 'completed'],
+        work: jest.fn().mockResolvedValue(undefined),
+      }),
+    ).rejects.toMatchObject({ code: 'BOOTSTRAP_STEP_FAILED' });
+    expect(state.step).toBe('role');
+    expect(state.status).toBe('failed');
+  });
+
+  it('explicitly finalizes a process at the terminal step', async () => {
+    const state = BootstrapProcessState.start('bootstrap:acme:v1', 'tenant');
+    const { runner } = createRunner(state);
+
+    await runner.run({
+      processKey: 'bootstrap:acme:v1',
+      initialStep: 'tenant',
+      expectedStep: 'tenant',
+      nextStep: 'completed',
+      steps: acmeSteps,
+      work: jest.fn().mockResolvedValue(undefined),
+    });
+    expect(state.status).toBe('pending');
+
+    await runner.complete({
+      processKey: 'bootstrap:acme:v1',
+      initialStep: 'tenant',
+      expectedStep: 'completed',
+      steps: acmeSteps,
+    });
+
+    expect(state.step).toBe('completed');
+    expect(state.status).toBe('completed');
+  });
+
+  it('treats explicit finalization of a completed process as a no-op', async () => {
+    const state = BootstrapProcessState.rehydrate({
+      processKey: 'bootstrap:acme:v1',
+      step: 'completed',
+      status: 'completed',
+      retryCount: 0,
+      lastFailureCode: null,
+    });
+    const { runner } = createRunner(state);
+
+    await runner.complete({
+      processKey: 'bootstrap:acme:v1',
+      initialStep: 'tenant',
+      expectedStep: 'completed',
+      steps: acmeSteps,
+    });
+
+    expect(state.status).toBe('completed');
   });
 });
 
@@ -142,9 +232,9 @@ describe('BootstrapProcessState', () => {
   it('rejects advance unless an attempt is running', () => {
     const state = BootstrapProcessState.start('bootstrap:acme:v1', 'tenant');
 
-    expect(() => state.advance('completed')).toThrow(
-      'Bootstrap process is not running',
-    );
+    expect(() =>
+      state.advance('tenant', 'completed', ['tenant', 'completed']),
+    ).toThrow('Bootstrap process is not running');
     expect(state.step).toBe('tenant');
     expect(state.status).toBe('pending');
   });
@@ -158,12 +248,29 @@ describe('BootstrapProcessState', () => {
       lastFailureCode: null,
     });
 
-    state.complete();
+    state.complete('completed', ['tenant', 'completed']);
 
     expect(state.status).toBe('completed');
     expect(() => state.beginAttempt()).toThrow(
       'Bootstrap process is already completed',
     );
     expect(state.status).toBe('completed');
+  });
+
+  it('rejects a transition to an earlier step in the supplied plan', () => {
+    const state = BootstrapProcessState.rehydrate({
+      processKey: 'bootstrap:admin:v1',
+      step: 'role',
+      status: 'pending',
+      retryCount: 0,
+      lastFailureCode: null,
+    });
+    state.beginAttempt();
+
+    expect(() =>
+      state.advance('role', 'tenant', ['tenant', 'role', 'completed']),
+    ).toThrow('Bootstrap process next step is not a legal successor');
+    expect(state.step).toBe('role');
+    expect(state.status).toBe('running');
   });
 });
