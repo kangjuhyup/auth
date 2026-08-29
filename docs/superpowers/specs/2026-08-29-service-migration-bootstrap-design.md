@@ -110,7 +110,7 @@ The process manager ensures, through existing command handlers, that the followi
 
 An existing administrator is compatible only when it is `ACTIVE` and already has an enabled password credential. An inactive, passwordless, or disabled-credential user causes a sanitized conflict before any role assignment; bootstrap never creates or replaces a credential for that user. Existing credentials, roles, assignments, and client metadata are not overwritten. In particular, rerunning bootstrap never rotates or resets the administrator password. A newly created administrator receives a temporary password that must be changed according to the existing application policy.
 
-New admin portal clients use an `ADMIN_UI_URL` with trailing slashes removed. The deployed `Migration20260404000001` remains unchanged and interpolates the raw environment value. Therefore compatibility checks also recognize its exact legacy double-slash redirect and logout paths when a fresh migration receives a trailing-slash URL; bootstrap does not rewrite that client.
+New admin portal clients use a canonical `ADMIN_UI_URL` with normalized host case/default port and trailing path slashes removed. The deployed `Migration20260404000001` remains unchanged and interpolates the configured environment value verbatim. The CLI therefore passes both the canonical value and the validated, trimmed configured legacy value to the process manager. Before using the latter, the process manager independently repeats the protocol/host/component checks and requires it to canonicalize exactly to the canonical input. Compatibility then recognizes only the exact redirect and logout paths the immutable migration would have constructed from that value, including multiple trailing slashes or raw host case/default-port/path spelling. It does not accept arbitrary slash variants and does not rewrite that client.
 
 On a fresh database, the preserved legacy migration creates these records first, so the administrator bootstrap is normally a no-op. The separate command supports future deployments and repair of an already-migrated schema without adding more environment data to schema migrations.
 
@@ -141,7 +141,7 @@ Unit tests cover:
 
 - compiled migration runner initializes with `Migrator`, calls `up`, closes on success/failure, and emits only sanitized failure output;
 - administrator process resumes from every step, does not reset an existing password, and persists retry state without exposing secrets;
-- administrator input validation requires a production URL, enforces the HTTPS/local-loopback policy, canonicalizes new URLs, and recognizes the legacy migration double-slash form;
+- administrator input validation requires a production URL, enforces the HTTPS/local-loopback policy, canonicalizes new URLs, and recognizes only the exact independently revalidated URI form produced by the immutable migration;
 - acme process creates only the tenant and its built-in scopes and is idempotent on rerun;
 - process state persistence, insert-race/concurrency protection, and a PostgreSQL-backed rollback-before-failure-state regression;
 - Docker entrypoint stops before service startup when migration exits non-zero and uses `exec` after success.

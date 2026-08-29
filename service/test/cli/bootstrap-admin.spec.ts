@@ -46,6 +46,7 @@ describe('administrator bootstrap CLI', () => {
       username: 'operator',
       password: ' password=secret ',
       adminUiUrl: 'https://admin.example.test',
+      legacyMigrationAdminUiUrl: 'https://admin.example.test///',
     });
     expect(runBootstrapCommand).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -74,41 +75,52 @@ describe('administrator bootstrap CLI', () => {
       username: 'admin',
       password: undefined,
       adminUiUrl: 'http://localhost:5173',
+      legacyMigrationAdminUiUrl: 'http://localhost:5173',
     });
   });
 
   it.each([
-    'http://localhost:5173/',
-    'http://127.0.0.1:5173///',
-    'http://[::1]:5173/',
-    'https://admin.example.test/',
-  ])('accepts and normalizes the approved URL %s', async (adminUiUrl) => {
-    const bootstrap = jest.fn().mockResolvedValue(undefined);
-    const appContext = {
-      get: jest.fn().mockReturnValue({ bootstrap }),
-      close: jest.fn(),
-    } as unknown as BootstrapApplicationContext;
-    const run = jest.fn().mockImplementation(async (options) => {
-      await options.execute(appContext);
-      return 0;
-    });
+    ['http://localhost:5173/', 'http://localhost:5173'],
+    ['http://127.0.0.1:5173///', 'http://127.0.0.1:5173'],
+    ['http://[::1]:5173/', 'http://[::1]:5173'],
+    ['https://admin.example.test/', 'https://admin.example.test'],
+    [
+      'https://ADMIN.EXAMPLE.TEST:443/console///',
+      'https://admin.example.test/console',
+    ],
+  ])(
+    'accepts and normalizes the approved URL %s',
+    async (adminUiUrl, canonical) => {
+      const bootstrap = jest.fn().mockResolvedValue(undefined);
+      const appContext = {
+        get: jest.fn().mockReturnValue({ bootstrap }),
+        close: jest.fn(),
+      } as unknown as BootstrapApplicationContext;
+      const run = jest.fn().mockImplementation(async (options) => {
+        await options.execute(appContext);
+        return 0;
+      });
 
-    await expect(
-      runAdminBootstrap({
-        run,
-        readEnv: (key) =>
-          key === 'ADMIN_UI_URL'
-            ? adminUiUrl
-            : key === 'NODE_ENV'
-              ? 'production'
-              : undefined,
-      }),
-    ).resolves.toBe(0);
+      await expect(
+        runAdminBootstrap({
+          run,
+          readEnv: (key) =>
+            key === 'ADMIN_UI_URL'
+              ? adminUiUrl
+              : key === 'NODE_ENV'
+                ? 'production'
+                : undefined,
+        }),
+      ).resolves.toBe(0);
 
-    expect(bootstrap).toHaveBeenCalledWith(
-      expect.objectContaining({ adminUiUrl: adminUiUrl.replace(/\/+$/, '') }),
-    );
-  });
+      expect(bootstrap).toHaveBeenCalledWith(
+        expect.objectContaining({
+          adminUiUrl: canonical,
+          legacyMigrationAdminUiUrl: adminUiUrl,
+        }),
+      );
+    },
+  );
 
   it.each([
     ['production-missing', undefined],

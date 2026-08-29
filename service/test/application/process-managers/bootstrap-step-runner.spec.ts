@@ -177,6 +177,7 @@ describe('BootstrapStepRunner', () => {
   it.each<Exclude<BootstrapFailureCode, 'BOOTSTRAP_STEP_FAILED'>>([
     'ADMIN_CREDENTIALS_REQUIRED',
     'ADMIN_PORTAL_CONFLICT',
+    'ADMIN_UI_URL_INVALID',
     'ADMIN_USER_CONFLICT',
   ])('persists a trusted known failure code %s', async (failureCode) => {
     const state = BootstrapProcessState.start('bootstrap:admin:v1', 'tenant');

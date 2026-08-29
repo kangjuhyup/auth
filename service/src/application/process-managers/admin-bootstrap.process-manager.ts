@@ -25,7 +25,9 @@ import type {
   ScopeRepository,
   TenantRepository,
 } from '@domain/repositories';
+import { canonicalizeAdminUiUrl } from './admin-bootstrap-url';
 import {
+  BootstrapProcessError,
   BootstrapStepRunner,
   createBootstrapKnownFailure,
 } from './bootstrap-step-runner';
@@ -60,6 +62,7 @@ export class AdminBootstrapProcessManager implements AdminBootstrapPort {
   ) {}
 
   async bootstrap(input: AdminBootstrapInput): Promise<void> {
+    this.assertCompatibleAdminUiUrls(input);
     const auditContext = AuditContext.of({ correlationId: PROCESS_KEY });
 
     await this.runner.run({
@@ -201,7 +204,14 @@ export class AdminBootstrapProcessManager implements AdminBootstrapPort {
           '__admin-portal__',
         );
         if (existing) {
-          if (!this.isCompatiblePortal(existing, tenant.id, input.adminUiUrl)) {
+          if (
+            !this.isCompatiblePortal(
+              existing,
+              tenant.id,
+              input.adminUiUrl,
+              input.legacyMigrationAdminUiUrl,
+            )
+          ) {
             throw createBootstrapKnownFailure('ADMIN_PORTAL_CONFLICT');
           }
           return;
@@ -310,13 +320,18 @@ export class AdminBootstrapProcessManager implements AdminBootstrapPort {
     client: ClientModel,
     tenantId: string,
     adminUiUrl: string,
+    legacyMigrationAdminUiUrl: string,
   ): boolean {
     const canonicalUris =
       this.sameValues(client.redirectUris, [`${adminUiUrl}/admin/tenants`]) &&
       this.sameValues(client.postLogoutRedirectUris, [`${adminUiUrl}/login`]);
-    const legacyTrailingSlashUris =
-      this.sameValues(client.redirectUris, [`${adminUiUrl}//admin/tenants`]) &&
-      this.sameValues(client.postLogoutRedirectUris, [`${adminUiUrl}//login`]);
+    const legacyMigrationUris =
+      this.sameValues(client.redirectUris, [
+        `${legacyMigrationAdminUiUrl}/admin/tenants`,
+      ]) &&
+      this.sameValues(client.postLogoutRedirectUris, [
+        `${legacyMigrationAdminUiUrl}/login`,
+      ]);
 
     return (
       client.tenantId === tenantId &&
@@ -325,7 +340,7 @@ export class AdminBootstrapProcessManager implements AdminBootstrapPort {
       client.name === 'Admin Portal' &&
       client.type === 'confidential' &&
       client.enabled &&
-      (canonicalUris || legacyTrailingSlashUris) &&
+      (canonicalUris || legacyMigrationUris) &&
       this.sameValues(client.grantTypes, ['authorization_code']) &&
       this.sameValues(client.responseTypes, ['code']) &&
       client.tokenEndpointAuthMethod === 'none' &&
@@ -345,5 +360,18 @@ export class AdminBootstrapProcessManager implements AdminBootstrapPort {
       actual.length === expected.length &&
       actual.every((value, index) => value === expected[index])
     );
+  }
+
+  private assertCompatibleAdminUiUrls(input: AdminBootstrapInput): void {
+    const canonicalFromLegacy = canonicalizeAdminUiUrl(
+      input.legacyMigrationAdminUiUrl,
+    );
+    if (
+      !canonicalFromLegacy ||
+      canonicalFromLegacy !== input.adminUiUrl ||
+      canonicalizeAdminUiUrl(input.adminUiUrl) !== input.adminUiUrl
+    ) {
+      throw new BootstrapProcessError('ADMIN_UI_URL_INVALID');
+    }
   }
 }

@@ -7,6 +7,7 @@ import { BootstrapProcessRepository } from './ports/bootstrap-process.repository
 export type BootstrapKnownFailureCode =
   | 'ADMIN_CREDENTIALS_REQUIRED'
   | 'ADMIN_PORTAL_CONFLICT'
+  | 'ADMIN_UI_URL_INVALID'
   | 'ADMIN_USER_CONFLICT';
 
 const knownFailureTokens = new WeakMap<object, BootstrapKnownFailureCode>();
@@ -18,6 +19,7 @@ export function createBootstrapKnownFailure(
   if (
     code === 'ADMIN_CREDENTIALS_REQUIRED' ||
     code === 'ADMIN_PORTAL_CONFLICT' ||
+    code === 'ADMIN_UI_URL_INVALID' ||
     code === 'ADMIN_USER_CONFLICT'
   ) {
     knownFailureTokens.set(token, code);

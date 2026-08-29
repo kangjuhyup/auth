@@ -1,3 +1,4 @@
+import { canonicalizeAdminUiUrl } from '@application/process-managers/admin-bootstrap-url';
 import { AdminBootstrapPort } from '@application/process-managers/ports/admin-bootstrap.port';
 import {
   runBootstrapCommand,
@@ -19,39 +20,23 @@ export class AdminUiUrlConfigurationError extends Error {
   }
 }
 
-function resolveAdminUiUrl(
-  readEnv: (key: string) => string | undefined,
-): string {
+function resolveAdminUiUrl(readEnv: (key: string) => string | undefined): {
+  canonical: string;
+  legacyMigrationRaw: string;
+} {
   const configured = readEnv('ADMIN_UI_URL')?.trim();
   const production = readEnv('NODE_ENV')?.trim().toLowerCase() === 'production';
   if (!configured && production) {
     throw new AdminUiUrlConfigurationError();
   }
 
-  const value = configured || 'http://localhost:5173';
-  let parsed: URL;
-  try {
-    parsed = new URL(value);
-  } catch {
+  const legacyMigrationRaw = configured || 'http://localhost:5173';
+  const canonical = canonicalizeAdminUiUrl(legacyMigrationRaw);
+  if (!canonical) {
     throw new AdminUiUrlConfigurationError();
   }
 
-  const localHost = new Set(['localhost', '127.0.0.1', '[::1]']).has(
-    parsed.hostname,
-  );
-  if (
-    !['http:', 'https:'].includes(parsed.protocol) ||
-    (parsed.protocol === 'http:' && !localHost) ||
-    parsed.username !== '' ||
-    parsed.password !== '' ||
-    parsed.search !== '' ||
-    parsed.hash !== ''
-  ) {
-    throw new AdminUiUrlConfigurationError();
-  }
-
-  const normalizedPath = parsed.pathname.replace(/\/+$/, '');
-  return `${parsed.origin}${normalizedPath}`;
+  return { canonical, legacyMigrationRaw };
 }
 
 export async function runAdminBootstrap(
@@ -68,7 +53,12 @@ export async function runAdminBootstrap(
     execute: async (appContext) => {
       const adminUiUrl = resolveAdminUiUrl(dependencies.readEnv);
       const bootstrap = appContext.get<AdminBootstrapPort>(AdminBootstrapPort);
-      await bootstrap.bootstrap({ username, password, adminUiUrl });
+      await bootstrap.bootstrap({
+        username,
+        password,
+        adminUiUrl: adminUiUrl.canonical,
+        legacyMigrationAdminUiUrl: adminUiUrl.legacyMigrationRaw,
+      });
     },
   });
 }

@@ -155,7 +155,7 @@ node --env-file=.env dist/main.js
 - `bootstrap:admin:prod`는 없는 관리자 리소스만 생성합니다. 관리자가 없을 때는 `ADMIN_USERNAME`과 `ADMIN_PASSWORD`가 필요합니다. 기존 사용자는 `ACTIVE` 상태이며 활성화된 password credential이 있을 때만 호환되는 관리자로 인정하고, 그렇지 않으면 기존 credential을 생성·교체하거나 역할을 부여하지 않고 안전한 conflict로 실패합니다.
 - `bootstrap:acme:prod`는 `acme` tenant가 없을 때 tenant command로 생성하며, 이 경로에서 canonical 내장 scope가 함께 생성됩니다. 기존 `acme` tenant는 설정을 덮어쓰지 않고 그대로 두므로, 누락된 scope를 복구하거나 보장하지 않습니다. OIDC client나 application을 생성하지 않습니다.
 
-관리 UI URL의 끝 `/`는 새 client를 만들기 전에 제거합니다. 보존된 `Migration20260404000001`이 끝 `/`가 있는 URL로 이미 만든 double-slash redirect/logout URI는 호환 대상으로만 인식하며, 새로 생성할 때는 canonical URI를 저장합니다.
+관리 UI URL은 새 client를 만들기 전에 host case, 기본 port, path의 끝 `/`를 canonical 형태로 정규화합니다. 보존된 `Migration20260404000001`은 환경 변수 원문을 그대로 보간하므로, bootstrap은 검증을 통과한 trimmed 원문이 같은 canonical URL로 매핑되는 경우에만 그 원문으로 만들어진 redirect/logout URI를 정확히 호환 대상으로 인식합니다. 임의의 slash 변형은 허용하지 않으며 새로 생성할 때는 항상 canonical URI를 저장합니다.
 
 Yarn을 사용할 수 있는 운영 호스트에서는 동일한 컴파일 명령을 패키지 스크립트로 실행할 수 있습니다.
 

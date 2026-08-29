@@ -43,6 +43,7 @@ describe('AdminBootstrapProcessManager', () => {
     username: 'admin',
     password: 'Admin1234!',
     adminUiUrl: 'http://localhost:5173',
+    legacyMigrationAdminUiUrl: 'http://localhost:5173',
   };
   const auditContext = AuditContext.of({ correlationId: processKey });
 
@@ -684,9 +685,9 @@ describe('AdminBootstrapProcessManager', () => {
     });
 
     await subject.manager.bootstrap({
+      ...input,
       username: 'existing-admin',
       password: undefined,
-      adminUiUrl: input.adminUiUrl,
     });
 
     expect(subject.userCommand.createUser).not.toHaveBeenCalled();
@@ -861,6 +862,7 @@ describe('AdminBootstrapProcessManager', () => {
     await subject.manager.bootstrap({
       ...input,
       adminUiUrl: 'https://ui.example',
+      legacyMigrationAdminUiUrl: 'https://ui.example/',
     });
 
     expect(subject.clientCommand.createClient).not.toHaveBeenCalled();
@@ -868,6 +870,109 @@ describe('AdminBootstrapProcessManager', () => {
     expect(subject.clientCommand.deleteClient).not.toHaveBeenCalled();
     expect(state.status).toBe('completed');
   });
+
+  it.each([
+    {
+      name: 'multiple trailing slashes',
+      canonical: 'https://ui.example',
+      legacyRaw: 'https://ui.example///',
+    },
+    {
+      name: 'host case, default port, and path',
+      canonical: 'https://ui.example/console',
+      legacyRaw: 'https://UI.EXAMPLE:443/console/',
+    },
+  ])(
+    'recognizes the exact legacy migration portal for $name',
+    async ({ canonical, legacyRaw }) => {
+      const state = BootstrapProcessState.rehydrate({
+        processKey,
+        step: 'client',
+        status: 'pending',
+        retryCount: 0,
+        lastFailureCode: null,
+      });
+      const subject = createSubject({
+        state,
+        client: makePortal({
+          redirectUris: [`${legacyRaw}/admin/tenants`],
+          postLogoutRedirectUris: [`${legacyRaw}/login`],
+        }),
+      });
+
+      await subject.manager.bootstrap({
+        ...input,
+        adminUiUrl: canonical,
+        legacyMigrationAdminUiUrl: legacyRaw,
+      });
+
+      expect(subject.clientCommand.createClient).not.toHaveBeenCalled();
+      expect(subject.clientCommand.updateClient).not.toHaveBeenCalled();
+      expect(subject.clientCommand.deleteClient).not.toHaveBeenCalled();
+      expect(state.status).toBe('completed');
+    },
+  );
+
+  it('uses only the canonical URL when creating a new portal', async () => {
+    const state = BootstrapProcessState.rehydrate({
+      processKey,
+      step: 'client',
+      status: 'pending',
+      retryCount: 0,
+      lastFailureCode: null,
+    });
+    const subject = createSubject({ state, client: null });
+
+    await subject.manager.bootstrap({
+      ...input,
+      adminUiUrl: 'https://ui.example/console',
+      legacyMigrationAdminUiUrl: 'https://UI.EXAMPLE:443/console///',
+    });
+
+    expect(subject.clientCommand.createClient).toHaveBeenCalledWith(
+      'tenant-master',
+      expect.objectContaining({
+        redirectUris: ['https://ui.example/console/admin/tenants'],
+        postLogoutRedirectUris: ['https://ui.example/console/login'],
+      }),
+      auditContext,
+    );
+  });
+
+  it.each([
+    [
+      'different canonical origin',
+      'https://ui.example',
+      'https://attacker.example/',
+    ],
+    ['unapproved remote HTTP', 'http://admin.example', 'http://admin.example'],
+  ])(
+    'fails safely for a port-level legacy URL with %s',
+    async (_case, canonical, legacyRaw) => {
+      const subject = createSubject({
+        client: makePortal({
+          redirectUris: [`${legacyRaw}/admin/tenants`],
+          postLogoutRedirectUris: [`${legacyRaw}/login`],
+        }),
+      });
+
+      await expect(
+        subject.manager.bootstrap({
+          ...input,
+          adminUiUrl: canonical,
+          legacyMigrationAdminUiUrl: legacyRaw,
+        }),
+      ).rejects.toMatchObject({
+        name: 'BootstrapProcessError',
+        code: 'ADMIN_UI_URL_INVALID',
+        message: 'ADMIN_UI_URL_INVALID',
+      });
+
+      expect(subject.tenantRepository.findByCode).not.toHaveBeenCalled();
+      expect(subject.clientCommand.createClient).not.toHaveBeenCalled();
+      expect(subject.clientCommand.updateClient).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([
     ['tenantId', { tenantId: 'tenant-other' }],
