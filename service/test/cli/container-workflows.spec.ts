@@ -20,6 +20,17 @@ describe('container publication workflows', () => {
       /^          platforms: linux\/amd64,linux\/arm64$/m,
     );
   });
+
+  it.each(['container-main.yml', 'release.yml'])(
+    '%s keeps the required multi-platform build actions',
+    (filename) => {
+      const workflow = readWorkflow(filename);
+
+      expect(workflow).toContain('uses: docker/setup-qemu-action@v3');
+      expect(workflow).toContain('uses: docker/setup-buildx-action@v3');
+      expect(workflow).toContain('uses: docker/build-push-action@v6');
+    },
+  );
 });
 
 function readWorkflow(filename: string): string {
