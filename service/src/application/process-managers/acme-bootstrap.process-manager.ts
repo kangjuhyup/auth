@@ -24,6 +24,9 @@ export class AcmeBootstrapProcessManager implements AcmeBootstrapPort {
       work: async () => {
         const existingTenant = await this.tenantRepository.findByCode('acme');
         if (existingTenant) {
+          if (existingTenant.code !== 'acme') {
+            throw new Error('Bootstrap lookup identity mismatch');
+          }
           return;
         }
 

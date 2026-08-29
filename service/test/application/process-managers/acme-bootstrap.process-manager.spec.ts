@@ -118,6 +118,27 @@ describe('AcmeBootstrapProcessManager', () => {
     expect(state.status).toBe('completed');
   });
 
+  it('rejects a tenant lookup result whose identity is not acme', async () => {
+    const tenant = new TenantModel({ code: 'other', name: 'Other' });
+    tenant.setPersistence('tenant-other', new Date(), new Date());
+    const { manager, state, tenantRepository, tenantCommand } = createSubject({
+      tenant,
+    });
+
+    await expect(manager.bootstrap()).rejects.toMatchObject({
+      name: 'BootstrapProcessError',
+      code: 'BOOTSTRAP_STEP_FAILED',
+      message: 'BOOTSTRAP_STEP_FAILED',
+    });
+
+    expect(tenantRepository.findByCode).toHaveBeenCalledWith('acme');
+    expect(tenantCommand.createTenant).not.toHaveBeenCalled();
+    expect(tenantCommand.updateTenant).not.toHaveBeenCalled();
+    expect(tenantCommand.deleteTenant).not.toHaveBeenCalled();
+    expect(state.status).toBe('failed');
+    expect(state.lastFailureCode).toBe('BOOTSTRAP_STEP_FAILED');
+  });
+
   it('does no tenant work when the bootstrap process is already completed', async () => {
     const completedState = BootstrapProcessState.rehydrate({
       processKey: 'bootstrap:acme:v1',
