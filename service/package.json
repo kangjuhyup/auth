@@ -24,6 +24,8 @@
     "test:e2e": "NODE_OPTIONS=--experimental-vm-modules yarn exec jest --watchman=false --config ./test/jest-e2e.json",
     "migration:up": "mikro-orm migration:up",
     "migration:up:prod": "node dist/cli/migrate.js",
+    "bootstrap:admin:prod": "node dist/cli/bootstrap-admin.js",
+    "bootstrap:acme:prod": "node dist/cli/bootstrap-acme.js",
     "migration:down": "mikro-orm migration:rollback",
     "migration:create": "mikro-orm migration:create",
     "migration:status": "mikro-orm migration:check",

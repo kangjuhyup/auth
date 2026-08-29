@@ -86,6 +86,8 @@ import { ScopeRegistryPort } from '@application/ports/scope-registry.port';
 import { OidcScopeRegistryAdapter } from './oidc-provider/scope-registry.adapter';
 import { ScopeClaimResolverPort } from '@application/ports/scope-claim-resolver.port';
 import { OidcScopeClaimResolverAdapter } from './oidc-provider/scope-claim-resolver.adapter';
+import { BootstrapProcessRepository } from '@application/process-managers/ports/bootstrap-process.repository';
+import { BootstrapProcessRepositoryImpl } from './repositories/bootstrap-process.repository.impl';
 
 // Password Hash Implementations
 import { Argon2idHash } from './crypto/password/impl/argon2-hash';
@@ -166,6 +168,10 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     {
       provide: UserWriteRepositoryPort,
       useClass: UserWriteRepositoryImpl,
+    },
+    {
+      provide: BootstrapProcessRepository,
+      useClass: BootstrapProcessRepositoryImpl,
     },
     {
       provide: TenantContextPort,
@@ -270,6 +276,7 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     OidcProviderModule,
     NotificationModule,
     UserWriteRepositoryPort,
+    BootstrapProcessRepository,
     TenantContextPort,
     AdminSessionTokenPort,
     LoginAttemptPolicyPort,

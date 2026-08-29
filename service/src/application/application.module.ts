@@ -47,6 +47,20 @@ import { AdminSessionHandler } from './commands/handlers/admin-session.handler';
 import { InteractionCommandPort } from './ports/interaction-command.port';
 import { InteractionCommandHandler } from './commands/handlers/interaction-command.handler';
 import { AuditRecorder } from './services/audit-recorder';
+import { AcmeBootstrapProcessManager } from './process-managers/acme-bootstrap.process-manager';
+import { AdminBootstrapProcessManager } from './process-managers/admin-bootstrap.process-manager';
+import { BootstrapStepRunner } from './process-managers/bootstrap-step-runner';
+import { AcmeBootstrapPort } from './process-managers/ports/acme-bootstrap.port';
+import { AdminBootstrapPort } from './process-managers/ports/admin-bootstrap.port';
+import { BootstrapProcessRepository } from './process-managers/ports/bootstrap-process.repository';
+import {
+  ClientRepository,
+  RoleAssignmentRepository,
+  RoleRepository,
+  ScopeRepository,
+  TenantRepository,
+} from '@domain/repositories';
+import { UserWriteRepositoryPort } from './commands/ports/user-write-repository.port';
 
 // MFA Strategies
 import {
@@ -151,9 +165,77 @@ const queries = [
   },
 ];
 
+const bootstrapProviders = [
+  {
+    provide: BootstrapStepRunner,
+    useFactory: (repository: BootstrapProcessRepository) =>
+      new BootstrapStepRunner(repository),
+    inject: [BootstrapProcessRepository],
+  },
+  {
+    provide: AdminBootstrapPort,
+    useFactory: (
+      runner: BootstrapStepRunner,
+      tenantCommand: TenantCommandPort,
+      userCommand: UserCommandPort,
+      roleCommand: RoleCommandPort,
+      clientCommand: ClientCommandPort,
+      tenantRepository: TenantRepository,
+      scopeRepository: ScopeRepository,
+      userRepository: UserWriteRepositoryPort,
+      roleRepository: RoleRepository,
+      assignmentRepository: RoleAssignmentRepository,
+      clientRepository: ClientRepository,
+    ) =>
+      new AdminBootstrapProcessManager(
+        runner,
+        tenantCommand,
+        userCommand,
+        roleCommand,
+        clientCommand,
+        tenantRepository,
+        scopeRepository,
+        userRepository,
+        roleRepository,
+        assignmentRepository,
+        clientRepository,
+      ),
+    inject: [
+      BootstrapStepRunner,
+      TenantCommandPort,
+      UserCommandPort,
+      RoleCommandPort,
+      ClientCommandPort,
+      TenantRepository,
+      ScopeRepository,
+      UserWriteRepositoryPort,
+      RoleRepository,
+      RoleAssignmentRepository,
+      ClientRepository,
+    ],
+  },
+  {
+    provide: AcmeBootstrapPort,
+    useFactory: (
+      runner: BootstrapStepRunner,
+      tenantCommand: TenantCommandPort,
+      tenantRepository: TenantRepository,
+    ) =>
+      new AcmeBootstrapProcessManager(runner, tenantCommand, tenantRepository),
+    inject: [BootstrapStepRunner, TenantCommandPort, TenantRepository],
+  },
+];
+
 @Module({
   imports: [InfrastructureModule],
-  providers: [AuditRecorder, ...commands, ...queries],
-  exports: [AuditRecorder, ...commands, ...queries],
+  providers: [AuditRecorder, ...commands, ...queries, ...bootstrapProviders],
+  exports: [
+    AuditRecorder,
+    ...commands,
+    ...queries,
+    BootstrapStepRunner,
+    AdminBootstrapPort,
+    AcmeBootstrapPort,
+  ],
 })
 export class ApplicationModule {}
