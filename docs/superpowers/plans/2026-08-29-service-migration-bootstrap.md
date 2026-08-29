@@ -647,7 +647,7 @@ Admin input:
 }
 ```
 
-Acme has no secret input. Both assign `process.exitCode` only under the main-module guard.
+Acme has no secret input. Both imports remain side-effect free. Under the main-module guard, a shared fail-closed helper explicitly terminates with status `0` or `1` after the runtime returns; a rejected runtime also exits `1`. Explicit termination is required because a failed partial Nest initialization can leave referenced database handles even when no application context is returned for cleanup.
 
 - [ ] **Step 4: Bind providers and scripts**
 

@@ -89,7 +89,7 @@ The old Nest-coupled `DB_MIGRATIONS_RUN_ON_STARTUP` path and configuration are r
 
 ## Bootstrap Architecture
 
-Bootstrap writes must not bypass the application layer. The compiled CLI wrappers create a Nest application context, establish a MikroORM request context, resolve bootstrap application ports, execute the requested process, and close the context in `finally`.
+Bootstrap writes must not bypass the application layer. The compiled CLI wrappers create a Nest application context with framework logging/abort disabled for sanitized failure handling, establish a MikroORM request context, resolve bootstrap application ports, execute the requested process, and close the context in `finally`. As one-shot operator commands, their main guards explicitly terminate with the final status code; this prevents partially initialized infrastructure handles from keeping a failed command alive.
 
 Administrator and `acme` setup are implemented as application process managers so every write continues through application command ports and retries remain explicit. Process progress is persisted through an application port and a MikroORM adapter in a `bootstrap_process` table. A new forward-only schema migration creates this table for PostgreSQL, MySQL, and MSSQL; no existing migration is edited.
 
