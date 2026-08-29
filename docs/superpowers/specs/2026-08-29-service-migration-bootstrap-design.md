@@ -64,7 +64,9 @@ No TypeScript migration/config file is copied into the production image.
 
 ## Docker Startup and Packaging
 
-The build stage continues to use Corepack and Yarn 4 with the complete root workspace manifests before `yarn install --immutable`. Yarn is a build tool only.
+The build stage continues to use Corepack and Yarn 4. It copies the root, service, and interaction-UI manifests, then runs an immutable workspace focus for the root tooling, `@auth/service`, and `@auth/interaction-ui`. This avoids installing unrelated UI/docs dependencies and keeps low-memory multi-platform builders stable. After compilation, a production-only focus for `@auth/service` supplies the runner dependency graph. Yarn is a build tool only.
+
+Both main-branch and release publication workflows use Buildx/QEMU to publish a single multi-platform manifest for `linux/amd64` and `linux/arm64`. Release notes advertise both architectures. The Dockerfile must not hard-code either architecture; native dependencies are built separately for each target platform by Buildx.
 
 After compilation and `yarn workspaces focus @auth/service --production`, the runner stage contains:
 
@@ -147,14 +149,15 @@ Repository/integration tests cover the bootstrap process state adapter with Post
 Verification uses a new PostgreSQL 16 container and a freshly built service image:
 
 1. Inspect the image to confirm Yarn is not needed and TypeScript sources/CLI tooling are absent from the runtime path.
-2. Start the service container with database settings plus the legacy administrator variables.
-3. Confirm startup migration exits successfully before the HTTP server listens.
-4. Query PostgreSQL for the MikroORM migration table and expected schema.
-5. Run `bootstrap:admin:prod` and `bootstrap:acme:prod` using the same image.
-6. Query write tables for `master`, the administrator, and `acme`, and confirm no `e-vote` client was created.
-7. Run both bootstrap commands again and confirm row counts and stored values do not change.
-8. Restart the service container and confirm migration is a no-op followed by normal startup.
-9. Run focused unit/integration tests, the full service unit suite, the service build, and the architecture dependency check.
+2. Inspect the CI publication workflows to confirm both `linux/amd64` and `linux/arm64` are included in the pushed manifest.
+3. Start the service container with database settings plus the legacy administrator variables.
+4. Confirm startup migration exits successfully before the HTTP server listens.
+5. Query PostgreSQL for the MikroORM migration table and expected schema.
+6. Run `bootstrap:admin:prod` and `bootstrap:acme:prod` using the same image.
+7. Query write tables for `master`, the administrator, and `acme`, and confirm no `e-vote` client was created.
+8. Run both bootstrap commands again and confirm row counts and stored values do not change.
+9. Restart the service container and confirm migration is a no-op followed by normal startup.
+10. Run focused unit/integration tests, the full service unit suite, the service build, and the architecture dependency check.
 
 Temporary containers, networks, and volumes created for verification are removed after results are captured.
 

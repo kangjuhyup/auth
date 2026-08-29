@@ -15,6 +15,7 @@
 - Preserve every existing migration file; only add `Migration20260829000000` for process state.
 - A fresh database continues to require `ADMIN_USERNAME` and `ADMIN_PASSWORD` while `Migration20260404000001` is pending.
 - Keep Yarn 4 as a build-time tool; production startup and bootstrap execute compiled JavaScript with `node`.
+- Main and release publication must push a multi-platform manifest containing both `linux/amd64` and `linux/arm64`.
 - Do not copy `mikro-orm.config.ts`, TypeScript migrations, `typescript`, `ts-node`, or `@mikro-orm/cli` into the runtime dependency set.
 - Preserve dependency direction: `presentation → application → domain` and `infrastructure → application → domain`.
 - Bootstrap writes go through application command ports. Write-side repositories may be read only to decide whether a command is needed.
@@ -194,7 +195,10 @@ git commit -m "feat(service): 컴파일 migration runner 추가"
 
 - Create: `deploy/docker/service-entrypoint.sh`
 - Create: `service/test/cli/service-entrypoint.spec.ts`
+- Create: `service/test/cli/container-workflows.spec.ts`
 - Modify: `deploy/docker/Dockerfile.service`
+- Modify: `.github/workflows/container-main.yml`
+- Modify: `.github/workflows/release.yml`
 - Modify: `service/package.json`
 - Modify: `yarn.lock`
 
@@ -202,6 +206,7 @@ git commit -m "feat(service): 컴파일 migration runner 추가"
 
 - Consumes: `node dist/cli/migrate.js` and default command `node dist/main.js`.
 - Produces: a POSIX entrypoint that stops on migration failure and replaces itself with the service process.
+- Produces: GHCR publication manifests containing both `linux/amd64` and `linux/arm64` for main and versioned releases.
 
 - [ ] **Step 1: Write failing entrypoint behavior tests**
 
@@ -248,6 +253,23 @@ exec "$@"
 
 Move `@mikro-orm/cli` and `ts-node` from dependencies to devDependencies. Keep `@mikro-orm/core`, `@mikro-orm/migrations`, configured drivers, `argon2`, and `ulid` in dependencies.
 
+Use an immutable focused builder install instead of installing every monorepo workspace twice:
+
+```dockerfile
+ENV YARN_NODE_LINKER=node-modules
+ENV YARN_NETWORK_CONCURRENCY=4
+ENV YARN_ENABLE_IMMUTABLE_INSTALLS=true
+ENV HUSKY=0
+RUN yarn workspaces focus auth @auth/service @auth/interaction-ui
+
+COPY service service
+RUN yarn workspace @auth/interaction-ui build
+RUN yarn workspace @auth/service build
+RUN yarn workspaces focus @auth/service --production
+```
+
+Copy only the root, service, and interaction-UI manifests before focus. Do not copy or install unrelated `ui`/`docs` workspaces, and do not repeat the same install after copying source.
+
 Replace the runtime TypeScript copies with:
 
 ```dockerfile
@@ -264,11 +286,19 @@ ENTRYPOINT ["/app/service-entrypoint.sh"]
 CMD ["node", "dist/main.js"]
 ```
 
+Set both publication workflows to:
+
+```yaml
+platforms: linux/amd64,linux/arm64
+```
+
+Keep QEMU and Buildx setup enabled. Update release comments/body so operators are not told the images are ARM-only. Add a narrow static workflow test that reads both YAML files and asserts the exact two-platform value, so dropping either architecture fails the suite.
+
 - [ ] **Step 4: Verify tests and image contents**
 
 ```bash
 yarn install --immutable
-yarn workspace @auth/service test --runInBand --watchman=false test/cli/service-entrypoint.spec.ts
+yarn workspace @auth/service test --runInBand --watchman=false test/cli/service-entrypoint.spec.ts test/cli/container-workflows.spec.ts
 DOCKER_BUILDKIT=0 docker build -f deploy/docker/Dockerfile.service -t auth-service:entrypoint-check .
 docker run --rm --entrypoint sh auth-service:entrypoint-check -lc 'test -f dist/cli/migrate.js && test ! -e mikro-orm.config.ts && test ! -d src && test ! -e /app/node_modules/typescript && test ! -e /app/node_modules/@mikro-orm/cli'
 ```
@@ -278,7 +308,7 @@ Expected: PASS and every runtime inspection exits zero.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add deploy/docker/service-entrypoint.sh deploy/docker/Dockerfile.service service/test/cli/service-entrypoint.spec.ts service/package.json yarn.lock
+git add deploy/docker/service-entrypoint.sh deploy/docker/Dockerfile.service .github/workflows/container-main.yml .github/workflows/release.yml service/test/cli/service-entrypoint.spec.ts service/test/cli/container-workflows.spec.ts service/package.json yarn.lock
 git commit -m "feat(docker): 서비스 시작 전 migration 실행"
 ```
 
