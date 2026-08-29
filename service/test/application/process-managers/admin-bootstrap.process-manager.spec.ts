@@ -842,6 +842,33 @@ describe('AdminBootstrapProcessManager', () => {
     expect(state.status).toBe('completed');
   });
 
+  it('recognizes the legacy migration portal created from a trailing-slash URL', async () => {
+    const state = BootstrapProcessState.rehydrate({
+      processKey,
+      step: 'client',
+      status: 'pending',
+      retryCount: 0,
+      lastFailureCode: null,
+    });
+    const subject = createSubject({
+      state,
+      client: makePortal({
+        redirectUris: ['https://ui.example//admin/tenants'],
+        postLogoutRedirectUris: ['https://ui.example//login'],
+      }),
+    });
+
+    await subject.manager.bootstrap({
+      ...input,
+      adminUiUrl: 'https://ui.example',
+    });
+
+    expect(subject.clientCommand.createClient).not.toHaveBeenCalled();
+    expect(subject.clientCommand.updateClient).not.toHaveBeenCalled();
+    expect(subject.clientCommand.deleteClient).not.toHaveBeenCalled();
+    expect(state.status).toBe('completed');
+  });
+
   it.each([
     ['tenantId', { tenantId: 'tenant-other' }],
     ['clientId', { clientId: '__other-client__' }],

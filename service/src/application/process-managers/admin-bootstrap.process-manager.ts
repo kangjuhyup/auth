@@ -311,6 +311,13 @@ export class AdminBootstrapProcessManager implements AdminBootstrapPort {
     tenantId: string,
     adminUiUrl: string,
   ): boolean {
+    const canonicalUris =
+      this.sameValues(client.redirectUris, [`${adminUiUrl}/admin/tenants`]) &&
+      this.sameValues(client.postLogoutRedirectUris, [`${adminUiUrl}/login`]);
+    const legacyTrailingSlashUris =
+      this.sameValues(client.redirectUris, [`${adminUiUrl}//admin/tenants`]) &&
+      this.sameValues(client.postLogoutRedirectUris, [`${adminUiUrl}//login`]);
+
     return (
       client.tenantId === tenantId &&
       client.clientId === '__admin-portal__' &&
@@ -318,12 +325,11 @@ export class AdminBootstrapProcessManager implements AdminBootstrapPort {
       client.name === 'Admin Portal' &&
       client.type === 'confidential' &&
       client.enabled &&
-      this.sameValues(client.redirectUris, [`${adminUiUrl}/admin/tenants`]) &&
+      (canonicalUris || legacyTrailingSlashUris) &&
       this.sameValues(client.grantTypes, ['authorization_code']) &&
       this.sameValues(client.responseTypes, ['code']) &&
       client.tokenEndpointAuthMethod === 'none' &&
       client.scope === 'openid profile' &&
-      this.sameValues(client.postLogoutRedirectUris, [`${adminUiUrl}/login`]) &&
       client.applicationType === 'web' &&
       client.backchannelLogoutUri == null &&
       client.frontchannelLogoutUri == null &&

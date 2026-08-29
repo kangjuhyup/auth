@@ -54,7 +54,7 @@ describe('administrator bootstrap CLI', () => {
     );
   });
 
-  it('uses safe defaults and preserves a root URL', async () => {
+  it('uses the localhost default outside production', async () => {
     const bootstrap = jest.fn().mockResolvedValue(undefined);
     const appContext = {
       get: jest.fn().mockReturnValue({ bootstrap }),
@@ -67,13 +67,89 @@ describe('administrator bootstrap CLI', () => {
 
     await runAdminBootstrap({
       run,
-      readEnv: (key) => (key === 'ADMIN_UI_URL' ? '/' : undefined),
+      readEnv: () => undefined,
     });
 
     expect(bootstrap).toHaveBeenCalledWith({
       username: 'admin',
       password: undefined,
-      adminUiUrl: '/',
+      adminUiUrl: 'http://localhost:5173',
     });
   });
+
+  it.each([
+    'http://localhost:5173/',
+    'http://127.0.0.1:5173///',
+    'http://[::1]:5173/',
+    'https://admin.example.test/',
+  ])('accepts and normalizes the approved URL %s', async (adminUiUrl) => {
+    const bootstrap = jest.fn().mockResolvedValue(undefined);
+    const appContext = {
+      get: jest.fn().mockReturnValue({ bootstrap }),
+      close: jest.fn(),
+    } as unknown as BootstrapApplicationContext;
+    const run = jest.fn().mockImplementation(async (options) => {
+      await options.execute(appContext);
+      return 0;
+    });
+
+    await expect(
+      runAdminBootstrap({
+        run,
+        readEnv: (key) =>
+          key === 'ADMIN_UI_URL'
+            ? adminUiUrl
+            : key === 'NODE_ENV'
+              ? 'production'
+              : undefined,
+      }),
+    ).resolves.toBe(0);
+
+    expect(bootstrap).toHaveBeenCalledWith(
+      expect.objectContaining({ adminUiUrl: adminUiUrl.replace(/\/+$/, '') }),
+    );
+  });
+
+  it.each([
+    ['production-missing', undefined],
+    ['relative', '/admin'],
+    ['non-http', 'ftp://admin.example.test'],
+    ['non-local-http', 'http://admin.example.test'],
+    ['credential-bearing', 'https://operator:secret@admin.example.test'],
+  ])(
+    'fails closed for %s ADMIN_UI_URL without invoking bootstrap',
+    async (_case, adminUiUrl) => {
+      const bootstrap = jest.fn();
+      const appContext = {
+        get: jest.fn().mockReturnValue({ bootstrap }),
+        close: jest.fn(),
+      } as unknown as BootstrapApplicationContext;
+      let caught: unknown;
+      const run = jest.fn().mockImplementation(async (options) => {
+        try {
+          await options.execute(appContext);
+          return 0;
+        } catch (error: unknown) {
+          caught = error;
+          return 1;
+        }
+      });
+
+      const code = await runAdminBootstrap({
+        run,
+        readEnv: (key) =>
+          key === 'ADMIN_UI_URL'
+            ? adminUiUrl
+            : key === 'NODE_ENV'
+              ? 'production'
+              : undefined,
+      });
+
+      expect(code).toBe(1);
+      expect(bootstrap).not.toHaveBeenCalled();
+      expect(caught).toMatchObject({ code: 'ADMIN_UI_URL_INVALID' });
+      expect(JSON.stringify(caught)).not.toContain(adminUiUrl ?? 'production');
+      expect(JSON.stringify(caught)).not.toContain('secret');
+    },
+  );
 });
