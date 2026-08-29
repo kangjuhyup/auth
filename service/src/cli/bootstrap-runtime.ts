@@ -23,7 +23,11 @@ export async function runBootstrapCommand(
 ): Promise<number> {
   const createContext =
     options.createContext ??
-    (async () => NestFactory.createApplicationContext(AppModule));
+    (async () =>
+      NestFactory.createApplicationContext(AppModule, {
+        abortOnError: false,
+        logger: false,
+      }));
   const requestContext =
     options.requestContext ??
     ((entityManager: MikroORM['em'], work: () => Promise<void>) =>

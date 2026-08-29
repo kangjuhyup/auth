@@ -1,4 +1,6 @@
 import { MikroORM } from '@mikro-orm/core';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from '../../src/app.module';
 import {
   type BootstrapApplicationContext,
   runBootstrapCommand,
@@ -32,6 +34,57 @@ function createAppContext(params?: {
 }
 
 describe('bootstrap runtime', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('creates the production application context with abort and framework logging disabled', async () => {
+    const { appContext, close } = createAppContext();
+    const createApplicationContext = jest
+      .spyOn(NestFactory, 'createApplicationContext')
+      .mockResolvedValue(appContext as never);
+
+    const code = await runBootstrapCommand({
+      requestContext: jest
+        .fn()
+        .mockImplementation(async (_em: object, work: () => Promise<void>) =>
+          work(),
+        ),
+      execute: jest.fn().mockResolvedValue(undefined),
+      failureMessage: 'Acme bootstrap failed',
+      error: jest.fn(),
+    });
+
+    expect(code).toBe(0);
+    expect(createApplicationContext).toHaveBeenCalledWith(AppModule, {
+      abortOnError: false,
+      logger: false,
+    });
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('sanitizes a secret-bearing rejection from the production context factory', async () => {
+    jest
+      .spyOn(NestFactory, 'createApplicationContext')
+      .mockRejectedValue(
+        new Error('password=secret database.internal Nest initialization'),
+      );
+    const error = jest.fn();
+
+    const code = await runBootstrapCommand({
+      requestContext: jest.fn(),
+      execute: jest.fn(),
+      failureMessage: 'Administrator bootstrap failed',
+      error,
+    });
+
+    expect(code).toBe(1);
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledWith('Administrator bootstrap failed');
+    expect(JSON.stringify(error.mock.calls)).not.toContain('secret');
+    expect(JSON.stringify(error.mock.calls)).not.toContain('database.internal');
+  });
+
   it('runs the command in one ORM request context and closes the Nest context', async () => {
     const orm = { em: {} };
     const { appContext, close, get } = createAppContext({ orm });
