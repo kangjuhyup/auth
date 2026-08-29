@@ -742,7 +742,7 @@ Expected: all tests pass, overall coverage ≥85%, security-critical domain cove
 
 ```bash
 DOCKER_BUILDKIT=0 docker build -f deploy/docker/Dockerfile.service -t auth-service:migration-bootstrap-verification .
-docker run --rm --entrypoint sh auth-service:migration-bootstrap-verification -lc 'test -f dist/cli/migrate.js && test -f dist/cli/bootstrap-admin.js && test -f dist/cli/bootstrap-vote.js && test -f dist/infrastructure/mikro-orm/migrations/postgresql/Migration20260829000000.js && test ! -e mikro-orm.config.ts && test ! -d src && test ! -e /app/node_modules/typescript && test ! -e /app/node_modules/@mikro-orm/cli'
+docker run --rm --entrypoint sh auth-service:migration-bootstrap-verification -lc 'test -f dist/cli/migrate.js && test -f dist/cli/bootstrap-admin.js && test -f dist/cli/bootstrap-acme.js && test -f dist/infrastructure/mikro-orm/migrations/postgresql/Migration20260829000000.js && test ! -e mikro-orm.config.ts && test ! -d src && test ! -e /app/node_modules/typescript && test ! -e /app/node_modules/@mikro-orm/cli'
 ```
 
 - [ ] **Step 3: Start isolated dependencies**
