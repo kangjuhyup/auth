@@ -77,3 +77,46 @@ The service workspace's `format` and `lint` scripts could not resolve the
 root-only Prettier/ESLint binaries under the current Yarn PnP workspace focus.
 The equivalent root commands were therefore run directly against all changed
 Task 6 files and passed.
+
+## Review Fix Round
+
+The production default Nest application-context factory previously used
+Nest's default initialization options. Nest could therefore log a raw
+initialization exception or abort the process before the runtime catch block
+could sanitize it.
+
+### RED / GREEN
+
+RED evidence:
+
+- The new production-default-path test failed because
+  `NestFactory.createApplicationContext` received only `AppModule`; it expected
+  the exact security options `{ abortOnError: false, logger: false }`.
+- A second default-path test supplied a secret-bearing Nest initialization
+  rejection and exercised the runtime's fixed-message return path without an
+  injected context factory.
+
+GREEN evidence:
+
+- The focused runtime suite passed: 1 suite, 8 tests.
+- All focused CLI and wiring suites passed: 4 suites, 15 tests.
+- Full service unit suite passed: 137 suites, 1,316 tests.
+- Build passed: 357 files compiled with 0 TypeScript issues.
+- Architecture passed: 385 modules / 1,133 dependencies checked with 0
+  violations.
+- Both compiled bootstrap artifacts were present.
+- Targeted Prettier, ESLint, and `git diff --check` passed.
+
+### Security Fix
+
+- The production default now calls
+  `NestFactory.createApplicationContext(AppModule, { abortOnError: false,
+logger: false })`.
+- Nest initialization failures reject into `runBootstrapCommand`; the runtime
+  emits only the fixed administrator/acme failure text and returns `1`.
+- Normal bootstrap execution remains intentionally silent, and no raw error,
+  environment value, password, URL, host, or stack is passed to a logger.
+
+### Commit
+
+`2bfbb4c fix(service): bootstrap 초기화 오류 출력 차단`
