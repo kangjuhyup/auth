@@ -3,6 +3,7 @@ import {
   runBootstrapCommand,
   type RunBootstrapCommandOptions,
 } from './bootstrap-runtime';
+import { runBootstrapMain } from './bootstrap-main';
 
 export interface AdminBootstrapCliDependencies {
   readonly run: (options: RunBootstrapCommandOptions) => Promise<number>;
@@ -36,7 +37,8 @@ export async function runAdminBootstrap(
 }
 
 if (require.main === module) {
-  void runAdminBootstrap().then((exitCode) => {
-    process.exitCode = exitCode;
+  void runBootstrapMain({
+    run: runAdminBootstrap,
+    exit: (code) => process.exit(code),
   });
 }

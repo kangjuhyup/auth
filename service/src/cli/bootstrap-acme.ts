@@ -3,6 +3,7 @@ import {
   runBootstrapCommand,
   type RunBootstrapCommandOptions,
 } from './bootstrap-runtime';
+import { runBootstrapMain } from './bootstrap-main';
 
 export interface AcmeBootstrapCliDependencies {
   readonly run: (options: RunBootstrapCommandOptions) => Promise<number>;
@@ -23,7 +24,8 @@ export async function runAcmeBootstrap(
 }
 
 if (require.main === module) {
-  void runAcmeBootstrap().then((exitCode) => {
-    process.exitCode = exitCode;
+  void runBootstrapMain({
+    run: runAcmeBootstrap,
+    exit: (code) => process.exit(code),
   });
 }
