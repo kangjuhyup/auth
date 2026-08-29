@@ -101,15 +101,17 @@ yarn install
 - **Redis**: `REDIS_URL` (예: `redis://localhost:6379`)
 - **OIDC**: `OIDC_ISSUER`, `OIDC_ADAPTER_DRIVER`, `OIDC_COOKIE_KEYS`, `OIDC_ACCESS_TOKEN_FORMAT` 등
 - **암호화**: `JWKS_ENCRYPTION_KEY`, `OTP_TOKEN_SECRET` (hex, 길이는 예시 파일 참고)
-- **초기 관리자 시드(마이그레이션)**: `ADMIN_USERNAME`, `ADMIN_PASSWORD` — 시드 마이그레이션([`Migration20260404000001`](service/src/infrastructure/mikro-orm/migrations/postgresql/Migration20260404000001.ts) 등)에 **필수**입니다.
+- **초기 관리자**: `ADMIN_USERNAME`, `ADMIN_PASSWORD` — 새 DB에서 보존된 마이그레이션([`Migration20260404000001`](service/src/infrastructure/mikro-orm/migrations/postgresql/Migration20260404000001.ts) 등)을 실행할 때 **필수**입니다. `bootstrap:admin:prod`는 관리자가 없을 때만 두 값을 사용합니다.
 - **선택**: `ADMIN_UI_URL`, Google 시드용 `SEED_GOOGLE_OIDC_CLIENT_ID` / `SEED_GOOGLE_OIDC_CLIENT_SECRET` 등
 
 관리 콘솔(`ui`)은 [`ui/.env.development`](ui/.env.development) 등에서 `VITE_API_BASE_URL`(예: 프록시 사용 시 `/api`)을 확인합니다.
 
 ### 4. DB 마이그레이션
 
+로컬 개발에서만 Yarn 4와 MikroORM CLI를 사용합니다.
+
 ```bash
-yarn workspace @auth/service mikro-orm migration:up
+corepack yarn workspace @auth/service migration:up
 ```
 
 ### 5. Interaction UI 빌드
@@ -132,6 +134,43 @@ yarn ui:dev         # 관리 콘솔 — http://localhost:5173 (기본)
 ```
 
 Interaction 화면을 수정한 뒤에는 다시 `yarn interaction-ui:build` 하고 Nest를 재시작하는 것이 안전합니다.
+
+---
+
+## 운영 마이그레이션과 bootstrap
+
+운영 빌드 산출물은 TypeScript, `ts-node`, MikroORM CLI 없이 컴파일된 JavaScript를 Node.js로 직접 실행합니다. 저장소 루트에서 직접 실행할 때의 순서는 다음과 같습니다.
+
+```bash
+node service/dist/cli/migrate.js
+node service/dist/cli/bootstrap-admin.js
+node service/dist/cli/bootstrap-acme.js
+node service/dist/main.js
+```
+
+마이그레이션을 제외한 bootstrap은 모두 선택적인 **명시적 운영자 작업**이며, 각 서비스 replica가 시작할 때 자동 실행하지 않습니다.
+
+- `bootstrap:admin:prod`는 없는 관리자 리소스만 생성합니다. 관리자가 없을 때는 `ADMIN_USERNAME`과 `ADMIN_PASSWORD`가 필요하며, 기존 비밀번호나 설정을 재설정하지 않습니다.
+- `bootstrap:acme:prod`는 `acme` tenant와 canonical 내장 scope만 보장합니다. OIDC client나 application을 생성하지 않고, 기존 tenant 설정을 덮어쓰지 않습니다.
+
+Yarn을 사용할 수 있는 운영 호스트에서는 동일한 컴파일 명령을 패키지 스크립트로 실행할 수 있습니다.
+
+```bash
+corepack yarn workspace @auth/service migration:up:prod
+corepack yarn workspace @auth/service bootstrap:admin:prod
+corepack yarn workspace @auth/service bootstrap:acme:prod
+```
+
+서비스 이미지의 entrypoint는 기본 서버 명령이나 덮어쓴 bootstrap 명령보다 먼저 `node dist/cli/migrate.js`를 항상 실행하고, 실패하면 서버를 시작하지 않습니다. 따라서 이미지에서 bootstrap을 실행할 때는 마이그레이션을 별도로 반복하지 말고, Secret 등으로 환경 변수를 주입한 후 이미지 명령만 다음과 같이 덮어씁니다.
+
+```bash
+docker run --rm --env-file path/to/production.env ghcr.io/your-org/your-repo/auth-service:tag node dist/cli/bootstrap-admin.js
+docker run --rm --env-file path/to/production.env ghcr.io/your-org/your-repo/auth-service:tag node dist/cli/bootstrap-acme.js
+```
+
+운영 이미지에는 Yarn, TypeScript, `ts-node`, MikroORM CLI가 포함되지 않습니다. Yarn 4는 개발과 이미지 빌드에서만 사용합니다.
+
+main 브랜치와 release 워크플로는 GHCR에 `linux/amd64`, `linux/arm64`를 포함하는 하나의 multi-platform manifest를 게시합니다. 따라서 `ghcr.io/<owner>/<repository>/auth-service:<tag>` 태그를 AMD64와 ARM64 노드에서 동일하게 사용할 수 있습니다.
 
 ---
 
