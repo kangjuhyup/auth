@@ -139,19 +139,20 @@ Interaction 화면을 수정한 뒤에는 다시 `yarn interaction-ui:build` 하
 
 ## 운영 마이그레이션과 bootstrap
 
-운영 빌드 산출물은 TypeScript, `ts-node`, MikroORM CLI 없이 컴파일된 JavaScript를 Node.js로 직접 실행합니다. 저장소 루트에서 직접 실행할 때의 순서는 다음과 같습니다.
+운영 빌드 산출물은 TypeScript, `ts-node`, MikroORM CLI 없이 컴파일된 JavaScript를 Node.js로 직접 실행합니다. MikroORM의 컴파일된 migration 경로는 `service/`를 현재 작업 디렉터리로 삼는 `./dist`를 기준으로 합니다. 저장소 루트에서 실행할 때의 순서는 다음과 같습니다.
 
 ```bash
-node service/dist/cli/migrate.js
-node service/dist/cli/bootstrap-admin.js
-node service/dist/cli/bootstrap-acme.js
-node service/dist/main.js
+cd service
+node dist/cli/migrate.js
+node dist/cli/bootstrap-admin.js
+node dist/cli/bootstrap-acme.js
+node dist/main.js
 ```
 
 마이그레이션을 제외한 bootstrap은 모두 선택적인 **명시적 운영자 작업**이며, 각 서비스 replica가 시작할 때 자동 실행하지 않습니다.
 
 - `bootstrap:admin:prod`는 없는 관리자 리소스만 생성합니다. 관리자가 없을 때는 `ADMIN_USERNAME`과 `ADMIN_PASSWORD`가 필요하며, 기존 비밀번호나 설정을 재설정하지 않습니다.
-- `bootstrap:acme:prod`는 `acme` tenant와 canonical 내장 scope만 보장합니다. OIDC client나 application을 생성하지 않고, 기존 tenant 설정을 덮어쓰지 않습니다.
+- `bootstrap:acme:prod`는 `acme` tenant가 없을 때 tenant command로 생성하며, 이 경로에서 canonical 내장 scope가 함께 생성됩니다. 기존 `acme` tenant는 설정을 덮어쓰지 않고 그대로 두므로, 누락된 scope를 복구하거나 보장하지 않습니다. OIDC client나 application을 생성하지 않습니다.
 
 Yarn을 사용할 수 있는 운영 호스트에서는 동일한 컴파일 명령을 패키지 스크립트로 실행할 수 있습니다.
 
@@ -168,7 +169,7 @@ docker run --rm --env-file path/to/production.env ghcr.io/your-org/your-repo/aut
 docker run --rm --env-file path/to/production.env ghcr.io/your-org/your-repo/auth-service:tag node dist/cli/bootstrap-acme.js
 ```
 
-운영 이미지에는 Yarn, TypeScript, `ts-node`, MikroORM CLI가 포함되지 않습니다. Yarn 4는 개발과 이미지 빌드에서만 사용합니다.
+운영 이미지의 서버 시작, migration, bootstrap 경로는 Yarn을 사용하지 않고 Node.js로 컴파일된 JavaScript를 직접 실행합니다. 기반 이미지에는 Yarn 1과 Corepack이 있지만 운영 실행 경로에서는 사용하지 않습니다. TypeScript, `ts-node`, MikroORM CLI는 운영 이미지에 포함되지 않으며, Yarn 4는 개발과 이미지 빌드에서만 사용합니다.
 
 main 브랜치와 release 워크플로는 GHCR에 `linux/amd64`, `linux/arm64`를 포함하는 하나의 multi-platform manifest를 게시합니다. 따라서 `ghcr.io/<owner>/<repository>/auth-service:<tag>` 태그를 AMD64와 ARM64 노드에서 동일하게 사용할 수 있습니다.
 
