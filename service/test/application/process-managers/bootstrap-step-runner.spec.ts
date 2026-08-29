@@ -3,6 +3,7 @@ import {
   type BootstrapFailureCode,
 } from '@application/process-managers/bootstrap-process-state';
 import {
+  BootstrapKnownFailure,
   BootstrapProcessError,
   BootstrapStepRunner,
 } from '@application/process-managers/bootstrap-step-runner';
@@ -129,10 +130,10 @@ describe('BootstrapStepRunner', () => {
     expect(JSON.stringify(state)).not.toContain('database.internal');
   });
 
-  it.each<BootstrapFailureCode>([
+  it.each<Exclude<BootstrapFailureCode, 'BOOTSTRAP_STEP_FAILED'>>([
     'ADMIN_CREDENTIALS_REQUIRED',
     'ADMIN_PORTAL_CONFLICT',
-  ])('persists the supplied known failure code %s', async (failureCode) => {
+  ])('persists a trusted known failure code %s', async (failureCode) => {
     const state = BootstrapProcessState.start('bootstrap:admin:v1', 'tenant');
     const { runner } = createRunner(state);
 
@@ -143,11 +144,40 @@ describe('BootstrapStepRunner', () => {
         expectedStep: 'tenant',
         nextStep: 'role',
         steps: ['tenant', 'role', 'completed'],
-        failureCode,
-        work: jest.fn().mockRejectedValue(new Error('secret')),
+        work: jest
+          .fn()
+          .mockRejectedValue(BootstrapKnownFailure.of(failureCode)),
       }),
     ).rejects.toMatchObject({ code: failureCode, message: failureCode });
     expect(state.lastFailureCode).toBe(failureCode);
+  });
+
+  it('keeps an unexpected error in a known-precondition step generic', async () => {
+    const state = BootstrapProcessState.rehydrate({
+      processKey: 'bootstrap:admin:v1',
+      step: 'user',
+      status: 'pending',
+      retryCount: 0,
+      lastFailureCode: null,
+    });
+    const { runner } = createRunner(state);
+    const rawError = new Error('password=secret database.internal');
+
+    await expect(
+      runner.run({
+        processKey: 'bootstrap:admin:v1',
+        initialStep: 'tenant',
+        expectedStep: 'user',
+        nextStep: 'completed',
+        steps: ['tenant', 'user', 'completed'],
+        work: jest.fn().mockRejectedValue(rawError),
+      }),
+    ).rejects.toMatchObject({
+      code: 'BOOTSTRAP_STEP_FAILED',
+      message: 'BOOTSTRAP_STEP_FAILED',
+    });
+    expect(state.lastFailureCode).toBe('BOOTSTRAP_STEP_FAILED');
+    expect(JSON.stringify(state)).not.toContain(rawError.message);
   });
 
   it('normalizes an untyped error code before exposing it', () => {

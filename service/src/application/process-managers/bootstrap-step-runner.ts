@@ -4,6 +4,25 @@ import {
 } from './bootstrap-process-state';
 import { BootstrapProcessRepository } from './ports/bootstrap-process.repository';
 
+type BootstrapKnownFailureCode = Exclude<
+  BootstrapFailureCode,
+  'BOOTSTRAP_STEP_FAILED'
+>;
+
+export class BootstrapKnownFailure extends Error {
+  readonly code: BootstrapKnownFailureCode;
+
+  private constructor(code: BootstrapKnownFailureCode) {
+    super(code);
+    this.name = 'BootstrapKnownFailure';
+    this.code = code;
+  }
+
+  static of(code: BootstrapKnownFailureCode): BootstrapKnownFailure {
+    return new BootstrapKnownFailure(code);
+  }
+}
+
 export class BootstrapProcessError extends Error {
   readonly code: BootstrapFailureCode;
 
@@ -25,7 +44,6 @@ export class BootstrapStepRunner {
     nextStep: string;
     steps: readonly string[];
     work: () => Promise<void>;
-    failureCode?: BootstrapFailureCode;
   }): Promise<void> {
     let caughtFailureCode: BootstrapFailureCode | undefined;
 
@@ -54,8 +72,11 @@ export class BootstrapStepRunner {
         try {
           await params.work();
           state.advance(params.expectedStep, params.nextStep, params.steps);
-        } catch {
-          caughtFailureCode = toBootstrapFailureCode(params.failureCode);
+        } catch (error: unknown) {
+          caughtFailureCode =
+            error instanceof BootstrapKnownFailure
+              ? error.code
+              : 'BOOTSTRAP_STEP_FAILED';
           state.fail(caughtFailureCode);
         }
       },
