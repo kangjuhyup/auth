@@ -71,6 +71,7 @@ Both main-branch and release publication workflows use Buildx/QEMU to publish a 
 After compilation and `yarn workspaces focus @auth/service --production`, the runner stage contains:
 
 - `service/dist`, including `dist/cli/migrate.js` and compiled migrations;
+- `service/interaction-ui/dist`, including the built interaction SPA served by Nest;
 - focused production `node_modules`;
 - the service package manifest;
 - a small POSIX entrypoint script.
@@ -93,11 +94,11 @@ Bootstrap writes must not bypass the application layer. The compiled CLI wrapper
 
 Administrator and `acme` setup are implemented as application process managers so every write continues through application command ports and retries remain explicit. Process progress is persisted through an application port and a MikroORM adapter in a `bootstrap_process` table. A new forward-only schema migration creates this table for PostgreSQL, MySQL, and MSSQL; no existing migration is edited.
 
-Each record contains a unique process key, current step, status, retry count, last non-sensitive failure code, and timestamps. The unique process key prevents duplicate concurrent bootstrap runs. Steps are monotonic and independently idempotent, so partial success is resumed without compensating deletion. Bootstrap never treats a projection or Redis value as authoritative; it checks write-side repositories.
+Each record contains a unique process key, current step, status, retry count, last non-sensitive failure code, and timestamps. The unique process key prevents duplicate concurrent bootstrap runs. Steps are monotonic and independently idempotent, so completed steps are resumed without compensating deletion. A failing step throws out of its locked transaction so every command-side database write made by that step rolls back. Only after rollback does a second locked transaction persist the sanitized failure code and retry count. Bootstrap never treats a projection or Redis value as authoritative; it checks write-side repositories.
 
 ### Administrator bootstrap
 
-`bootstrap:admin:prod` reads `ADMIN_USERNAME`, `ADMIN_PASSWORD`, and `ADMIN_UI_URL`. Username and password are required only when the process must create a missing administrator. Neither value is logged.
+`bootstrap:admin:prod` reads `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `ADMIN_UI_URL`, and `NODE_ENV`. Username and password are required only when the process must create a missing administrator. `ADMIN_UI_URL` is required when `NODE_ENV=production`; development defaults to `http://localhost:5173`. The URL must be an absolute HTTP(S) URL, non-local hosts require HTTPS, and only `localhost`, `127.0.0.1`, and `[::1]` may use HTTP. Userinfo, query, and fragment components are rejected. Neither credentials nor rejected URL values are logged.
 
 The process manager ensures, through existing command handlers, that the following exist:
 
@@ -107,7 +108,9 @@ The process manager ensures, through existing command handlers, that the followi
 4. administrator-to-role assignment;
 5. `__admin-portal__` client.
 
-Existing users, credentials, roles, assignments, and client metadata are not overwritten. In particular, rerunning bootstrap never rotates or resets the administrator password. A newly created administrator receives a temporary password that must be changed according to the existing application policy.
+An existing administrator is compatible only when it is `ACTIVE` and already has an enabled password credential. An inactive, passwordless, or disabled-credential user causes a sanitized conflict before any role assignment; bootstrap never creates or replaces a credential for that user. Existing credentials, roles, assignments, and client metadata are not overwritten. In particular, rerunning bootstrap never rotates or resets the administrator password. A newly created administrator receives a temporary password that must be changed according to the existing application policy.
+
+New admin portal clients use an `ADMIN_UI_URL` with trailing slashes removed. The deployed `Migration20260404000001` remains unchanged and interpolates the raw environment value. Therefore compatibility checks also recognize its exact legacy double-slash redirect and logout paths when a fresh migration receives a trailing-slash URL; bootstrap does not rewrite that client.
 
 On a fresh database, the preserved legacy migration creates these records first, so the administrator bootstrap is normally a no-op. The separate command supports future deployments and repair of an already-migrated schema without adding more environment data to schema migrations.
 
@@ -120,12 +123,12 @@ tenant code: acme
 tenant name: Acme
 ```
 
-If `acme` already exists, the process exits without changing or renaming the existing tenant. If it is missing, the process creates only the tenant and its built-in scopes through the existing tenant command path. It does not create an OIDC client or application.
+If `acme` already exists, the process verifies that the authoritative write-side lookup returned tenant code `acme`, then exits without changing or renaming it. If it is missing, the process creates only the tenant and its built-in scopes through the existing tenant command path. It does not create an OIDC client or application.
 
 ## Error Handling and Security
 
 - Migration failure prevents service startup.
-- Bootstrap failure returns a non-zero exit code and leaves completed idempotent steps intact for retry.
+- Bootstrap failure returns a non-zero exit code, rolls back every write from the failed step, records only a safe failure code in a separate transaction, and leaves previously completed idempotent steps intact for retry.
 - Database passwords, URLs containing credentials, administrator passwords, client secrets, tokens, authorization codes, and raw exception objects are never logged.
 - Allowed operational identifiers include process name, step, tenant code, and client ID.
 - Existing tenant/admin configuration is never overwritten merely because the bootstrap is rerun.
@@ -138,9 +141,11 @@ Unit tests cover:
 
 - compiled migration runner initializes with `Migrator`, calls `up`, closes on success/failure, and emits only sanitized failure output;
 - administrator process resumes from every step, does not reset an existing password, and persists retry state without exposing secrets;
+- administrator input validation requires a production URL, enforces the HTTPS/local-loopback policy, canonicalizes new URLs, and recognizes the legacy migration double-slash form;
 - acme process creates only the tenant and its built-in scopes and is idempotent on rerun;
-- process state persistence and concurrency protection;
+- process state persistence, insert-race/concurrency protection, and a PostgreSQL-backed rollback-before-failure-state regression;
 - Docker entrypoint stops before service startup when migration exits non-zero and uses `exec` after success.
+- the built image contains `service/interaction-ui/dist/index.html` at the path served by Nest.
 
 Repository/integration tests cover the bootstrap process state adapter with PostgreSQL. Existing command-handler tests remain the source of truth for aggregate invariants.
 
@@ -148,7 +153,7 @@ Repository/integration tests cover the bootstrap process state adapter with Post
 
 Verification uses a new PostgreSQL 16 container and a freshly built service image:
 
-1. Inspect the image to confirm Yarn is not needed and TypeScript sources/CLI tooling are absent from the runtime path.
+1. Inspect the image to confirm Yarn is not needed, TypeScript sources/CLI tooling are absent from the runtime path, and the compiled Interaction UI is present.
 2. Inspect the CI publication workflows to confirm both `linux/amd64` and `linux/arm64` are included in the pushed manifest.
 3. Start the service container with database settings plus the legacy administrator variables.
 4. Confirm startup migration exits successfully before the HTTP server listens.
@@ -160,6 +165,8 @@ Verification uses a new PostgreSQL 16 container and a freshly built service imag
 10. Run focused unit/integration tests, the full service unit suite, the service build, and the architecture dependency check.
 
 Temporary containers, networks, and volumes created for verification are removed after results are captured.
+
+Local runtime verification covers the host architecture (`linux/arm64`). Multi-platform publication is verified from the Buildx/QEMU workflow configuration for `linux/amd64` and `linux/arm64`; this design does not claim a registry-published manifest or an `amd64` runtime execution was independently verified in the local run.
 
 ## Out of Scope
 
