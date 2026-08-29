@@ -24,13 +24,13 @@ function resolveAdminUiUrl(readEnv: (key: string) => string | undefined): {
   canonical: string;
   legacyMigrationRaw: string;
 } {
-  const configured = readEnv('ADMIN_UI_URL')?.trim();
+  const configured = readEnv('ADMIN_UI_URL');
   const production = readEnv('NODE_ENV')?.trim().toLowerCase() === 'production';
-  if (!configured && production) {
+  if ((configured === undefined || configured === '') && production) {
     throw new AdminUiUrlConfigurationError();
   }
 
-  const legacyMigrationRaw = configured || 'http://localhost:5173';
+  const legacyMigrationRaw = configured ?? 'http://localhost:5173';
   const canonical = canonicalizeAdminUiUrl(legacyMigrationRaw);
   if (!canonical) {
     throw new AdminUiUrlConfigurationError();

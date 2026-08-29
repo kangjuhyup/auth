@@ -31,7 +31,7 @@ describe('administrator bootstrap CLI', () => {
     const environment: Record<string, string> = {
       ADMIN_USERNAME: '  operator  ',
       ADMIN_PASSWORD: ' password=secret ',
-      ADMIN_UI_URL: '  https://admin.example.test///  ',
+      ADMIN_UI_URL: 'https://admin.example.test///',
     };
 
     const code = await runAdminBootstrap({
@@ -124,6 +124,8 @@ describe('administrator bootstrap CLI', () => {
 
   it.each([
     ['production-missing', undefined],
+    ['empty', ''],
+    ['surrounding-whitespace', '  https://admin.example.test///  '],
     ['relative', '/admin'],
     ['non-http', 'ftp://admin.example.test'],
     ['non-local-http', 'http://admin.example.test'],
@@ -160,7 +162,9 @@ describe('administrator bootstrap CLI', () => {
       expect(code).toBe(1);
       expect(bootstrap).not.toHaveBeenCalled();
       expect(caught).toMatchObject({ code: 'ADMIN_UI_URL_INVALID' });
-      expect(JSON.stringify(caught)).not.toContain(adminUiUrl ?? 'production');
+      if (adminUiUrl) {
+        expect(JSON.stringify(caught)).not.toContain(adminUiUrl);
+      }
       expect(JSON.stringify(caught)).not.toContain('secret');
     },
   );
