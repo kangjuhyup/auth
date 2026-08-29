@@ -32,7 +32,6 @@
   "dependencies": {
     "@kangjuhyup/rvlog": "^0.2.0",
     "@kangjuhyup/rvlog-nest": "^1.0.1",
-    "@mikro-orm/cli": "6.6.12",
     "@mikro-orm/core": "6.6.12",
     "@mikro-orm/migrations": "6.6.12",
     "@mikro-orm/mssql": "6.6.12",
@@ -59,10 +58,10 @@
     "pg": "^8.20.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "ts-node": "^10.9.2",
     "ulid": "^3.0.2"
   },
   "devDependencies": {
+    "@mikro-orm/cli": "6.6.12",
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",
@@ -82,6 +81,7 @@
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",
     "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0"
   },
   "resolutions": {
