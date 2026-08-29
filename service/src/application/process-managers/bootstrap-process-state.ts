@@ -68,13 +68,22 @@ export class BootstrapProcessState {
     this.lastFailureCode = null;
   }
 
-  shouldRunStep(expectedStep: string, steps: readonly string[]): boolean {
+  shouldRunStep(
+    expectedStep: string,
+    nextStep: string,
+    steps: readonly string[],
+  ): boolean {
     if (this.status === 'completed') {
       return false;
     }
 
-    const currentIndex = this.stepIndex(this.step, steps);
     const expectedIndex = this.stepIndex(expectedStep, steps);
+    const nextIndex = this.stepIndex(nextStep, steps);
+    if (nextIndex !== expectedIndex + 1) {
+      throw new Error('Bootstrap process next step is not a legal successor');
+    }
+
+    const currentIndex = this.stepIndex(this.step, steps);
     if (currentIndex > expectedIndex) {
       return false;
     }

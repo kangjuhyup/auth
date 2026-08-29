@@ -35,7 +35,18 @@ export class BootstrapStepRunner {
         initialStep: params.initialStep,
       },
       async (state) => {
-        if (!state.shouldRunStep(params.expectedStep, params.steps)) {
+        let shouldRun: boolean;
+        try {
+          shouldRun = state.shouldRunStep(
+            params.expectedStep,
+            params.nextStep,
+            params.steps,
+          );
+        } catch {
+          caughtFailureCode = 'BOOTSTRAP_STEP_FAILED';
+          return;
+        }
+        if (!shouldRun) {
           return;
         }
 

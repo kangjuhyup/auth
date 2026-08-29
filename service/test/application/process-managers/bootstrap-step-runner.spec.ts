@@ -158,29 +158,56 @@ describe('BootstrapStepRunner', () => {
     expect(error.stack).not.toContain('password=secret');
   });
 
-  it('rejects a runner transition to an earlier plan step', async () => {
-    const state = BootstrapProcessState.rehydrate({
-      processKey: 'bootstrap:admin:v1',
-      step: 'role',
-      status: 'pending',
-      retryCount: 0,
-      lastFailureCode: null,
-    });
-    const { runner } = createRunner(state);
-
-    await expect(
-      runner.run({
+  it.each([
+    {
+      name: 'backward',
+      currentStep: 'role',
+      nextStep: 'tenant',
+      steps: ['tenant', 'role', 'user', 'completed'],
+    },
+    {
+      name: 'non-immediate',
+      currentStep: 'tenant',
+      nextStep: 'user',
+      steps: ['tenant', 'role', 'user', 'completed'],
+    },
+    {
+      name: 'unknown',
+      currentStep: 'tenant',
+      nextStep: 'missing',
+      steps: ['tenant', 'role', 'user', 'completed'],
+    },
+  ])(
+    'rejects a $name successor before executing work',
+    async ({ currentStep, nextStep, steps }) => {
+      const state = BootstrapProcessState.rehydrate({
         processKey: 'bootstrap:admin:v1',
-        initialStep: 'tenant',
-        expectedStep: 'role',
-        nextStep: 'tenant',
-        steps: ['tenant', 'role', 'completed'],
-        work: jest.fn().mockResolvedValue(undefined),
-      }),
-    ).rejects.toMatchObject({ code: 'BOOTSTRAP_STEP_FAILED' });
-    expect(state.step).toBe('role');
-    expect(state.status).toBe('failed');
-  });
+        step: currentStep,
+        status: 'pending',
+        retryCount: 0,
+        lastFailureCode: null,
+      });
+      const { runner } = createRunner(state);
+      const work = jest.fn().mockResolvedValue(undefined);
+
+      await expect(
+        runner.run({
+          processKey: 'bootstrap:admin:v1',
+          initialStep: 'tenant',
+          expectedStep: currentStep,
+          nextStep,
+          steps,
+          work,
+        }),
+      ).rejects.toMatchObject({ code: 'BOOTSTRAP_STEP_FAILED' });
+
+      expect(work).not.toHaveBeenCalled();
+      expect(state.step).toBe(currentStep);
+      expect(state.status).toBe('pending');
+      expect(state.retryCount).toBe(0);
+      expect(state.lastFailureCode).toBeNull();
+    },
+  );
 
   it('explicitly finalizes a process at the terminal step', async () => {
     const state = BootstrapProcessState.start('bootstrap:acme:v1', 'tenant');
