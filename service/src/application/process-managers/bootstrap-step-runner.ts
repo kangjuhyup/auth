@@ -45,6 +45,7 @@ export class BootstrapStepRunner {
     steps: readonly string[];
     work: () => Promise<void>;
   }): Promise<void> {
+    const rollbackToken = Object.freeze({});
     let caughtFailureCode: BootstrapFailureCode | undefined;
 
     try {
@@ -54,43 +55,67 @@ export class BootstrapStepRunner {
           initialStep: params.initialStep,
         },
         async (state) => {
-          let shouldRun: boolean;
-          try {
-            shouldRun = state.shouldRunStep(
-              params.expectedStep,
-              params.nextStep,
-              params.steps,
-            );
-          } catch {
-            caughtFailureCode = 'BOOTSTRAP_STEP_FAILED';
-            return;
-          }
+          const shouldRun = state.shouldRunStep(
+            params.expectedStep,
+            params.nextStep,
+            params.steps,
+          );
           if (!shouldRun) {
             return;
           }
 
-          try {
-            state.beginAttempt();
-          } catch {
-            caughtFailureCode = 'BOOTSTRAP_STEP_FAILED';
-            return;
-          }
+          const stateBeforeAttempt = {
+            step: state.step,
+            status: state.status,
+            retryCount: state.retryCount,
+            lastFailureCode: state.lastFailureCode,
+          };
+          state.beginAttempt();
 
           try {
             await params.work();
             state.advance(params.expectedStep, params.nextStep, params.steps);
           } catch (error: unknown) {
             caughtFailureCode = this.knownFailureCode(error);
-            state.fail(caughtFailureCode);
+            state.step = stateBeforeAttempt.step;
+            state.status = stateBeforeAttempt.status;
+            state.retryCount = stateBeforeAttempt.retryCount;
+            state.lastFailureCode = stateBeforeAttempt.lastFailureCode;
+            throw rollbackToken;
           }
         },
       );
-    } catch {
-      throw new BootstrapProcessError('BOOTSTRAP_STEP_FAILED');
-    }
+    } catch (error: unknown) {
+      if (error !== rollbackToken || !caughtFailureCode) {
+        throw new BootstrapProcessError('BOOTSTRAP_STEP_FAILED');
+      }
+      const failureCode = caughtFailureCode;
 
-    if (caughtFailureCode) {
-      throw new BootstrapProcessError(caughtFailureCode);
+      try {
+        await this.repository.withLockedState(
+          {
+            processKey: params.processKey,
+            initialStep: params.initialStep,
+          },
+          async (state) => {
+            if (
+              !state.shouldRunStep(
+                params.expectedStep,
+                params.nextStep,
+                params.steps,
+              )
+            ) {
+              return;
+            }
+            state.beginAttempt();
+            state.fail(failureCode);
+          },
+        );
+      } catch {
+        throw new BootstrapProcessError('BOOTSTRAP_STEP_FAILED');
+      }
+
+      throw new BootstrapProcessError(failureCode);
     }
   }
 

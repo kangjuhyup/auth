@@ -25,21 +25,23 @@ export class BootstrapProcessRepositoryImpl implements BootstrapProcessRepositor
   ): Promise<T> {
     const em = this.orm.em.fork();
 
-    return RequestContext.create(em, async () => {
-      try {
-        return await em.transactional((transactionalEm) =>
+    try {
+      return await em.transactional((transactionalEm) =>
+        RequestContext.create(transactionalEm, () =>
           this.executeLocked(transactionalEm, params, work, false),
-        );
-      } catch (error) {
-        if (!(error instanceof BootstrapProcessInsertRaceError)) {
-          throw error;
-        }
-
-        return em.transactional((transactionalEm) =>
-          this.executeLocked(transactionalEm, params, work, true),
-        );
+        ),
+      );
+    } catch (error) {
+      if (!(error instanceof BootstrapProcessInsertRaceError)) {
+        throw error;
       }
-    });
+
+      return em.transactional((transactionalEm) =>
+        RequestContext.create(transactionalEm, () =>
+          this.executeLocked(transactionalEm, params, work, true),
+        ),
+      );
+    }
   }
 
   private async executeLocked<T>(

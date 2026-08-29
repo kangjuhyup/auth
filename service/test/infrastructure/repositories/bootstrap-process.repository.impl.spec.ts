@@ -194,9 +194,14 @@ describe('BootstrapProcessRepositoryImpl', () => {
 
   it('persists a sanitized failure without raw exception details', async () => {
     const entity = createEntity();
-    const entityManager = createTransactionManager();
-    entityManager.findOne.mockResolvedValue(entity);
-    const { repository } = createRepository([entityManager]);
+    const workEntityManager = createTransactionManager();
+    workEntityManager.findOne.mockResolvedValue(entity);
+    const failureEntityManager = createTransactionManager();
+    failureEntityManager.findOne.mockResolvedValue(entity);
+    const { repository, transactional } = createRepository([
+      workEntityManager,
+      failureEntityManager,
+    ]);
     const runner = new BootstrapStepRunner(repository);
 
     await expect(
@@ -219,6 +224,8 @@ describe('BootstrapProcessRepositoryImpl', () => {
     expect(entity.lastFailureCode).toBe('BOOTSTRAP_STEP_FAILED');
     expect(JSON.stringify(entity)).not.toContain('secret');
     expect(JSON.stringify(entity)).not.toContain('database.internal');
-    expect(entityManager.flush).toHaveBeenCalledTimes(1);
+    expect(transactional).toHaveBeenCalledTimes(2);
+    expect(workEntityManager.flush).not.toHaveBeenCalled();
+    expect(failureEntityManager.flush).toHaveBeenCalledTimes(1);
   });
 });

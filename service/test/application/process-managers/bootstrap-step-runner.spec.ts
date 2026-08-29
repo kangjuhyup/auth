@@ -130,6 +130,50 @@ describe('BootstrapStepRunner', () => {
     expect(JSON.stringify(state)).not.toContain('database.internal');
   });
 
+  it('rolls back the work transaction before recording a sanitized failure in a second lock', async () => {
+    const workTransactionState = BootstrapProcessState.start(
+      'bootstrap:acme:v1',
+      'tenant',
+    );
+    const failureTransactionState = BootstrapProcessState.start(
+      'bootstrap:acme:v1',
+      'tenant',
+    );
+    const rawError = new Error('password=secret database.internal');
+    const repository = {
+      withLockedState: jest
+        .fn()
+        .mockImplementationOnce(async (_params, lockedWork) => {
+          await lockedWork(workTransactionState);
+        })
+        .mockImplementationOnce(async (_params, lockedWork) =>
+          lockedWork(failureTransactionState),
+        ),
+    } as jest.Mocked<BootstrapProcessRepository>;
+    const runner = new BootstrapStepRunner(repository);
+
+    await expect(
+      runner.run({
+        processKey: 'bootstrap:acme:v1',
+        initialStep: 'tenant',
+        expectedStep: 'tenant',
+        nextStep: 'completed',
+        steps: acmeSteps,
+        work: jest.fn().mockRejectedValue(rawError),
+      }),
+    ).rejects.toMatchObject({
+      code: 'BOOTSTRAP_STEP_FAILED',
+      message: 'BOOTSTRAP_STEP_FAILED',
+    });
+
+    expect(repository.withLockedState).toHaveBeenCalledTimes(2);
+    expect(failureTransactionState.status).toBe('failed');
+    expect(failureTransactionState.retryCount).toBe(1);
+    expect(failureTransactionState.lastFailureCode).toBe(
+      'BOOTSTRAP_STEP_FAILED',
+    );
+  });
+
   it.each<Exclude<BootstrapFailureCode, 'BOOTSTRAP_STEP_FAILED'>>([
     'ADMIN_CREDENTIALS_REQUIRED',
     'ADMIN_PORTAL_CONFLICT',
