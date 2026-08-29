@@ -1,5 +1,6 @@
 import { MikroORM, type Options } from '@mikro-orm/core';
 import { Migrator } from '@mikro-orm/migrations';
+import { canonicalizeAdminUiUrl } from '@application/process-managers/admin-bootstrap-url';
 import { buildMikroOrmConfig } from '../infrastructure/mikro-orm/config/mikro-orm.config';
 
 type MigrationOrm = {
@@ -17,12 +18,29 @@ export type MigrationCliDependencies = {
   error(message: string): void;
 };
 
+class MigrationConfigurationError extends Error {
+  readonly code = 'ADMIN_UI_URL_INVALID';
+
+  constructor() {
+    super('ADMIN_UI_URL_INVALID');
+    this.name = 'MigrationConfigurationError';
+  }
+}
+
 export async function runMigrations(
   deps: MigrationDependencies = {
     readConfig: (key) => process.env[key],
     init: (options) => MikroORM.init(options),
   },
 ): Promise<void> {
+  const rawAdminUiUrl = deps.readConfig('ADMIN_UI_URL');
+  if (
+    rawAdminUiUrl !== undefined &&
+    canonicalizeAdminUiUrl(rawAdminUiUrl) === null
+  ) {
+    throw new MigrationConfigurationError();
+  }
+
   const config = buildMikroOrmConfig({ get: deps.readConfig });
   const orm = await deps.init({ ...config, extensions: [Migrator] });
   try {

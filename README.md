@@ -142,6 +142,8 @@ Interaction 화면을 수정한 뒤에는 다시 `yarn interaction-ui:build` 하
 
 운영 빌드 산출물은 TypeScript, `ts-node`, MikroORM CLI 없이 컴파일된 JavaScript를 Node.js로 직접 실행합니다. MikroORM의 컴파일된 migration 경로는 `service/`를 현재 작업 디렉터리로 삼는 `./dist`를 기준으로 합니다. 저장소 루트에서 실행할 때의 순서는 다음과 같습니다.
 
+Migration runner는 DB 설정을 구성하거나 연결하기 전에, `ADMIN_UI_URL`이 제공된 경우 그 원문을 먼저 검증합니다. 유효하지 않은 값은 DB 연결 없이 안전한 고정 오류로 실패합니다. 값이 없으면 이미 migration이 끝난 기존 배포와의 호환성을 위해 계속 진행하며, 유효한 값은 대소문자·기본 port·경로·slash를 변경하지 않아 보존된 migration이 정확한 환경 변수 원문을 사용합니다.
+
 ```bash
 cd service
 node --env-file=.env dist/cli/migrate.js

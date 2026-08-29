@@ -46,11 +46,12 @@ The existing development-only MikroORM CLI scripts remain available during devel
 
 `service/src/cli/migrate.ts` will:
 
-1. Build configuration through the existing `buildMikroOrmConfig` function and `process.env`.
-2. Initialize `MikroORM` with the `Migrator` extension.
-3. Execute `orm.getMigrator().up()` against compiled migrations selected by `DB_DRIVER`.
-4. Close the ORM in a `finally` block.
-5. Set a non-zero process exit code on failure.
+1. Read the raw `ADMIN_UI_URL` before building database configuration. If it is defined, validate it without trimming, normalizing, or mutating `process.env`; invalid values fail with a fixed safe code before any database connection. An undefined value remains allowed for already-migrated deployment compatibility.
+2. Build configuration through the existing `buildMikroOrmConfig` function and `process.env`. A valid noncanonical `ADMIN_UI_URL` remains unchanged so preserved migrations see the exact configured value.
+3. Initialize `MikroORM` with the `Migrator` extension.
+4. Execute `orm.getMigrator().up()` against compiled migrations selected by `DB_DRIVER`.
+5. Close the ORM in a `finally` block.
+6. Set a non-zero process exit code on failure.
 
 The runner logs only fixed status messages. It does not print the configuration object, connection URL, database password, error stack, or raw exception message. This keeps credential-bearing driver errors out of startup logs. Unit tests exercise the callable runner with an injected ORM initializer; the executable wrapper stays thin.
 
@@ -139,7 +140,7 @@ Implementation follows red-green-refactor and keeps Nest module loading out of u
 
 Unit tests cover:
 
-- compiled migration runner initializes with `Migrator`, calls `up`, closes on success/failure, and emits only sanitized failure output;
+- compiled migration runner preflights a provided raw `ADMIN_UI_URL` before ORM initialization, initializes with `Migrator`, calls `up`, closes on success/failure, and emits only sanitized failure output;
 - administrator process resumes from every step, does not reset an existing password, and persists retry state without exposing secrets;
 - administrator input validation requires a production URL, enforces the HTTPS/local-loopback policy, canonicalizes new URLs, and recognizes only the exact independently revalidated URI form produced by the immutable migration;
 - acme process creates only the tenant and its built-in scopes and is idempotent on rerun;
