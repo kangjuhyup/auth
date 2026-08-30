@@ -11,14 +11,13 @@ COPY package.json yarn.lock .yarnrc.yml ./
 COPY tsconfig.json ./
 COPY .yarn/releases .yarn/releases
 
-COPY service/package.json service/package.json
 COPY ui/package.json ui/package.json
-COPY docs/package.json docs/package.json
-COPY service/interaction-ui/package.json service/interaction-ui/package.json
 
 ENV YARN_NODE_LINKER=node-modules
+ENV YARN_ENABLE_IMMUTABLE_INSTALLS=true
+ENV YARN_NETWORK_CONCURRENCY=4
 ENV HUSKY=0
-RUN yarn install --immutable
+RUN yarn workspaces focus @auth/ui
 
 COPY ui ui
 
