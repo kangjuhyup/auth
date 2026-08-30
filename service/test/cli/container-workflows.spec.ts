@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const workflowsDirectory = resolve(__dirname, '../../../.github/workflows');
+const dockerDirectory = resolve(__dirname, '../../../deploy/docker');
 
 describe('container publication workflows', () => {
   it('publishes main images for amd64 and arm64', () => {
@@ -31,6 +32,32 @@ describe('container publication workflows', () => {
       expect(workflow).toContain('uses: docker/build-push-action@v6');
     },
   );
+});
+
+describe('UI production image build', () => {
+  it('installs only the UI workspace dependencies before compiling the UI', () => {
+    const dockerfile = readFileSync(
+      resolve(dockerDirectory, 'Dockerfile.ui'),
+      'utf8',
+    );
+    const dependencyStage = dockerfile.slice(0, dockerfile.indexOf('COPY ui ui'));
+
+    expect(dependencyStage).toMatch(/^RUN yarn workspaces focus @auth\/ui$/m);
+    expect(dependencyStage).toContain(
+      'ENV YARN_ENABLE_IMMUTABLE_INSTALLS=true',
+    );
+    expect(dependencyStage).not.toMatch(/^COPY (?:service|docs)\//m);
+    expect(dependencyStage).not.toContain('RUN yarn install --immutable');
+  });
+
+  it('bounds Yarn fetch concurrency for memory-constrained multi-arch builders', () => {
+    const dockerfile = readFileSync(
+      resolve(dockerDirectory, 'Dockerfile.ui'),
+      'utf8',
+    );
+
+    expect(dockerfile).toMatch(/^ENV YARN_NETWORK_CONCURRENCY=4$/m);
+  });
 });
 
 function readWorkflow(filename: string): string {
