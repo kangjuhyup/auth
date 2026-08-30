@@ -11,7 +11,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  PLATFORMS: linux/arm64
+  PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
   docker-publish:

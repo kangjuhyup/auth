@@ -2,8 +2,8 @@
 #   ※ release-please 가 GITHUB_TOKEN 만 쓰면 태그 푸시가 다른 워크플로를 트리거하지 않을 수 있음 → Secret RELEASE_PLEASE_TOKEN(PAT) 권장
 # 수동: Actions → Release → Run workflow (git_ref·version 지정, GitHub Release 생략 가능)
 #
-# 프로덕션: Oracle Cloud Infrastructure Ampere A1(ARM64). 이미지는 linux/arm64만 빌드합니다.
-# (x86/amd64는 사용하지 않음. 필요하면 아래 docker-publish 의 platforms에 linux/amd64 를 추가.)
+# 프로덕션 이미지는 linux/amd64와 linux/arm64를 모두 포함하는 multi-platform manifest로 배포합니다.
+# OCI A1(ARM64) 및 x86/amd64 노드에서 동일한 이미지 태그를 사용할 수 있습니다.
 #
 # 이미지: ghcr.io/<소문자 owner>/<소문자 repo>/auth-service | auth-ui :<태그>
 # 패키지가 보이지 않으면 저장소 Settings → Actions → General → Workflow permissions 에서
@@ -161,14 +161,14 @@ jobs:
             type=semver,pattern={{version}},value=${{ needs.verify.outputs.semver }}
             type=semver,pattern=v{{version}},value=${{ needs.verify.outputs.semver }}
 
-      # x86(amd64) 미사용 — OCI A1(ARM64) 전용. x86 필요 시: platforms 에 linux/amd64 추가.
+      # linux/amd64와 linux/arm64 manifest를 함께 게시합니다.
       - name: Build and push (${{ matrix.image_name }})
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ${{ matrix.dockerfile }}
           push: true
-          platforms: linux/arm64
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.image_name }}
@@ -216,7 +216,7 @@ jobs:
             docker pull ${{ env.REGISTRY }}/${{ steps.ns.outputs.repository_lc }}/auth-ui:${{ needs.verify.outputs.tag }}
             ```
 
-            이미지 아키텍처: linux/arm64 (OCI A1 등 ARM 노드용).
+            이미지 아키텍처: linux/amd64, linux/arm64 (multi-platform manifest).
 
             각 이미지에 `latest` 및 semver 형태 태그(예: `1.0.0`, `v1.0.0`)가 함께 붙습니다.
         env:

@@ -21,3 +21,4 @@ export * from './user-group';
 export * from './user-identity';
 export * from './user-role';
 export * from './client-auth-policy';
+export * from './bootstrap-process';

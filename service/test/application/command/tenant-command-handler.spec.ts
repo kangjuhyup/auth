@@ -92,6 +92,84 @@ describe('TenantCommandHandler', () => {
     });
   });
 
+  describe('ensureBuiltInScopes', () => {
+    it('rechecks requested built-in scopes and creates only the still-missing ones', async () => {
+      scopeRepo.findByName.mockImplementation(async (_tenantId, name) => {
+        if (name !== 'profile') return null;
+        const existing = new ScopeModel({
+          tenantId: 'tenant-1',
+          name: 'profile',
+          displayName: 'Profile',
+          description: 'Basic profile claims',
+          claimKeys: ['profile'],
+          enabled: true,
+          builtIn: true,
+        });
+        return existing.setPersistence('scope-profile', new Date(), new Date());
+      });
+
+      await handler.ensureBuiltInScopes('tenant-1', ['profile', 'email']);
+
+      expect(scopeRepo.findByName.mock.calls).toEqual([
+        ['tenant-1', 'profile'],
+        ['tenant-1', 'email'],
+      ]);
+      expect(scopeRepo.save).toHaveBeenCalledTimes(1);
+      const saved = scopeRepo.save.mock.calls[0][0];
+      expect(saved).toMatchObject({
+        tenantId: 'tenant-1',
+        name: 'email',
+        displayName: 'Email',
+        description: 'Email claims',
+        claimKeys: ['email'],
+        enabled: true,
+        builtIn: true,
+      });
+    });
+
+    it('does no scope write when every requested built-in scope exists', async () => {
+      scopeRepo.findByName.mockImplementation(async (_tenantId, name) => {
+        const existing = new ScopeModel({
+          tenantId: 'tenant-1',
+          name,
+          displayName: name,
+          description: null,
+          claimKeys: [],
+          enabled: true,
+          builtIn: true,
+        });
+        return existing.setPersistence(`scope-${name}`, new Date(), new Date());
+      });
+
+      await handler.ensureBuiltInScopes('tenant-1', [
+        'openid',
+        'profile',
+        'email',
+      ]);
+
+      expect(scopeRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('rejects a wrongly bound scope returned while rechecking', async () => {
+      const wronglyBound = new ScopeModel({
+        tenantId: 'tenant-other',
+        name: 'profile',
+        displayName: 'Profile',
+        description: null,
+        claimKeys: ['profile'],
+        enabled: true,
+        builtIn: true,
+      }).setPersistence('scope-profile', new Date(), new Date());
+      scopeRepo.findByName.mockResolvedValue(wronglyBound);
+
+      await expect(
+        handler.ensureBuiltInScopes('tenant-1', ['profile']),
+      ).rejects.toThrow(ConflictException);
+
+      expect(scopeRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
   describe('updateTenant', () => {
     it('findById → changeName → save 순서로 호출된다', async () => {
       await handler.updateTenant('tenant-1', { name: 'New Name' });
