@@ -35,6 +35,18 @@ describe('container publication workflows', () => {
 });
 
 describe('UI production image build', () => {
+  it('runs architecture-neutral UI compilation on the native build platform', () => {
+    const dockerfile = readFileSync(
+      resolve(dockerDirectory, 'Dockerfile.ui'),
+      'utf8',
+    );
+
+    expect(dockerfile).toMatch(
+      /^FROM --platform=\$BUILDPLATFORM node:24-alpine AS build$/m,
+    );
+    expect(dockerfile).toMatch(/^FROM nginx:1\.27-alpine AS runner$/m);
+  });
+
   it('installs only the UI workspace dependencies before compiling the UI', () => {
     const dockerfile = readFileSync(
       resolve(dockerDirectory, 'Dockerfile.ui'),
