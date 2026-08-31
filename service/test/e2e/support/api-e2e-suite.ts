@@ -604,8 +604,9 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
 
     async function waitForInvalidClientAudit(params: {
       tenantId: string;
-      clientId: string;
+      clientId: string | null;
       publicClientId: string;
+      excludedEventIds?: readonly string[];
     }) {
       const repository = new EventRepositoryImpl(fixture.orm.em);
       for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -621,7 +622,8 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           (candidate) =>
             candidate.reason === 'InvalidClient' &&
             candidate.clientId === params.clientId &&
-            candidate.resourceId === params.publicClientId,
+            candidate.resourceId === params.publicClientId &&
+            !params.excludedEventIds?.includes(candidate.id!),
         );
         if (event) return event;
         await new Promise((resolve) => setTimeout(resolve, 25));
@@ -1669,27 +1671,53 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           error: 'invalid_client',
         });
         expect(missingCredentials.status).toBe(401);
+        const missingCredentialsAudit = await waitForInvalidClientAudit({
+          tenantId: tenant.id,
+          clientId: resourceServer.id,
+          publicClientId: resourceServer.clientId,
+        });
 
+        const auditUserAgent = 'u'.repeat(300);
         const wrongSecret = await introspectToken({
           tenantCode: 'acme',
           clientId: resourceServer.clientId,
           clientSecret: 'wrong-introspection-secret-00000001',
           token: 'unknown-token',
-        }).expect(401);
+        })
+          .set('user-agent', auditUserAgent)
+          .expect(401);
         expect(wrongSecret.body).toMatchObject({ error: 'invalid_client' });
 
         const audit = await waitForInvalidClientAudit({
           tenantId: tenant.id,
           clientId: resourceServer.id,
           publicClientId: resourceServer.clientId,
+          excludedEventIds: [missingCredentialsAudit.id!],
         });
         expect(audit.metadata).toEqual({
           tenantCode: 'acme',
           endpoint: 'introspection',
         });
+        expect(audit.correlationId).toEqual(expect.any(String));
+        expect(audit.correlationId!.length).toBeLessThanOrEqual(128);
+        expect(audit.userAgent).toBe('u'.repeat(255));
         const persisted = JSON.stringify(audit);
         expect(persisted).not.toContain('wrong-introspection-secret-00000001');
         expect(persisted).not.toContain('unknown-token');
+
+        const unknownClientId = 'c'.repeat(255);
+        await introspectToken({
+          tenantCode: 'acme',
+          clientId: unknownClientId,
+          clientSecret: 'unknown-client-secret-redacted',
+          token: 'unknown-token',
+        }).expect(401);
+        const unknownAudit = await waitForInvalidClientAudit({
+          tenantId: tenant.id,
+          clientId: null,
+          publicClientId: 'c'.repeat(191),
+        });
+        expect(unknownAudit.resourceId).toHaveLength(191);
 
         const publicBasic = await introspectToken({
           tenantCode: 'acme',
@@ -1735,6 +1763,22 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           {
             type: 'service',
             secret: 'orders-api-introspection-secret-000004',
+            redirectUris: [],
+            grantTypes: ['client_credentials'],
+            responseTypes: [],
+            tokenEndpointAuthMethod: 'client_secret_basic',
+            scope: 'orders:read',
+            allowedResources: ['https://resource.example.test'],
+            introspectionResources: [resource],
+          },
+        );
+        const betaResourceServer = await createClient(
+          adminToken,
+          'beta',
+          'orders-api',
+          {
+            type: 'service',
+            secret: 'beta-orders-api-introspection-secret-000004',
             redirectUris: [],
             grantTypes: ['client_credentials'],
             responseTypes: [],
@@ -1822,6 +1866,15 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           prompt: 'consent',
         });
         expect(refreshLogin.refreshToken).toEqual(expect.any(String));
+
+        const sameClientIdCrossTenant = await introspectToken({
+          tenantCode: 'beta',
+          clientId: betaResourceServer.clientId,
+          clientSecret: betaResourceServer.secret,
+          token: revocable.accessToken,
+          tokenTypeHint: 'access_token',
+        }).expect(200);
+        expect(sameClientIdCrossTenant.body).toEqual({ active: false });
 
         await revokeAccessToken('acme', revocable.accessToken);
 
@@ -1954,50 +2007,6 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
             aud: resource,
             tenant_id: tenant.id,
           });
-
-          await createTenant(adminToken, 'beta', 'Beta Corp');
-          await request(fixture.app.getHttpServer())
-            .post('/t/beta/admin/scopes')
-            .set('Authorization', `Bearer ${adminToken}`)
-            .send({
-              name: 'orders:read',
-              displayName: 'Read orders',
-              claimKeys: [],
-              enabled: true,
-            })
-            .expect(201);
-          await createClient(adminToken, 'beta', client.clientId, {
-            scope: 'openid orders:read',
-            allowedResources: ['https://resource.example.test'],
-          });
-          const betaResourceServer = await createClient(
-            adminToken,
-            'beta',
-            'jwt-orders-api',
-            {
-              type: 'service',
-              secret: 'jwt-orders-api-introspection-secret',
-              redirectUris: [],
-              grantTypes: ['client_credentials'],
-              responseTypes: [],
-              tokenEndpointAuthMethod: 'client_secret_basic',
-              scope: 'orders:read',
-              introspectionResources: [resource],
-            },
-          );
-          const crossTenant = await introspectToken({
-            tenantCode: 'beta',
-            clientId: betaResourceServer.clientId,
-            clientSecret: betaResourceServer.secret,
-            token: login.accessToken,
-            tokenTypeHint: 'access_token',
-          });
-          expect([200, 400, 401]).toContain(crossTenant.status);
-          if (crossTenant.status === 200) {
-            expect(crossTenant.body).toEqual({ active: false });
-          } else {
-            expect(crossTenant.body.active).not.toBe(true);
-          }
         },
       );
 

@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
+import { isIP } from 'node:net';
 import type { Request } from 'express';
 import type {
   InteractionCompletionResult,
@@ -874,12 +875,12 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
         severity: 'WARN',
         action: 'ACCESS_DENIED',
         resourceType: 'oidc-client',
-        resourceId: publicClientId,
+        resourceId: truncateAuditText(publicClientId, 191),
         success: false,
         reason,
         ip: getIpBuffer(req),
-        userAgent: getHeader(req, 'user-agent'),
-        correlationId: getCorrelationId(req),
+        userAgent: truncateAuditText(getHeader(req, 'user-agent'), 255),
+        correlationId: truncateAuditText(getCorrelationId(req), 128),
         metadata: {
           tenantCode,
           endpoint,
@@ -997,7 +998,12 @@ function resolveClientAuthenticationFailureReason(
 }
 
 function getIpBuffer(req: Request): Buffer | null {
-  return req.ip ? Buffer.from(req.ip, 'utf8') : null;
+  return req.ip && isIP(req.ip) !== 0 ? Buffer.from(req.ip, 'utf8') : null;
+}
+
+function truncateAuditText(value: unknown, maxLength: number): string | null {
+  if (typeof value !== 'string' || value.length === 0) return null;
+  return Array.from(value).slice(0, maxLength).join('');
 }
 
 function getCorrelationId(req: Request): string | null {

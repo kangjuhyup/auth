@@ -378,6 +378,39 @@ describe('createOidcProvider', () => {
     );
   });
 
+  it('provider 감사 필드를 event 저장소 한도에 맞추고 검증된 IP를 보존한다', async () => {
+    const params = createParams();
+    const provider = await createOidcProvider(params);
+    const publicClientId = 'c'.repeat(255);
+    const userAgent = 'u'.repeat(300);
+    const correlationId = 'r'.repeat(200);
+
+    (provider as any).emit(
+      'introspection.error',
+      {
+        ip: '2001:db8::1',
+        req: { tenant: { id: 'tenant-1' }, correlationId },
+        get: jest.fn().mockReturnValue(userAgent),
+        oidc: {
+          params: { client_id: publicClientId },
+        },
+      },
+      { error: 'invalid_client' },
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(params.clientRepository.findByClientId).toHaveBeenCalledWith(
+      'tenant-1',
+      publicClientId,
+    );
+    const event = (params.eventRepository.save as jest.Mock).mock.calls[0][0];
+    expect(event.resourceId).toBe('c'.repeat(191));
+    expect(event.userAgent).toBe('u'.repeat(255));
+    expect(event.correlationId).toBe('r'.repeat(128));
+    expect(event.ip).toEqual(Buffer.from('2001:db8::1', 'utf8'));
+  });
+
   it('unknown Basic client과 감사 저장 실패가 real provider 401 rendering을 방해하지 않는다', async () => {
     const params = createParams();
     params.clientRepository.findByClientId = jest.fn().mockResolvedValue(null);

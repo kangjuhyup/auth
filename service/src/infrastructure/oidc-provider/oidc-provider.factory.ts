@@ -1,4 +1,5 @@
 import { createPrivateKey } from 'node:crypto';
+import { isIP } from 'node:net';
 import type { EntityManager } from '@mikro-orm/core';
 import type Redis from 'ioredis';
 import type Provider from 'oidc-provider';
@@ -53,6 +54,9 @@ export type CreateOidcProviderParams = {
 
 const DEFAULT_ACCESS_TOKEN_TTL = 60 * 60;
 const DEFAULT_REFRESH_TOKEN_TTL = 14 * 24 * 60 * 60;
+const EVENT_RESOURCE_ID_MAX_LENGTH = 191;
+const EVENT_USER_AGENT_MAX_LENGTH = 255;
+const EVENT_CORRELATION_ID_MAX_LENGTH = 128;
 
 export async function createOidcProvider(
   params: CreateOidcProviderParams,
@@ -191,16 +195,12 @@ async function auditRefreshTokenReuse(
       severity: 'WARN',
       action: 'TOKEN_REVOKED',
       resourceType: 'grant',
-      resourceId: grantId,
+      resourceId: truncateAuditText(grantId, EVENT_RESOURCE_ID_MAX_LENGTH),
       success: false,
       reason: 'RefreshTokenReuseDetected',
-      ip: null,
-      userAgent: ctx?.get?.('user-agent') ?? null,
-      correlationId:
-        ctx?.req?.correlationId ??
-        ctx?.get?.('x-correlation-id') ??
-        ctx?.get?.('x-request-id') ??
-        null,
+      ip: getSafeIpBuffer(ctx),
+      userAgent: getSafeUserAgent(ctx),
+      correlationId: getSafeCorrelationId(ctx),
       metadata: {
         grantType: 'refresh_token',
         action: 'revoke_grant',
@@ -274,10 +274,13 @@ async function auditProviderClientAuthenticationFailure(params: {
       severity: 'WARN',
       action: 'ACCESS_DENIED',
       resourceType: 'oidc-client',
-      resourceId: publicClientId,
+      resourceId: truncateAuditText(
+        publicClientId,
+        EVENT_RESOURCE_ID_MAX_LENGTH,
+      ),
       success: false,
       reason: 'InvalidClient',
-      ip: null,
+      ip: getSafeIpBuffer(ctx),
       userAgent: getSafeUserAgent(ctx),
       correlationId: getSafeCorrelationId(ctx),
       metadata: {
@@ -333,16 +336,34 @@ function getSafeBasicClientId(authorization: unknown): string | null {
 
 function getSafeUserAgent(ctx: any): string | null {
   const userAgent = ctx?.get?.('user-agent');
-  return typeof userAgent === 'string' && userAgent.length <= 512
-    ? userAgent
-    : null;
+  return truncateAuditText(userAgent, EVENT_USER_AGENT_MAX_LENGTH);
 }
 
 function getSafeCorrelationId(ctx: any): string | null {
-  const correlationId = ctx?.req?.correlationId;
-  return typeof correlationId === 'string' && correlationId.length <= 255
-    ? correlationId
-    : null;
+  return truncateAuditText(
+    ctx?.req?.correlationId ??
+      ctx?.get?.('x-correlation-id') ??
+      ctx?.get?.('x-request-id'),
+    EVENT_CORRELATION_ID_MAX_LENGTH,
+  );
+}
+
+function getSafeIpBuffer(ctx: any): Buffer | null {
+  const candidates = [
+    ctx?.ip,
+    ctx?.request?.ip,
+    ctx?.req?.ip,
+    ctx?.req?.socket?.remoteAddress,
+  ];
+  const ip = candidates.find(
+    (candidate) => typeof candidate === 'string' && isIP(candidate) !== 0,
+  );
+  return typeof ip === 'string' ? Buffer.from(ip, 'utf8') : null;
+}
+
+function truncateAuditText(value: unknown, maxLength: number): string | null {
+  if (typeof value !== 'string' || value.length === 0) return null;
+  return Array.from(value).slice(0, maxLength).join('');
 }
 
 function incrementMetricSafely(

@@ -210,7 +210,9 @@ tenant-scoped security audit category used by token-endpoint client
 authentication failures. The event records only the tenant, decoded client ID
 when safely available, endpoint name, reason category, request/correlation ID,
 IP, and user agent. It never records the presented secret, Authorization
-header, or token parameter.
+header, or token parameter. Persisted text is bounded to the existing event
+schema (`resource_id` 191, `user_agent` 255, `correlation_id` 128), and an IP
+is retained only when it parses as an IPv4 or IPv6 address.
 
 ## 6. Application and Persistence Changes
 
