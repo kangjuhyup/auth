@@ -130,6 +130,7 @@ export const OpenApiResponseSchemas = {
       'https://app.example.com/frontchannel-logout',
     ),
     allowedResources: arrayOf(string('https://api.example.com')),
+    introspectionResources: arrayOf(string('https://api.example.com')),
     skipConsent: boolean(false),
     accessTokenTtlSec: { ...integer(3600), nullable: true },
     refreshTokenTtlSec: { ...integer(1209600), nullable: true },

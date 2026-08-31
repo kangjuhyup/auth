@@ -22,6 +22,7 @@ function makeClient(
     backchannelLogoutUri: null,
     frontchannelLogoutUri: null,
     allowedResources,
+    introspectionResources: [],
     skipConsent: false,
   });
   c.setPersistence('client-1', new Date(), new Date());
@@ -50,7 +51,10 @@ describe('ClientQueryHandler', () => {
 
   describe('getAllowedResources', () => {
     it('클라이언트의 allowedResources를 반환한다', async () => {
-      const resources = ['https://api.example.com', 'https://graph.example.com'];
+      const resources = [
+        'https://api.example.com',
+        'https://graph.example.com',
+      ];
       clientRepo.findByClientId.mockResolvedValue(makeClient(resources));
 
       const result = await handler.getAllowedResources({
@@ -58,7 +62,10 @@ describe('ClientQueryHandler', () => {
         clientId: 'app-web',
       });
 
-      expect(clientRepo.findByClientId).toHaveBeenCalledWith('tenant-1', 'app-web');
+      expect(clientRepo.findByClientId).toHaveBeenCalledWith(
+        'tenant-1',
+        'app-web',
+      );
       expect(result).toEqual(resources);
     });
 

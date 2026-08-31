@@ -441,6 +441,62 @@ features: {
 
 ---
 
+## 6.1 Resource Server Token Introspection
+
+Opaque access token을 사용하는 resource server는 tenant 별 introspection endpoint를 호출할 수 있다. 이 endpoint의 인증, 오류 응답, token 처리와 정책 적용은 `node-oidc-provider`가 소유한다.
+
+### 6.1.1 Resource Server 등록
+
+introspection caller는 대상 tenant에 등록된 enabled `service` client여야 하며, confidential client 인증(`client_secret_basic`)을 사용해야 한다. `allowedResources`와 `introspectionResources`는 별도 allowlist다.
+
+- `allowedResources`: 해당 client가 access token을 요청할 수 있는 resource indicator/audience 목록이다.
+- `introspectionResources`: 해당 service client가 introspect할 수 있는 token audience 목록이다. 이 목록에 없는 audience를 조회하면 허용되지 않는다.
+
+두 목록 모두 tenant origin에 바인딩된다. caller tenant, token tenant, audience 또는 allowlist 형태가 일치하지 않거나 신뢰할 수 없으면 정책은 fail closed로 동작한다.
+
+### 6.1.2 Opaque Token 호출
+
+`token` form field에 opaque access token을 넣고, service client 자격 증명은 HTTP Basic으로만 전달한다. 아래 값은 모두 문서용 synthetic placeholder이며 운영 자격 증명이나 token을 로그, shell history, 오류 보고서에 남기면 안 된다.
+
+```bash
+curl -u 'orders-api:REDACTED_RESOURCE_SERVER_SECRET' \
+  -H 'content-type: application/x-www-form-urlencoded' \
+  --data-urlencode 'token=REDACTED_OPAQUE_ACCESS_TOKEN' \
+  https://auth.example.com/t/acme/oidc/token/introspection
+```
+
+성공한 active response는 다음 stable claim subset을 제공한다. 아래 scoped user-token 예에서는 `scope`가 필수이지만, 표준 `client_credentials` 요청은 `scope`를 생략할 수 있으므로 provider가 active response에서 `scope`를 생략할 수 있다. `sub`, `jti`, `sid`, `cnf`도 선택 사항이고 `aud`는 하나의 문자열 또는 문자열 배열이다.
+
+```json
+{
+  "active": true,
+  "client_id": "orders-api",
+  "token_type": "Bearer",
+  "scope": "orders:read",
+  "iss": "https://auth.example.com/t/acme/oidc",
+  "aud": "https://orders.example.com",
+  "exp": 1735689600,
+  "iat": 1735686000,
+  "tenant_id": "tenant-acme"
+}
+```
+
+inactive token의 response body는 추가 claim 없이 정확히 다음과 같다.
+
+```json
+{"active": false}
+```
+
+잘못된 form 요청은 `invalid_request` 또는 `unsupported_token_type` (`400`)을 반환할 수 있고, client authentication 실패는 `invalid_client` (`401`)이다.
+
+### 6.1.3 JWT와 Opaque 검증의 구분
+
+Opaque access token은 위 introspection endpoint에서만 활성 상태와 정책을 확인한다. JWT access token은 introspection에 보내지 않는다. resource server가 해당 tenant issuer를 정확히 확인하고 discovery의 tenant JWKS로 서명을 검증하며, issuer, audience, 만료와 tenant binding을 모두 fail closed로 검증한다.
+
+로그에는 `Authorization` header, Basic credential, client secret, opaque/JWT access token 또는 token form body를 절대로 기록하지 않는다.
+
+---
+
 # 7. Token Verification Inside This Project
 
 외부 API 보호용 access token 검증은 provider callback 과 별도로 [access-verifier.adapter.ts](../src/infrastructure/oidc-provider/access-verifier.adapter.ts) 에서 처리한다.

@@ -1,4 +1,5 @@
 import { createPrivateKey } from 'node:crypto';
+import { isIP } from 'node:net';
 import type { EntityManager } from '@mikro-orm/core';
 import type Redis from 'ioredis';
 import type Provider from 'oidc-provider';
@@ -26,6 +27,7 @@ import { CUSTOM_GRANT_TYPES } from './custom-grants';
 import { resolveCustomGrantDefinitions } from './custom-grants/custom-grant-metadata';
 import { ScopeRegistryPort } from '@application/ports/scope-registry.port';
 import { ScopeClaimResolverPort } from '@application/ports/scope-claim-resolver.port';
+import { OperationalMetricsPort } from '@application/ports/operational-metrics.port';
 
 export type CreateOidcProviderParams = {
   issuer: string;
@@ -47,10 +49,14 @@ export type CreateOidcProviderParams = {
   grantTypeRegistry: GrantTypeRegistryPort;
   scopeRegistry: ScopeRegistryPort;
   scopeClaimResolver: ScopeClaimResolverPort;
+  metrics: OperationalMetricsPort;
 };
 
 const DEFAULT_ACCESS_TOKEN_TTL = 60 * 60;
 const DEFAULT_REFRESH_TOKEN_TTL = 14 * 24 * 60 * 60;
+const EVENT_RESOURCE_ID_MAX_LENGTH = 191;
+const EVENT_USER_AGENT_MAX_LENGTH = 255;
+const EVENT_CORRELATION_ID_MAX_LENGTH = 128;
 
 export async function createOidcProvider(
   params: CreateOidcProviderParams,
@@ -136,9 +142,20 @@ export async function createOidcProvider(
 
   provider.on('grant.revoked', (ctx, grantId) => {
     if (!isRefreshTokenReuseRevocation(ctx)) return;
-    void auditRefreshTokenReuse(params.eventRepository, ctx, grantId).catch(
-      () => undefined,
-    );
+    void auditRefreshTokenReuse(
+      params.eventRepository,
+      params.clientRepository,
+      ctx,
+      grantId,
+    ).catch(() => undefined);
+  });
+  registerClientAuthenticationFailureAudit({
+    provider,
+    tenantId: tenant.id,
+    tenantCode: params.tenantCode,
+    clientRepository: params.clientRepository,
+    eventRepository: params.eventRepository,
+    metrics: params.metrics,
   });
 
   return provider;
@@ -155,6 +172,7 @@ function isRefreshTokenReuseRevocation(ctx: any): boolean {
 
 async function auditRefreshTokenReuse(
   eventRepository: EventRepository,
+  clientRepository: ClientRepository,
   ctx: any,
   grantId: string,
 ): Promise<void> {
@@ -162,25 +180,27 @@ async function auditRefreshTokenReuse(
   if (!tenantId) return;
 
   const refreshToken = ctx?.oidc?.entities?.RefreshToken;
+  const publicClientId = getSafePublicClientId(
+    ctx?.oidc?.client?.clientId ?? refreshToken?.clientId,
+  );
+  const client = publicClientId
+    ? await clientRepository.findByClientId(tenantId, publicClientId)
+    : null;
   await eventRepository.save(
     new EventModel({
       tenantId,
       userId: refreshToken?.accountId ?? null,
-      clientId: ctx?.oidc?.client?.clientId ?? refreshToken?.clientId ?? null,
+      clientId: client?.id ?? null,
       category: 'SECURITY',
       severity: 'WARN',
       action: 'TOKEN_REVOKED',
       resourceType: 'grant',
-      resourceId: grantId,
+      resourceId: truncateAuditText(grantId, EVENT_RESOURCE_ID_MAX_LENGTH),
       success: false,
       reason: 'RefreshTokenReuseDetected',
-      ip: null,
-      userAgent: ctx?.get?.('user-agent') ?? null,
-      correlationId:
-        ctx?.req?.correlationId ??
-        ctx?.get?.('x-correlation-id') ??
-        ctx?.get?.('x-request-id') ??
-        null,
+      ip: getSafeIpBuffer(ctx),
+      userAgent: getSafeUserAgent(ctx),
+      correlationId: getSafeCorrelationId(ctx),
       metadata: {
         grantType: 'refresh_token',
         action: 'revoke_grant',
@@ -189,4 +209,171 @@ async function auditRefreshTokenReuse(
       occurredAt: new Date(),
     }),
   );
+}
+
+function registerClientAuthenticationFailureAudit(params: {
+  provider: Provider;
+  tenantId: string;
+  tenantCode: string;
+  clientRepository: ClientRepository;
+  eventRepository: EventRepository;
+  metrics: OperationalMetricsPort;
+}): void {
+  const observe = (endpoint: 'token' | 'introspection') => {
+    return (ctx: unknown, error: unknown) => {
+      if (!isInvalidClientError(error)) return;
+
+      incrementMetricSafely(params.metrics, 'invalid_client_total', {
+        tenantCode: params.tenantCode,
+      });
+      void auditProviderClientAuthenticationFailure({
+        ...params,
+        endpoint,
+        ctx,
+      }).catch(() => {
+        incrementMetricSafely(params.metrics, 'oidc_audit_failure_total', {
+          tenantCode: params.tenantCode,
+        });
+      });
+    };
+  };
+
+  params.provider.on('grant.error', observe('token'));
+  params.provider.on('introspection.error', observe('introspection'));
+}
+
+async function auditProviderClientAuthenticationFailure(params: {
+  tenantId: string;
+  tenantCode: string;
+  endpoint: 'token' | 'introspection';
+  clientRepository: ClientRepository;
+  eventRepository: EventRepository;
+  ctx: unknown;
+}): Promise<void> {
+  const ctx = params.ctx as any;
+  if (ctx?.req?.tenant?.id !== params.tenantId) return;
+
+  const publicClientId = getSafePublicClientId(
+    ctx?.oidc?.client?.clientId ??
+      ctx?.oidc?.params?.client_id ??
+      getSafeBasicClientId(ctx?.req?.headers?.authorization),
+  );
+  const client = publicClientId
+    ? await params.clientRepository.findByClientId(
+        params.tenantId,
+        publicClientId,
+      )
+    : null;
+  const grantType = getSafePublicClientId(ctx?.oidc?.params?.grant_type);
+
+  await params.eventRepository.save(
+    new EventModel({
+      tenantId: params.tenantId,
+      clientId: client?.id ?? null,
+      category: 'SECURITY',
+      severity: 'WARN',
+      action: 'ACCESS_DENIED',
+      resourceType: 'oidc-client',
+      resourceId: truncateAuditText(
+        publicClientId,
+        EVENT_RESOURCE_ID_MAX_LENGTH,
+      ),
+      success: false,
+      reason: 'InvalidClient',
+      ip: getSafeIpBuffer(ctx),
+      userAgent: getSafeUserAgent(ctx),
+      correlationId: getSafeCorrelationId(ctx),
+      metadata: {
+        tenantCode: params.tenantCode,
+        endpoint: params.endpoint,
+        ...(params.endpoint === 'token' && grantType ? { grantType } : {}),
+      },
+      occurredAt: new Date(),
+    }),
+  );
+}
+
+function isInvalidClientError(error: unknown): boolean {
+  return (error as { error?: unknown } | null)?.error === 'invalid_client';
+}
+
+function getSafePublicClientId(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 255) {
+    return null;
+  }
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+  return /^[\x21-\x7e]+$/.test(decoded) ? decoded : null;
+}
+
+function getSafeBasicClientId(authorization: unknown): string | null {
+  if (
+    typeof authorization !== 'string' ||
+    authorization.length === 0 ||
+    authorization.length > 4096
+  ) {
+    return null;
+  }
+
+  const match = /^Basic ([A-Za-z0-9+/=]+)$/i.exec(authorization);
+  if (!match) return null;
+
+  let decoded: string;
+  try {
+    decoded = Buffer.from(match[1], 'base64').toString('utf8');
+  } catch {
+    return null;
+  }
+
+  const separator = decoded.indexOf(':');
+  if (separator <= 0) return null;
+  return getSafePublicClientId(decoded.slice(0, separator));
+}
+
+function getSafeUserAgent(ctx: any): string | null {
+  const userAgent = ctx?.get?.('user-agent');
+  return truncateAuditText(userAgent, EVENT_USER_AGENT_MAX_LENGTH);
+}
+
+function getSafeCorrelationId(ctx: any): string | null {
+  return truncateAuditText(
+    ctx?.req?.correlationId ??
+      ctx?.get?.('x-correlation-id') ??
+      ctx?.get?.('x-request-id'),
+    EVENT_CORRELATION_ID_MAX_LENGTH,
+  );
+}
+
+function getSafeIpBuffer(ctx: any): Buffer | null {
+  const candidates = [
+    ctx?.ip,
+    ctx?.request?.ip,
+    ctx?.req?.ip,
+    ctx?.req?.socket?.remoteAddress,
+  ];
+  const ip = candidates.find(
+    (candidate) => typeof candidate === 'string' && isIP(candidate) !== 0,
+  );
+  return typeof ip === 'string' ? Buffer.from(ip, 'utf8') : null;
+}
+
+function truncateAuditText(value: unknown, maxLength: number): string | null {
+  if (typeof value !== 'string' || value.length === 0) return null;
+  return Array.from(value).slice(0, maxLength).join('');
+}
+
+function incrementMetricSafely(
+  metrics: OperationalMetricsPort,
+  name: string,
+  labels: { tenantCode: string },
+): void {
+  try {
+    metrics.incrementCounter(name, labels);
+  } catch {
+    // Metrics must not alter provider-owned protocol responses.
+  }
 }

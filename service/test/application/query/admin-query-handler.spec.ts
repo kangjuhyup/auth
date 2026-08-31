@@ -74,6 +74,7 @@ function makeClient(id: string, tenantId: string): ClientModel {
     backchannelLogoutUri: 'https://app.example.com/bc-logout',
     frontchannelLogoutUri: null,
     allowedResources: ['https://api.example.com'],
+    introspectionResources: ['https://api.example.com'],
     skipConsent: false,
   });
   c.setPersistence(id, new Date('2024-01-01'), new Date('2024-01-01'));
@@ -620,6 +621,7 @@ describe('AdminQueryHandler - Client', () => {
       );
       expect(item.frontchannelLogoutUri).toBeNull();
       expect(item.allowedResources).toEqual(['https://api.example.com']);
+      expect(item.introspectionResources).toEqual(['https://api.example.com']);
     });
   });
 
@@ -634,6 +636,9 @@ describe('AdminQueryHandler - Client', () => {
       expect(result.clientId).toBe('app-web');
       expect(result.applicationType).toBe('web');
       expect(result.allowedResources).toEqual(['https://api.example.com']);
+      expect(result.introspectionResources).toEqual([
+        'https://api.example.com',
+      ]);
     });
 
     it('클라이언트가 없으면 NotFoundException을 던진다', async () => {

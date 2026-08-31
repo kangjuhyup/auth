@@ -23,12 +23,19 @@ interface ClientModelProps {
   accessTokenTtlSec?: number | null;
   refreshTokenTtlSec?: number | null;
   allowedResources: string[];
+  introspectionResources?: string[];
   skipConsent: boolean;
 }
 
 export class ClientModel extends PersistenceModel<string, ClientModelProps> {
   constructor(props: ClientModelProps, id?: string) {
-    super(props, id);
+    super(
+      {
+        ...props,
+        introspectionResources: [...(props.introspectionResources ?? [])],
+      },
+      id,
+    );
   }
 
   @Getter()
@@ -84,6 +91,9 @@ export class ClientModel extends PersistenceModel<string, ClientModelProps> {
 
   @Getter()
   declare readonly allowedResources: string[];
+
+  @Getter()
+  declare readonly introspectionResources: string[];
 
   @Getter()
   declare readonly skipConsent: boolean;
@@ -142,6 +152,10 @@ export class ClientModel extends PersistenceModel<string, ClientModelProps> {
 
   changeAllowedResources(resources: string[]): void {
     this.etc.allowedResources = resources;
+  }
+
+  changeIntrospectionResources(resources: string[]): void {
+    this.etc.introspectionResources = [...new Set(resources)];
   }
 
   changeAccessTokenTtlSec(sec: number | null): void {

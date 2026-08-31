@@ -101,6 +101,7 @@ export function createOpenApiDocument(app: INestApplication) {
       },
       'access-token',
     )
+    .addBasicAuth({ type: 'http', scheme: 'basic' }, 'resource-server-basic')
     .addCookieAuth('admin_session', {
       type: 'apiKey',
       in: 'cookie',

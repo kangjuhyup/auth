@@ -13,6 +13,8 @@ import type { GrantTypeRegistryPort } from '@application/ports/grant-type-regist
 import type { ScopeRegistryPort } from '@application/ports/scope-registry.port';
 import { ClientModel } from '@domain/models/client';
 import { ClientAuthPolicyModel } from '@domain/models/client-auth-policy';
+import { UpdateClientDto as ApplicationUpdateClientDto } from '@application/dto';
+import type { AuditRecorder } from '@application/services/audit-recorder';
 
 function makeClient(id = 'client-1', tenantId = 'tenant-1'): ClientModel {
   const c = new ClientModel({
@@ -32,12 +34,40 @@ function makeClient(id = 'client-1', tenantId = 'tenant-1'): ClientModel {
     backchannelLogoutUri: null,
     frontchannelLogoutUri: null,
     allowedResources: [],
+    introspectionResources: [],
     skipConsent: false,
     accessTokenTtlSec: null,
     refreshTokenTtlSec: null,
   });
   c.setPersistence(id, new Date(), new Date());
   return c;
+}
+
+function makeServiceClient(): ClientModel {
+  const client = new ClientModel({
+    tenantId: 'tenant-1',
+    clientId: 'orders-api',
+    secretEnc: 'enc:service-secret',
+    name: 'Orders API',
+    type: 'service',
+    enabled: true,
+    redirectUris: [],
+    grantTypes: ['client_credentials'],
+    responseTypes: [],
+    tokenEndpointAuthMethod: 'client_secret_basic',
+    scope: 'orders:read',
+    postLogoutRedirectUris: [],
+    applicationType: 'web',
+    backchannelLogoutUri: null,
+    frontchannelLogoutUri: null,
+    allowedResources: [],
+    introspectionResources: ['https://api.example.com'],
+    skipConsent: true,
+    accessTokenTtlSec: null,
+    refreshTokenTtlSec: null,
+  });
+  client.setPersistence('client-1', new Date(), new Date());
+  return client;
 }
 
 function makeClientAuthPolicy(clientRefId = 'client-1'): ClientAuthPolicyModel {
@@ -113,6 +143,12 @@ function createMockScopeRegistry(): jest.Mocked<ScopeRegistryPort> {
   };
 }
 
+function createMockAuditRecorder(): jest.Mocked<AuditRecorder> {
+  return {
+    recordAdminAction: jest.fn().mockResolvedValue(undefined),
+  } as unknown as jest.Mocked<AuditRecorder>;
+}
+
 describe('ClientCommandHandler', () => {
   let handler: ClientCommandHandler;
   let clientRepo: jest.Mocked<ClientRepository>;
@@ -120,6 +156,7 @@ describe('ClientCommandHandler', () => {
   let crypto: jest.Mocked<SymmetricCryptoPort>;
   let grantTypeRegistry: jest.Mocked<GrantTypeRegistryPort>;
   let scopeRegistry: jest.Mocked<ScopeRegistryPort>;
+  let auditRecorder: jest.Mocked<AuditRecorder>;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -128,12 +165,14 @@ describe('ClientCommandHandler', () => {
     crypto = createMockCrypto();
     grantTypeRegistry = createMockGrantTypeRegistry();
     scopeRegistry = createMockScopeRegistry();
+    auditRecorder = createMockAuditRecorder();
     handler = new ClientCommandHandler(
       clientRepo,
       clientAuthPolicyRepo,
       crypto,
       grantTypeRegistry,
       scopeRegistry,
+      auditRecorder,
     );
   });
 
@@ -285,6 +324,65 @@ describe('ClientCommandHandler', () => {
 
       expect(clientRepo.save).not.toHaveBeenCalled();
     });
+
+    it.each([
+      [
+        {
+          type: 'public' as const,
+          secret: 's'.repeat(32),
+          tokenEndpointAuthMethod: 'client_secret_basic',
+        },
+        'client_type_not_allowed',
+      ],
+      [
+        {
+          type: 'service' as const,
+          tokenEndpointAuthMethod: 'client_secret_basic',
+        },
+        'client_secret_required',
+      ],
+      [
+        {
+          type: 'service' as const,
+          secret: 's'.repeat(32),
+          tokenEndpointAuthMethod: 'client_secret_post',
+        },
+        'client_auth_method_not_allowed',
+      ],
+    ])(
+      'introspection resource를 가진 잘못된 service 설정을 거부한다',
+      async (overrides, reason) => {
+        await expect(
+          handler.createClient('tenant-1', {
+            clientId: 'orders-api',
+            name: 'Orders API',
+            introspectionResources: ['https://api.example.com'],
+            ...overrides,
+          }),
+        ).rejects.toMatchObject({
+          response: expect.objectContaining({ issues: [reason] }),
+        });
+        expect(clientRepo.save).not.toHaveBeenCalled();
+      },
+    );
+
+    it('service client의 introspection resources를 origin으로 정규화하고 중복 제거한다', async () => {
+      await handler.createClient('tenant-1', {
+        clientId: 'orders-api',
+        name: 'Orders API',
+        type: 'service',
+        secret: 's'.repeat(32),
+        grantTypes: ['client_credentials'],
+        tokenEndpointAuthMethod: 'client_secret_basic',
+        introspectionResources: [
+          'https://api.example.com/orders',
+          'https://api.example.com/customers',
+        ],
+      });
+
+      const saved = clientRepo.save.mock.calls[0][0] as ClientModel;
+      expect(saved.introspectionResources).toEqual(['https://api.example.com']);
+    });
   });
 
   describe('updateClient', () => {
@@ -329,6 +427,31 @@ describe('ClientCommandHandler', () => {
       expect(crypto.encrypt).not.toHaveBeenCalled();
       const saved = clientRepo.save.mock.calls[0][0] as ClientModel;
       expect(saved.secretEnc).toBeNull();
+    });
+
+    it('factory DTO audit에는 실제 변경 필드만 기록하고 secret 이름은 제외한다', async () => {
+      const dto = ApplicationUpdateClientDto.of({
+        secret: 's'.repeat(32),
+        name: 'Updated',
+        frontchannelLogoutUri: null,
+      });
+
+      await handler.updateClient('tenant-1', 'client-1', dto);
+
+      expect(auditRecorder.recordAdminAction).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        action: 'UPDATE',
+        resourceType: 'client',
+        resourceId: 'client-1',
+        metadata: {
+          changedFields: ['name', 'frontchannelLogoutUri'],
+          secretChanged: true,
+        },
+        auditContext: undefined,
+      });
+      const metadata = auditRecorder.recordAdminAction.mock.calls[0][0]
+        .metadata as { changedFields: string[] };
+      expect(metadata.changedFields).not.toContain('secret');
     });
 
     it('신규 필드를 업데이트할 수 있다', async () => {
@@ -434,6 +557,83 @@ describe('ClientCommandHandler', () => {
 
       expect(clientRepo.save).not.toHaveBeenCalled();
     });
+
+    it('allowlist가 남아 있으면 기존 secret 제거를 거부한다', async () => {
+      clientRepo.findById.mockResolvedValue(makeServiceClient());
+
+      await expect(
+        handler.updateClient('tenant-1', 'client-1', { secret: null }),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({
+          issues: ['client_secret_required'],
+        }),
+      });
+      expect(clientRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('allowlist가 남아 있으면 인증 방식 변경을 거부한다', async () => {
+      clientRepo.findById.mockResolvedValue(makeServiceClient());
+
+      await expect(
+        handler.updateClient('tenant-1', 'client-1', {
+          tokenEndpointAuthMethod: 'client_secret_post',
+        }),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({
+          issues: ['client_auth_method_not_allowed'],
+        }),
+      });
+      expect(clientRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('update introspection resources를 origin으로 정규화하고 중복 제거한다', async () => {
+      clientRepo.findById.mockResolvedValue(makeServiceClient());
+
+      await handler.updateClient('tenant-1', 'client-1', {
+        introspectionResources: [
+          'https://API.example.com/orders',
+          'https://api.example.com/customers',
+        ],
+      });
+
+      const saved = clientRepo.save.mock.calls[0][0] as ClientModel;
+      expect(saved.introspectionResources).toEqual(['https://api.example.com']);
+    });
+
+    it('유효한 service client update에서도 잘못된 origin을 거부한다', async () => {
+      clientRepo.findById.mockResolvedValue(makeServiceClient());
+
+      await expect(
+        handler.updateClient('tenant-1', 'client-1', {
+          introspectionResources: ['http://api.example.com/orders'],
+        }),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({
+          issues: ['invalid_resource_origin'],
+        }),
+      });
+      expect(clientRepo.save).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [{ secret: null, introspectionResources: [] }],
+      [
+        {
+          tokenEndpointAuthMethod: 'client_secret_post',
+          introspectionResources: [],
+        },
+      ],
+    ])(
+      '같은 update에서 allowlist를 비우면 제한된 변경을 허용한다',
+      async (dto) => {
+        clientRepo.findById.mockResolvedValue(makeServiceClient());
+
+        await handler.updateClient('tenant-1', 'client-1', dto);
+
+        const saved = clientRepo.save.mock.calls[0][0] as ClientModel;
+        expect(saved.introspectionResources).toEqual([]);
+      },
+    );
   });
 
   describe('updateClientAuthPolicy', () => {

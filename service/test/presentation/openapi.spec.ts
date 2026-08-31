@@ -8,6 +8,7 @@ import {
   paginatedSchema,
 } from '@presentation/openapi-response';
 import { applyEndpointReference } from '@presentation/openapi-endpoints';
+import Ajv from 'ajv';
 
 function config(values: Record<string, string | undefined>): ConfigService {
   return {
@@ -104,6 +105,122 @@ describe('openapi docs', () => {
     expect(document.paths['/t/{tenantCode}/oidc/jwks']?.get?.summary).toBe(
       'JWKS endpoint',
     );
+  });
+
+  it('resource server introspection 계약은 Basic 인증과 active/inactive 응답 union을 문서화한다', () => {
+    const document: { paths: Record<string, any> } = { paths: {} };
+
+    applyEndpointReference(document);
+
+    const operation =
+      document.paths['/t/{tenantCode}/oidc/token/introspection'].post;
+    expect(operation.security).toEqual([{ 'resource-server-basic': [] }]);
+    const schema =
+      operation.responses['200'].content['application/json'].schema;
+    expect(schema.oneOf[0].required).toEqual(
+      expect.arrayContaining([
+        'active',
+        'client_id',
+        'token_type',
+        'iss',
+        'aud',
+        'exp',
+        'iat',
+        'tenant_id',
+      ]),
+    );
+    expect(schema.oneOf[1]).toMatchObject({
+      additionalProperties: false,
+      required: ['active'],
+    });
+
+    const requestSchema =
+      operation.requestBody.content['application/x-www-form-urlencoded'].schema;
+    expect(requestSchema.required).toEqual(['token']);
+    expect(Object.keys(requestSchema.properties).sort()).toEqual([
+      'token',
+      'token_type_hint',
+    ]);
+
+    expect(
+      operation.responses['401'].content['application/json'].examples,
+    ).toEqual(
+      expect.objectContaining({
+        invalidClient: { value: { error: 'invalid_client' } },
+      }),
+    );
+    expect(
+      operation.responses['401'].content['application/json'].schema.properties
+        .error.example,
+    ).toBe('invalid_client');
+    expect(
+      operation.responses['400'].content['application/json'].examples,
+    ).toEqual({
+      invalidRequest: { value: { error: 'invalid_request' } },
+      unsupportedTokenType: { value: { error: 'unsupported_token_type' } },
+    });
+  });
+
+  it('introspection document response schemas distinguish valid active and exact inactive payloads', () => {
+    const document: { paths: Record<string, any> } = { paths: {} };
+    applyEndpointReference(document);
+
+    const schema =
+      document.paths['/t/{tenantCode}/oidc/token/introspection'].post.responses[
+        '200'
+      ].content['application/json'].schema;
+    const [active, inactive] = schema.oneOf;
+    const activeResponse = {
+      active: true,
+      client_id: 'orders-api',
+      token_type: 'Bearer',
+      scope: 'orders:read',
+      iss: 'https://auth.example.com/t/acme/oidc',
+      aud: 'https://orders.example.com',
+      exp: 1735689600,
+      iat: 1735686000,
+      tenant_id: 'tenant-acme',
+      sub: 'user-123',
+      jti: 'token-123',
+      sid: 'session-123',
+      cnf: { jkt: 'thumbprint' },
+    };
+
+    const validate = new Ajv({
+      strict: false,
+      formats: { uri: true, int64: true },
+    }).compile(schema);
+
+    expect(validate(activeResponse)).toBe(true);
+    expect(
+      validate({
+        ...activeResponse,
+        aud: ['https://orders.example.com', 'https://audit.example.com'],
+      }),
+    ).toBe(true);
+    for (const optionalClaim of ['sub', 'jti', 'sid', 'cnf']) {
+      const withoutOptionalClaim = { ...activeResponse };
+      delete withoutOptionalClaim[
+        optionalClaim as keyof typeof withoutOptionalClaim
+      ];
+      expect(validate(withoutOptionalClaim)).toBe(true);
+    }
+    const withoutScope = { ...activeResponse };
+    delete (withoutScope as { scope?: string }).scope;
+    expect(validate(withoutScope)).toBe(true);
+    const incompleteActiveResponse = { ...activeResponse };
+    delete (incompleteActiveResponse as { exp?: number }).exp;
+    expect(validate(incompleteActiveResponse)).toBe(false);
+    expect(validate({ ...activeResponse, internal_secret: 'forbidden' })).toBe(
+      false,
+    );
+    expect(validate({ active: false })).toBe(true);
+    expect(validate({ active: false, client_id: 'orders-api' })).toBe(false);
+
+    expect(active.required).not.toEqual(
+      expect.arrayContaining(['scope', 'sub', 'jti', 'sid', 'cnf']),
+    );
+    expect(Object.keys(inactive.properties)).toEqual(['active']);
   });
 
   it('controller 기반 endpoint에는 ENDPOINTS 문서의 보안 설명을 operation description으로 병합한다', () => {

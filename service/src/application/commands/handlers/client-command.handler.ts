@@ -27,6 +27,7 @@ import type { GrantTypeValidationIssue } from '@application/ports/grant-type-reg
 import { ScopeRegistryPort } from '@application/ports/scope-registry.port';
 import type { ScopeValidationIssue } from '@application/ports/scope-registry.port';
 import { normalizeScopeString, parseScopeString } from '@domain/models/scope';
+import { ResourceOrigin } from '@domain/value-objects/resource-origin';
 
 @Injectable()
 export class ClientCommandHandler implements ClientCommandPort {
@@ -60,6 +61,13 @@ export class ClientCommandHandler implements ClientCommandPort {
     const applicationType = dto.applicationType ?? 'web';
     const grantTypes = dto.grantTypes ?? ['authorization_code'];
     const tokenEndpointAuthMethod = dto.tokenEndpointAuthMethod ?? 'none';
+    const normalizedIntrospectionResources =
+      this.normalizeAndAssertIntrospectionResources({
+        clientType,
+        tokenEndpointAuthMethod,
+        hasSecret: Boolean(dto.secret),
+        resources: dto.introspectionResources ?? [],
+      });
 
     await this.assertGrantTypesAllowed({
       tenantId,
@@ -94,10 +102,12 @@ export class ClientCommandHandler implements ClientCommandPort {
       backchannelLogoutUri: dto.backchannelLogoutUri ?? null,
       frontchannelLogoutUri: dto.frontchannelLogoutUri ?? null,
       allowedResources: dto.allowedResources ?? [],
+      introspectionResources: [],
       skipConsent: dto.skipConsent ?? false,
       accessTokenTtlSec: dto.accessTokenTtlSec ?? null,
       refreshTokenTtlSec: dto.refreshTokenTtlSec ?? null,
     });
+    client.changeIntrospectionResources(normalizedIntrospectionResources);
 
     const saved = await this.clientRepo.save(client);
     await this.clientAuthPolicyRepo.save(
@@ -131,6 +141,22 @@ export class ClientCommandHandler implements ClientCommandPort {
       new NotFoundException('Client not found'),
       (c) => c.tenantId === tenantId,
     );
+
+    const nextResources =
+      dto.introspectionResources ?? client.introspectionResources;
+    const nextAuthMethod =
+      dto.tokenEndpointAuthMethod ?? client.tokenEndpointAuthMethod;
+    const nextHasSecret =
+      dto.secret === undefined
+        ? Boolean(client.secretEnc)
+        : Boolean(dto.secret);
+    const normalizedIntrospectionResources =
+      this.normalizeAndAssertIntrospectionResources({
+        clientType: client.type,
+        tokenEndpointAuthMethod: nextAuthMethod,
+        hasSecret: nextHasSecret,
+        resources: nextResources,
+      });
 
     if (
       dto.grantTypes !== undefined ||
@@ -176,6 +202,7 @@ export class ClientCommandHandler implements ClientCommandPort {
       client.changeFrontchannelLogoutUri(dto.frontchannelLogoutUri ?? null);
     if (dto.allowedResources !== undefined)
       client.changeAllowedResources(dto.allowedResources);
+    client.changeIntrospectionResources(normalizedIntrospectionResources);
     if (dto.skipConsent !== undefined) client.setSkipConsent(dto.skipConsent);
     if (dto.accessTokenTtlSec !== undefined)
       client.changeAccessTokenTtlSec(dto.accessTokenTtlSec);
@@ -189,7 +216,9 @@ export class ClientCommandHandler implements ClientCommandPort {
       resourceType: 'client',
       resourceId: id,
       metadata: {
-        changedFields: Object.keys(dto).filter((key) => key !== 'secret'),
+        changedFields: Object.entries(dto)
+          .filter(([key, value]) => key !== 'secret' && value !== undefined)
+          .map(([key]) => key),
         secretChanged: dto.secret !== undefined,
       },
       auditContext,
@@ -350,6 +379,46 @@ export class ClientCommandHandler implements ClientCommandPort {
     }
 
     return normalizeScopeString(scope);
+  }
+
+  private normalizeAndAssertIntrospectionResources(params: {
+    clientType: ClientModel['type'];
+    tokenEndpointAuthMethod: string;
+    hasSecret: boolean;
+    resources: string[];
+  }): string[] {
+    if (params.resources.length === 0) return [];
+    if (params.clientType !== 'service') {
+      throw new BadRequestException({
+        message: 'Invalid resource server introspection policy',
+        issues: ['client_type_not_allowed'],
+      });
+    }
+    if (params.tokenEndpointAuthMethod !== 'client_secret_basic') {
+      throw new BadRequestException({
+        message: 'Invalid resource server introspection policy',
+        issues: ['client_auth_method_not_allowed'],
+      });
+    }
+    if (!params.hasSecret) {
+      throw new BadRequestException({
+        message: 'Invalid resource server introspection policy',
+        issues: ['client_secret_required'],
+      });
+    }
+
+    try {
+      return [
+        ...new Set(
+          params.resources.map((resource) => ResourceOrigin.of(resource).value),
+        ),
+      ];
+    } catch {
+      throw new BadRequestException({
+        message: 'Invalid resource server introspection policy',
+        issues: ['invalid_resource_origin'],
+      });
+    }
   }
 }
 

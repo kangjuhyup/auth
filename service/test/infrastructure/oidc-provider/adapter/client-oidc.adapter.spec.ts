@@ -39,6 +39,7 @@ function makeClient(
       overrides.backchannelLogoutUri ?? 'https://app.example.com/bc',
     frontchannelLogoutUri: overrides.frontchannelLogoutUri ?? null,
     allowedResources: ['https://api.example.com'],
+    introspectionResources: [],
     skipConsent: false,
   });
   c.setPersistence('1', new Date(), new Date());
@@ -114,16 +115,37 @@ describe('ClientOidcAdapter', () => {
       expect(result!.frontchannel_logout_uri).toBeUndefined();
     });
 
-    it('provider client metadata에서는 refresh_token grant를 제외한다', async () => {
+    it('provider client metadata는 refresh_token을 보존하고 지원되지 않는 grant를 제외한다', async () => {
       clientRepo.findByClientId.mockResolvedValue(
         makeClient({
-          grantTypes: ['authorization_code', 'refresh_token'],
+          grantTypes: [
+            'authorization_code',
+            'refresh_token',
+            'unsupported_custom_grant',
+          ],
         }),
       );
 
       const result = await adapter.find('my-app');
 
-      expect(result!.grant_types).toEqual(['authorization_code']);
+      expect(result!.grant_types).toEqual([
+        'authorization_code',
+        'refresh_token',
+      ]);
+    });
+
+    it('tenant registry에서 검증된 custom URN grant를 보존한다', async () => {
+      clientRepo.findByClientId.mockResolvedValue(
+        makeClient({
+          grantTypes: ['urn:example:params:oauth:grant-type:delegation'],
+        }),
+      );
+
+      const result = await adapter.find('my-app');
+
+      expect(result!.grant_types).toEqual([
+        'urn:example:params:oauth:grant-type:delegation',
+      ]);
     });
 
     it('secretEnc가 있으면 복호화하여 client_secret에 넣는다', async () => {

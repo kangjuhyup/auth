@@ -1,4 +1,13 @@
-import { Entity, PrimaryKey, Property, ManyToOne, OneToMany, Collection, Unique, Ref } from '@mikro-orm/core';
+import {
+  Entity,
+  PrimaryKey,
+  Property,
+  ManyToOne,
+  OneToMany,
+  Collection,
+  Unique,
+  Ref,
+} from '@mikro-orm/core';
 import { BaseEntity } from '../base';
 import { TenantOrmEntity } from './tenant';
 import { UserRoleOrmEntity } from './user-role';
@@ -9,18 +18,35 @@ export type ClientType = 'confidential' | 'public' | 'service';
 export type ApplicationType = 'web' | 'native';
 
 @Entity({ tableName: 'client' })
-@Unique({ properties: ['tenant', 'clientId'], name: 'uk_client_tenant_clientid' })
+@Unique({
+  properties: ['tenant', 'clientId'],
+  name: 'uk_client_tenant_clientid',
+})
 export class ClientOrmEntity extends BaseEntity {
   @PrimaryKey({ type: 'bigint', autoincrement: true })
   id!: string;
 
-  @ManyToOne(() => TenantOrmEntity, { fieldName: 'tenant_id', deleteRule: 'restrict', ref: true })
+  @ManyToOne(() => TenantOrmEntity, {
+    fieldName: 'tenant_id',
+    deleteRule: 'restrict',
+    ref: true,
+  })
   tenant!: Ref<TenantOrmEntity>;
 
-  @Property({ fieldName: 'client_id', type: 'varchar', length: 128, index: true })
+  @Property({
+    fieldName: 'client_id',
+    type: 'varchar',
+    length: 128,
+    index: true,
+  })
   clientId!: string;
 
-  @Property({ fieldName: 'secret_enc', type: 'varchar', length: 512, nullable: true })
+  @Property({
+    fieldName: 'secret_enc',
+    type: 'varchar',
+    length: 512,
+    nullable: true,
+  })
   secretEnc?: string | null;
 
   @Property({ type: 'varchar', length: 128 })
@@ -71,14 +97,31 @@ export class ClientOrmEntity extends BaseEntity {
   })
   applicationType!: ApplicationType;
 
-  @Property({ fieldName: 'backchannel_logout_uri', type: 'varchar', length: 512, nullable: true })
+  @Property({
+    fieldName: 'backchannel_logout_uri',
+    type: 'varchar',
+    length: 512,
+    nullable: true,
+  })
   backchannelLogoutUri?: string | null;
 
-  @Property({ fieldName: 'frontchannel_logout_uri', type: 'varchar', length: 512, nullable: true })
+  @Property({
+    fieldName: 'frontchannel_logout_uri',
+    type: 'varchar',
+    length: 512,
+    nullable: true,
+  })
   frontchannelLogoutUri?: string | null;
 
   @Property({ fieldName: 'allowed_resources', type: 'json', default: '[]' })
   allowedResources!: string[];
+
+  @Property({
+    fieldName: 'introspection_resources',
+    type: 'json',
+    default: '[]',
+  })
+  introspectionResources!: string[];
 
   @Property({ fieldName: 'access_token_ttl_sec', type: 'int', nullable: true })
   accessTokenTtlSec?: number | null;

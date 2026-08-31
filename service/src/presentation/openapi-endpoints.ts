@@ -392,28 +392,102 @@ function mergeOidcProviderPaths(document: OpenApiDocument): void {
       post: oidcOperation({
         summary: 'Token introspection endpoint',
         description:
-          'Allows authorized resource servers or clients to inspect token activity. Client authentication is required and inactive tokens do not reveal sensitive internals.',
-        requestBody: tokenRequestBody(['token']),
+          'Allows an authorized resource server to inspect opaque token activity with HTTP Basic client authentication. JWT access tokens are locally validated against the tenant issuer and JWKS instead. Tenant and audience policy failures fail closed, and inactive tokens reveal no sensitive internals.',
+        requestBody: introspectionRequestBody(),
+        security: [{ 'resource-server-basic': [] }],
         responses: {
           '200': {
             description: 'Token introspection response',
             content: {
               'application/json': {
                 schema: {
-                  type: 'object',
-                  required: ['active'],
-                  properties: {
-                    active: { type: 'boolean', example: true },
-                    sub: { type: 'string' },
-                    client_id: { type: 'string' },
-                    scope: { type: 'string' },
-                    exp: { type: 'integer' },
+                  oneOf: [
+                    {
+                      type: 'object',
+                      additionalProperties: false,
+                      required: [
+                        'active',
+                        'client_id',
+                        'token_type',
+                        'iss',
+                        'aud',
+                        'exp',
+                        'iat',
+                        'tenant_id',
+                      ],
+                      properties: {
+                        active: { type: 'boolean', enum: [true] },
+                        client_id: { type: 'string' },
+                        token_type: { type: 'string', example: 'Bearer' },
+                        scope: { type: 'string' },
+                        iss: { type: 'string', format: 'uri' },
+                        aud: {
+                          oneOf: [
+                            { type: 'string', format: 'uri' },
+                            {
+                              type: 'array',
+                              items: { type: 'string', format: 'uri' },
+                            },
+                          ],
+                        },
+                        exp: { type: 'integer', format: 'int64' },
+                        iat: { type: 'integer', format: 'int64' },
+                        tenant_id: { type: 'string' },
+                        sub: { type: 'string' },
+                        jti: { type: 'string' },
+                        sid: { type: 'string' },
+                        cnf: { type: 'object', additionalProperties: true },
+                      },
+                    },
+                    {
+                      type: 'object',
+                      additionalProperties: false,
+                      required: ['active'],
+                      properties: {
+                        active: { type: 'boolean', enum: [false] },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          '400': {
+            ...OAUTH_ERROR_RESPONSE,
+            content: {
+              'application/json': {
+                schema: OAUTH_ERROR_RESPONSE.content['application/json'].schema,
+                examples: {
+                  invalidRequest: {
+                    value: { error: 'invalid_request' },
+                  },
+                  unsupportedTokenType: {
+                    value: { error: 'unsupported_token_type' },
                   },
                 },
               },
             },
           },
-          '401': OAUTH_ERROR_RESPONSE,
+          '401': {
+            ...OAUTH_ERROR_RESPONSE,
+            content: {
+              'application/json': {
+                schema: {
+                  ...OAUTH_ERROR_RESPONSE.content['application/json'].schema,
+                  properties: {
+                    ...OAUTH_ERROR_RESPONSE.content['application/json'].schema
+                      .properties,
+                    error: { type: 'string', example: 'invalid_client' },
+                  },
+                },
+                examples: {
+                  invalidClient: {
+                    value: { error: 'invalid_client' },
+                  },
+                },
+              },
+            },
+          },
         },
       }),
     },
@@ -533,6 +607,24 @@ function tokenRequestBody(required: string[]) {
             token_type_hint: { type: 'string', example: 'refresh_token' },
             client_id: { type: 'string' },
             client_secret: { type: 'string' },
+          },
+        },
+      },
+    },
+  };
+}
+
+function introspectionRequestBody() {
+  return {
+    required: true,
+    content: {
+      'application/x-www-form-urlencoded': {
+        schema: {
+          type: 'object',
+          required: ['token'],
+          properties: {
+            token: { type: 'string' },
+            token_type_hint: { type: 'string', example: 'access_token' },
           },
         },
       },

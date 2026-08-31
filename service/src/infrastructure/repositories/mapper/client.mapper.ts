@@ -23,6 +23,7 @@ export class ClientMapper {
         accessTokenTtlSec: entity.accessTokenTtlSec ?? null,
         refreshTokenTtlSec: entity.refreshTokenTtlSec ?? null,
         allowedResources: entity.allowedResources,
+        introspectionResources: [...(entity.introspectionResources ?? [])],
         skipConsent: entity.skipConsent ?? false,
       },
       entity.id,
@@ -57,6 +58,7 @@ export class ClientMapper {
     entity.accessTokenTtlSec = domain.accessTokenTtlSec ?? null;
     entity.refreshTokenTtlSec = domain.refreshTokenTtlSec ?? null;
     entity.allowedResources = domain.allowedResources;
+    entity.introspectionResources = [...domain.introspectionResources];
     entity.skipConsent = domain.skipConsent;
 
     if (domain.id) {

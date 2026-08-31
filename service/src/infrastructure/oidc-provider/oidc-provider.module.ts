@@ -89,6 +89,7 @@ import { UserSessionPort } from '@application/ports/user-session.port';
             grantTypeRegistry,
             scopeRegistry,
             scopeClaimResolver,
+            metrics,
           });
         }, metrics);
 

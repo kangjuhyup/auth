@@ -64,7 +64,13 @@ describe('buildOidcConfiguration', () => {
 
     const configService = makeConfigService(configOverrides);
 
-    const clientRepository = {} as ClientRepository;
+    const clientRepository: jest.Mocked<ClientRepository> = {
+      findById: jest.fn().mockResolvedValue(null),
+      findByClientId: jest.fn().mockResolvedValue(null),
+      list: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+      save: jest.fn().mockImplementation(async (client) => client),
+      delete: jest.fn().mockResolvedValue(undefined),
+    };
     const clientAuthPolicyRepository = {
       findByClientRefId: jest.fn().mockResolvedValue(null),
     } as any as jest.Mocked<ClientAuthPolicyRepository>;
@@ -177,6 +183,31 @@ describe('buildOidcConfiguration', () => {
       'client_credentials',
       'implicit',
     ]);
+  });
+
+  it('introspection과 tenant-supported client credentials를 활성화한다', () => {
+    const cfg = buildOidcConfiguration({ ...makeDeps(), tenantCode: 'acme' });
+
+    expect(cfg.features?.introspection?.enabled).toBe(true);
+    expect(cfg.features?.clientCredentials?.enabled).toBe(true);
+    expect(typeof cfg.features?.introspection?.allowedPolicy).toBe('function');
+  });
+
+  it('tenant가 client_credentials를 지원하지 않으면 해당 feature를 비활성화한다', () => {
+    const deps = makeDeps();
+    deps.supportedGrantTypes = ['authorization_code', 'refresh_token'];
+
+    const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
+
+    expect(cfg.features?.clientCredentials?.enabled).toBe(false);
+  });
+
+  it('access token에 안정적인 tenant_id claim만 추가한다', async () => {
+    const cfg = buildOidcConfiguration({ ...makeDeps(), tenantCode: 'acme' });
+
+    await expect(cfg.extraTokenClaims!({} as any, {} as any)).resolves.toEqual({
+      tenant_id: 'tenant-1',
+    });
   });
 
   it('tenant가 없으면 getResourceServerInfo에서 에러(missing_tenant)를 던진다', async () => {

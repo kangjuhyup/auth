@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
+import { isIP } from 'node:net';
 import type { Request } from 'express';
 import type {
   InteractionCompletionResult,
@@ -187,6 +188,14 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
       grant.addOIDCScope(missingScope.join(' '));
     }
 
+    const missingResourceScopes =
+      ((prompt.details as any).missingResourceScopes as
+        | Record<string, string[]>
+        | undefined) ?? {};
+    for (const [resource, scopes] of Object.entries(missingResourceScopes)) {
+      grant.addResourceScope(resource, scopes.join(' '));
+    }
+
     const grantId = await grant.save();
     const redirectTo = await provider.interactionResult(
       params.req as any,
@@ -228,8 +237,9 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
     }
 
     const startedAt = Date.now();
-    const tokenEndpoint = isTokenEndpoint(req.url);
-    const grantType = getGrantType(req);
+    const endpoint = getClientAuthenticatedEndpoint(req.url);
+    const tokenEndpoint = endpoint === 'token';
+    const grantType = tokenEndpoint ? getGrantType(req) : null;
 
     try {
       const result = await provider.callback()(
@@ -248,15 +258,28 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
       }
       return result;
     } catch (error) {
-      if (tokenEndpoint) {
+      if (endpoint) {
         const errorCode = getOidcErrorCode(error);
-        if (errorCode === 'invalid_grant' || errorCode === 'invalid_client') {
+        if (
+          errorCode === 'invalid_client' ||
+          (tokenEndpoint && errorCode === 'invalid_grant')
+        ) {
           this.metrics.incrementCounter(`${errorCode}_total`, {
             tenantCode: params.tenantCode,
           });
         }
         if (errorCode === 'invalid_client') {
-          await this.auditClientAuthenticationFailure(params.tenantCode, req);
+          try {
+            await this.auditClientAuthenticationFailure(
+              params.tenantCode,
+              endpoint,
+              req,
+            );
+          } catch {
+            this.metrics.incrementCounter('oidc_audit_failure_total', {
+              tenantCode: params.tenantCode,
+            });
+          }
         }
       }
       throw error;
@@ -830,6 +853,7 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
 
   private async auditClientAuthenticationFailure(
     tenantCode: string,
+    endpoint: ClientAuthenticatedEndpoint,
     req: Request,
   ): Promise<void> {
     const tenant = (req as any).tenant as TenantContext | undefined;
@@ -837,30 +861,30 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
       return;
     }
 
-    const clientId = getClientId(req);
-    const client = clientId
-      ? await this.clientRepo.findByClientId(tenant.id, clientId)
+    const publicClientId = getSafeAuditClientId(getClientId(req));
+    const client = publicClientId
+      ? await this.clientRepo.findByClientId(tenant.id, publicClientId)
       : null;
     const reason = resolveClientAuthenticationFailureReason(client, req);
 
     await this.eventRepo.save(
       new EventModel({
         tenantId: tenant.id,
-        clientId,
+        clientId: client?.id ?? null,
         category: 'SECURITY',
         severity: 'WARN',
         action: 'ACCESS_DENIED',
         resourceType: 'oidc-client',
-        resourceId: clientId,
+        resourceId: truncateAuditText(publicClientId, 191),
         success: false,
         reason,
         ip: getIpBuffer(req),
-        userAgent: getHeader(req, 'user-agent'),
-        correlationId: getCorrelationId(req),
+        userAgent: truncateAuditText(getHeader(req, 'user-agent'), 255),
+        correlationId: truncateAuditText(getCorrelationId(req), 128),
         metadata: {
           tenantCode,
-          endpoint: 'token',
-          grantType: getGrantType(req),
+          endpoint,
+          ...(endpoint === 'token' ? { grantType: getGrantType(req) } : {}),
         },
         occurredAt: new Date(),
       }),
@@ -868,8 +892,19 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
   }
 }
 
-function isTokenEndpoint(url: string): boolean {
-  return url === '/token' || url.startsWith('/token?');
+type ClientAuthenticatedEndpoint = 'token' | 'introspection';
+
+function getClientAuthenticatedEndpoint(
+  url: string,
+): ClientAuthenticatedEndpoint | null {
+  if (url === '/token' || url.startsWith('/token?')) return 'token';
+  if (
+    url === '/token/introspection' ||
+    url.startsWith('/token/introspection?')
+  ) {
+    return 'introspection';
+  }
+  return null;
 }
 
 function getGrantType(req: Request): string | null {
@@ -899,6 +934,13 @@ function getClientId(req: Request): string | null {
 
   const basicCredentials = getBasicCredentials(req);
   return basicCredentials?.clientId ?? null;
+}
+
+function getSafeAuditClientId(value: string | null): string | null {
+  if (!value || value.length > 255) {
+    return null;
+  }
+  return /^[\x21-\x7e]+$/.test(value) ? value : null;
 }
 
 function getBasicCredentials(
@@ -956,7 +998,12 @@ function resolveClientAuthenticationFailureReason(
 }
 
 function getIpBuffer(req: Request): Buffer | null {
-  return req.ip ? Buffer.from(req.ip, 'utf8') : null;
+  return req.ip && isIP(req.ip) !== 0 ? Buffer.from(req.ip, 'utf8') : null;
+}
+
+function truncateAuditText(value: unknown, maxLength: number): string | null {
+  if (typeof value !== 'string' || value.length === 0) return null;
+  return Array.from(value).slice(0, maxLength).join('');
 }
 
 function getCorrelationId(req: Request): string | null {
