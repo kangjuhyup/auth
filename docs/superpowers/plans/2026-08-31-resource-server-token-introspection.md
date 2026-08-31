@@ -1245,7 +1245,7 @@ If the full E2E run reproduces the cross-suite ESM loader teardown failure, pres
 - [x] **Step 9: Stop E2E infrastructure after verification**
 
 ```bash
-docker compose --project-name resource-server-introspection -f docker-compose.e2e.yml down -v
+corepack yarn service:test:e2e:infra:down
 ```
 
 Expected: PostgreSQL and Redis E2E containers and their test volumes are removed.

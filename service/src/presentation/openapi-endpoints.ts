@@ -473,7 +473,14 @@ function mergeOidcProviderPaths(document: OpenApiDocument): void {
             ...OAUTH_ERROR_RESPONSE,
             content: {
               'application/json': {
-                schema: OAUTH_ERROR_RESPONSE.content['application/json'].schema,
+                schema: {
+                  ...OAUTH_ERROR_RESPONSE.content['application/json'].schema,
+                  properties: {
+                    ...OAUTH_ERROR_RESPONSE.content['application/json'].schema
+                      .properties,
+                    error: { type: 'string', example: 'invalid_client' },
+                  },
+                },
                 examples: {
                   invalidClient: {
                     value: { error: 'invalid_client' },

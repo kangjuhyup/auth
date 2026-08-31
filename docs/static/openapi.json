@@ -7319,7 +7319,7 @@
                   "properties": {
                     "error": {
                       "type": "string",
-                      "example": "invalid_request"
+                      "example": "invalid_client"
                     },
                     "error_description": {
                       "type": "string",

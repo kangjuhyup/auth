@@ -8,6 +8,7 @@ import {
   paginatedSchema,
 } from '@presentation/openapi-response';
 import { applyEndpointReference } from '@presentation/openapi-endpoints';
+import Ajv from 'ajv';
 
 function config(values: Record<string, string | undefined>): ConfigService {
   return {
@@ -149,6 +150,16 @@ describe('openapi docs', () => {
         invalidClient: { value: { error: 'invalid_client' } },
       }),
     );
+    expect(
+      operation.responses['401'].content['application/json'].schema.properties
+        .error.example,
+    ).toBe('invalid_client');
+    expect(
+      operation.responses['400'].content['application/json'].examples,
+    ).toEqual({
+      invalidRequest: { value: { error: 'invalid_request' } },
+      unsupportedTokenType: { value: { error: 'unsupported_token_type' } },
+    });
   });
 
   it('introspection document response schemas distinguish valid active and exact inactive payloads', () => {
@@ -176,32 +187,37 @@ describe('openapi docs', () => {
       cnf: { jkt: 'thumbprint' },
     };
 
+    const validate = new Ajv({
+      strict: false,
+      formats: { uri: true, int64: true },
+    }).compile(schema);
+
+    expect(validate(activeResponse)).toBe(true);
     expect(
-      active.required.every((claim: string) => claim in activeResponse),
+      validate({
+        ...activeResponse,
+        aud: ['https://orders.example.com', 'https://audit.example.com'],
+      }),
     ).toBe(true);
-    expect(active.properties.active.enum).toEqual([true]);
-    expect(active.additionalProperties).toBe(false);
-    expect(active.properties.aud.oneOf).toEqual([
-      { type: 'string', format: 'uri' },
-      { type: 'array', items: { type: 'string', format: 'uri' } },
-    ]);
-    expect(
-      ['sub', 'jti', 'sid', 'cnf'].every((claim) => claim in active.properties),
-    ).toBe(true);
-    expect(active.required.includes('sub')).toBe(false);
+    for (const optionalClaim of ['sub', 'jti', 'sid', 'cnf']) {
+      const withoutOptionalClaim = { ...activeResponse };
+      delete withoutOptionalClaim[
+        optionalClaim as keyof typeof withoutOptionalClaim
+      ];
+      expect(validate(withoutOptionalClaim)).toBe(true);
+    }
     const incompleteActiveResponse = { ...activeResponse };
     delete (incompleteActiveResponse as { exp?: number }).exp;
-    expect(
-      active.required.every(
-        (claim: string) => claim in incompleteActiveResponse,
-      ),
-    ).toBe(false);
+    expect(validate(incompleteActiveResponse)).toBe(false);
+    expect(validate({ ...activeResponse, internal_secret: 'forbidden' })).toBe(
+      false,
+    );
+    expect(validate({ active: false })).toBe(true);
+    expect(validate({ active: false, client_id: 'orders-api' })).toBe(false);
 
-    expect(inactive.properties.active.enum).toEqual([false]);
-    expect(inactive.additionalProperties).toBe(false);
-    expect(
-      inactive.required.every((claim: string) => claim in { active: false }),
-    ).toBe(true);
+    expect(active.required).not.toEqual(
+      expect.arrayContaining(['sub', 'jti', 'sid', 'cnf']),
+    );
     expect(Object.keys(inactive.properties)).toEqual(['active']);
   });
 
