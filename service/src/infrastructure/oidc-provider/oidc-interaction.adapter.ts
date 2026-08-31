@@ -236,8 +236,9 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
     }
 
     const startedAt = Date.now();
-    const tokenEndpoint = isTokenEndpoint(req.url);
-    const grantType = getGrantType(req);
+    const endpoint = getClientAuthenticatedEndpoint(req.url);
+    const tokenEndpoint = endpoint === 'token';
+    const grantType = tokenEndpoint ? getGrantType(req) : null;
 
     try {
       const result = await provider.callback()(
@@ -256,15 +257,22 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
       }
       return result;
     } catch (error) {
-      if (tokenEndpoint) {
+      if (endpoint) {
         const errorCode = getOidcErrorCode(error);
-        if (errorCode === 'invalid_grant' || errorCode === 'invalid_client') {
+        if (
+          errorCode === 'invalid_client' ||
+          (tokenEndpoint && errorCode === 'invalid_grant')
+        ) {
           this.metrics.incrementCounter(`${errorCode}_total`, {
             tenantCode: params.tenantCode,
           });
         }
         if (errorCode === 'invalid_client') {
-          await this.auditClientAuthenticationFailure(params.tenantCode, req);
+          await this.auditClientAuthenticationFailure(
+            params.tenantCode,
+            endpoint,
+            req,
+          );
         }
       }
       throw error;
@@ -838,6 +846,7 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
 
   private async auditClientAuthenticationFailure(
     tenantCode: string,
+    endpoint: ClientAuthenticatedEndpoint,
     req: Request,
   ): Promise<void> {
     const tenant = (req as any).tenant as TenantContext | undefined;
@@ -867,8 +876,8 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
         correlationId: getCorrelationId(req),
         metadata: {
           tenantCode,
-          endpoint: 'token',
-          grantType: getGrantType(req),
+          endpoint,
+          ...(endpoint === 'token' ? { grantType: getGrantType(req) } : {}),
         },
         occurredAt: new Date(),
       }),
@@ -876,8 +885,19 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
   }
 }
 
-function isTokenEndpoint(url: string): boolean {
-  return url === '/token' || url.startsWith('/token?');
+type ClientAuthenticatedEndpoint = 'token' | 'introspection';
+
+function getClientAuthenticatedEndpoint(
+  url: string,
+): ClientAuthenticatedEndpoint | null {
+  if (url === '/token' || url.startsWith('/token?')) return 'token';
+  if (
+    url === '/token/introspection' ||
+    url.startsWith('/token/introspection?')
+  ) {
+    return 'introspection';
+  }
+  return null;
 }
 
 function getGrantType(req: Request): string | null {

@@ -285,6 +285,49 @@ describe('OidcInteractionAdapter policy resolution', () => {
     expect(event.correlationId).toBe('req-1');
   });
 
+  it('introspection invalid_client 실패를 credential 없이 감사한다', async () => {
+    const invalidClient = Object.assign(new Error('invalid_client'), {
+      error: 'invalid_client',
+    });
+    const { adapter, provider, eventRepo, metrics } = createAdapter();
+    provider.callback.mockReturnValue(
+      jest.fn().mockRejectedValue(invalidClient),
+    );
+    const req = makeTokenRequest({
+      url: '/t/acme/oidc/token/introspection',
+      body: { token: 'opaque-access-token' },
+      headers: {
+        authorization: `Basic ${Buffer.from('orders-api:wrong-secret').toString('base64')}`,
+      },
+    });
+
+    await expect(
+      adapter.delegateProviderCallback({
+        tenantCode: 'acme',
+        req,
+        res: { statusCode: 401 },
+      }),
+    ).rejects.toBe(invalidClient);
+
+    expect(metrics.incrementCounter).toHaveBeenCalledWith(
+      'invalid_client_total',
+      { tenantCode: 'acme' },
+    );
+    expect(metrics.incrementCounter).not.toHaveBeenCalledWith(
+      'token_issued_total',
+      expect.anything(),
+    );
+    expect(metrics.observeLatency).not.toHaveBeenCalled();
+    const event = eventRepo.save.mock.calls[0][0];
+    expect(event.clientId).toBe('orders-api');
+    expect(event.metadata).toEqual({
+      tenantCode: 'acme',
+      endpoint: 'introspection',
+    });
+    expect(JSON.stringify(event)).not.toContain('wrong-secret');
+    expect(JSON.stringify(event)).not.toContain('opaque-access-token');
+  });
+
   it('client_secret 불일치로 추정되는 invalid_client 실패를 구분한다', async () => {
     const invalidClient = Object.assign(new Error('invalid_client'), {
       error: 'invalid_client',
