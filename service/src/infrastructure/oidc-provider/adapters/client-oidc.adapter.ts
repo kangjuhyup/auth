@@ -3,6 +3,14 @@ import { ClientRepository } from '@domain/repositories';
 import { TenantRepository } from '@domain/repositories';
 import { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
 import type { ClientModel } from '@domain/models/client';
+import { isValidCustomGrantType } from '@domain/models/custom-grant';
+
+const BUILT_IN_GRANT_TYPES = new Set([
+  'authorization_code',
+  'refresh_token',
+  'client_credentials',
+  'implicit',
+]);
 
 /**
  * oidc-provider의 kind=Client 조회를 애플리케이션의 client 테이블로 위임한다.
@@ -92,5 +100,8 @@ export class ClientOidcAdapter implements Adapter {
 }
 
 function toProviderGrantTypes(grantTypes: string[]): string[] {
-  return grantTypes.filter((grantType) => grantType !== 'refresh_token');
+  return grantTypes.filter(
+    (grantType) =>
+      BUILT_IN_GRANT_TYPES.has(grantType) || isValidCustomGrantType(grantType),
+  );
 }

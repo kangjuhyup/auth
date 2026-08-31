@@ -187,6 +187,14 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
       grant.addOIDCScope(missingScope.join(' '));
     }
 
+    const missingResourceScopes =
+      ((prompt.details as any).missingResourceScopes as
+        | Record<string, string[]>
+        | undefined) ?? {};
+    for (const [resource, scopes] of Object.entries(missingResourceScopes)) {
+      grant.addResourceScope(resource, scopes.join(' '));
+    }
+
     const grantId = await grant.save();
     const redirectTo = await provider.interactionResult(
       params.req as any,

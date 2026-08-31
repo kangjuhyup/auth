@@ -693,7 +693,11 @@ git commit -m "feat(service): manage resource server introspection access"
 - Create: `service/src/infrastructure/oidc-provider/introspection-policy.ts`
 - Create: `service/test/infrastructure/oidc-provider/introspection-policy.spec.ts`
 - Modify: `service/src/infrastructure/oidc-provider/oidc-provider.config.ts`
+- Modify: `service/src/infrastructure/oidc-provider/oidc-interaction.adapter.ts`
+- Modify: `service/src/infrastructure/oidc-provider/adapters/client-oidc.adapter.ts`
 - Modify: `service/test/infrastructure/oidc-provider/oidc-provider.config.spec.ts`
+- Modify: `service/test/infrastructure/oidc-provider/oidc-interaction.adapter.spec.ts`
+- Modify: `service/test/infrastructure/oidc-provider/adapter/client-oidc.adapter.spec.ts`
 - Modify: `service/test/e2e/support/api-e2e-suite.ts`
 
 **Interfaces:**
@@ -913,6 +917,8 @@ Within `describeOidc`, add real provider scenarios that assert:
 
 Use 32+ character literal secrets, create `offline_access` through `/t/acme/admin/scopes` before first provider access for the refresh-token case, and request it from a client registered with `authorization_code` plus `refresh_token`.
 
+The E2E scenarios must use real endpoint issuance paths. Do not insert access or refresh token models directly as a substitute for authorization, consent, or token exchange. Grant provider-reported `missingResourceScopes` during consent, and preserve the registered `refresh_token` grant type in provider client metadata so these flows are usable in production as well as tests.
+
 - [ ] **Step 8: Run the OIDC E2E suite and confirm protocol RED**
 
 ```bash
@@ -948,8 +954,16 @@ Replace the local URL parsing inside `getResourceServerInfo` with `ResourceOrigi
 
 - [ ] **Step 10: Run provider unit and protocol E2E tests and confirm GREEN**
 
+Before the final GREEN run, add regression tests and minimal adapter fixes for the two issuance prerequisites discovered by the protocol E2E:
+
+- `OidcInteractionAdapter.completeConsent()` grants every provider-reported `missingResourceScopes` entry with the provider Grant API in addition to `missingOIDCScope`.
+- `ClientOidcAdapter` preserves supported `refresh_token` metadata instead of stripping it, while continuing to exclude genuinely unsupported grant types.
+- Replace any direct access/refresh token model insertion in the new E2E scenarios with the real authorization/consent/code/token endpoint flow.
+- Harden the introspection policy so malformed/null callback inputs, non-string audiences, and malformed allowlist state resolve `false` instead of throwing or coercing values.
+
 ```bash
 corepack yarn workspace @auth/service test:unit --runTestsByPath test/infrastructure/oidc-provider/introspection-policy.spec.ts test/infrastructure/oidc-provider/oidc-provider.config.spec.ts
+corepack yarn workspace @auth/service test:unit --runTestsByPath test/infrastructure/oidc-provider/oidc-interaction.adapter.spec.ts test/infrastructure/oidc-provider/adapter/client-oidc.adapter.spec.ts
 E2E_ENV_FILE=service/.env.e2e corepack yarn workspace @auth/service test:e2e --runInBand test/e2e/oidc.e2e-spec.ts
 ```
 

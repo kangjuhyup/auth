@@ -57,6 +57,12 @@ describe('createIntrospectionAllowedPolicy', () => {
     };
   }
 
+  function makeClientWithMalformedAllowlist(value: unknown): ClientModel {
+    const client = makeClient();
+    Object.defineProperty(client, 'introspectionResources', { value });
+    return client;
+  }
+
   it('같은 tenant의 enabled service client가 소유한 audience를 허용한다', async () => {
     const clientRepository = makeRepository();
     const policy = createIntrospectionAllowedPolicy(clientRepository);
@@ -160,4 +166,131 @@ describe('createIntrospectionAllowedPolicy', () => {
       ),
     ).resolves.toBe(true);
   });
+
+  it.each([
+    ['null context', null, { clientId: 'orders-api' }, { kind: 'AccessToken' }],
+    [
+      'null request',
+      { req: null },
+      { clientId: 'orders-api' },
+      { kind: 'AccessToken' },
+    ],
+    [
+      'whitespace tenant id',
+      { req: { tenant: { id: '   ' } } },
+      { clientId: 'orders-api' },
+      { kind: 'AccessToken' },
+    ],
+    [
+      'numeric tenant id',
+      { req: { tenant: { id: 42 } } },
+      { clientId: 'orders-api' },
+      { kind: 'AccessToken' },
+    ],
+    [
+      'null client',
+      { req: { tenant: { id: 'tenant-1' } } },
+      null,
+      { kind: 'AccessToken' },
+    ],
+    [
+      'empty client id',
+      { req: { tenant: { id: 'tenant-1' } } },
+      { clientId: '' },
+      { kind: 'AccessToken' },
+    ],
+    [
+      'whitespace client id',
+      { req: { tenant: { id: 'tenant-1' } } },
+      { clientId: '   ' },
+      { kind: 'AccessToken' },
+    ],
+    [
+      'numeric client id',
+      { req: { tenant: { id: 'tenant-1' } } },
+      { clientId: 42 },
+      { kind: 'AccessToken' },
+    ],
+    [
+      'null token',
+      { req: { tenant: { id: 'tenant-1' } } },
+      { clientId: 'orders-api' },
+      null,
+    ],
+    [
+      'scalar token',
+      { req: { tenant: { id: 'tenant-1' } } },
+      { clientId: 'orders-api' },
+      'AccessToken',
+    ],
+  ])(
+    '%s shape는 repository 조회 없이 거부한다',
+    async (_name, ctx, client, token) => {
+      const clientRepository = makeRepository();
+      const policy = createIntrospectionAllowedPolicy(clientRepository);
+
+      await expect(
+        policy(ctx as any, client as any, token as any),
+      ).resolves.toBe(false);
+      expect(clientRepository.findByClientId).not.toHaveBeenCalled();
+    },
+  );
+
+  it('non-string audience를 문자열로 coercion하지 않는다', async () => {
+    const coercion = jest.fn(() => 'https://api.example.com');
+    const policy = createIntrospectionAllowedPolicy(makeRepository());
+
+    await expect(
+      policy(
+        { req: { tenant: { id: 'tenant-1' } } } as any,
+        { clientId: 'orders-api' } as any,
+        {
+          kind: 'AccessToken',
+          aud: [{ toString: coercion }, 42],
+        } as any,
+      ),
+    ).resolves.toBe(false);
+    expect(coercion).not.toHaveBeenCalled();
+  });
+
+  it('array audience에서는 string 값만 origin 비교에 사용한다', async () => {
+    const coercion = jest.fn(() => 'https://api.example.com');
+    const policy = createIntrospectionAllowedPolicy(makeRepository());
+
+    await expect(
+      policy(
+        { req: { tenant: { id: 'tenant-1' } } } as any,
+        { clientId: 'orders-api' } as any,
+        {
+          kind: 'AccessToken',
+          aud: [{ toString: coercion }, 'https://api.example.com/orders'],
+        } as any,
+      ),
+    ).resolves.toBe(true);
+    expect(coercion).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['null allowlist', null],
+    ['scalar allowlist', 'https://api.example.com'],
+    ['object allowlist', { resource: 'https://api.example.com' }],
+    ['non-string member', ['https://api.example.com', 42]],
+  ])(
+    '%s shape의 allowlist는 거부한다',
+    async (_name, introspectionResources) => {
+      const policy = createIntrospectionAllowedPolicy(
+        makeRepository(
+          makeClientWithMalformedAllowlist(introspectionResources),
+        ),
+      );
+
+      await expect(
+        policy(
+          { req: { tenant: { id: 'tenant-1' } } } as any,
+          { clientId: 'orders-api' } as any,
+          { kind: 'AccessToken', aud: 'https://api.example.com/orders' } as any,
+        ),
+      ).resolves.toBe(false);
+    },
+  );
 });

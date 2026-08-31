@@ -380,6 +380,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
       redirectUri: string;
       resource?: string;
       scope?: string;
+      prompt?: string;
     }) {
       const agent = request.agent(fixture.app.getHttpServer());
       const { verifier, challenge } = buildPkce();
@@ -396,6 +397,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           nonce: 'nonce-1234',
           state: 'state-1234',
           ...(params.resource ? { resource: params.resource } : {}),
+          ...(params.prompt ? { prompt: params.prompt } : {}),
         })
         .expect((response) => {
           expect([302, 303]).toContain(response.status);
@@ -433,6 +435,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
       password: string;
       resource?: string;
       scope?: string;
+      prompt?: string;
     }) {
       const { agent, uid, verifier } = await beginOidcInteraction(params);
 
@@ -466,6 +469,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
     async function resolveAuthorizationCode(
       agent: ReturnType<typeof request.agent>,
       redirectTo: string,
+      remainingConsentSteps = 2,
     ): Promise<string> {
       const resumeResponse = await agent
         .get(toAppPath(redirectTo))
@@ -482,13 +486,36 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           }
         });
 
-      const callbackLocation = new URL(
-        resumeResponse.headers.location as string,
-      );
+      const location = resumeResponse.headers.location as string;
+      const callbackLocation = new URL(location, 'http://127.0.0.1');
       const code = callbackLocation.searchParams.get('code');
 
-      expect(code).toBeTruthy();
-      return code as string;
+      if (code) return code;
+
+      const interactionPath = /^(\/t\/[^/]+\/interaction\/[^/?]+)/.exec(
+        callbackLocation.pathname,
+      )?.[1];
+      expect(interactionPath).toBeDefined();
+      expect(remainingConsentSteps).toBeGreaterThan(0);
+
+      const detailsResponse = await agent
+        .get(`${interactionPath}/api/details`)
+        .expect(200);
+      expect(detailsResponse.body.prompt).toBe('consent');
+
+      const consentResponse = await agent
+        .post(`${interactionPath}/api/consent`)
+        .expect(201);
+      expect(consentResponse.body).toMatchObject({
+        success: true,
+        redirectTo: expect.any(String),
+      });
+
+      return resolveAuthorizationCode(
+        agent,
+        consentResponse.body.redirectTo as string,
+        remainingConsentSteps - 1,
+      );
     }
 
     async function loginUserViaOidc(params: {
@@ -499,6 +526,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
       password: string;
       resource?: string;
       scope?: string;
+      prompt?: string;
     }): Promise<{ accessToken: string; refreshToken?: string }> {
       const { agent, code, verifier } = await authorizeUserViaOidc(params);
 
@@ -571,44 +599,6 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
         });
       }
       return call;
-    }
-
-    async function issueUserAccessToken(params: {
-      tenantCode: string;
-      clientId: string;
-      accountId: string;
-      resource: string;
-      scope: string;
-    }): Promise<string> {
-      return fixture.runInRequestContext(async () => {
-        const provider = await fixture.registry.get(params.tenantCode);
-        const token = new (provider.AccessToken as any)({
-          accountId: params.accountId,
-          clientId: params.clientId,
-          gty: 'authorization_code',
-          aud: params.resource,
-          scope: params.scope,
-        });
-        return token.save();
-      });
-    }
-
-    async function issueRefreshToken(params: {
-      tenantCode: string;
-      clientId: string;
-      accountId: string;
-      scope: string;
-    }): Promise<string> {
-      return fixture.runInRequestContext(async () => {
-        const provider = await fixture.registry.get(params.tenantCode);
-        const token = new (provider.RefreshToken as any)({
-          accountId: params.accountId,
-          clientId: params.clientId,
-          gty: 'authorization_code',
-          scope: params.scope,
-        });
-        return token.save();
-      });
     }
 
     async function revokeAccessToken(
@@ -1486,10 +1476,12 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           username: 'introspection-user',
           password: 'Password123!',
         });
-        const accessToken = await issueUserAccessToken({
+        const login = await loginUserViaOidc({
           tenantCode: 'acme',
           clientId: userClient.clientId,
-          accountId: signup.userId,
+          redirectUri: userClient.redirectUri,
+          username: signup.username,
+          password: signup.password,
           resource,
           scope: 'openid orders:read',
         });
@@ -1498,7 +1490,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           tenantCode: 'acme',
           clientId: resourceServer.clientId,
           clientSecret: resourceServer.secret,
-          token: accessToken,
+          token: login.accessToken,
           tokenTypeHint: 'access_token',
         }).expect(200);
 
@@ -1734,47 +1726,57 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           username: 'cross-tenant-token-user',
           password: 'Password123!',
         });
-        const revocable = await issueUserAccessToken({
+        const revocable = await loginUserViaOidc({
           tenantCode: 'acme',
           clientId: accessClient.clientId,
-          accountId: acmeUser.userId,
+          redirectUri: accessClient.redirectUri,
+          username: acmeUser.username,
+          password: acmeUser.password,
           resource,
           scope: 'openid orders:read',
         });
-        const wrongAudience = await issueUserAccessToken({
+        const wrongAudience = await loginUserViaOidc({
           tenantCode: 'acme',
           clientId: accessClient.clientId,
-          accountId: acmeUser.userId,
+          redirectUri: accessClient.redirectUri,
+          username: acmeUser.username,
+          password: acmeUser.password,
           resource: otherResource,
           scope: 'openid orders:read',
         });
-        const crossTenant = await issueUserAccessToken({
+        const crossTenant = await loginUserViaOidc({
           tenantCode: 'beta',
           clientId: betaClient.clientId,
-          accountId: betaUser.userId,
+          redirectUri: betaClient.redirectUri,
+          username: betaUser.username,
+          password: betaUser.password,
           resource,
           scope: 'openid orders:read',
         });
 
-        const refreshToken = await issueRefreshToken({
+        const refreshLogin = await loginUserViaOidc({
           tenantCode: 'acme',
           clientId: refreshClient.clientId,
-          accountId: acmeUser.userId,
-          scope: 'openid orders:read offline_access',
+          redirectUri: refreshClient.redirectUri,
+          username: acmeUser.username,
+          password: acmeUser.password,
+          scope: 'openid offline_access',
+          prompt: 'consent',
         });
+        expect(refreshLogin.refreshToken).toEqual(expect.any(String));
 
-        await revokeAccessToken('acme', revocable);
+        await revokeAccessToken('acme', revocable.accessToken);
 
         const inactiveTokens = [
           {
-            token: wrongAudience,
+            token: wrongAudience.accessToken,
             tokenTypeHint: 'access_token',
           },
           { token: 'unknown-token', tokenTypeHint: 'access_token' },
-          { token: revocable, tokenTypeHint: 'access_token' },
-          { token: crossTenant, tokenTypeHint: 'access_token' },
+          { token: revocable.accessToken, tokenTypeHint: 'access_token' },
+          { token: crossTenant.accessToken, tokenTypeHint: 'access_token' },
           {
-            token: refreshToken,
+            token: refreshLogin.refreshToken!,
             tokenTypeHint: 'refresh_token',
           },
         ];

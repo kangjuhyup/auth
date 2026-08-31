@@ -5,6 +5,18 @@ import { TenantConfigModel } from '@domain/models/tenant-config';
 const tenant = { id: 'tenant-1', code: 'acme', name: 'Acme' };
 
 function makeProvider(clientId = 'web-app') {
+  const grant = {
+    addOIDCScope: jest.fn(),
+    addResourceScope: jest.fn(),
+    save: jest.fn().mockResolvedValue('grant-1'),
+  };
+  const Grant = Object.assign(
+    jest.fn().mockImplementation(() => grant),
+    {
+      find: jest.fn().mockResolvedValue(undefined),
+    },
+  );
+
   return {
     interactionDetails: jest.fn().mockResolvedValue({
       prompt: { name: 'login', details: {} },
@@ -12,6 +24,8 @@ function makeProvider(clientId = 'web-app') {
     }),
     interactionResult: jest.fn().mockResolvedValue('/callback'),
     callback: jest.fn().mockReturnValue(jest.fn().mockResolvedValue(undefined)),
+    Grant,
+    grant,
   };
 }
 
@@ -157,6 +171,44 @@ function makeTokenRequest(overrides: Record<string, unknown> = {}) {
 }
 
 describe('OidcInteractionAdapter policy resolution', () => {
+  it('consent 완료 시 provider가 보고한 OIDC 및 resource scope를 grant에 추가한다', async () => {
+    const { adapter, provider } = createAdapter();
+    provider.interactionDetails.mockResolvedValue({
+      prompt: {
+        name: 'consent',
+        details: {
+          missingOIDCScope: ['openid', 'offline_access'],
+          missingResourceScopes: {
+            'https://resource.example.test/orders': [
+              'orders:read',
+              'orders:write',
+            ],
+            'https://billing.example.test': ['billing:read'],
+          },
+        },
+      },
+      params: { client_id: 'web-app' },
+      session: { accountId: 'user-1' },
+    });
+
+    await expect(
+      adapter.completeConsent({ tenantCode: 'acme', req: {}, res: {} }),
+    ).resolves.toEqual({ redirectTo: '/callback' });
+
+    expect(provider.grant.addOIDCScope).toHaveBeenCalledWith(
+      'openid offline_access',
+    );
+    expect(provider.grant.addResourceScope).toHaveBeenCalledTimes(2);
+    expect(provider.grant.addResourceScope).toHaveBeenCalledWith(
+      'https://resource.example.test/orders',
+      'orders:read orders:write',
+    );
+    expect(provider.grant.addResourceScope).toHaveBeenCalledWith(
+      'https://billing.example.test',
+      'billing:read',
+    );
+  });
+
   it('getDetails는 client IdP override와 tenant MFA 정책을 적용한다', async () => {
     const { adapter } = createAdapter();
 
