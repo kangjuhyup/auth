@@ -1264,7 +1264,7 @@ git diff -- service/src service/test service/docs/OIDC.md docs/static/openapi.js
 
 Confirm manually that no token, client secret, Authorization value, generated private key, or unrelated UI change is present.
 
-- [ ] **Step 11: Commit documentation and generated contract**
+- [x] **Step 11: Commit documentation and generated contract**
 
 ```bash
 git add service/src/presentation/openapi.ts service/src/presentation/openapi-endpoints.ts service/test/presentation/openapi.spec.ts service/test/presentation/openapi-route-coverage.spec.ts service/test/e2e/support/e2e-infra-scripts.spec.ts service/scripts/run-e2e-tests.mjs service/test/scripts/run-e2e-tests.spec.ts service/package.json service/docs/OIDC.md docs/static/openapi.json package.json docs/superpowers/specs/2026-08-31-resource-server-token-introspection-design.md docs/superpowers/plans/2026-08-31-resource-server-token-introspection.md
