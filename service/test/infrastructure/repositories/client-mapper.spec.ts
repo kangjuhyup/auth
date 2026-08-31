@@ -98,6 +98,29 @@ describe('ClientMapper', () => {
       expect(domain.backchannelLogoutUri).toBeNull();
       expect(domain.frontchannelLogoutUri).toBeNull();
     });
+
+    it.each([null, undefined])(
+      'legacy introspectionResources가 %p이면 빈 배열로 매핑한다',
+      (introspectionResources) => {
+        const entity = makeOrmEntity();
+        entity.introspectionResources = introspectionResources as unknown as string[];
+
+        const domain = ClientMapper.toDomain(entity);
+
+        expect(domain.introspectionResources).toEqual([]);
+      },
+    );
+
+    it('ORM introspectionResources 배열을 복사한다', () => {
+      const entity = makeOrmEntity();
+      const source = entity.introspectionResources;
+
+      const domain = ClientMapper.toDomain(entity);
+      source.push('https://billing.example.com');
+
+      expect(domain.introspectionResources).not.toBe(source);
+      expect(domain.introspectionResources).toEqual(['https://api.example.com']);
+    });
   });
 
   describe('toOrm', () => {
@@ -116,6 +139,17 @@ describe('ClientMapper', () => {
       );
       expect(entity.frontchannelLogoutUri).toBeNull();
       expect(entity.allowedResources).toEqual(['https://api.example.com']);
+      expect(entity.introspectionResources).toEqual(['https://api.example.com']);
+    });
+
+    it('도메인 introspectionResources 배열을 복사한다', () => {
+      const domain = makeDomainModel('1');
+      const source = domain.introspectionResources;
+
+      const entity = ClientMapper.toOrm(domain);
+      source.push('https://billing.example.com');
+
+      expect(entity.introspectionResources).not.toBe(source);
       expect(entity.introspectionResources).toEqual(['https://api.example.com']);
     });
 
