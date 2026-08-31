@@ -129,6 +129,12 @@ export class CreateClientDto {
   allowedResources?: string[];
 
   @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsUrl({ protocols: ['https'] }, { each: true })
+  introspectionResources?: string[];
+
+  @IsOptional()
   @IsBoolean()
   skipConsent?: boolean;
 
@@ -221,6 +227,12 @@ export class UpdateClientDto {
   @ArrayMaxSize(20)
   @IsUrl({ protocols: ['https'] }, { each: true })
   allowedResources?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsUrl({ protocols: ['https'] }, { each: true })
+  introspectionResources?: string[];
 
   @IsOptional()
   @IsBoolean()
@@ -368,6 +380,9 @@ export class ClientResponse {
 
   @Expose()
   allowedResources!: string[];
+
+  @Expose()
+  introspectionResources!: string[];
 
   @Expose()
   skipConsent!: boolean;

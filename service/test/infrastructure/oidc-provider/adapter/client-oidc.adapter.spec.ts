@@ -39,6 +39,7 @@ function makeClient(
       overrides.backchannelLogoutUri ?? 'https://app.example.com/bc',
     frontchannelLogoutUri: overrides.frontchannelLogoutUri ?? null,
     allowedResources: ['https://api.example.com'],
+    introspectionResources: [],
     skipConsent: false,
   });
   c.setPersistence('1', new Date(), new Date());

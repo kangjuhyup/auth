@@ -142,6 +142,22 @@ describe('CreateClientDto', () => {
     expect(errors.some((e) => e.property === 'allowedResources')).toBe(true);
   });
 
+  it('introspectionResources는 HTTPS URL 배열만 허용한다', async () => {
+    expect(
+      await getErrors(CreateClientDto, {
+        ...valid,
+        introspectionResources: ['https://api.example.com'],
+      }),
+    ).toHaveLength(0);
+
+    const errors = await getErrors(UpdateClientDto, {
+      introspectionResources: ['http://api.example.com'],
+    });
+    expect(
+      errors.some((error) => error.property === 'introspectionResources'),
+    ).toBe(true);
+  });
+
   it('applicationType이 web이면 에러 없음', async () => {
     expect(
       await getErrors(CreateClientDto, { ...valid, applicationType: 'web' }),

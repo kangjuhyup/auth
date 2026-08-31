@@ -312,6 +312,7 @@ export class AdminBootstrapProcessManager implements AdminBootstrapPort {
       scope: 'openid profile',
       postLogoutRedirectUris: [`${adminUiUrl}/login`],
       applicationType: 'web',
+      introspectionResources: [],
       skipConsent: true,
     });
   }
@@ -349,6 +350,7 @@ export class AdminBootstrapProcessManager implements AdminBootstrapPort {
       client.backchannelLogoutUri == null &&
       client.frontchannelLogoutUri == null &&
       this.sameValues(client.allowedResources, []) &&
+      this.sameValues(client.introspectionResources, []) &&
       client.skipConsent &&
       client.accessTokenTtlSec == null &&
       client.refreshTokenTtlSec == null

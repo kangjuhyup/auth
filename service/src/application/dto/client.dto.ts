@@ -17,6 +17,7 @@ export class CreateClientDto {
     public readonly backchannelLogoutUri?: string,
     public readonly frontchannelLogoutUri?: string,
     public readonly allowedResources?: string[],
+    public readonly introspectionResources?: string[],
     public readonly skipConsent?: boolean,
     public readonly accessTokenTtlSec?: number | null,
     public readonly refreshTokenTtlSec?: number | null,
@@ -37,6 +38,7 @@ export class CreateClientDto {
     backchannelLogoutUri?: string;
     frontchannelLogoutUri?: string;
     allowedResources?: string[];
+    introspectionResources?: string[];
     skipConsent?: boolean;
     accessTokenTtlSec?: number | null;
     refreshTokenTtlSec?: number | null;
@@ -56,6 +58,7 @@ export class CreateClientDto {
       params.backchannelLogoutUri,
       params.frontchannelLogoutUri,
       params.allowedResources,
+      params.introspectionResources,
       params.skipConsent,
       params.accessTokenTtlSec,
       params.refreshTokenTtlSec,
@@ -78,6 +81,7 @@ export class UpdateClientDto {
     public readonly backchannelLogoutUri?: string | null,
     public readonly frontchannelLogoutUri?: string | null,
     public readonly allowedResources?: string[],
+    public readonly introspectionResources?: string[],
     public readonly skipConsent?: boolean,
     public readonly accessTokenTtlSec?: number | null,
     public readonly refreshTokenTtlSec?: number | null,
@@ -97,6 +101,7 @@ export class UpdateClientDto {
     backchannelLogoutUri?: string | null;
     frontchannelLogoutUri?: string | null;
     allowedResources?: string[];
+    introspectionResources?: string[];
     skipConsent?: boolean;
     accessTokenTtlSec?: number | null;
     refreshTokenTtlSec?: number | null;
@@ -115,6 +120,7 @@ export class UpdateClientDto {
       params.backchannelLogoutUri,
       params.frontchannelLogoutUri,
       params.allowedResources,
+      params.introspectionResources,
       params.skipConsent,
       params.accessTokenTtlSec,
       params.refreshTokenTtlSec,
@@ -139,6 +145,7 @@ export class ClientResponse {
     public readonly backchannelLogoutUri: string | null,
     public readonly frontchannelLogoutUri: string | null,
     public readonly allowedResources: string[],
+    public readonly introspectionResources: string[],
     public readonly skipConsent: boolean,
     public readonly accessTokenTtlSec: number | null,
     public readonly refreshTokenTtlSec: number | null,
@@ -162,6 +169,7 @@ export class ClientResponse {
     backchannelLogoutUri: string | null;
     frontchannelLogoutUri: string | null;
     allowedResources: string[];
+    introspectionResources: string[];
     skipConsent: boolean;
     accessTokenTtlSec: number | null;
     refreshTokenTtlSec: number | null;
@@ -184,6 +192,7 @@ export class ClientResponse {
       params.backchannelLogoutUri,
       params.frontchannelLogoutUri,
       params.allowedResources,
+      params.introspectionResources,
       params.skipConsent,
       params.accessTokenTtlSec,
       params.refreshTokenTtlSec,
