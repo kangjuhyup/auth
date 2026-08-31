@@ -236,9 +236,45 @@ describe('createIntrospectionAllowedPolicy', () => {
     },
   );
 
-  it('non-string audience를 문자열로 coercion하지 않는다', async () => {
+  it.each([
+    ['missing audience', undefined],
+    ['null audience', null],
+    ['numeric scalar audience', 42],
+    ['boolean scalar audience', false],
+    ['object audience', { resource: 'https://api.example.com' }],
+    ['empty string audience', ''],
+    ['whitespace-only audience', '   '],
+    ['leading-whitespace audience', ' https://api.example.com'],
+    ['trailing-whitespace audience', 'https://api.example.com '],
+    ['empty audience array', []],
+    ['mixed audience array', ['https://api.example.com/orders', 42]],
+    [
+      'object-member audience array',
+      ['https://api.example.com/orders', { resource: 'orders' }],
+    ],
+    ['empty-member audience array', ['https://api.example.com/orders', '']],
+    [
+      'whitespace-member audience array',
+      ['https://api.example.com/orders', ' https://other.example.com'],
+    ],
+  ])('%s는 repository 조회 전에 거부한다', async (_name, audience) => {
+    const clientRepository = makeRepository();
+    const policy = createIntrospectionAllowedPolicy(clientRepository);
+
+    await expect(
+      policy(
+        { req: { tenant: { id: 'tenant-1' } } } as any,
+        { clientId: 'orders-api' } as any,
+        { kind: 'AccessToken', aud: audience } as any,
+      ),
+    ).resolves.toBe(false);
+    expect(clientRepository.findByClientId).not.toHaveBeenCalled();
+  });
+
+  it('object audience를 문자열로 coercion하지 않고 repository 조회 전에 거부한다', async () => {
     const coercion = jest.fn(() => 'https://api.example.com');
-    const policy = createIntrospectionAllowedPolicy(makeRepository());
+    const clientRepository = makeRepository();
+    const policy = createIntrospectionAllowedPolicy(clientRepository);
 
     await expect(
       policy(
@@ -246,28 +282,12 @@ describe('createIntrospectionAllowedPolicy', () => {
         { clientId: 'orders-api' } as any,
         {
           kind: 'AccessToken',
-          aud: [{ toString: coercion }, 42],
+          aud: { toString: coercion },
         } as any,
       ),
     ).resolves.toBe(false);
     expect(coercion).not.toHaveBeenCalled();
-  });
-
-  it('array audience에서는 string 값만 origin 비교에 사용한다', async () => {
-    const coercion = jest.fn(() => 'https://api.example.com');
-    const policy = createIntrospectionAllowedPolicy(makeRepository());
-
-    await expect(
-      policy(
-        { req: { tenant: { id: 'tenant-1' } } } as any,
-        { clientId: 'orders-api' } as any,
-        {
-          kind: 'AccessToken',
-          aud: [{ toString: coercion }, 'https://api.example.com/orders'],
-        } as any,
-      ),
-    ).resolves.toBe(true);
-    expect(coercion).not.toHaveBeenCalled();
+    expect(clientRepository.findByClientId).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -282,6 +302,56 @@ describe('createIntrospectionAllowedPolicy', () => {
         makeRepository(
           makeClientWithMalformedAllowlist(introspectionResources),
         ),
+      );
+
+      await expect(
+        policy(
+          { req: { tenant: { id: 'tenant-1' } } } as any,
+          { clientId: 'orders-api' } as any,
+          { kind: 'AccessToken', aud: 'https://api.example.com/orders' } as any,
+        ),
+      ).resolves.toBe(false);
+    },
+  );
+
+  it.each([
+    [
+      'malformed URL member',
+      ['https://api.example.com', 'not-a-resource-origin'],
+    ],
+    ['HTTP member', ['https://api.example.com', 'http://other.example.com']],
+    ['localhost member', ['https://api.example.com', 'https://localhost']],
+    [
+      '.local member',
+      ['https://api.example.com', 'https://orders.internal.local'],
+    ],
+    [
+      'non-normalized host member',
+      ['https://api.example.com', 'https://OTHER.example.com'],
+    ],
+    [
+      'path-bearing member',
+      ['https://api.example.com', 'https://other.example.com/orders'],
+    ],
+    [
+      'trailing-slash member',
+      ['https://api.example.com', 'https://other.example.com/'],
+    ],
+    [
+      'default-port member',
+      ['https://api.example.com', 'https://other.example.com:443'],
+    ],
+    [
+      'duplicate member',
+      ['https://api.example.com', 'https://api.example.com'],
+    ],
+    ['empty corrupt member', ['https://api.example.com', '']],
+    ['whitespace corrupt member', ['https://api.example.com', '   ']],
+  ])(
+    '%s가 포함된 allowlist 전체를 fail closed 처리한다',
+    async (_name, introspectionResources) => {
+      const policy = createIntrospectionAllowedPolicy(
+        makeRepository(makeClient({ introspectionResources })),
       );
 
       await expect(

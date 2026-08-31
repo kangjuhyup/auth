@@ -973,6 +973,7 @@ Expected: provider unit tests and all new introspection scenarios PASS.
 
 ```bash
 git add service/src/infrastructure/oidc-provider/introspection-policy.ts service/src/infrastructure/oidc-provider/oidc-provider.config.ts service/test/infrastructure/oidc-provider/introspection-policy.spec.ts service/test/infrastructure/oidc-provider/oidc-provider.config.spec.ts service/test/e2e/support/api-e2e-suite.ts
+git add service/src/infrastructure/oidc-provider/oidc-interaction.adapter.ts service/src/infrastructure/oidc-provider/adapters/client-oidc.adapter.ts service/test/infrastructure/oidc-provider/oidc-interaction.adapter.spec.ts service/test/infrastructure/oidc-provider/adapter/client-oidc.adapter.spec.ts docs/superpowers/plans/2026-08-31-resource-server-token-introspection.md
 git commit -m "feat(service): enable tenant token introspection"
 ```
 

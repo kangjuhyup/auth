@@ -29,6 +29,9 @@ export function createIntrospectionAllowedPolicy(
       return false;
     }
 
+    const audiences = toAudienceList((token as { aud?: unknown }).aud);
+    if (!audiences) return false;
+
     const caller = await clientRepository.findByClientId(tenantId, clientId);
     if (
       !caller ||
@@ -39,22 +42,10 @@ export function createIntrospectionAllowedPolicy(
       return false;
     }
 
-    const tokenAudience = (token as { aud?: unknown }).aud;
-    const audiences = Array.isArray(tokenAudience)
-      ? tokenAudience.filter((audience): audience is string =>
-          isNonEmptyString(audience),
-        )
-      : isNonEmptyString(tokenAudience)
-        ? [tokenAudience]
-        : [];
-    const allowlist = caller.introspectionResources as unknown;
-    if (
-      !Array.isArray(allowlist) ||
-      !allowlist.every((resource) => isNonEmptyString(resource))
-    ) {
-      return false;
-    }
-    const owned = new Set(allowlist);
+    const owned = toNormalizedOriginSet(
+      caller.introspectionResources as unknown,
+    );
+    if (!owned) return false;
 
     return audiences.some((audience) => {
       try {
@@ -68,4 +59,39 @@ export function createIntrospectionAllowedPolicy(
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isWhitespaceExactNonEmptyString(value: unknown): value is string {
+  return isNonEmptyString(value) && value === value.trim();
+}
+
+function toAudienceList(value: unknown): string[] | null {
+  if (isWhitespaceExactNonEmptyString(value)) return [value];
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    !value.every(isWhitespaceExactNonEmptyString)
+  ) {
+    return null;
+  }
+  return value;
+}
+
+function toNormalizedOriginSet(value: unknown): Set<string> | null {
+  if (!Array.isArray(value)) return null;
+
+  const origins = new Set<string>();
+  for (const resource of value) {
+    if (!isWhitespaceExactNonEmptyString(resource)) return null;
+
+    let origin: string;
+    try {
+      origin = ResourceOrigin.of(resource).value;
+    } catch {
+      return null;
+    }
+    if (origin !== resource || origins.has(origin)) return null;
+    origins.add(origin);
+  }
+  return origins;
 }
