@@ -1270,6 +1270,6 @@ git add service/src/presentation/openapi.ts service/src/presentation/openapi-end
 git commit -m "docs(service): publish introspection claim contract"
 ```
 
-- [ ] **Step 12: Perform final branch review before push or PR update**
+- [x] **Step 12: Perform final branch review before push or PR update**
 
 Use `superpowers:verification-before-completion`, then `superpowers:requesting-code-review`, and finally `superpowers:finishing-a-development-branch`. Do not claim completion or push/update the existing PR until the fresh verification output is inspected.
