@@ -158,16 +158,18 @@ Required for active access tokens:
 - `active`
 - `client_id`
 - `token_type`
-- `scope`
 - `iss`
 - `aud`
 - `exp`
 - `iat`
 - `tenant_id`
 
-`sub` is required for user access tokens and absent for client-credentials
-tokens. Provider-standard `jti`, `sid`, and `cnf` remain optional because they
-depend on token format, session binding, and sender constraints.
+`scope` is required by the scoped user access-token example above, but remains
+optional in the active response because a standard `client_credentials`
+request may omit `scope` and the provider may omit the claim. `sub` is
+required for user access tokens and absent for client-credentials tokens.
+Provider-standard `jti`, `sid`, and `cnf` remain optional because they depend
+on token format, session binding, and sender constraints.
 
 The contract does not expose email, profile attributes, role assignments,
 permissions, secrets, credentials, or internal policy state.
@@ -358,7 +360,9 @@ token validity checks, and response behavior already implemented by
 - Only authenticated service clients with an explicitly registered audience
   can receive an active response.
 - Cross-audience and cross-tenant probes are indistinguishably inactive.
-- The documented stable claim subset is present for active access tokens.
+- The documented stable claim subset is present for active access tokens;
+  `scope` is present for scoped user tokens and optional for scope-less
+  client-credentials tokens.
 - No sensitive user attributes or credentials appear in introspection output or
   logs.
 - Introspection `invalid_client` failures emit redacted, tenant-scoped security

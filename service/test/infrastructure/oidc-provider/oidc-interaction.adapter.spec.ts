@@ -276,7 +276,8 @@ describe('OidcInteractionAdapter policy resolution', () => {
     );
     const event = eventRepo.save.mock.calls[0][0];
     expect(event.tenantId).toBe('tenant-1');
-    expect(event.clientId).toBe('missing-client');
+    expect(event.clientId).toBeNull();
+    expect(event.resourceId).toBe('missing-client');
     expect(event.category).toBe('SECURITY');
     expect(event.action).toBe('ACCESS_DENIED');
     expect(event.resourceType).toBe('oidc-client');
@@ -319,13 +320,45 @@ describe('OidcInteractionAdapter policy resolution', () => {
     );
     expect(metrics.observeLatency).not.toHaveBeenCalled();
     const event = eventRepo.save.mock.calls[0][0];
-    expect(event.clientId).toBe('orders-api');
+    expect(event.clientId).toBe('client-ref-1');
+    expect(event.resourceId).toBe('orders-api');
     expect(event.metadata).toEqual({
       tenantCode: 'acme',
       endpoint: 'introspection',
     });
     expect(JSON.stringify(event)).not.toContain('wrong-secret');
     expect(JSON.stringify(event)).not.toContain('opaque-access-token');
+  });
+
+  it('oversized Basic client ID는 조회하거나 저장하지 않는다', async () => {
+    const invalidClient = Object.assign(new Error('invalid_client'), {
+      error: 'invalid_client',
+    });
+    const { adapter, provider, clientRepo, eventRepo } = createAdapter();
+    provider.callback.mockReturnValue(
+      jest.fn().mockRejectedValue(invalidClient),
+    );
+    const oversizedClientId = 'c'.repeat(256);
+
+    await expect(
+      adapter.delegateProviderCallback({
+        tenantCode: 'acme',
+        req: makeTokenRequest({
+          url: '/t/acme/oidc/token/introspection',
+          headers: {
+            authorization: `Basic ${Buffer.from(
+              `${oversizedClientId}:REDACTED`,
+            ).toString('base64')}`,
+          },
+        }),
+        res: { statusCode: 401 },
+      }),
+    ).rejects.toBe(invalidClient);
+
+    expect(clientRepo.findByClientId).not.toHaveBeenCalled();
+    const event = eventRepo.save.mock.calls[0][0];
+    expect(event.clientId).toBeNull();
+    expect(event.resourceId).toBeNull();
   });
 
   it('introspection query endpoint의 invalid_client 실패를 감사한다', async () => {
@@ -496,7 +529,8 @@ describe('OidcInteractionAdapter policy resolution', () => {
     ).rejects.toBe(invalidClient);
 
     const event = eventRepo.save.mock.calls[0][0];
-    expect(event.clientId).toBe('web-app');
+    expect(event.clientId).toBe('client-ref-1');
+    expect(event.resourceId).toBe('web-app');
     expect(event.reason).toBe('ClientSecretMismatch');
     expect(JSON.stringify(event.metadata)).not.toContain('bad-secret');
   });
@@ -529,7 +563,8 @@ describe('OidcInteractionAdapter policy resolution', () => {
     ).rejects.toBe(invalidClient);
 
     const event = eventRepo.save.mock.calls[0][0];
-    expect(event.clientId).toBe('web-app');
+    expect(event.clientId).toBe('client-ref-1');
+    expect(event.resourceId).toBe('web-app');
     expect(event.reason).toBe('InactiveClient');
   });
 

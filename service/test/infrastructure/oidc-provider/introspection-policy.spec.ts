@@ -291,6 +291,30 @@ describe('createIntrospectionAllowedPolicy', () => {
   });
 
   it.each([
+    [
+      'valid와 malformed URL가 섞인 audience array',
+      ['https://api.example.com/orders', 'not-a-resource-origin'],
+    ],
+    [
+      'valid와 HTTP가 섞인 audience array',
+      ['https://api.example.com/orders', 'http://other.example.com'],
+    ],
+  ])('%s는 전체를 repository 조회 전에 거부한다', async (_name, aud) => {
+    const clientRepository = makeRepository();
+    const policy = createIntrospectionAllowedPolicy(clientRepository);
+
+    await expect(
+      policy(
+        { req: { tenant: { id: 'tenant-1' } } } as any,
+        { clientId: 'orders-api' } as any,
+        { kind: 'AccessToken', aud } as any,
+      ),
+    ).resolves.toBe(false);
+
+    expect(clientRepository.findByClientId).not.toHaveBeenCalled();
+  });
+
+  it.each([
     ['null allowlist', null],
     ['scalar allowlist', 'https://api.example.com'],
     ['object allowlist', { resource: 'https://api.example.com' }],

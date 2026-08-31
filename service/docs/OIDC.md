@@ -465,7 +465,7 @@ curl -u 'orders-api:REDACTED_RESOURCE_SERVER_SECRET' \
   https://auth.example.com/t/acme/oidc/token/introspection
 ```
 
-성공한 active response는 다음 stable claim subset을 제공한다. `sub`, `jti`, `sid`, `cnf`는 선택 사항이고 `aud`는 하나의 문자열 또는 문자열 배열이다.
+성공한 active response는 다음 stable claim subset을 제공한다. 아래 scoped user-token 예에서는 `scope`가 필수이지만, 표준 `client_credentials` 요청은 `scope`를 생략할 수 있으므로 provider가 active response에서 `scope`를 생략할 수 있다. `sub`, `jti`, `sid`, `cnf`도 선택 사항이고 `aud`는 하나의 문자열 또는 문자열 배열이다.
 
 ```json
 {

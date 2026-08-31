@@ -409,7 +409,6 @@ function mergeOidcProviderPaths(document: OpenApiDocument): void {
                         'active',
                         'client_id',
                         'token_type',
-                        'scope',
                         'iss',
                         'aud',
                         'exp',

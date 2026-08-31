@@ -1,7 +1,8 @@
-import { createHash, createHmac } from 'node:crypto';
+import { createHash, createHmac, createPublicKey, verify } from 'node:crypto';
 import request from 'supertest';
 import { ConsentModel } from '@domain/models/consent';
 import { UserIdentityModel } from '@domain/models/user-identity';
+import { EventRepositoryImpl } from '@infrastructure/repositories/event.repository.impl';
 import { ApiE2eFixture, createApiE2eFixture } from './api-test-app';
 import { cleanupE2eResources } from './e2e-cleanup';
 import { MockOidcIdpServer } from './mock-oidc-idp';
@@ -599,6 +600,33 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
         });
       }
       return call;
+    }
+
+    async function waitForInvalidClientAudit(params: {
+      tenantId: string;
+      clientId: string;
+      publicClientId: string;
+    }) {
+      const repository = new EventRepositoryImpl(fixture.orm.em);
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const events = await fixture.runInRequestContext(() =>
+          repository.list({
+            tenantId: params.tenantId,
+            page: 1,
+            limit: 50,
+            action: 'ACCESS_DENIED',
+          }),
+        );
+        const event = events.items.find(
+          (candidate) =>
+            candidate.reason === 'InvalidClient' &&
+            candidate.clientId === params.clientId &&
+            candidate.resourceId === params.publicClientId,
+        );
+        if (event) return event;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      throw new Error('Expected invalid_client audit event was not persisted');
     }
 
     async function revokeAccessToken(
@@ -1510,6 +1538,24 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
         expect(response.body).not.toHaveProperty('roles');
         expect(response.body).not.toHaveProperty('permissions');
         expect(response.body).not.toHaveProperty('secret');
+        const permittedKeys = new Set([
+          'active',
+          'client_id',
+          'token_type',
+          'exp',
+          'iat',
+          'iss',
+          'aud',
+          'tenant_id',
+          'scope',
+          'sub',
+          'jti',
+          'sid',
+          'cnf',
+        ]);
+        expect(
+          Object.keys(response.body).every((key) => permittedKeys.has(key)),
+        ).toBe(true);
       });
 
       it('client_credentials token은 sub 없이 안정적인 introspection metadata를 반환한다', async () => {
@@ -1564,7 +1610,6 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           .type('form')
           .send({
             grant_type: 'client_credentials',
-            scope: 'orders:read',
             resource,
           })
           .expect(200);
@@ -1584,16 +1629,16 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           iat: expect.any(Number),
           iss: 'http://localhost:3000/t/acme/oidc',
           aud: resource,
-          scope: 'orders:read',
           tenant_id: tenant.id,
         });
         expect(response.body).not.toHaveProperty('sub');
+        expect(response.body).not.toHaveProperty('scope');
       });
 
       it('introspection은 missing, wrong, public client credentials를 invalid_client로 거부한다', async () => {
         const resource = 'https://resource.example.test/orders';
         const adminToken = await loginAsAdmin();
-        await createTenant(adminToken, 'acme', 'Acme Corp');
+        const tenant = await createTenant(adminToken, 'acme', 'Acme Corp');
         const resourceServer = await createClient(
           adminToken,
           'acme',
@@ -1632,6 +1677,19 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           token: 'unknown-token',
         }).expect(401);
         expect(wrongSecret.body).toMatchObject({ error: 'invalid_client' });
+
+        const audit = await waitForInvalidClientAudit({
+          tenantId: tenant.id,
+          clientId: resourceServer.id,
+          publicClientId: resourceServer.clientId,
+        });
+        expect(audit.metadata).toEqual({
+          tenantCode: 'acme',
+          endpoint: 'introspection',
+        });
+        const persisted = JSON.stringify(audit);
+        expect(persisted).not.toContain('wrong-introspection-secret-00000001');
+        expect(persisted).not.toContain('unknown-token');
 
         const publicBasic = await introspectToken({
           tenantCode: 'acme',
@@ -1823,6 +1881,125 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           error: 'unsupported_token_type',
         });
       });
+
+      const jwtIt =
+        process.env.OIDC_ACCESS_TOKEN_FORMAT === 'jwt' ? it : it.skip;
+      jwtIt(
+        'JWT resource access token은 tenant JWKS와 issuer/audience/tenant claim으로 검증된다',
+        async () => {
+          const resource = 'https://resource.example.test/orders';
+          const adminToken = await loginAsAdmin();
+          const tenant = await createTenant(adminToken, 'acme', 'Acme Corp');
+          await request(fixture.app.getHttpServer())
+            .post('/t/acme/admin/scopes')
+            .set('Authorization', `Bearer ${adminToken}`)
+            .send({
+              name: 'orders:read',
+              displayName: 'Read orders',
+              claimKeys: [],
+              enabled: true,
+            })
+            .expect(201);
+          const client = await createClient(
+            adminToken,
+            'acme',
+            'jwt-orders-web',
+            {
+              scope: 'openid orders:read',
+              allowedResources: ['https://resource.example.test'],
+              skipConsent: false,
+            },
+          );
+          const signup = await signupUser('acme', {
+            username: 'jwt-introspection-user',
+            password: 'Password123!',
+          });
+          const login = await loginUserViaOidc({
+            tenantCode: 'acme',
+            clientId: client.clientId,
+            redirectUri: client.redirectUri,
+            username: signup.username,
+            password: signup.password,
+            resource,
+            scope: 'openid orders:read',
+            prompt: 'consent',
+          });
+          const tokenParts = login.accessToken.split('.');
+          expect(tokenParts).toHaveLength(3);
+
+          const header = JSON.parse(
+            Buffer.from(tokenParts[0], 'base64url').toString('utf8'),
+          ) as { alg?: string; kid?: string };
+          const payload = JSON.parse(
+            Buffer.from(tokenParts[1], 'base64url').toString('utf8'),
+          ) as Record<string, unknown>;
+          const jwks = await request(fixture.app.getHttpServer())
+            .get('/t/acme/oidc/jwks')
+            .expect(200);
+          const jwk = (jwks.body.keys as Array<Record<string, unknown>>).find(
+            (candidate) => candidate.kid === header.kid,
+          );
+          expect(jwk).toBeDefined();
+          expect(
+            verify(
+              'RSA-SHA256',
+              new Uint8Array(Buffer.from(`${tokenParts[0]}.${tokenParts[1]}`)),
+              createPublicKey({ key: jwk!, format: 'jwk' }),
+              new Uint8Array(Buffer.from(tokenParts[2], 'base64url')),
+            ),
+          ).toBe(true);
+          expect(header.alg).toBe('RS256');
+          expect(payload).toMatchObject({
+            iss: 'http://localhost:3000/t/acme/oidc',
+            aud: resource,
+            tenant_id: tenant.id,
+          });
+
+          await createTenant(adminToken, 'beta', 'Beta Corp');
+          await request(fixture.app.getHttpServer())
+            .post('/t/beta/admin/scopes')
+            .set('Authorization', `Bearer ${adminToken}`)
+            .send({
+              name: 'orders:read',
+              displayName: 'Read orders',
+              claimKeys: [],
+              enabled: true,
+            })
+            .expect(201);
+          await createClient(adminToken, 'beta', client.clientId, {
+            scope: 'openid orders:read',
+            allowedResources: ['https://resource.example.test'],
+          });
+          const betaResourceServer = await createClient(
+            adminToken,
+            'beta',
+            'jwt-orders-api',
+            {
+              type: 'service',
+              secret: 'jwt-orders-api-introspection-secret',
+              redirectUris: [],
+              grantTypes: ['client_credentials'],
+              responseTypes: [],
+              tokenEndpointAuthMethod: 'client_secret_basic',
+              scope: 'orders:read',
+              introspectionResources: [resource],
+            },
+          );
+          const crossTenant = await introspectToken({
+            tenantCode: 'beta',
+            clientId: betaResourceServer.clientId,
+            clientSecret: betaResourceServer.secret,
+            token: login.accessToken,
+            tokenTypeHint: 'access_token',
+          });
+          expect([200, 400, 401]).toContain(crossTenant.status);
+          if (crossTenant.status === 200) {
+            expect(crossTenant.body).toEqual({ active: false });
+          } else {
+            expect(crossTenant.body.active).not.toBe(true);
+          }
+        },
+      );
 
       it('같은 테넌트의 두 클라이언트는 SSO 세션을 공유하고 RP-initiated logout을 양쪽에 전파한다', async () => {
         const adminToken = await loginAsAdmin();

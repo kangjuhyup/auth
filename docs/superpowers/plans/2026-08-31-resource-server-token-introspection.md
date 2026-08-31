@@ -18,7 +18,7 @@
 - Accept only normalized HTTPS origins; reject malformed, HTTP, localhost, and `.local` resources.
 - Cross-tenant, cross-audience, refresh-token, unknown-token, expired-token, and revoked-token probes must not disclose token metadata.
 - Opaque access tokens use introspection. Structured JWT access tokens retain provider-owned `400 unsupported_token_type` behavior and are locally validated through issuer JWKS.
-- Required active response subset: `active`, `client_id`, `token_type`, `scope`, `iss`, `aud`, `exp`, `iat`, `tenant_id`; user access tokens also require `sub`.
+- Required active response subset: `active`, `client_id`, `token_type`, `iss`, `aud`, `exp`, `iat`, `tenant_id`; user access tokens also require `sub`. `scope` is required for a scoped user-token response but optional for a standard scope-less `client_credentials` response.
 - Never expose email, profile data, roles, permissions, credentials, secrets, raw Authorization headers, or token values in introspection output or logs.
 - Provider configuration stays in `service/src/infrastructure/oidc-provider`; domain and application code do not import `oidc-provider`.
 - Dependency direction remains `presentation → application → domain` and `infrastructure → application → domain`.
@@ -1118,7 +1118,6 @@ expect(schema.oneOf[0].required).toEqual(
     'active',
     'client_id',
     'token_type',
-    'scope',
     'iss',
     'aud',
     'exp',
@@ -1168,7 +1167,7 @@ Set the introspection operation security to:
 security: [{ 'resource-server-basic': [] }],
 ```
 
-Replace the loose response object with `oneOf` branches. The active branch requires the stable subset, permits optional `sub`, `jti`, `sid`, and `cnf`, and models `aud` as `oneOf` string or string array. The inactive branch is exactly:
+Replace the loose response object with `oneOf` branches. The active branch requires the stable subset, permits optional `scope`, `sub`, `jti`, `sid`, and `cnf`, and models `aud` as `oneOf` string or string array. `scope` remains asserted for the scoped user-token example but is omitted by a standard scope-less `client_credentials` example. The inactive branch is exactly:
 
 ```ts
 {
@@ -1238,7 +1237,7 @@ corepack yarn lint
 
 Expected: all service unit/integration/E2E tests PASS. Statements, functions, and lines remain at least 85%, security-critical policy branches reach at least 90%, and the project-wide legacy branch percentage is reported transparently without regression. Run root lint; pre-existing failures outside the feature diff are reported separately while every changed TypeScript file must lint successfully without credential/token output.
 
-Observed on 2026-09-01: 148 unit suites and 1,513 tests passed with 2 suites/tests skipped. Statements 89.62%, functions 88.66%, lines 89.75%, and `introspection-policy.ts` branches 100%; the project-wide legacy branch result was 78.35%. The isolated E2E runner passed OIDC 14/14, user 14/14, and admin 13/13. Root lint still reports 316 errors and 1 warning outside this feature's final changed-file lint scope; every changed TypeScript/JavaScript file from the feature base passes ESLint.
+Observed on 2026-09-01: 148 unit suites and 1,521 tests passed with 2 suites/tests skipped. Statements 89.62%, functions 88.77%, lines 89.78%, and `introspection-policy.ts` branches 100%; the project-wide legacy branch result was 78.41%. The isolated opaque-token E2E runner passed OIDC 14/14 with the JWT-only case skipped, user 14/14, and admin 13/13. A separate JWT-mode run passed the real issuance, RS256 signature, tenant JWKS, issuer/audience/tenant claim, and same-client-id cross-tenant isolation case. Root lint still reports 316 errors and 1 warning outside this feature's final changed-file lint scope; every changed TypeScript/JavaScript file from the feature base passes ESLint.
 
 If the full E2E run reproduces the cross-suite ESM loader teardown failure, preserve the production loader and fix the test-harness boundary. Jest gives each test file a separate VM environment, while node-oidc-provider is native ESM and its dynamic-import callback cannot safely cross a torn-down environment in the same Jest process. Add a small E2E runner that executes the OIDC, user, and admin specs sequentially in separate Jest child processes. Explicit single-spec arguments continue to run one Jest process. Test the runner against a fake child command so ordering, argument forwarding, failure propagation, and process isolation are behaviorally verified without starting Jest recursively.
 

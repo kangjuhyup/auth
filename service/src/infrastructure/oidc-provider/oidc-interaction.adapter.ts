@@ -860,21 +860,21 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
       return;
     }
 
-    const clientId = getClientId(req);
-    const client = clientId
-      ? await this.clientRepo.findByClientId(tenant.id, clientId)
+    const publicClientId = getSafeAuditClientId(getClientId(req));
+    const client = publicClientId
+      ? await this.clientRepo.findByClientId(tenant.id, publicClientId)
       : null;
     const reason = resolveClientAuthenticationFailureReason(client, req);
 
     await this.eventRepo.save(
       new EventModel({
         tenantId: tenant.id,
-        clientId,
+        clientId: client?.id ?? null,
         category: 'SECURITY',
         severity: 'WARN',
         action: 'ACCESS_DENIED',
         resourceType: 'oidc-client',
-        resourceId: clientId,
+        resourceId: publicClientId,
         success: false,
         reason,
         ip: getIpBuffer(req),
@@ -933,6 +933,13 @@ function getClientId(req: Request): string | null {
 
   const basicCredentials = getBasicCredentials(req);
   return basicCredentials?.clientId ?? null;
+}
+
+function getSafeAuditClientId(value: string | null): string | null {
+  if (!value || value.length > 255) {
+    return null;
+  }
+  return /^[\x21-\x7e]+$/.test(value) ? value : null;
 }
 
 function getBasicCredentials(

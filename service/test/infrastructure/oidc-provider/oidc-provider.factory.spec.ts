@@ -9,6 +9,7 @@ import { buildOidcConfiguration } from '@infrastructure/oidc-provider/oidc-provi
 import { loadOidcProviderConstructor } from '@infrastructure/oidc-provider/oidc-provider.loader';
 import { registerCustomGrantTypes } from '@infrastructure/oidc-provider/custom-grants/register-custom-grant-types';
 import { createPrivateKey } from 'node:crypto';
+import { EventEmitter } from 'node:events';
 
 jest.mock('@infrastructure/oidc-provider/oidc-provider.config', () => ({
   buildOidcConfiguration: jest.fn(),
@@ -66,7 +67,9 @@ function makeJwksKey(
   });
 }
 
-function createParams(): CreateOidcProviderParams {
+function createParams(): CreateOidcProviderParams & {
+  metrics: { incrementCounter: jest.Mock };
+} {
   return {
     issuer: 'https://auth.example.com/t/acme/oidc',
     em: {} as any,
@@ -75,7 +78,9 @@ function createParams(): CreateOidcProviderParams {
     clientQuery: {} as any,
     configService: {} as any,
     tenantCode: 'acme',
-    clientRepository: {} as any,
+    clientRepository: {
+      findByClientId: jest.fn().mockResolvedValue({ id: 'client-ref-1' }),
+    } as any,
     clientAuthPolicyRepository: {} as any,
     tenantRepository: {
       findByCode: jest.fn().mockResolvedValue(makeTenant()),
@@ -125,23 +130,29 @@ function createParams(): CreateOidcProviderParams {
     scopeClaimResolver: {
       resolve: jest.fn(),
     } as any,
+    metrics: {
+      incrementCounter: jest.fn(),
+      observeLatency: jest.fn(),
+      snapshot: jest.fn(),
+    } as any,
   };
 }
 
 describe('createOidcProvider', () => {
   const providerConfiguration = { cookies: { keys: ['k1', 'k2'] } };
-  const on = jest.fn();
   const ProviderConstructor = jest
     .fn()
-    .mockImplementation((issuer: string, configuration: unknown) => ({
-      issuer,
-      configuration,
-      on,
-    }));
+    .mockImplementation((issuer: string, configuration: unknown) => {
+      const provider = Object.assign(new EventEmitter(), {
+        issuer,
+        configuration,
+      });
+      provider.on = jest.fn(provider.on.bind(provider));
+      return provider;
+    });
 
   beforeEach(() => {
     jest.clearAllMocks();
-    on.mockClear();
 
     (buildOidcConfiguration as jest.Mock).mockReturnValue(
       providerConfiguration,
@@ -216,12 +227,14 @@ describe('createOidcProvider', () => {
       }),
       [],
     );
-    expect(provider).toEqual({
+    expect(provider).toMatchObject({
       issuer: 'https://auth.example.com/t/acme/oidc',
       configuration: providerConfiguration,
-      on,
     });
-    expect(on).toHaveBeenCalledWith('grant.revoked', expect.any(Function));
+    expect((provider as any).on).toHaveBeenCalledWith(
+      'grant.revoked',
+      expect.any(Function),
+    );
   });
 
   it('활성 키가 없으면 새 키를 생성하고 저장한 뒤 Provider를 만든다', async () => {
@@ -287,10 +300,10 @@ describe('createOidcProvider', () => {
 
   it('rotated refresh token 재사용으로 grant가 revoke되면 보안 감사 이벤트를 저장한다', async () => {
     const params = createParams();
-    await createOidcProvider(params);
+    const provider = await createOidcProvider(params);
 
-    const listener = on.mock.calls.find(
-      ([event]) => event === 'grant.revoked',
+    const listener = (provider as any).on.mock.calls.find(
+      ([event]: [string, unknown]) => event === 'grant.revoked',
     )?.[1];
     expect(listener).toEqual(expect.any(Function));
 
@@ -320,7 +333,7 @@ describe('createOidcProvider', () => {
     const event = (params.eventRepository.save as jest.Mock).mock.calls[0][0];
     expect(event.tenantId).toBe('tenant-1');
     expect(event.userId).toBe('user-1');
-    expect(event.clientId).toBe('app-web');
+    expect(event.clientId).toBe('client-ref-1');
     expect(event.category).toBe('SECURITY');
     expect(event.action).toBe('TOKEN_REVOKED');
     expect(event.reason).toBe('RefreshTokenReuseDetected');
@@ -331,5 +344,121 @@ describe('createOidcProvider', () => {
       action: 'revoke_grant',
       rotations: 2,
     });
+  });
+
+  it('real provider introspection.error invalid_client를 client FK로 best-effort 감사한다', async () => {
+    const params = createParams();
+    const provider = await createOidcProvider(params);
+
+    (provider as any).emit(
+      'introspection.error',
+      {
+        req: { tenant: { id: 'tenant-1' }, correlationId: 'req-1' },
+        get: jest.fn().mockReturnValue('test-agent'),
+        oidc: {
+          client: { clientId: 'orders-api' },
+          params: { client_id: 'orders-api' },
+        },
+      },
+      { error: 'invalid_client' },
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const event = (params.eventRepository.save as jest.Mock).mock.calls[0][0];
+    expect(event.clientId).toBe('client-ref-1');
+    expect(event.resourceId).toBe('orders-api');
+    expect(event.metadata).toEqual({
+      tenantCode: 'acme',
+      endpoint: 'introspection',
+    });
+    expect(params.metrics.incrementCounter).toHaveBeenCalledWith(
+      'invalid_client_total',
+      { tenantCode: 'acme' },
+    );
+  });
+
+  it('unknown Basic client과 감사 저장 실패가 real provider 401 rendering을 방해하지 않는다', async () => {
+    const params = createParams();
+    params.clientRepository.findByClientId = jest.fn().mockResolvedValue(null);
+    params.eventRepository.save = jest
+      .fn()
+      .mockRejectedValue(new Error('audit persistence failed'));
+    const provider = await createOidcProvider(params);
+
+    expect(() => {
+      (provider as any).emit(
+        'introspection.error',
+        {
+          req: {
+            tenant: { id: 'tenant-1' },
+            headers: {
+              authorization: `Basic ${Buffer.from(
+                ['missing-client', 'REDACTED'].join(':'),
+              ).toString('base64')}`,
+            },
+          },
+          oidc: { params: {} },
+        },
+        { error: 'invalid_client' },
+      );
+    }).not.toThrow();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const event = (params.eventRepository.save as jest.Mock).mock.calls[0][0];
+    expect(event.clientId).toBeNull();
+    expect(event.resourceId).toBe('missing-client');
+  });
+
+  it('grant.error invalid_client 감사와 metric 실패가 provider emit을 방해하지 않는다', async () => {
+    const params = createParams();
+    params.metrics.incrementCounter.mockImplementationOnce(() => {
+      throw new Error('metrics unavailable');
+    });
+    const provider = await createOidcProvider(params);
+
+    expect(() => {
+      (provider as any).emit(
+        'grant.error',
+        {
+          req: { tenant: { id: 'tenant-1' } },
+          oidc: {
+            client: { clientId: 'orders-api' },
+            params: {
+              client_id: 'orders-api',
+              grant_type: 'client_credentials',
+            },
+          },
+        },
+        { error: 'invalid_client' },
+      );
+    }).not.toThrow();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const event = (params.eventRepository.save as jest.Mock).mock.calls[0][0];
+    expect(event.clientId).toBe('client-ref-1');
+    expect(event.metadata).toEqual({
+      tenantCode: 'acme',
+      endpoint: 'token',
+      grantType: 'client_credentials',
+    });
+  });
+
+  it('provider의 invalid_client 이외 error는 인증 실패로 감사하지 않는다', async () => {
+    const params = createParams();
+    const provider = await createOidcProvider(params);
+
+    (provider as any).emit(
+      'introspection.error',
+      { req: { tenant: { id: 'tenant-1' } } },
+      { error: 'invalid_request' },
+    );
+    await Promise.resolve();
+
+    expect(params.clientRepository.findByClientId).not.toHaveBeenCalled();
+    expect(params.eventRepository.save).not.toHaveBeenCalled();
+    expect(params.metrics.incrementCounter).not.toHaveBeenCalled();
   });
 });

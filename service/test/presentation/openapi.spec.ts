@@ -122,7 +122,6 @@ describe('openapi docs', () => {
         'active',
         'client_id',
         'token_type',
-        'scope',
         'iss',
         'aud',
         'exp',
@@ -206,6 +205,9 @@ describe('openapi docs', () => {
       ];
       expect(validate(withoutOptionalClaim)).toBe(true);
     }
+    const withoutScope = { ...activeResponse };
+    delete (withoutScope as { scope?: string }).scope;
+    expect(validate(withoutScope)).toBe(true);
     const incompleteActiveResponse = { ...activeResponse };
     delete (incompleteActiveResponse as { exp?: number }).exp;
     expect(validate(incompleteActiveResponse)).toBe(false);
@@ -216,7 +218,7 @@ describe('openapi docs', () => {
     expect(validate({ active: false, client_id: 'orders-api' })).toBe(false);
 
     expect(active.required).not.toEqual(
-      expect.arrayContaining(['sub', 'jti', 'sid', 'cnf']),
+      expect.arrayContaining(['scope', 'sub', 'jti', 'sid', 'cnf']),
     );
     expect(Object.keys(inactive.properties)).toEqual(['active']);
   });

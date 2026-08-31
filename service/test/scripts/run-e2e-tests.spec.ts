@@ -1,5 +1,12 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  copyFileSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -107,5 +114,36 @@ describe('runE2eTests', () => {
     expect(calls).toHaveLength(2);
     expect(calls[0]).toMatch(/test\/e2e\/oidc\.e2e-spec\.ts$/);
     expect(calls[1]).toMatch(/test\/e2e\/user\.e2e-spec\.ts$/);
+  });
+
+  it('executes when the script path contains spaces', () => {
+    const bin = mkdtempSync(join(tmpdir(), 'auth fake yarn-'));
+    const output = join(bin, 'calls');
+    const yarn = join(bin, 'yarn');
+    const scriptDirectory = mkdtempSync(join(tmpdir(), 'auth e2e script-'));
+    const copiedScript = join(scriptDirectory, 'run e2e tests.mjs');
+    writeFileSync(
+      yarn,
+      '#!/bin/sh\nprintf "%s\\n" "$*" >> "$FAKE_CHILD_CALLS"\n',
+    );
+    chmodSync(yarn, 0o755);
+    copyFileSync(join(serviceRoot, 'scripts/run-e2e-tests.mjs'), copiedScript);
+
+    execFileSync(
+      process.execPath,
+      [realpathSync(copiedScript), 'test/e2e/admin.e2e-spec.ts'],
+      {
+        cwd: serviceRoot,
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH}`,
+          FAKE_CHILD_CALLS: output,
+        },
+      },
+    );
+
+    expect(readFileSync(output, 'utf8')).toContain(
+      'test/e2e/admin.e2e-spec.ts',
+    );
   });
 });

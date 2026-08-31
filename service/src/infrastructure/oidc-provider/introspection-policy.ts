@@ -29,7 +29,9 @@ export function createIntrospectionAllowedPolicy(
       return false;
     }
 
-    const audiences = toAudienceList((token as { aud?: unknown }).aud);
+    const audiences = toNormalizedAudienceOrigins(
+      (token as { aud?: unknown }).aud,
+    );
     if (!audiences) return false;
 
     const caller = await clientRepository.findByClientId(tenantId, clientId);
@@ -47,13 +49,7 @@ export function createIntrospectionAllowedPolicy(
     );
     if (!owned) return false;
 
-    return audiences.some((audience) => {
-      try {
-        return owned.has(ResourceOrigin.of(audience).value);
-      } catch {
-        return false;
-      }
-    });
+    return audiences.some((audience) => owned.has(audience));
   };
 }
 
@@ -75,6 +71,21 @@ function toAudienceList(value: unknown): string[] | null {
     return null;
   }
   return value;
+}
+
+function toNormalizedAudienceOrigins(value: unknown): string[] | null {
+  const audiences = toAudienceList(value);
+  if (!audiences) return null;
+
+  const origins: string[] = [];
+  for (const audience of audiences) {
+    try {
+      origins.push(ResourceOrigin.of(audience).value);
+    } catch {
+      return null;
+    }
+  }
+  return origins;
 }
 
 function toNormalizedOriginSet(value: unknown): Set<string> | null {

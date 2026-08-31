@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';
-import { URL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 const defaultSpecs = [
   'test/e2e/oidc.e2e-spec.ts',
@@ -33,6 +33,6 @@ export function runE2eTests(args, spawn = spawnSync) {
   return 0;
 }
 
-if (process.argv[1] === new URL(import.meta.url).pathname) {
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
   process.exitCode = runE2eTests(process.argv.slice(2));
 }
