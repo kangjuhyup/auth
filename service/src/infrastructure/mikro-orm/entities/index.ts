@@ -1,5 +1,6 @@
 export * from './client';
 export * from './consent';
+export * from './custom-grant';
 export * from './event';
 export * from './group';
 export * from './group-role';
@@ -10,6 +11,7 @@ export * from './permission';
 export * from './role';
 export * from './role-inherit';
 export * from './role-permission';
+export * from './scope';
 export * from './oidc-model';
 export * from './oidc-session-index';
 export * from './tenant';

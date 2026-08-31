@@ -1,7 +1,6 @@
 import type { EntityManager } from '@mikro-orm/core';
 import type { AdapterPayload } from 'oidc-provider';
 import type { Redis } from 'ioredis';
-import type { TenantRepository } from '@domain/repositories';
 import { OidcSessionIndexOrmEntity } from '@infrastructure/mikro-orm/entities/oidc-session-index';
 import { extractOidcSessionDescriptor } from './oidc-session-payload';
 
@@ -26,12 +25,9 @@ export interface OidcSessionIndexStore {
 }
 
 export class RdbOidcSessionIndexStore implements OidcSessionIndexStore {
-  private tenantIdPromise: Promise<string | null> | null = null;
-
   constructor(
     private readonly em: EntityManager,
-    private readonly tenantCode: string,
-    private readonly tenantRepository: TenantRepository,
+    private readonly tenantId: string,
   ) {}
 
   async upsertSession(
@@ -39,12 +35,14 @@ export class RdbOidcSessionIndexStore implements OidcSessionIndexStore {
     payload: AdapterPayload,
     expiresAt: Date | null,
   ): Promise<void> {
-    const tenantId = await this.resolveTenantId();
     const descriptor = extractOidcSessionDescriptor(payload);
     const em = this.em.fork();
 
-    await em.nativeDelete(OidcSessionIndexOrmEntity, { sessionId });
-    if (!tenantId || !descriptor) {
+    await em.nativeDelete(OidcSessionIndexOrmEntity, {
+      tenantId: this.tenantId,
+      sessionId,
+    });
+    if (!descriptor) {
       await em.flush();
       return;
     }
@@ -52,7 +50,7 @@ export class RdbOidcSessionIndexStore implements OidcSessionIndexStore {
     for (const authorization of descriptor.authorizations) {
       em.create(OidcSessionIndexOrmEntity, {
         sessionId,
-        tenantId,
+        tenantId: this.tenantId,
         clientId: authorization.clientId,
         accountId: descriptor.accountId,
         grantId: authorization.grantId,
@@ -66,43 +64,38 @@ export class RdbOidcSessionIndexStore implements OidcSessionIndexStore {
 
   async destroySession(sessionId: string): Promise<void> {
     const em = this.em.fork();
-    await em.nativeDelete(OidcSessionIndexOrmEntity, { sessionId });
+    await em.nativeDelete(OidcSessionIndexOrmEntity, {
+      tenantId: this.tenantId,
+      sessionId,
+    });
   }
 
   async deleteByGrantIds(grantIds: string[]): Promise<void> {
     if (grantIds.length === 0) return;
     const em = this.em.fork();
     await em.nativeDelete(OidcSessionIndexOrmEntity, {
+      tenantId: this.tenantId,
       grantId: { $in: grantIds },
     } as any);
-  }
-
-  private resolveTenantId(): Promise<string | null> {
-    this.tenantIdPromise ??= this.tenantRepository
-      .findByCode(this.tenantCode)
-      .then((tenant) => tenant?.id ?? null)
-      .catch(() => null);
-    return this.tenantIdPromise;
   }
 }
 
 type RedisSessionIndexEntry = {
   sessionId: string;
   tenantId: string;
-  clientId: string;
   accountId: string;
-  grantId: string | null;
+  authorizations: Array<{
+    clientId: string;
+    grantId: string | null;
+  }>;
   createdAt: string;
   expiresAt: string | null;
 };
 
 export class RedisOidcSessionIndexStore implements OidcSessionIndexStore {
-  private tenantIdPromise: Promise<string | null> | null = null;
-
   constructor(
     private readonly redis: Redis,
-    private readonly tenantCode: string,
-    private readonly tenantRepository: TenantRepository,
+    private readonly tenantId: string,
   ) {}
 
   async upsertSession(
@@ -112,42 +105,54 @@ export class RedisOidcSessionIndexStore implements OidcSessionIndexStore {
   ): Promise<void> {
     await this.destroySession(sessionId);
 
-    const tenantId = await this.resolveTenantId();
     const descriptor = extractOidcSessionDescriptor(payload);
-    if (!tenantId || !descriptor) return;
+    if (!descriptor) return;
 
     const ttlSec = expiresAt
       ? Math.max(1, Math.ceil((expiresAt.getTime() - Date.now()) / 1000))
       : undefined;
     const multi = this.redis.multi();
+    const userLookupKey = redisUserLookupKey(
+      this.tenantId,
+      descriptor.accountId,
+    );
+    const reverseLookupKey = redisSessionLookupListKey(
+      this.tenantId,
+      sessionId,
+    );
+    const entryKey = redisSessionEntryKey(this.tenantId, sessionId);
+    const entry: RedisSessionIndexEntry = {
+      sessionId,
+      tenantId: this.tenantId,
+      accountId: descriptor.accountId,
+      authorizations: descriptor.authorizations.map((authorization) => ({
+        clientId: authorization.clientId,
+        grantId: authorization.grantId,
+      })),
+      createdAt: new Date().toISOString(),
+      expiresAt: expiresAt?.toISOString() ?? null,
+    };
+
+    multi.sadd(userLookupKey, sessionId);
+    multi.sadd(reverseLookupKey, userLookupKey);
+    multi.set(entryKey, JSON.stringify(entry));
 
     for (const authorization of descriptor.authorizations) {
-      const entry: RedisSessionIndexEntry = {
-        sessionId,
-        tenantId,
-        clientId: authorization.clientId,
-        accountId: descriptor.accountId,
-        grantId: authorization.grantId,
-        createdAt: new Date().toISOString(),
-        expiresAt: expiresAt?.toISOString() ?? null,
-      };
       const lookupKey = redisLookupKey(
-        tenantId,
+        this.tenantId,
         authorization.clientId,
         descriptor.accountId,
       );
-      const userLookupKey = redisUserLookupKey(tenantId, descriptor.accountId);
       multi.sadd(lookupKey, sessionId);
-      multi.sadd(userLookupKey, sessionId);
-      multi.sadd(redisSessionLookupListKey(sessionId), lookupKey);
-      multi.sadd(redisSessionLookupListKey(sessionId), userLookupKey);
-      multi.set(redisSessionEntryKey(sessionId), JSON.stringify(entry));
+      multi.sadd(reverseLookupKey, lookupKey);
       if (ttlSec) {
         multi.expire(lookupKey, ttlSec);
-        multi.expire(userLookupKey, ttlSec);
-        multi.expire(redisSessionLookupListKey(sessionId), ttlSec);
-        multi.expire(redisSessionEntryKey(sessionId), ttlSec);
       }
+    }
+    if (ttlSec) {
+      multi.expire(userLookupKey, ttlSec);
+      multi.expire(reverseLookupKey, ttlSec);
+      multi.expire(entryKey, ttlSec);
     }
 
     await multi.exec();
@@ -155,27 +160,19 @@ export class RedisOidcSessionIndexStore implements OidcSessionIndexStore {
 
   async destroySession(sessionId: string): Promise<void> {
     const lookupKeys = await this.redis.smembers(
-      redisSessionLookupListKey(sessionId),
+      redisSessionLookupListKey(this.tenantId, sessionId),
     );
     const multi = this.redis.multi();
     for (const lookupKey of lookupKeys) {
       multi.srem(lookupKey, sessionId);
     }
-    multi.del(redisSessionLookupListKey(sessionId));
-    multi.del(redisSessionEntryKey(sessionId));
+    multi.del(redisSessionLookupListKey(this.tenantId, sessionId));
+    multi.del(redisSessionEntryKey(this.tenantId, sessionId));
     await multi.exec();
   }
 
   async deleteByGrantIds(grantIds: string[]): Promise<void> {
     void grantIds;
-  }
-
-  private resolveTenantId(): Promise<string | null> {
-    this.tenantIdPromise ??= this.tenantRepository
-      .findByCode(this.tenantCode)
-      .then((tenant) => tenant?.id ?? null)
-      .catch(() => null);
-    return this.tenantIdPromise;
   }
 }
 
@@ -194,10 +191,16 @@ export function redisUserLookupKey(
   return `oidc:session-index:${tenantId}:user:${accountId}`;
 }
 
-export function redisSessionEntryKey(sessionId: string): string {
-  return `oidc:session-index:session:${sessionId}`;
+export function redisSessionEntryKey(
+  tenantId: string,
+  sessionId: string,
+): string {
+  return `oidc:session-index:${tenantId}:session:${sessionId}`;
 }
 
-function redisSessionLookupListKey(sessionId: string): string {
-  return `oidc:session-index:session-lookups:${sessionId}`;
+function redisSessionLookupListKey(
+  tenantId: string,
+  sessionId: string,
+): string {
+  return `oidc:session-index:${tenantId}:session-lookups:${sessionId}`;
 }

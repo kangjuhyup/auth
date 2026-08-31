@@ -15,6 +15,8 @@ import type { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.po
 import type { ScopeRegistryPort } from '@application/ports/scope-registry.port';
 import type { ScopeClaimResolverPort } from '@application/ports/scope-claim-resolver.port';
 import { parseScopeString } from '@domain/models/scope';
+import { buildTenantCookieConfiguration } from './security/tenant-cookie.config';
+import { createSafeOidcFetch } from './security/safe-oidc-fetch';
 
 type OidcConfiguration = Configuration & {
   grantTypes: string[];
@@ -26,6 +28,7 @@ export function buildOidcConfiguration(params: {
   userQuery: UserQueryPort;
   clientQuery: ClientQueryPort;
   configService: ConfigService;
+  tenantId: string;
   tenantCode: string;
   clientRepository: ClientRepository;
   clientAuthPolicyRepository: ClientAuthPolicyRepository;
@@ -45,6 +48,7 @@ export function buildOidcConfiguration(params: {
     userQuery,
     clientQuery,
     configService,
+    tenantId,
     tenantCode,
     clientRepository,
     clientAuthPolicyRepository,
@@ -171,6 +175,7 @@ export function buildOidcConfiguration(params: {
 
     features: {
       devInteractions: { enabled: false },
+      backchannelLogout: { enabled: true },
 
       // ✅ JWT Access Token을 쓰려면 보통 여기(리소스 지시자)에서 포맷을 결정
       resourceIndicators: {
@@ -228,7 +233,12 @@ export function buildOidcConfiguration(params: {
     },
     scopes: supportedScopes,
 
-    cookies: { keys: getSecretKeys(configService, 'OIDC_COOKIE_KEYS') },
+    cookies: buildTenantCookieConfiguration(
+      tenantCode,
+      getSecretKeys(configService, 'OIDC_COOKIE_KEYS'),
+    ),
+
+    fetch: createSafeOidcFetch(),
 
     jwks: { keys: jwksKeys as any[] },
 
@@ -286,6 +296,7 @@ export function buildOidcConfiguration(params: {
       backfillTtlSec: Number(
         configService.getOrThrow<string>('OIDC_CACHE_BACKFILL_TTL_SEC'),
       ),
+      tenantId,
       tenantCode,
       clientRepository,
       tenantRepository,

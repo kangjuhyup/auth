@@ -56,16 +56,19 @@ export async function createOidcProvider(
   params: CreateOidcProviderParams,
 ): Promise<Provider> {
   const tenant = await params.tenantRepository.findByCode(params.tenantCode);
-  const tenantConfig = tenant
-    ? await params.tenantConfigRepository.findByTenantId(tenant.id)
-    : null;
+  if (!tenant) {
+    throw new Error('OIDC tenant not found');
+  }
+  const tenantConfig = await params.tenantConfigRepository.findByTenantId(
+    tenant.id,
+  );
 
   // Load (or auto-generate) JWKS signing keys for this tenant
-  let keyModels = tenant
-    ? await params.jwksKeyRepository.findActiveByTenantId(tenant.id)
-    : [];
+  let keyModels = await params.jwksKeyRepository.findActiveByTenantId(
+    tenant.id,
+  );
 
-  if (keyModels.length === 0 && tenant) {
+  if (keyModels.length === 0) {
     const generated = await params.jwksKeyCrypto.generateKeyPair('RS256');
     const newKey = new JwksKeyModel({
       kid: generated.kid,
@@ -93,6 +96,7 @@ export async function createOidcProvider(
     userQuery: params.userQuery,
     clientQuery: params.clientQuery,
     configService: params.configService,
+    tenantId: tenant.id,
     tenantCode: params.tenantCode,
     clientRepository: params.clientRepository,
     clientAuthPolicyRepository: params.clientAuthPolicyRepository,
@@ -100,9 +104,9 @@ export async function createOidcProvider(
     symmetricCrypto: params.symmetricCrypto,
     jwksKeys,
     supportedGrantTypes: await params.grantTypeRegistry.listSupportedGrantTypes(
-      tenant?.id,
+      tenant.id,
     ),
-    supportedScopes: await params.scopeRegistry.listSupportedScopes(tenant?.id),
+    supportedScopes: await params.scopeRegistry.listSupportedScopes(tenant.id),
     scopeRegistry: params.scopeRegistry,
     scopeClaimResolver: params.scopeClaimResolver,
     tenantAccessTokenTtlSec:
@@ -124,7 +128,7 @@ export async function createOidcProvider(
       eventRepository: params.eventRepository,
     },
     await resolveCustomGrantDefinitions({
-      tenantId: tenant?.id,
+      tenantId: tenant.id,
       repository: params.customGrantRepository,
       definitions: CUSTOM_GRANT_TYPES,
     }),

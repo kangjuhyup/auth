@@ -115,6 +115,7 @@ describe('buildOidcConfiguration', () => {
     };
 
     return {
+      tenantId: 'tenant-1',
       em,
       redis,
       userQuery,
@@ -150,6 +151,17 @@ describe('buildOidcConfiguration', () => {
     expect(
       typeof (cfg.features?.resourceIndicators as any).getResourceServerInfo,
     ).toBe('function');
+  });
+
+  it('같은 OP 세션에 참여한 클라이언트에 SLO를 전파하도록 back-channel logout을 활성화한다', () => {
+    const deps = makeDeps();
+    const cfg = buildOidcConfiguration({
+      ...deps,
+      tenantCode: 'acme',
+    });
+
+    expect(cfg.features?.backchannelLogout?.enabled).toBe(true);
+    expect(typeof cfg.fetch).toBe('function');
   });
 
   it('refresh_token과 client_credentials grant를 provider 지원 목록에 포함한다', () => {

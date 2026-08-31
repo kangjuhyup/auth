@@ -7,7 +7,7 @@ describe('RedisAdapter integration', () => {
 
   beforeEach(() => {
     redis = new InMemoryRedis();
-    adapter = new RedisAdapter('AccessToken', redis as any);
+    adapter = new RedisAdapter('tenant-a', 'AccessToken', redis as any);
   });
 
   it('upsert 후 id, uid, userCode로 end-to-end 조회할 수 있다', async () => {
@@ -34,9 +34,9 @@ describe('RedisAdapter integration', () => {
     await expect(adapter.findByUserCode('code-1')).resolves.toMatchObject({
       sub: 'user-1',
     });
-    await expect(redis.smembers('oidc:AccessToken:grant:grant-1')).resolves.toEqual([
-      'token-1',
-    ]);
+    await expect(
+      redis.smembers('oidc:tenant-a:AccessToken:grant:grant-1'),
+    ).resolves.toEqual(['token-1']);
   });
 
   it('같은 id를 다시 upsert하면 이전 uid/userCode/grant 인덱스를 정리한다', async () => {
@@ -66,24 +66,20 @@ describe('RedisAdapter integration', () => {
       uid: 'uid-2',
       grantId: 'grant-2',
     });
-    await expect(redis.smembers('oidc:AccessToken:grant:grant-1')).resolves.toEqual(
-      [],
-    );
+    await expect(
+      redis.smembers('oidc:tenant-a:AccessToken:grant:grant-1'),
+    ).resolves.toEqual([]);
   });
 
   it('consume 하면 TTL을 유지하면서 consumed 플래그를 추가한다', async () => {
-    await adapter.upsert(
-      'token-1',
-      { sub: 'user-1', uid: 'uid-1' } as any,
-      30,
-    );
+    await adapter.upsert('token-1', { sub: 'user-1', uid: 'uid-1' } as any, 30);
 
     redis.advanceTime(5000);
-    const ttlBefore = await redis.ttl('oidc:AccessToken:token-1');
+    const ttlBefore = await redis.ttl('oidc:tenant-a:AccessToken:token-1');
 
     await adapter.consume('token-1');
 
-    const ttlAfter = await redis.ttl('oidc:AccessToken:token-1');
+    const ttlAfter = await redis.ttl('oidc:tenant-a:AccessToken:token-1');
     expect(ttlBefore).toBeGreaterThan(0);
     expect(ttlAfter).toBeGreaterThan(0);
     expect(ttlAfter).toBeLessThanOrEqual(ttlBefore);
@@ -110,9 +106,9 @@ describe('RedisAdapter integration', () => {
     await expect(adapter.find('token-1')).resolves.toBeUndefined();
     await expect(adapter.findByUid('uid-1')).resolves.toBeUndefined();
     await expect(adapter.findByUserCode('code-1')).resolves.toBeUndefined();
-    await expect(redis.smembers('oidc:AccessToken:grant:grant-1')).resolves.toEqual(
-      [],
-    );
+    await expect(
+      redis.smembers('oidc:tenant-a:AccessToken:grant:grant-1'),
+    ).resolves.toEqual([]);
   });
 
   it('revokeByGrantId는 같은 grant에 묶인 토큰을 모두 제거한다', async () => {
@@ -146,12 +142,54 @@ describe('RedisAdapter integration', () => {
     await adapter.negativeCacheUid('missing-uid', 5);
     await adapter.negativeCacheUserCode('missing-code', 5);
 
-    await expect(adapter.isNegativeCachedById('missing-id')).resolves.toBe(true);
-    await expect(adapter.resolveIdByUid('missing-uid')).resolves.toBeUndefined();
-    await expect(adapter.resolveIdByUserCode('missing-code')).resolves.toBeUndefined();
+    await expect(adapter.isNegativeCachedById('missing-id')).resolves.toBe(
+      true,
+    );
+    await expect(
+      adapter.resolveIdByUid('missing-uid'),
+    ).resolves.toBeUndefined();
+    await expect(
+      adapter.resolveIdByUserCode('missing-code'),
+    ).resolves.toBeUndefined();
 
     redis.advanceTime(6000);
 
-    await expect(adapter.isNegativeCachedById('missing-id')).resolves.toBe(false);
+    await expect(adapter.isNegativeCachedById('missing-id')).resolves.toBe(
+      false,
+    );
+  });
+
+  it('같은 kind와 id를 사용하는 다른 테넌트의 키를 격리한다', async () => {
+    const tenantA = new RedisAdapter('tenant-a', 'AccessToken', redis as any);
+    const tenantB = new RedisAdapter('tenant-b', 'AccessToken', redis as any);
+
+    await tenantA.upsert(
+      'shared-token',
+      { sub: 'user-a', uid: 'shared-uid', grantId: 'shared-grant' } as any,
+      60,
+    );
+    await tenantB.upsert(
+      'shared-token',
+      { sub: 'user-b', uid: 'shared-uid', grantId: 'shared-grant' } as any,
+      60,
+    );
+    await tenantA.negativeCacheById('same-missing-id', 60);
+
+    await expect(tenantA.find('shared-token')).resolves.toMatchObject({
+      sub: 'user-a',
+    });
+    await expect(tenantB.find('shared-token')).resolves.toMatchObject({
+      sub: 'user-b',
+    });
+    await expect(tenantB.isNegativeCachedById('same-missing-id')).resolves.toBe(
+      false,
+    );
+
+    await tenantB.revokeByGrantId('shared-grant');
+
+    await expect(tenantA.findByUid('shared-uid')).resolves.toMatchObject({
+      sub: 'user-a',
+    });
+    await expect(tenantB.find('shared-token')).resolves.toBeUndefined();
   });
 });

@@ -179,6 +179,7 @@ describe('createOidcProvider', () => {
     expect(createPrivateKey).toHaveBeenCalledWith('decrypted-private-key-pem');
     expect(buildOidcConfiguration).toHaveBeenCalledWith(
       expect.objectContaining({
+        tenantId: 'tenant-1',
         tenantCode: 'acme',
         supportedGrantTypes: [
           'authorization_code',
@@ -267,24 +268,21 @@ describe('createOidcProvider', () => {
     );
   });
 
-  it('테넌트를 찾지 못하면 기본 TTL과 빈 JWKS로 Provider를 생성한다', async () => {
+  it('테넌트를 찾지 못하면 provider를 생성하지 않고 실패한다', async () => {
     const params = createParams();
     params.tenantRepository.findByCode = jest.fn().mockResolvedValue(null);
 
-    await createOidcProvider(params);
+    await expect(createOidcProvider(params)).rejects.toThrow(
+      'OIDC tenant not found',
+    );
 
     expect(params.tenantConfigRepository.findByTenantId).not.toHaveBeenCalled();
     expect(
       params.jwksKeyRepository.findActiveByTenantId,
     ).not.toHaveBeenCalled();
     expect(params.jwksKeyCrypto.generateKeyPair).not.toHaveBeenCalled();
-    expect(buildOidcConfiguration).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tenantAccessTokenTtlSec: 3600,
-        tenantRefreshTokenTtlSec: 14 * 24 * 60 * 60,
-        jwksKeys: [],
-      }),
-    );
+    expect(buildOidcConfiguration).not.toHaveBeenCalled();
+    expect(ProviderConstructor).not.toHaveBeenCalled();
   });
 
   it('rotated refresh token 재사용으로 grant가 revoke되면 보안 감사 이벤트를 저장한다', async () => {

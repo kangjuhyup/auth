@@ -7,7 +7,7 @@ describe('RdbOidcAdapter integration', () => {
 
   beforeEach(() => {
     em = new LightweightEntityManager();
-    adapter = new RdbOidcAdapter('AccessToken', em as any);
+    adapter = new RdbOidcAdapter('tenant-a', 'AccessToken', em as any);
   });
 
   it('upsert 후 id, uid, userCode 기준으로 조회할 수 있다', async () => {
@@ -78,7 +78,9 @@ describe('RdbOidcAdapter integration', () => {
 
     await expect(adapter.find('token-expired')).resolves.toBeUndefined();
     await expect(adapter.findByUid('uid-expired')).resolves.toBeUndefined();
-    await expect(adapter.findByUserCode('code-expired')).resolves.toBeUndefined();
+    await expect(
+      adapter.findByUserCode('code-expired'),
+    ).resolves.toBeUndefined();
   });
 
   it('consume 하면 consumed 플래그가 반영된다', async () => {
@@ -93,8 +95,12 @@ describe('RdbOidcAdapter integration', () => {
   });
 
   it('destroy와 revokeByGrantId는 현재 kind 범위에서만 삭제한다', async () => {
-    const accessTokenAdapter = new RdbOidcAdapter('AccessToken', em as any);
-    const sessionAdapter = new RdbOidcAdapter('Session', em as any);
+    const accessTokenAdapter = new RdbOidcAdapter(
+      'tenant-a',
+      'AccessToken',
+      em as any,
+    );
+    const sessionAdapter = new RdbOidcAdapter('tenant-a', 'Session', em as any);
 
     await accessTokenAdapter.upsert(
       'token-1',
@@ -120,5 +126,35 @@ describe('RdbOidcAdapter integration', () => {
     await expect(sessionAdapter.find('session-1')).resolves.toMatchObject({
       uid: 'session-uid',
     });
+  });
+
+  it('같은 kind와 id를 사용하는 다른 테넌트의 레코드를 격리한다', async () => {
+    const tenantA = new RdbOidcAdapter('tenant-a', 'AccessToken', em as any);
+    const tenantB = new RdbOidcAdapter('tenant-b', 'AccessToken', em as any);
+
+    await tenantA.upsert(
+      'shared-token',
+      { sub: 'user-a', uid: 'shared-uid', grantId: 'shared-grant' } as any,
+      60,
+    );
+    await tenantB.upsert(
+      'shared-token',
+      { sub: 'user-b', uid: 'shared-uid', grantId: 'shared-grant' } as any,
+      60,
+    );
+
+    await expect(tenantA.find('shared-token')).resolves.toMatchObject({
+      sub: 'user-a',
+    });
+    await expect(tenantB.find('shared-token')).resolves.toMatchObject({
+      sub: 'user-b',
+    });
+
+    await tenantB.revokeByGrantId('shared-grant');
+
+    await expect(tenantA.findByUid('shared-uid')).resolves.toMatchObject({
+      sub: 'user-a',
+    });
+    await expect(tenantB.find('shared-token')).resolves.toBeUndefined();
   });
 });

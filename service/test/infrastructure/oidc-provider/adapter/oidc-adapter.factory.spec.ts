@@ -21,6 +21,7 @@ jest.mock('@infrastructure/oidc-provider/adapters/client-oidc.adapter', () => ({
 }));
 
 const baseParams = {
+  tenantId: 'tenant-1',
   tenantCode: 'acme',
   clientRepository: {} as any,
   tenantRepository: {} as any,
@@ -35,32 +36,58 @@ describe('buildOidcAdapterFactory', () => {
   it('driver=rdb이면 RdbOidcAdapter factory를 반환한다', () => {
     const em = {} as any;
 
-    const factory = buildOidcAdapterFactory({ driver: 'rdb', em, ...baseParams });
+    const factory = buildOidcAdapterFactory({
+      driver: 'rdb',
+      em,
+      ...baseParams,
+    });
     factory('AccessToken');
 
     expect(RdbOidcAdapter).toHaveBeenCalledTimes(1);
+    expect(RdbOidcAdapter).toHaveBeenCalledWith(
+      'tenant-1',
+      'AccessToken',
+      em,
+      undefined,
+    );
     expect(RedisAdapter).not.toHaveBeenCalled();
     expect(HybridAdapter).not.toHaveBeenCalled();
   });
 
   it('driver=rdb인데 em이 없으면 예외', () => {
-    const factory = buildOidcAdapterFactory({ driver: 'rdb' as any, ...baseParams });
+    const factory = buildOidcAdapterFactory({
+      driver: 'rdb' as any,
+      ...baseParams,
+    });
     expect(() => factory('AccessToken')).toThrow();
   });
 
   it('driver=redis이면 RedisAdapter factory를 반환한다', () => {
     const redis = {} as any;
 
-    const factory = buildOidcAdapterFactory({ driver: 'redis', redis, ...baseParams });
+    const factory = buildOidcAdapterFactory({
+      driver: 'redis',
+      redis,
+      ...baseParams,
+    });
     factory('AccessToken');
 
     expect(RedisAdapter).toHaveBeenCalledTimes(1);
+    expect(RedisAdapter).toHaveBeenCalledWith(
+      'tenant-1',
+      'AccessToken',
+      redis,
+      undefined,
+    );
     expect(RdbOidcAdapter).not.toHaveBeenCalled();
     expect(HybridAdapter).not.toHaveBeenCalled();
   });
 
   it('driver=redis인데 redis가 없으면 예외', () => {
-    const factory = buildOidcAdapterFactory({ driver: 'redis' as any, ...baseParams });
+    const factory = buildOidcAdapterFactory({
+      driver: 'redis' as any,
+      ...baseParams,
+    });
     expect(() => factory('AccessToken')).toThrow();
   });
 
@@ -83,14 +110,22 @@ describe('buildOidcAdapterFactory', () => {
   it('driver=hybrid인데 em이 없으면 예외', () => {
     const redis = {} as any;
 
-    const factory = buildOidcAdapterFactory({ driver: 'hybrid' as any, redis, ...baseParams });
+    const factory = buildOidcAdapterFactory({
+      driver: 'hybrid' as any,
+      redis,
+      ...baseParams,
+    });
     expect(() => factory('AccessToken')).toThrow();
   });
 
   it('driver=hybrid인데 redis가 없으면 예외', () => {
     const em = {} as any;
 
-    const factory = buildOidcAdapterFactory({ driver: 'hybrid' as any, em, ...baseParams });
+    const factory = buildOidcAdapterFactory({
+      driver: 'hybrid' as any,
+      em,
+      ...baseParams,
+    });
     expect(() => factory('AccessToken')).toThrow();
   });
 
@@ -111,7 +146,11 @@ describe('buildOidcAdapterFactory', () => {
     it('kind=Client이면 ClientOidcAdapter를 반환한다', () => {
       const em = {} as any;
 
-      const factory = buildOidcAdapterFactory({ driver: 'rdb', em, ...baseParams });
+      const factory = buildOidcAdapterFactory({
+        driver: 'rdb',
+        em,
+        ...baseParams,
+      });
       factory('Client');
 
       expect(ClientOidcAdapter).toHaveBeenCalledTimes(1);
@@ -127,7 +166,11 @@ describe('buildOidcAdapterFactory', () => {
     it('kind=Client이면 driver에 관계없이 ClientOidcAdapter를 반환한다', () => {
       const redis = {} as any;
 
-      const factory = buildOidcAdapterFactory({ driver: 'redis', redis, ...baseParams });
+      const factory = buildOidcAdapterFactory({
+        driver: 'redis',
+        redis,
+        ...baseParams,
+      });
       factory('Client');
 
       expect(ClientOidcAdapter).toHaveBeenCalledTimes(1);
@@ -137,7 +180,11 @@ describe('buildOidcAdapterFactory', () => {
     it('kind=Session이면 일반 어댑터를 반환한다', () => {
       const em = {} as any;
 
-      const factory = buildOidcAdapterFactory({ driver: 'rdb', em, ...baseParams });
+      const factory = buildOidcAdapterFactory({
+        driver: 'rdb',
+        em,
+        ...baseParams,
+      });
       factory('Session');
 
       expect(RdbOidcAdapter).toHaveBeenCalledTimes(1);

@@ -105,64 +105,82 @@ export class OidcSessionControlService extends UserSessionPort {
   async revokeSessions(sessions: readonly OidcSessionRecord[]): Promise<void> {
     if (sessions.length === 0) return;
 
-    const sessionIds = [
-      ...new Set(sessions.map((session) => session.sessionId)),
-    ];
-    const grantIds = [
-      ...new Set(
-        sessions
-          .map((session) => session.grantId)
-          .filter((grantId): grantId is string => !!grantId),
-      ),
-    ];
+    const sessionsByTenant = new Map<string, OidcSessionRecord[]>();
+    for (const session of sessions) {
+      const tenantSessions = sessionsByTenant.get(session.tenantId) ?? [];
+      tenantSessions.push(session);
+      sessionsByTenant.set(session.tenantId, tenantSessions);
+    }
 
-    await this.revokeRedis(sessionIds, grantIds);
-    if (!this.usesRedisOnly()) {
-      await this.revokeRdb(sessionIds, grantIds);
+    for (const [tenantId, tenantSessions] of sessionsByTenant) {
+      const sessionIds = [
+        ...new Set(tenantSessions.map((session) => session.sessionId)),
+      ];
+      const grantIds = [
+        ...new Set(
+          tenantSessions
+            .map((session) => session.grantId)
+            .filter((grantId): grantId is string => !!grantId),
+        ),
+      ];
+
+      await this.revokeRedis(tenantId, sessionIds, grantIds);
+      if (!this.usesRedisOnly()) {
+        await this.revokeRdb(tenantId, sessionIds, grantIds);
+      }
     }
   }
 
   private async revokeRdb(
+    tenantId: string,
     sessionIds: string[],
     grantIds: string[],
   ): Promise<void> {
     const em = this.em.fork();
     await em.nativeDelete(OidcModelOrmEntity, {
+      tenantId,
       kind: 'Session',
       id: { $in: sessionIds },
     } as any);
     await em.nativeDelete(OidcSessionIndexOrmEntity, {
+      tenantId,
       sessionId: { $in: sessionIds },
     } as any);
 
     if (grantIds.length === 0) return;
 
     await em.nativeDelete(OidcModelOrmEntity, {
+      tenantId,
       grantId: { $in: grantIds },
     } as any);
     await em.nativeDelete(OidcModelOrmEntity, {
+      tenantId,
       kind: 'Grant',
       id: { $in: grantIds },
     } as any);
     await em.nativeDelete(OidcSessionIndexOrmEntity, {
+      tenantId,
       grantId: { $in: grantIds },
     } as any);
   }
 
   private async revokeRedis(
+    tenantId: string,
     sessionIds: string[],
     grantIds: string[],
   ): Promise<void> {
-    const sessionAdapter = new RedisAdapter('Session', this.redis);
+    const sessionAdapter = new RedisAdapter(tenantId, 'Session', this.redis);
     await Promise.all(
       sessionIds.map((sessionId) => sessionAdapter.destroy(sessionId)),
     );
 
     for (const grantId of grantIds) {
       for (const kind of GRANT_BOUND_KINDS) {
-        await new RedisAdapter(kind, this.redis).revokeByGrantId(grantId);
+        await new RedisAdapter(tenantId, kind, this.redis).revokeByGrantId(
+          grantId,
+        );
       }
-      await new RedisAdapter('Grant', this.redis).destroy(grantId);
+      await new RedisAdapter(tenantId, 'Grant', this.redis).destroy(grantId);
     }
   }
 
@@ -224,7 +242,13 @@ export class OidcSessionControlService extends UserSessionPort {
     const sessionIds = await this.redis.smembers(
       redisLookupKey(params.tenantId, params.clientId, params.accountId),
     );
-    return this.readRedisSessions(sessionIds, 'ASC');
+    return this.readRedisSessions(
+      params.tenantId,
+      sessionIds,
+      'ASC',
+      params.clientId,
+      params.accountId,
+    );
   }
 
   private async listRedisUserSessions(params: {
@@ -234,34 +258,59 @@ export class OidcSessionControlService extends UserSessionPort {
     const sessionIds = await this.redis.smembers(
       redisUserLookupKey(params.tenantId, params.userId),
     );
-    return this.readRedisSessions(sessionIds, 'DESC');
+    return this.readRedisSessions(
+      params.tenantId,
+      sessionIds,
+      'DESC',
+      undefined,
+      params.userId,
+    );
   }
 
   private async readRedisSessions(
+    tenantId: string,
     sessionIds: string[],
     direction: 'ASC' | 'DESC',
+    clientId?: string,
+    accountId?: string,
   ): Promise<OidcSessionRecord[]> {
     const now = Date.now();
     const sessions: OidcSessionRecord[] = [];
 
     for (const sessionId of sessionIds) {
-      const raw = await this.redis.get(redisSessionEntryKey(sessionId));
+      const raw = await this.redis.get(
+        redisSessionEntryKey(tenantId, sessionId),
+      );
       if (!raw) continue;
       const parsed = safeJsonParse(raw);
       if (!parsed) continue;
+      if (
+        parsed.tenantId !== tenantId ||
+        parsed.sessionId !== sessionId ||
+        (accountId !== undefined && parsed.accountId !== accountId)
+      ) {
+        continue;
+      }
 
       const expiresAt = parsed.expiresAt ? new Date(parsed.expiresAt) : null;
       if (expiresAt && expiresAt.getTime() <= now) continue;
 
-      sessions.push({
-        sessionId: parsed.sessionId,
-        tenantId: parsed.tenantId,
-        clientId: parsed.clientId,
-        accountId: parsed.accountId,
-        grantId: parsed.grantId,
-        createdAt: new Date(parsed.createdAt),
-        expiresAt,
-      });
+      const authorizations = clientId
+        ? parsed.authorizations.filter(
+            (authorization) => authorization.clientId === clientId,
+          )
+        : parsed.authorizations;
+      for (const authorization of authorizations) {
+        sessions.push({
+          sessionId: parsed.sessionId,
+          tenantId: parsed.tenantId,
+          clientId: authorization.clientId,
+          accountId: parsed.accountId,
+          grantId: authorization.grantId,
+          createdAt: new Date(parsed.createdAt),
+          expiresAt,
+        });
+      }
     }
 
     return sessions.sort((left, right) => {
@@ -293,8 +342,16 @@ function safeJsonParse(raw: string): OidcSessionRecordJson | null {
     if (
       typeof parsed.sessionId !== 'string' ||
       typeof parsed.tenantId !== 'string' ||
-      typeof parsed.clientId !== 'string' ||
       typeof parsed.accountId !== 'string' ||
+      !Array.isArray(parsed.authorizations) ||
+      parsed.authorizations.some(
+        (authorization) =>
+          typeof authorization?.clientId !== 'string' ||
+          !(
+            authorization.grantId === null ||
+            typeof authorization.grantId === 'string'
+          ),
+      ) ||
       typeof parsed.createdAt !== 'string'
     ) {
       return null;
@@ -303,9 +360,11 @@ function safeJsonParse(raw: string): OidcSessionRecordJson | null {
     return {
       sessionId: parsed.sessionId,
       tenantId: parsed.tenantId,
-      clientId: parsed.clientId,
       accountId: parsed.accountId,
-      grantId: typeof parsed.grantId === 'string' ? parsed.grantId : null,
+      authorizations: parsed.authorizations.map((authorization) => ({
+        clientId: authorization.clientId,
+        grantId: authorization.grantId,
+      })),
       createdAt: parsed.createdAt,
       expiresAt: typeof parsed.expiresAt === 'string' ? parsed.expiresAt : null,
     };
@@ -317,9 +376,11 @@ function safeJsonParse(raw: string): OidcSessionRecordJson | null {
 type OidcSessionRecordJson = {
   sessionId: string;
   tenantId: string;
-  clientId: string;
   accountId: string;
-  grantId: string | null;
+  authorizations: Array<{
+    clientId: string;
+    grantId: string | null;
+  }>;
   createdAt: string;
   expiresAt: string | null;
 };
