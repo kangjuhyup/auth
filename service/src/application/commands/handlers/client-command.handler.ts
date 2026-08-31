@@ -214,7 +214,9 @@ export class ClientCommandHandler implements ClientCommandPort {
       resourceType: 'client',
       resourceId: id,
       metadata: {
-        changedFields: Object.keys(dto).filter((key) => key !== 'secret'),
+        changedFields: Object.entries(dto)
+          .filter(([key, value]) => key !== 'secret' && value !== undefined)
+          .map(([key]) => key),
         secretChanged: dto.secret !== undefined,
       },
       auditContext,

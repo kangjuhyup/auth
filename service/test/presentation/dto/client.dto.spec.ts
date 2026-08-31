@@ -142,16 +142,23 @@ describe('CreateClientDto', () => {
     expect(errors.some((e) => e.property === 'allowedResources')).toBe(true);
   });
 
-  it('introspectionResources는 HTTPS URL 배열만 허용한다', async () => {
+  it('introspectionResources는 명시적 HTTPS URL 배열을 허용한다', async () => {
     expect(
       await getErrors(CreateClientDto, {
         ...valid,
         introspectionResources: ['https://api.example.com'],
       }),
     ).toHaveLength(0);
+  });
 
-    const errors = await getErrors(UpdateClientDto, {
-      introspectionResources: ['http://api.example.com'],
+  it.each([
+    'http://api.example.com',
+    'api.example.com',
+    'https:api.example.com',
+  ])('introspectionResources의 비 HTTPS 입력 %s를 거부한다', async (resource) => {
+    const errors = await getErrors(CreateClientDto, {
+      ...valid,
+      introspectionResources: [resource],
     });
     expect(
       errors.some((error) => error.property === 'introspectionResources'),
@@ -225,6 +232,27 @@ describe('UpdateClientDto', () => {
   it('name 빈 문자열이면 에러', async () => {
     const errors = await getErrors(UpdateClientDto, { name: '' });
     expect(errors.some((e) => e.property === 'name')).toBe(true);
+  });
+
+  it('introspectionResources는 명시적 HTTPS URL 배열을 허용한다', async () => {
+    expect(
+      await getErrors(UpdateClientDto, {
+        introspectionResources: ['https://api.example.com'],
+      }),
+    ).toHaveLength(0);
+  });
+
+  it.each([
+    'http://api.example.com',
+    'api.example.com',
+    'https:api.example.com',
+  ])('introspectionResources의 비 HTTPS 입력 %s를 거부한다', async (resource) => {
+    const errors = await getErrors(UpdateClientDto, {
+      introspectionResources: [resource],
+    });
+    expect(
+      errors.some((error) => error.property === 'introspectionResources'),
+    ).toBe(true);
   });
 });
 

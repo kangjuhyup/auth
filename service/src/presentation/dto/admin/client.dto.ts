@@ -131,7 +131,8 @@ export class CreateClientDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(20)
-  @IsUrl({ protocols: ['https'] }, { each: true })
+  @IsUrl({ protocols: ['https'], require_protocol: true }, { each: true })
+  @Matches(/^https:\/\//, { each: true })
   introspectionResources?: string[];
 
   @IsOptional()
@@ -231,7 +232,8 @@ export class UpdateClientDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(20)
-  @IsUrl({ protocols: ['https'] }, { each: true })
+  @IsUrl({ protocols: ['https'], require_protocol: true }, { each: true })
+  @Matches(/^https:\/\//, { each: true })
   introspectionResources?: string[];
 
   @IsOptional()
