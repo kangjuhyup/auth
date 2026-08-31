@@ -44,7 +44,7 @@ env:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64]
     permissions:
       contents: read
     outputs:
@@ -111,7 +111,7 @@ jobs:
 
   docker-publish:
     needs: verify
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64]
     permissions:
       contents: read
       packages: write
@@ -177,7 +177,7 @@ jobs:
   github-release:
     needs: [verify, docker-publish]
     if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.create_github_release }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64]
     permissions:
       contents: write
     steps:

@@ -3,7 +3,9 @@ import request from 'supertest';
 import { ConsentModel } from '@domain/models/consent';
 import { UserIdentityModel } from '@domain/models/user-identity';
 import { ApiE2eFixture, createApiE2eFixture } from './api-test-app';
+import { cleanupE2eResources } from './e2e-cleanup';
 import { MockOidcIdpServer } from './mock-oidc-idp';
+import { MockRelyingPartyServer } from './mock-relying-party';
 
 jest.setTimeout(180_000);
 
@@ -62,27 +64,37 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
     const describeUser = maybeDescribe(groups.includes('user'));
     let fixture!: ApiE2eFixture;
     let mockIdp!: MockOidcIdpServer;
+    let mockRelyingParty!: MockRelyingPartyServer;
+    let restoreRelyingPartyFetch: (() => void) | undefined;
     let restoreConsole: ConsoleRestore | undefined;
 
     beforeAll(async () => {
       restoreConsole = suppressE2eConsole();
       mockIdp = await MockOidcIdpServer.start();
+      mockRelyingParty = await MockRelyingPartyServer.start();
+      restoreRelyingPartyFetch = mockRelyingParty.interceptFetch();
       fixture = await createApiE2eFixture();
     });
 
     beforeEach(async () => {
       mockIdp.reset();
+      mockRelyingParty.reset();
       await fixture.resetPersistence();
     });
 
     afterAll(async () => {
-      if (fixture) {
-        await fixture.close();
-      }
-      if (mockIdp) {
-        await mockIdp.close();
-      }
-      restoreConsole?.();
+      await cleanupE2eResources({
+        closeTasks: [
+          () => (fixture ? fixture.close() : Promise.resolve()),
+          () => (mockIdp ? mockIdp.close() : Promise.resolve()),
+          () =>
+            mockRelyingParty ? mockRelyingParty.close() : Promise.resolve(),
+        ],
+        restorers: [
+          () => restoreRelyingPartyFetch?.(),
+          () => restoreConsole?.(),
+        ],
+      });
     });
 
     function buildPkce(): { verifier: string; challenge: string } {
@@ -162,6 +174,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
 
       expect(response.body).toEqual({
         username: fixture.env.adminUsername,
+        passwordChangeRequired: false,
       });
 
       const setCookie = response.headers['set-cookie'];
@@ -216,6 +229,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
         applicationType?: 'web' | 'native';
         allowedResources?: string[];
         skipConsent?: boolean;
+        backchannelLogoutUri?: string;
       },
     ): Promise<{
       id: string;
@@ -245,6 +259,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           'https://resource.example.test',
         ],
         skipConsent: overrides?.skipConsent ?? true,
+        backchannelLogoutUri: overrides?.backchannelLogoutUri,
       };
 
       const response = await request(fixture.app.getHttpServer())
@@ -447,8 +462,17 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
     ): Promise<string> {
       const resumeResponse = await agent
         .get(toAppPath(redirectTo))
+        .set('Accept', 'application/json')
         .expect((response) => {
-          expect([302, 303]).toContain(response.status);
+          if (![302, 303].includes(response.status)) {
+            const error = response.body as {
+              error?: string;
+              error_description?: string;
+            };
+            throw new Error(
+              `OIDC resume failed (${response.status}): ${error.error ?? 'unknown_error'} ${error.error_description ?? ''}`,
+            );
+          }
         });
 
       const callbackLocation = new URL(
@@ -1317,6 +1341,352 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
     });
 
     describeOidc('클라이언트 설정 기반 OIDC 시나리오', () => {
+      it('같은 테넌트의 두 클라이언트는 SSO 세션을 공유하고 RP-initiated logout을 양쪽에 전파한다', async () => {
+        const adminToken = await loginAsAdmin();
+        await createTenant(adminToken, 'acme', 'Acme Corp');
+        const clientA = await createClient(adminToken, 'acme', 'acme-app-a', {
+          redirectUris: ['https://app-a.example.test/callback'],
+          postLogoutRedirectUris: ['https://app-a.example.test/logout'],
+          backchannelLogoutUri: mockRelyingParty.logoutUri('acme-app-a'),
+        });
+        const clientB = await createClient(adminToken, 'acme', 'acme-app-b', {
+          redirectUris: ['https://app-b.example.test/callback'],
+          postLogoutRedirectUris: ['https://app-b.example.test/logout'],
+          backchannelLogoutUri: mockRelyingParty.logoutUri('acme-app-b'),
+        });
+        const signup = await signupUser('acme', {
+          username: 'sso-user',
+          password: 'Password123!',
+        });
+
+        const firstAuthorization = await authorizeUserViaOidc({
+          tenantCode: 'acme',
+          clientId: clientA.clientId,
+          redirectUri: clientA.redirectUri,
+          username: signup.username,
+          password: signup.password,
+        });
+        const firstTokenResponse = await exchangeAuthorizationCode({
+          agent: firstAuthorization.agent,
+          tenantCode: 'acme',
+          clientId: clientA.clientId,
+          redirectUri: clientA.redirectUri,
+          code: firstAuthorization.code,
+          codeVerifier: firstAuthorization.verifier,
+        }).expect(200);
+
+        expect(firstTokenResponse.body.id_token).toEqual(expect.any(String));
+
+        const secondPkce = buildPkce();
+        const secondAuthorizeResponse = await firstAuthorization.agent
+          .get('/t/acme/oidc/auth')
+          .query({
+            client_id: clientB.clientId,
+            redirect_uri: clientB.redirectUri,
+            response_type: 'code',
+            scope: 'openid profile email',
+            code_challenge: secondPkce.challenge,
+            code_challenge_method: 'S256',
+            nonce: 'nonce-sso-client-b',
+            state: 'state-sso-client-b',
+          })
+          .expect((response) => {
+            expect([302, 303]).toContain(response.status);
+          });
+
+        expect(
+          (secondAuthorizeResponse.headers.location as string).startsWith(
+            clientB.redirectUri,
+          ),
+        ).toBe(true);
+        const secondCallback = new URL(
+          secondAuthorizeResponse.headers.location as string,
+        );
+        expect(secondCallback.searchParams.get('state')).toBe(
+          'state-sso-client-b',
+        );
+        const secondCode = secondCallback.searchParams.get('code');
+        expect(secondCode).toEqual(expect.any(String));
+
+        const secondTokenResponse = await exchangeAuthorizationCode({
+          agent: firstAuthorization.agent,
+          tenantCode: 'acme',
+          clientId: clientB.clientId,
+          redirectUri: clientB.redirectUri,
+          code: secondCode as string,
+          codeVerifier: secondPkce.verifier,
+        }).expect(200);
+        const secondIdToken = secondTokenResponse.body.id_token as string;
+
+        expect(secondIdToken).toEqual(expect.any(String));
+
+        const jwksResponse = await firstAuthorization.agent
+          .get('/t/acme/oidc/jwks')
+          .expect(200);
+        mockRelyingParty.trustJwks(jwksResponse.body.keys);
+
+        const invalidLogoutResponse = await firstAuthorization.agent
+          .get('/t/acme/oidc/session/end')
+          .set('Accept', 'application/json')
+          .query({
+            id_token_hint: secondIdToken,
+            post_logout_redirect_uri: 'https://evil.example.test/logout',
+          })
+          .expect(400);
+
+        expect(invalidLogoutResponse.body).toMatchObject({
+          error: 'invalid_request',
+          error_description: expect.stringContaining('not registered'),
+        });
+
+        const logoutResponse = await firstAuthorization.agent
+          .get('/t/acme/oidc/session/end')
+          .query({
+            id_token_hint: secondIdToken,
+            post_logout_redirect_uri: 'https://app-b.example.test/logout',
+            state: 'logout-state-1234',
+          })
+          .expect(200);
+        const logoutForm =
+          /<form[^>]+action="([^"]+)"[^>]*>.*name="xsrf" value="([^"]+)"/s.exec(
+            logoutResponse.text,
+          );
+
+        expect(logoutForm).toBeTruthy();
+
+        const logoutConfirmation = await firstAuthorization.agent
+          .post(toAppPath(logoutForm![1]))
+          .type('form')
+          .send({
+            xsrf: logoutForm![2],
+            logout: 'yes',
+          })
+          .expect(303);
+
+        expect(logoutConfirmation.headers.location).toBe(
+          'https://app-b.example.test/logout?state=logout-state-1234',
+        );
+
+        const expectedLogoutEvent = {
+          'http://schemas.openid.net/event/backchannel-logout': {},
+        };
+        const clientANotifications = mockRelyingParty.notificationsFor(
+          clientA.clientId,
+        );
+        const clientBNotifications = mockRelyingParty.notificationsFor(
+          clientB.clientId,
+        );
+
+        expect(clientANotifications).toHaveLength(1);
+        expect(clientANotifications[0]).toMatchObject({
+          iss: 'http://localhost:3000/t/acme/oidc',
+          aud: clientA.clientId,
+          sub: signup.userId,
+          events: expectedLogoutEvent,
+          iat: expect.any(Number),
+          jti: expect.any(String),
+        });
+        expect(clientANotifications[0]).not.toHaveProperty('nonce');
+        expect(clientBNotifications).toHaveLength(1);
+        expect(clientBNotifications[0]).toMatchObject({
+          iss: 'http://localhost:3000/t/acme/oidc',
+          aud: clientB.clientId,
+          sub: signup.userId,
+          events: expectedLogoutEvent,
+          iat: expect.any(Number),
+          jti: expect.any(String),
+        });
+        expect(clientBNotifications[0]).not.toHaveProperty('nonce');
+
+        const authorizationAfterLogout = await firstAuthorization.agent
+          .get('/t/acme/oidc/auth')
+          .query({
+            client_id: clientA.clientId,
+            redirect_uri: clientA.redirectUri,
+            response_type: 'code',
+            scope: 'openid profile email',
+            code_challenge: buildPkce().challenge,
+            code_challenge_method: 'S256',
+            nonce: 'nonce-after-logout',
+            state: 'state-after-logout',
+          })
+          .expect((response) => {
+            expect([302, 303]).toContain(response.status);
+          });
+        const interactionLocation = authorizationAfterLogout.headers
+          .location as string;
+        const interactionUid = /\/t\/acme\/interaction\/([^/?]+)/.exec(
+          interactionLocation,
+        )?.[1];
+
+        expect(interactionUid).toBeDefined();
+
+        const interactionDetails = await firstAuthorization.agent
+          .get(`/t/acme/interaction/${interactionUid}/api/details`)
+          .expect(200);
+
+        expect(interactionDetails.body).toMatchObject({
+          prompt: 'login',
+          clientId: clientA.clientId,
+        });
+      });
+
+      it('다른 테넌트는 브라우저 세션과 back-channel logout을 공유하지 않는다', async () => {
+        const adminToken = await loginAsAdmin();
+        await createTenant(adminToken, 'acme', 'Acme Corp');
+        await createTenant(adminToken, 'beta', 'Beta Corp');
+        const acmeClient = await createClient(
+          adminToken,
+          'acme',
+          'shared-client',
+          {
+            redirectUris: ['https://acme-app.example.test/callback'],
+            postLogoutRedirectUris: ['https://acme-app.example.test/logout'],
+            backchannelLogoutUri:
+              mockRelyingParty.logoutUri('acme-shared-client'),
+          },
+        );
+        const betaClient = await createClient(
+          adminToken,
+          'beta',
+          'shared-client',
+          {
+            redirectUris: ['https://beta-app.example.test/callback'],
+            postLogoutRedirectUris: ['https://beta-app.example.test/logout'],
+            backchannelLogoutUri:
+              mockRelyingParty.logoutUri('beta-shared-client'),
+          },
+        );
+        const acmeUser = await signupUser('acme', {
+          username: 'cross-tenant-user',
+          password: 'Password123!',
+        });
+        const betaUser = await signupUser('beta', {
+          username: 'cross-tenant-user',
+          password: 'Password123!',
+        });
+
+        const acmeAuthorization = await authorizeUserViaOidc({
+          tenantCode: 'acme',
+          clientId: acmeClient.clientId,
+          redirectUri: acmeClient.redirectUri,
+          username: acmeUser.username,
+          password: acmeUser.password,
+        });
+        await exchangeAuthorizationCode({
+          agent: acmeAuthorization.agent,
+          tenantCode: 'acme',
+          clientId: acmeClient.clientId,
+          redirectUri: acmeClient.redirectUri,
+          code: acmeAuthorization.code,
+          codeVerifier: acmeAuthorization.verifier,
+        }).expect(200);
+
+        const betaPkce = buildPkce();
+        const betaAuthorizeResponse = await acmeAuthorization.agent
+          .get('/t/beta/oidc/auth')
+          .query({
+            client_id: betaClient.clientId,
+            redirect_uri: betaClient.redirectUri,
+            response_type: 'code',
+            scope: 'openid profile email',
+            code_challenge: betaPkce.challenge,
+            code_challenge_method: 'S256',
+            nonce: 'nonce-beta-login',
+            state: 'state-beta-login',
+          })
+          .expect((response) => {
+            expect([302, 303]).toContain(response.status);
+          });
+        const betaInteractionUid = /\/t\/beta\/interaction\/([^/?]+)/.exec(
+          betaAuthorizeResponse.headers.location as string,
+        )?.[1];
+        expect(betaInteractionUid).toBeDefined();
+
+        const betaDetails = await acmeAuthorization.agent
+          .get(`/t/beta/interaction/${betaInteractionUid}/api/details`)
+          .expect(200);
+        expect(betaDetails.body).toMatchObject({
+          prompt: 'login',
+          clientId: betaClient.clientId,
+        });
+
+        const betaLogin = await acmeAuthorization.agent
+          .post(`/t/beta/interaction/${betaInteractionUid}/api/login`)
+          .send({
+            username: betaUser.username,
+            password: betaUser.password,
+          })
+          .expect(200);
+        const betaCode = await resolveAuthorizationCode(
+          acmeAuthorization.agent,
+          betaLogin.body.redirectTo,
+        );
+        const betaTokenResponse = await exchangeAuthorizationCode({
+          agent: acmeAuthorization.agent,
+          tenantCode: 'beta',
+          clientId: betaClient.clientId,
+          redirectUri: betaClient.redirectUri,
+          code: betaCode,
+          codeVerifier: betaPkce.verifier,
+        }).expect(200);
+        const betaIdToken = betaTokenResponse.body.id_token as string;
+
+        const betaJwks = await acmeAuthorization.agent
+          .get('/t/beta/oidc/jwks')
+          .expect(200);
+        mockRelyingParty.trustJwks(betaJwks.body.keys);
+
+        const betaLogout = await acmeAuthorization.agent
+          .get('/t/beta/oidc/session/end')
+          .query({
+            id_token_hint: betaIdToken,
+            post_logout_redirect_uri: 'https://beta-app.example.test/logout',
+          })
+          .expect(200);
+        const betaLogoutForm =
+          /<form[^>]+action="([^"]+)"[^>]*>.*name="xsrf" value="([^"]+)"/s.exec(
+            betaLogout.text,
+          );
+        expect(betaLogoutForm).toBeTruthy();
+
+        await acmeAuthorization.agent
+          .post(toAppPath(betaLogoutForm![1]))
+          .type('form')
+          .send({ xsrf: betaLogoutForm![2], logout: 'yes' })
+          .expect(303);
+
+        expect(
+          mockRelyingParty.notificationsFor('beta-shared-client'),
+        ).toHaveLength(1);
+        expect(
+          mockRelyingParty.notificationsFor('acme-shared-client'),
+        ).toHaveLength(0);
+
+        const acmePkce = buildPkce();
+        const acmeAfterBetaLogout = await acmeAuthorization.agent
+          .get('/t/acme/oidc/auth')
+          .query({
+            client_id: acmeClient.clientId,
+            redirect_uri: acmeClient.redirectUri,
+            response_type: 'code',
+            scope: 'openid profile email',
+            code_challenge: acmePkce.challenge,
+            code_challenge_method: 'S256',
+            nonce: 'nonce-acme-still-sso',
+            state: 'state-acme-still-sso',
+          })
+          .expect((response) => {
+            expect([302, 303]).toContain(response.status);
+          });
+
+        expect(
+          (acmeAfterBetaLogout.headers.location as string).startsWith(
+            acmeClient.redirectUri,
+          ),
+        ).toBe(true);
+      });
+
       it('skipConsent=false 클라이언트는 로그인 후 consent 단계를 거쳐야 한다', async () => {
         const adminToken = await loginAsAdmin();
         await createTenant(adminToken, 'acme', 'Acme Corp');

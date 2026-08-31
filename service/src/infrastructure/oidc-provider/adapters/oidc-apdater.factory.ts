@@ -20,6 +20,7 @@ export function buildOidcAdapterFactory(params: {
   cacheTtlMarginSec?: number;
   negativeTtlSec?: number;
   backfillTtlSec?: number;
+  tenantId: string;
   tenantCode: string;
   clientRepository: ClientRepository;
   tenantRepository: TenantRepository;
@@ -32,6 +33,7 @@ export function buildOidcAdapterFactory(params: {
     cacheTtlMarginSec = 5,
     negativeTtlSec = 3,
     backfillTtlSec = 60,
+    tenantId,
     tenantCode,
     clientRepository,
     tenantRepository,
@@ -41,21 +43,21 @@ export function buildOidcAdapterFactory(params: {
   const buildDefault = (kind: string) => {
     const rdbSessionIndex =
       em && kind === 'Session'
-        ? new RdbOidcSessionIndexStore(em, tenantCode, tenantRepository)
+        ? new RdbOidcSessionIndexStore(em, tenantId)
         : undefined;
     const redisSessionIndex =
       redis && kind === 'Session'
-        ? new RedisOidcSessionIndexStore(redis, tenantCode, tenantRepository)
+        ? new RedisOidcSessionIndexStore(redis, tenantId)
         : undefined;
 
     if (driver === 'rdb') {
       if (!em) throw new Error('EntityManager is required for rdb adapter');
-      return new RdbOidcAdapter(kind, em, rdbSessionIndex);
+      return new RdbOidcAdapter(tenantId, kind, em, rdbSessionIndex);
     }
 
     if (driver === 'redis') {
       if (!redis) throw new Error('Redis client is required for redis adapter');
-      return new RedisAdapter(kind, redis, redisSessionIndex);
+      return new RedisAdapter(tenantId, kind, redis, redisSessionIndex);
     }
 
     if (driver === 'hybrid') {
@@ -64,8 +66,8 @@ export function buildOidcAdapterFactory(params: {
         throw new Error('Redis client is required for hybrid adapter');
       return new HybridAdapter({
         kind,
-        rdb: new RdbOidcAdapter(kind, em, rdbSessionIndex),
-        cache: new RedisAdapter(kind, redis, redisSessionIndex),
+        rdb: new RdbOidcAdapter(tenantId, kind, em, rdbSessionIndex),
+        cache: new RedisAdapter(tenantId, kind, redis, redisSessionIndex),
         cacheTtlMarginSec,
         negativeTtlSec,
         backfillTtlSec,

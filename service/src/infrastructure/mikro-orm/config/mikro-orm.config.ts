@@ -1,4 +1,5 @@
 import type { Constructor, IDatabaseDriver, Options } from '@mikro-orm/core';
+import * as mikroOrmEntities from '../entities';
 
 export type SupportedDriver = 'postgresql' | 'mysql' | 'mssql';
 type ConfigReader = {
@@ -22,6 +23,10 @@ const DEFAULT_PORTS: Record<SupportedDriver, number> = {
   mysql: 3306,
   mssql: 1433,
 };
+
+const MIKRO_ORM_ENTITIES = Object.values(
+  mikroOrmEntities,
+) as Constructor<object>[];
 
 function getDriverNameFrom(config: ConfigReader): SupportedDriver {
   const raw = config.get('DB_DRIVER') ?? 'postgresql';
@@ -55,8 +60,8 @@ export function buildMikroOrmConfig(config: ConfigReader): Options {
 
   return {
     driver: DriverClass,
-    entities: ['./dist/infrastructure/mikro-orm/entities/**/*.js'],
-    entitiesTs: ['./src/infrastructure/mikro-orm/entities/**/*.ts'],
+    entities: MIKRO_ORM_ENTITIES,
+    entitiesTs: MIKRO_ORM_ENTITIES,
     dbName: config.get('DB_NAME') ?? 'auth',
     host: config.get('DB_HOST') ?? 'localhost',
     port: Number(config.get('DB_PORT') ?? DEFAULT_PORTS[driverName]),

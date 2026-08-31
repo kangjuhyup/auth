@@ -18,6 +18,7 @@ type Stored = {
 
 export class RedisAdapter implements Adapter {
   constructor(
+    private readonly tenantId: string,
     private readonly kind: string,
     private readonly redis: Redis,
     private readonly sessionIndex?: OidcSessionIndexStore,
@@ -26,20 +27,28 @@ export class RedisAdapter implements Adapter {
   // =========================
   // Key schema
   // =========================
+  private prefix() {
+    return `oidc:${this.tenantId}:${this.kind}`;
+  }
+
   private key(id: string) {
-    return `oidc:${this.kind}:${id}`;
+    return `${this.prefix()}:${id}`;
   }
 
   private uidKey(uid: string) {
-    return `oidc:${this.kind}:uid:${uid}`; // value: id | __nil__
+    return `${this.prefix()}:uid:${uid}`; // value: id | __nil__
   }
 
   private userCodeKey(userCode: string) {
-    return `oidc:${this.kind}:usercode:${userCode}`; // value: id | __nil__
+    return `${this.prefix()}:usercode:${userCode}`; // value: id | __nil__
   }
 
   private grantKey(grantId: string) {
-    return `oidc:${this.kind}:grant:${grantId}`; // SET(ids)
+    return `${this.prefix()}:grant:${grantId}`; // SET(ids)
+  }
+
+  private negativeIdKey(id: string) {
+    return `${this.prefix()}:neg:${id}`;
   }
 
   // =========================
@@ -229,7 +238,7 @@ export class RedisAdapter implements Adapter {
     // => id negative는 Hybrid에서 따로 관리하거나(다른 prefix), 여기선 권장하지 않음.
     // 필요하면 아래처럼 별도 키를 쓰는 것을 추천.
     await this.redis.set(
-      `oidc:${this.kind}:neg:${id}`,
+      this.negativeIdKey(id),
       NEG,
       'EX',
       Math.max(1, ttlSec),
@@ -237,7 +246,7 @@ export class RedisAdapter implements Adapter {
   }
 
   async isNegativeCachedById(id: string): Promise<boolean> {
-    const v = await this.redis.get(`oidc:${this.kind}:neg:${id}`);
+    const v = await this.redis.get(this.negativeIdKey(id));
     return v === NEG;
   }
 

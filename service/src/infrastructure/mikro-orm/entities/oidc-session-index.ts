@@ -5,13 +5,16 @@ import { Entity, Index, PrimaryKey, Property } from '@mikro-orm/core';
   properties: ['tenantId', 'clientId', 'accountId', 'expiresAt'],
   name: 'idx_oidc_session_idx_lookup',
 })
-@Index({ properties: ['grantId'], name: 'idx_oidc_session_idx_grant' })
+@Index({
+  properties: ['tenantId', 'grantId'],
+  name: 'idx_oidc_session_idx_grant',
+})
 export class OidcSessionIndexOrmEntity {
+  @PrimaryKey({ fieldName: 'tenant_id', type: 'varchar', length: 64 })
+  tenantId!: string;
+
   @PrimaryKey({ fieldName: 'session_id', type: 'varchar', length: 128 })
   sessionId!: string;
-
-  @Property({ fieldName: 'tenant_id', type: 'varchar', length: 64 })
-  tenantId!: string;
 
   @PrimaryKey({ fieldName: 'client_id', type: 'varchar', length: 128 })
   clientId!: string;
