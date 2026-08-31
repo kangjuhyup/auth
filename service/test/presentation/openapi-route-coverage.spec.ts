@@ -214,4 +214,13 @@ describe('openapi route coverage', () => {
 
     expect(missingContent).toEqual([]);
   });
+
+  it('resource server introspection은 HTTP Basic 보안 scheme을 노출한다', () => {
+    expect(
+      document.components?.securitySchemes?.['resource-server-basic'],
+    ).toMatchObject({
+      type: 'http',
+      scheme: 'basic',
+    });
+  });
 });

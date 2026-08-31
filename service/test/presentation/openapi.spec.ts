@@ -106,6 +106,35 @@ describe('openapi docs', () => {
     );
   });
 
+  it('resource server introspection 계약은 Basic 인증과 active/inactive 응답 union을 문서화한다', () => {
+    const document: { paths: Record<string, any> } = { paths: {} };
+
+    applyEndpointReference(document);
+
+    const operation =
+      document.paths['/t/{tenantCode}/oidc/token/introspection'].post;
+    expect(operation.security).toEqual([{ 'resource-server-basic': [] }]);
+    const schema =
+      operation.responses['200'].content['application/json'].schema;
+    expect(schema.oneOf[0].required).toEqual(
+      expect.arrayContaining([
+        'active',
+        'client_id',
+        'token_type',
+        'scope',
+        'iss',
+        'aud',
+        'exp',
+        'iat',
+        'tenant_id',
+      ]),
+    );
+    expect(schema.oneOf[1]).toMatchObject({
+      additionalProperties: false,
+      required: ['active'],
+    });
+  });
+
   it('controller 기반 endpoint에는 ENDPOINTS 문서의 보안 설명을 operation description으로 병합한다', () => {
     const document: { paths: Record<string, any> } = {
       paths: {

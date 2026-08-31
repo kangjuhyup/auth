@@ -708,7 +708,7 @@ git commit -m "feat(service): manage resource server introspection access"
 - Produces: `extraTokenClaims(...): Promise<{ tenant_id: string }>`
 - Produces: enabled `features.introspection` and tenant-registry-driven `features.clientCredentials`
 
-- [ ] **Step 1: Write complete failing policy tests**
+- [x] **Step 1: Write complete failing policy tests**
 
 Build real `ClientModel` fixtures and call the real policy with literal context/client/token objects. Cover:
 
@@ -774,7 +774,7 @@ it.each([
 
 Add separate real-client fixtures proving false for missing caller, disabled caller, `public`/`confidential` caller, and `client_secret_post`. Add one array-audience case proving a single owned origin authorizes the token.
 
-- [ ] **Step 2: Run policy tests and confirm RED**
+- [x] **Step 2: Run policy tests and confirm RED**
 
 ```bash
 corepack yarn workspace @auth/service test:unit --runTestsByPath test/infrastructure/oidc-provider/introspection-policy.spec.ts
@@ -782,7 +782,7 @@ corepack yarn workspace @auth/service test:unit --runTestsByPath test/infrastruc
 
 Expected: FAIL because `introspection-policy.ts` does not exist.
 
-- [ ] **Step 3: Implement the fail-closed policy**
+- [x] **Step 3: Implement the fail-closed policy**
 
 ```ts
 import type {
@@ -839,11 +839,11 @@ export function createIntrospectionAllowedPolicy(
 }
 ```
 
-- [ ] **Step 4: Run policy tests and confirm GREEN**
+- [x] **Step 4: Run policy tests and confirm GREEN**
 
 Run the command from Step 2. Expected: all policy branches PASS.
 
-- [ ] **Step 5: Write failing provider-configuration tests**
+- [x] **Step 5: Write failing provider-configuration tests**
 
 Extend the complete `clientRepository` mock in `makeDeps()` and add:
 
@@ -865,7 +865,7 @@ it('access token에 안정적인 tenant_id claim만 추가한다', async () => {
 
 Also create dependencies with `supportedGrantTypes` excluding `client_credentials` and assert `features.clientCredentials.enabled` is false.
 
-- [ ] **Step 6: Run provider configuration tests and confirm RED**
+- [x] **Step 6: Run provider configuration tests and confirm RED**
 
 ```bash
 corepack yarn workspace @auth/service test:unit --runTestsByPath test/infrastructure/oidc-provider/oidc-provider.config.spec.ts
@@ -873,7 +873,7 @@ corepack yarn workspace @auth/service test:unit --runTestsByPath test/infrastruc
 
 Expected: FAIL because introspection/client-credentials features and `extraTokenClaims` are absent.
 
-- [ ] **Step 7: Add E2E helper parameters and the full failing protocol contract**
+- [x] **Step 7: Add E2E helper parameters and the full failing protocol contract**
 
 Extend `createClient()` overrides and payload with:
 
@@ -919,7 +919,7 @@ Use 32+ character literal secrets, create `offline_access` through `/t/acme/admi
 
 The E2E scenarios must use real endpoint issuance paths. Do not insert access or refresh token models directly as a substitute for authorization, consent, or token exchange. Grant provider-reported `missingResourceScopes` during consent, and preserve the registered `refresh_token` grant type in provider client metadata so these flows are usable in production as well as tests.
 
-- [ ] **Step 8: Run the OIDC E2E suite and confirm protocol RED**
+- [x] **Step 8: Run the OIDC E2E suite and confirm protocol RED**
 
 ```bash
 corepack yarn service:test:e2e:infra:up
@@ -928,7 +928,7 @@ E2E_ENV_FILE=service/.env.e2e corepack yarn workspace @auth/service test:e2e --r
 
 Expected: FAIL because discovery does not advertise introspection and the provider route is disabled. Confirm the failure is the missing provider feature, not E2E setup or fixture validation.
 
-- [ ] **Step 9: Wire provider-owned protocol features**
+- [x] **Step 9: Wire provider-owned protocol features**
 
 Insert these keys into the existing `features` object without replacing the existing back-channel logout or Resource Indicators configuration:
 
@@ -952,7 +952,7 @@ extraTokenClaims: async () => ({
 
 Replace the local URL parsing inside `getResourceServerInfo` with `ResourceOrigin.of(resource).value`, catching the domain error and throwing the existing `Error('invalid_target')` so the public protocol behavior does not change.
 
-- [ ] **Step 10: Run provider unit and protocol E2E tests and confirm GREEN**
+- [x] **Step 10: Run provider unit and protocol E2E tests and confirm GREEN**
 
 Before the final GREEN run, add regression tests and minimal adapter fixes for the two issuance prerequisites discovered by the protocol E2E:
 
@@ -969,7 +969,7 @@ E2E_ENV_FILE=service/.env.e2e corepack yarn workspace @auth/service test:e2e --r
 
 Expected: provider unit tests and all new introspection scenarios PASS.
 
-- [ ] **Step 11: Commit provider and protocol behavior**
+- [x] **Step 11: Commit provider and protocol behavior**
 
 ```bash
 git add service/src/infrastructure/oidc-provider/introspection-policy.ts service/src/infrastructure/oidc-provider/oidc-provider.config.ts service/test/infrastructure/oidc-provider/introspection-policy.spec.ts service/test/infrastructure/oidc-provider/oidc-provider.config.spec.ts service/test/e2e/support/api-e2e-suite.ts

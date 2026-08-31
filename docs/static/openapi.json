@@ -22,14 +22,19 @@
                       "example": 123
                     }
                   },
-                  "required": ["status", "uptimeSec"]
+                  "required": [
+                    "status",
+                    "uptimeSec"
+                  ]
                 }
               }
             }
           }
         },
         "summary": "Get liveness status",
-        "tags": ["Health"],
+        "tags": [
+          "Health"
+        ],
         "description": "Process liveness check. Used by runtime health probes and does not expose sensitive state."
       }
     },
@@ -63,18 +68,26 @@
                             "example": 3
                           }
                         },
-                        "required": ["status", "latencyMs"]
+                        "required": [
+                          "status",
+                          "latencyMs"
+                        ]
                       }
                     }
                   },
-                  "required": ["status", "checks"]
+                  "required": [
+                    "status",
+                    "checks"
+                  ]
                 }
               }
             }
           }
         },
         "summary": "Get readiness status",
-        "tags": ["Health"],
+        "tags": [
+          "Health"
+        ],
         "description": "Readiness check for database, Redis, JWKS configuration, and OIDC provider registry."
       }
     },
@@ -109,14 +122,20 @@
                       "additionalProperties": true
                     }
                   },
-                  "required": ["counters", "gauges", "histograms"]
+                  "required": [
+                    "counters",
+                    "gauges",
+                    "histograms"
+                  ]
                 }
               }
             }
           }
         },
         "summary": "Get operational metrics",
-        "tags": ["Health"],
+        "tags": [
+          "Health"
+        ],
         "description": "Operational metrics for provider cache, login attempts, token endpoint activity, and related runtime counters."
       }
     },
@@ -138,7 +157,9 @@
           }
         },
         "summary": "Serve interaction UI",
-        "tags": ["Interaction"]
+        "tags": [
+          "Interaction"
+        ]
       }
     },
     "/t/{tenantCode}/interaction/{uid}/api/details": {
@@ -211,7 +232,11 @@
                             "example": "oauth2"
                           }
                         },
-                        "required": ["provider", "name", "protocol"]
+                        "required": [
+                          "provider",
+                          "name",
+                          "protocol"
+                        ]
                       }
                     }
                   },
@@ -229,7 +254,9 @@
           }
         },
         "summary": "Get interaction details",
-        "tags": ["Interaction"]
+        "tags": [
+          "Interaction"
+        ]
       }
     },
     "/t/{tenantCode}/interaction/{uid}/api/login": {
@@ -310,7 +337,9 @@
           }
         },
         "summary": "Submit interaction login",
-        "tags": ["Interaction"]
+        "tags": [
+          "Interaction"
+        ]
       }
     },
     "/t/{tenantCode}/interaction/{uid}/api/mfa": {
@@ -391,7 +420,9 @@
           }
         },
         "summary": "Submit interaction MFA",
-        "tags": ["Interaction"]
+        "tags": [
+          "Interaction"
+        ]
       }
     },
     "/t/{tenantCode}/interaction/{uid}/api/mfa/totp/enroll": {
@@ -432,14 +463,19 @@
                       "example": "otpauth://totp/Auth:john?secret=JBSWY3DPEHPK3PXP"
                     }
                   },
-                  "required": ["secret", "otpauthUrl"]
+                  "required": [
+                    "secret",
+                    "otpauthUrl"
+                  ]
                 }
               }
             }
           }
         },
         "summary": "Begin interaction TOTP enrollment",
-        "tags": ["Interaction"]
+        "tags": [
+          "Interaction"
+        ]
       }
     },
     "/t/{tenantCode}/interaction/{uid}/api/mfa/totp/confirm": {
@@ -520,7 +556,9 @@
           }
         },
         "summary": "Confirm interaction TOTP enrollment",
-        "tags": ["Interaction"]
+        "tags": [
+          "Interaction"
+        ]
       }
     },
     "/t/{tenantCode}/interaction/{uid}/api/password-change": {
@@ -601,7 +639,9 @@
           }
         },
         "summary": "Submit required password change",
-        "tags": ["Interaction"]
+        "tags": [
+          "Interaction"
+        ]
       }
     },
     "/t/{tenantCode}/interaction/{uid}/api/consent": {
@@ -638,14 +678,18 @@
                       "example": "/t/acme/interaction/uid"
                     }
                   },
-                  "required": ["redirectTo"]
+                  "required": [
+                    "redirectTo"
+                  ]
                 }
               }
             }
           }
         },
         "summary": "Submit interaction consent",
-        "tags": ["Interaction"]
+        "tags": [
+          "Interaction"
+        ]
       }
     },
     "/t/{tenantCode}/interaction/{uid}/api/abort": {
@@ -682,14 +726,18 @@
                       "example": "/t/acme/interaction/uid"
                     }
                   },
-                  "required": ["redirectTo"]
+                  "required": [
+                    "redirectTo"
+                  ]
                 }
               }
             }
           }
         },
         "summary": "Abort interaction",
-        "tags": ["Interaction"]
+        "tags": [
+          "Interaction"
+        ]
       }
     },
     "/t/{tenantCode}/interaction/{uid}/api/mfa/webauthn-options": {
@@ -719,7 +767,9 @@
           }
         },
         "summary": "Get WebAuthn authentication options",
-        "tags": ["Interaction"]
+        "tags": [
+          "Interaction"
+        ]
       }
     },
     "/t/{tenantCode}/interaction/{uid}/idp/{provider}": {
@@ -766,7 +816,9 @@
           }
         },
         "summary": "Redirect to external identity provider",
-        "tags": ["Interaction"]
+        "tags": [
+          "Interaction"
+        ]
       }
     },
     "/t/{tenantCode}/interaction/{uid}/idp/{provider}/callback": {
@@ -813,7 +865,9 @@
           }
         },
         "summary": "Handle external identity provider callback",
-        "tags": ["Interaction"]
+        "tags": [
+          "Interaction"
+        ]
       }
     },
     "/t/{tenantCode}/interaction/saml/{provider}/metadata": {
@@ -857,7 +911,9 @@
           }
         },
         "summary": "Get SAML SP metadata",
-        "tags": ["Interaction"]
+        "tags": [
+          "Interaction"
+        ]
       }
     },
     "/t/{tenantCode}/interaction/saml/{provider}/callback": {
@@ -906,7 +962,9 @@
           }
         },
         "summary": "Handle SAML identity provider callback",
-        "tags": ["Interaction"]
+        "tags": [
+          "Interaction"
+        ]
       }
     },
     "/auth/signup": {
@@ -936,14 +994,18 @@
                       "example": "user-1"
                     }
                   },
-                  "required": ["userId"]
+                  "required": [
+                    "userId"
+                  ]
                 }
               }
             }
           }
         },
         "summary": "Sign up user",
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "description": "User signup. Tenant signup policy is enforced, passwords are hashed, duplicates are rejected, rate limiting applies, and signup activity is audited."
       }
     },
@@ -972,7 +1034,9 @@
           }
         ],
         "summary": "Withdraw current user",
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "description": "Authenticated self-service account withdrawal. The caller must be authenticated; related sessions, tokens, consents, and audit records are handled by application policy."
       }
     },
@@ -1001,7 +1065,9 @@
           }
         ],
         "summary": "Change current user password",
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "description": "Authenticated password change. Current password is verified, the new password must be different, password policy is enforced, and the change is audited."
       }
     },
@@ -1030,7 +1096,9 @@
           }
         ],
         "summary": "Request password reset",
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "description": "Password reset request. Responses must avoid user enumeration, apply strong rate limiting, use short-lived one-time reset tokens, and emit security audit events."
       }
     },
@@ -1059,7 +1127,9 @@
           }
         ],
         "summary": "Reset password",
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "description": "Token-based password reset. Reset tokens are one-time and short-lived; successful reset revokes relevant sessions or tokens according to policy."
       }
     },
@@ -1078,7 +1148,9 @@
           }
         ],
         "summary": "Request email verification",
-        "tags": ["Auth"]
+        "tags": [
+          "Auth"
+        ]
       }
     },
     "/auth/email/verify": {
@@ -1106,7 +1178,9 @@
           }
         ],
         "summary": "Verify email",
-        "tags": ["Auth"]
+        "tags": [
+          "Auth"
+        ]
       }
     },
     "/auth/phone/verification-request": {
@@ -1124,7 +1198,9 @@
           }
         ],
         "summary": "Request phone verification",
-        "tags": ["Auth"]
+        "tags": [
+          "Auth"
+        ]
       }
     },
     "/auth/phone/verify": {
@@ -1152,7 +1228,9 @@
           }
         ],
         "summary": "Verify phone",
-        "tags": ["Auth"]
+        "tags": [
+          "Auth"
+        ]
       }
     },
     "/auth/mfa/totp/enroll": {
@@ -1176,7 +1254,10 @@
                       "example": "otpauth://totp/Auth:john?secret=JBSWY3DPEHPK3PXP"
                     }
                   },
-                  "required": ["secret", "otpauthUrl"]
+                  "required": [
+                    "secret",
+                    "otpauthUrl"
+                  ]
                 }
               }
             }
@@ -1188,7 +1269,9 @@
           }
         ],
         "summary": "Begin TOTP enrollment",
-        "tags": ["Auth"]
+        "tags": [
+          "Auth"
+        ]
       }
     },
     "/auth/mfa/totp/confirm": {
@@ -1221,7 +1304,9 @@
                       }
                     }
                   },
-                  "required": ["recoveryCodes"]
+                  "required": [
+                    "recoveryCodes"
+                  ]
                 }
               }
             }
@@ -1233,7 +1318,9 @@
           }
         ],
         "summary": "Confirm TOTP enrollment",
-        "tags": ["Auth"]
+        "tags": [
+          "Auth"
+        ]
       }
     },
     "/auth/mfa/totp": {
@@ -1251,7 +1338,9 @@
           }
         ],
         "summary": "Disable TOTP",
-        "tags": ["Auth"]
+        "tags": [
+          "Auth"
+        ]
       }
     },
     "/auth/mfa/recovery-codes/status": {
@@ -1283,7 +1372,12 @@
                       "example": false
                     }
                   },
-                  "required": ["remaining", "total", "used", "low"]
+                  "required": [
+                    "remaining",
+                    "total",
+                    "used",
+                    "low"
+                  ]
                 }
               }
             }
@@ -1295,7 +1389,9 @@
           }
         ],
         "summary": "Get recovery code status",
-        "tags": ["Auth"]
+        "tags": [
+          "Auth"
+        ]
       }
     },
     "/auth/mfa/recovery-codes/rotate": {
@@ -1318,7 +1414,9 @@
                       }
                     }
                   },
-                  "required": ["recoveryCodes"]
+                  "required": [
+                    "recoveryCodes"
+                  ]
                 }
               }
             }
@@ -1330,7 +1428,9 @@
           }
         ],
         "summary": "Rotate recovery codes",
-        "tags": ["Auth"]
+        "tags": [
+          "Auth"
+        ]
       }
     },
     "/auth/mfa/preference": {
@@ -1358,7 +1458,9 @@
           }
         ],
         "summary": "Update MFA preference",
-        "tags": ["Auth"]
+        "tags": [
+          "Auth"
+        ]
       }
     },
     "/auth/profile": {
@@ -1451,7 +1553,9 @@
           }
         ],
         "summary": "Get current user profile",
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "description": "Authenticated profile self-service. Password hashes, credential secrets, raw MFA material, and internal system fields are never exposed."
       },
       "put": {
@@ -1478,7 +1582,9 @@
           }
         ],
         "summary": "Update current user profile",
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "description": "Authenticated profile self-service. Password hashes, credential secrets, raw MFA material, and internal system fields are never exposed."
       }
     },
@@ -1532,7 +1638,9 @@
           }
         ],
         "summary": "List current user consents",
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "description": "Authenticated consent self-service. Users can list and revoke only their own client consents; revocation invalidates related refresh-token access according to policy."
       }
     },
@@ -1569,7 +1677,12 @@
                         "example": "2026-05-25T00:00:00.000Z"
                       }
                     },
-                    "required": ["id", "provider", "email", "linkedAt"]
+                    "required": [
+                      "id",
+                      "provider",
+                      "email",
+                      "linkedAt"
+                    ]
                   }
                 }
               }
@@ -1582,7 +1695,9 @@
           }
         ],
         "summary": "List current user identity links",
-        "tags": ["Auth"]
+        "tags": [
+          "Auth"
+        ]
       }
     },
     "/auth/identity-links/{provider}/start": {
@@ -1621,7 +1736,9 @@
                       "example": "https://idp.example.com/oauth/authorize?..."
                     }
                   },
-                  "required": ["authorizationUrl"]
+                  "required": [
+                    "authorizationUrl"
+                  ]
                 }
               }
             }
@@ -1633,7 +1750,9 @@
           }
         ],
         "summary": "Start identity provider link",
-        "tags": ["Auth"]
+        "tags": [
+          "Auth"
+        ]
       }
     },
     "/auth/identity-links/{provider}/callback": {
@@ -1664,7 +1783,9 @@
           }
         },
         "summary": "Complete identity provider link",
-        "tags": ["Auth"]
+        "tags": [
+          "Auth"
+        ]
       }
     },
     "/auth/identity-links/{identityId}": {
@@ -1691,7 +1812,9 @@
           }
         ],
         "summary": "Unlink identity provider",
-        "tags": ["Auth"]
+        "tags": [
+          "Auth"
+        ]
       }
     },
     "/auth/consents/{clientId}": {
@@ -1718,7 +1841,9 @@
           }
         ],
         "summary": "Revoke consent",
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "description": "Authenticated consent self-service. Users can list and revoke only their own client consents; revocation invalidates related refresh-token access according to policy."
       }
     },
@@ -1753,7 +1878,10 @@
                       "example": false
                     }
                   },
-                  "required": ["username", "passwordChangeRequired"]
+                  "required": [
+                    "username",
+                    "passwordChangeRequired"
+                  ]
                 }
               }
             }
@@ -1771,7 +1899,9 @@
           }
         ],
         "summary": "Issue admin session cookie",
-        "tags": ["Admin Session"]
+        "tags": [
+          "Admin Session"
+        ]
       },
       "get": {
         "operationId": "AdminSessionController_current",
@@ -1793,7 +1923,10 @@
                       "example": false
                     }
                   },
-                  "required": ["username", "passwordChangeRequired"]
+                  "required": [
+                    "username",
+                    "passwordChangeRequired"
+                  ]
                 }
               }
             }
@@ -1811,7 +1944,9 @@
           }
         ],
         "summary": "Get current admin session",
-        "tags": ["Admin Session"]
+        "tags": [
+          "Admin Session"
+        ]
       },
       "delete": {
         "operationId": "AdminSessionController_logout",
@@ -1833,7 +1968,56 @@
           }
         ],
         "summary": "Clear admin session",
-        "tags": ["Admin Session"]
+        "tags": [
+          "Admin Session"
+        ]
+      }
+    },
+    "/admin/session/refresh": {
+      "post": {
+        "operationId": "AdminSessionController_refresh",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "username": {
+                      "type": "string",
+                      "example": "admin"
+                    },
+                    "passwordChangeRequired": {
+                      "type": "boolean",
+                      "example": false
+                    }
+                  },
+                  "required": [
+                    "username",
+                    "passwordChangeRequired"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Admin session is missing or invalid"
+          },
+          "403": {
+            "description": "Admin permission is required"
+          }
+        },
+        "security": [
+          {
+            "admin_session": []
+          }
+        ],
+        "summary": "Refresh admin session cookies",
+        "tags": [
+          "Admin Session"
+        ]
       }
     },
     "/admin/session/password": {
@@ -1867,7 +2051,9 @@
           }
         ],
         "summary": "Change admin password",
-        "tags": ["Admin Session"]
+        "tags": [
+          "Admin Session"
+        ]
       }
     },
     "/t/{tenantCode}/admin/audit-logs": {
@@ -1984,7 +2170,12 @@
                       "example": 20
                     }
                   },
-                  "required": ["items", "total", "page", "limit"]
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "limit"
+                  ]
                 }
               }
             }
@@ -2002,7 +2193,9 @@
           }
         ],
         "summary": "List audit logs",
-        "tags": ["Admin Audit Logs"],
+        "tags": [
+          "Admin Audit Logs"
+        ],
         "description": "Read-only audit log access. Results are RBAC-protected and must not contain tokens, secrets, password hashes, or raw key material."
       }
     },
@@ -2100,6 +2293,13 @@
                               "example": "https://api.example.com"
                             }
                           },
+                          "introspectionResources": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "example": "https://api.example.com"
+                            }
+                          },
                           "skipConsent": {
                             "type": "boolean",
                             "example": false
@@ -2141,6 +2341,7 @@
                           "backchannelLogoutUri",
                           "frontchannelLogoutUri",
                           "allowedResources",
+                          "introspectionResources",
                           "skipConsent",
                           "accessTokenTtlSec",
                           "refreshTokenTtlSec",
@@ -2162,7 +2363,12 @@
                       "example": 20
                     }
                   },
-                  "required": ["items", "total", "page", "limit"]
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "limit"
+                  ]
                 }
               }
             }
@@ -2180,7 +2386,9 @@
           }
         ],
         "summary": "List clients",
-        "tags": ["Admin Clients"],
+        "tags": [
+          "Admin Clients"
+        ],
         "description": "Client lifecycle management. Redirect URIs are strictly validated, grant types are checked against policy, client secrets are never returned, and changes are audited."
       },
       "post": {
@@ -2209,7 +2417,9 @@
                       "example": "1234567890"
                     }
                   },
-                  "required": ["id"]
+                  "required": [
+                    "id"
+                  ]
                 }
               }
             }
@@ -2227,7 +2437,9 @@
           }
         ],
         "summary": "Create client",
-        "tags": ["Admin Clients"],
+        "tags": [
+          "Admin Clients"
+        ],
         "description": "Client lifecycle management. Redirect URIs are strictly validated, grant types are checked against policy, client secrets are never returned, and changes are audited."
       }
     },
@@ -2329,6 +2541,13 @@
                         "example": "https://api.example.com"
                       }
                     },
+                    "introspectionResources": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "example": "https://api.example.com"
+                      }
+                    },
                     "skipConsent": {
                       "type": "boolean",
                       "example": false
@@ -2370,6 +2589,7 @@
                     "backchannelLogoutUri",
                     "frontchannelLogoutUri",
                     "allowedResources",
+                    "introspectionResources",
                     "skipConsent",
                     "accessTokenTtlSec",
                     "refreshTokenTtlSec",
@@ -2393,7 +2613,9 @@
           }
         ],
         "summary": "Get client",
-        "tags": ["Admin Clients"],
+        "tags": [
+          "Admin Clients"
+        ],
         "description": "Client lifecycle management. Redirect URIs are strictly validated, grant types are checked against policy, client secrets are never returned, and changes are audited."
       },
       "put": {
@@ -2435,7 +2657,9 @@
           }
         ],
         "summary": "Update client",
-        "tags": ["Admin Clients"],
+        "tags": [
+          "Admin Clients"
+        ],
         "description": "Client lifecycle management. Redirect URIs are strictly validated, grant types are checked against policy, client secrets are never returned, and changes are audited."
       },
       "delete": {
@@ -2467,7 +2691,9 @@
           }
         ],
         "summary": "Delete client",
-        "tags": ["Admin Clients"],
+        "tags": [
+          "Admin Clients"
+        ],
         "description": "Client lifecycle management. Redirect URIs are strictly validated, grant types are checked against policy, client secrets are never returned, and changes are audited."
       }
     },
@@ -2552,6 +2778,21 @@
                       "type": "string",
                       "example": "revoke_grant"
                     },
+                    "loginSessionMode": {
+                      "type": "string",
+                      "example": "single",
+                      "nullable": true
+                    },
+                    "maxConcurrentSessions": {
+                      "type": "integer",
+                      "example": 1,
+                      "nullable": true
+                    },
+                    "sessionConflictAction": {
+                      "type": "string",
+                      "example": "revoke_previous_sessions",
+                      "nullable": true
+                    },
                     "effective": {
                       "type": "object",
                       "properties": {
@@ -2584,6 +2825,19 @@
                         "refreshTokenTtlSec": {
                           "type": "integer",
                           "example": 1209600
+                        },
+                        "loginSessionMode": {
+                          "type": "string",
+                          "example": "single"
+                        },
+                        "maxConcurrentSessions": {
+                          "type": "integer",
+                          "example": 1,
+                          "nullable": true
+                        },
+                        "sessionConflictAction": {
+                          "type": "string",
+                          "example": "revoke_previous_sessions"
                         }
                       },
                       "required": [
@@ -2592,7 +2846,10 @@
                         "maxSessionDurationSec",
                         "requireAuthTime",
                         "reauthenticationIntervalSec",
-                        "refreshTokenTtlSec"
+                        "refreshTokenTtlSec",
+                        "loginSessionMode",
+                        "maxConcurrentSessions",
+                        "sessionConflictAction"
                       ]
                     }
                   },
@@ -2609,6 +2866,9 @@
                     "reauthenticationIntervalSec",
                     "refreshTokenRotationEnabled",
                     "refreshTokenReuseAction",
+                    "loginSessionMode",
+                    "maxConcurrentSessions",
+                    "sessionConflictAction",
                     "effective"
                   ]
                 }
@@ -2628,7 +2888,9 @@
           }
         ],
         "summary": "Get client auth policy",
-        "tags": ["Admin Clients"],
+        "tags": [
+          "Admin Clients"
+        ],
         "description": "Client lifecycle management. Redirect URIs are strictly validated, grant types are checked against policy, client secrets are never returned, and changes are audited."
       },
       "put": {
@@ -2670,7 +2932,9 @@
           }
         ],
         "summary": "Update client auth policy",
-        "tags": ["Admin Clients"],
+        "tags": [
+          "Admin Clients"
+        ],
         "description": "Client lifecycle management. Redirect URIs are strictly validated, grant types are checked against policy, client secrets are never returned, and changes are audited."
       }
     },
@@ -2742,7 +3006,12 @@
                       "example": 20
                     }
                   },
-                  "required": ["items", "total", "page", "limit"]
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "limit"
+                  ]
                 }
               }
             }
@@ -2760,7 +3029,9 @@
           }
         ],
         "summary": "List groups",
-        "tags": ["Admin Groups"],
+        "tags": [
+          "Admin Groups"
+        ],
         "description": "Group management. Group codes are tenant-unique, hierarchy cycles are forbidden, child groups are checked before deletion, and changes are audited."
       },
       "post": {
@@ -2789,7 +3060,9 @@
                       "example": "1234567890"
                     }
                   },
-                  "required": ["id"]
+                  "required": [
+                    "id"
+                  ]
                 }
               }
             }
@@ -2807,7 +3080,9 @@
           }
         ],
         "summary": "Create group",
-        "tags": ["Admin Groups"],
+        "tags": [
+          "Admin Groups"
+        ],
         "description": "Group management. Group codes are tenant-unique, hierarchy cycles are forbidden, child groups are checked before deletion, and changes are audited."
       }
     },
@@ -2885,7 +3160,9 @@
           }
         ],
         "summary": "Get group",
-        "tags": ["Admin Groups"],
+        "tags": [
+          "Admin Groups"
+        ],
         "description": "Group management. Group codes are tenant-unique, hierarchy cycles are forbidden, child groups are checked before deletion, and changes are audited."
       },
       "put": {
@@ -2927,7 +3204,9 @@
           }
         ],
         "summary": "Update group",
-        "tags": ["Admin Groups"],
+        "tags": [
+          "Admin Groups"
+        ],
         "description": "Group management. Group codes are tenant-unique, hierarchy cycles are forbidden, child groups are checked before deletion, and changes are audited."
       },
       "delete": {
@@ -2959,7 +3238,9 @@
           }
         ],
         "summary": "Delete group",
-        "tags": ["Admin Groups"],
+        "tags": [
+          "Admin Groups"
+        ],
         "description": "Group management. Group codes are tenant-unique, hierarchy cycles are forbidden, child groups are checked before deletion, and changes are audited."
       }
     },
@@ -3040,7 +3321,9 @@
           }
         ],
         "summary": "List group roles",
-        "tags": ["Admin Groups"],
+        "tags": [
+          "Admin Groups"
+        ],
         "description": "Group management. Group codes are tenant-unique, hierarchy cycles are forbidden, child groups are checked before deletion, and changes are audited."
       }
     },
@@ -3082,7 +3365,9 @@
           }
         ],
         "summary": "Assign role to group",
-        "tags": ["Admin Groups"],
+        "tags": [
+          "Admin Groups"
+        ],
         "description": "Group management. Group codes are tenant-unique, hierarchy cycles are forbidden, child groups are checked before deletion, and changes are audited."
       },
       "delete": {
@@ -3122,7 +3407,9 @@
           }
         ],
         "summary": "Remove role from group",
-        "tags": ["Admin Groups"],
+        "tags": [
+          "Admin Groups"
+        ],
         "description": "Group management. Group codes are tenant-unique, hierarchy cycles are forbidden, child groups are checked before deletion, and changes are audited."
       }
     },
@@ -3225,7 +3512,12 @@
                       "example": 20
                     }
                   },
-                  "required": ["items", "total", "page", "limit"]
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "limit"
+                  ]
                 }
               }
             }
@@ -3243,7 +3535,9 @@
           }
         ],
         "summary": "List identity providers",
-        "tags": ["Admin Identity Providers"]
+        "tags": [
+          "Admin Identity Providers"
+        ]
       },
       "post": {
         "operationId": "AdminIdentityProviderController_create",
@@ -3271,7 +3565,9 @@
                       "example": "1234567890"
                     }
                   },
-                  "required": ["id"]
+                  "required": [
+                    "id"
+                  ]
                 }
               }
             }
@@ -3289,7 +3585,9 @@
           }
         ],
         "summary": "Create identity provider",
-        "tags": ["Admin Identity Providers"]
+        "tags": [
+          "Admin Identity Providers"
+        ]
       }
     },
     "/t/{tenantCode}/admin/identity-providers/{id}": {
@@ -3397,7 +3695,9 @@
           }
         ],
         "summary": "Get identity provider",
-        "tags": ["Admin Identity Providers"]
+        "tags": [
+          "Admin Identity Providers"
+        ]
       },
       "put": {
         "operationId": "AdminIdentityProviderController_update",
@@ -3438,7 +3738,9 @@
           }
         ],
         "summary": "Update identity provider",
-        "tags": ["Admin Identity Providers"]
+        "tags": [
+          "Admin Identity Providers"
+        ]
       },
       "delete": {
         "operationId": "AdminIdentityProviderController_delete",
@@ -3469,7 +3771,9 @@
           }
         ],
         "summary": "Delete identity provider",
-        "tags": ["Admin Identity Providers"]
+        "tags": [
+          "Admin Identity Providers"
+        ]
       }
     },
     "/t/{tenantCode}/admin/keys": {
@@ -3545,7 +3849,9 @@
           }
         ],
         "summary": "List active keys",
-        "tags": ["Admin Keys"],
+        "tags": [
+          "Admin Keys"
+        ],
         "description": "JWKS signing key operations. Key rotation keeps overlap for existing tokens, never exposes private key material, records rotation events, and invalidates JWKS cache."
       }
     },
@@ -3570,7 +3876,9 @@
           }
         ],
         "summary": "Rotate keys",
-        "tags": ["Admin Keys"],
+        "tags": [
+          "Admin Keys"
+        ],
         "description": "JWKS signing key operations. Key rotation keeps overlap for existing tokens, never exposes private key material, records rotation events, and invalidates JWKS cache."
       }
     },
@@ -3649,7 +3957,12 @@
                       "example": 20
                     }
                   },
-                  "required": ["items", "total", "page", "limit"]
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "limit"
+                  ]
                 }
               }
             }
@@ -3667,7 +3980,9 @@
           }
         ],
         "summary": "List permissions",
-        "tags": ["Admin Permissions"],
+        "tags": [
+          "Admin Permissions"
+        ],
         "description": "Permission management. Permission codes are tenant-unique, role associations must be considered before deletion, and changes are audited."
       },
       "post": {
@@ -3696,7 +4011,9 @@
                       "example": "1234567890"
                     }
                   },
-                  "required": ["id"]
+                  "required": [
+                    "id"
+                  ]
                 }
               }
             }
@@ -3714,7 +4031,9 @@
           }
         ],
         "summary": "Create permission",
-        "tags": ["Admin Permissions"],
+        "tags": [
+          "Admin Permissions"
+        ],
         "description": "Permission management. Permission codes are tenant-unique, role associations must be considered before deletion, and changes are audited."
       }
     },
@@ -3799,7 +4118,9 @@
           }
         ],
         "summary": "Get permission",
-        "tags": ["Admin Permissions"],
+        "tags": [
+          "Admin Permissions"
+        ],
         "description": "Permission management. Permission codes are tenant-unique, role associations must be considered before deletion, and changes are audited."
       },
       "put": {
@@ -3841,7 +4162,9 @@
           }
         ],
         "summary": "Update permission",
-        "tags": ["Admin Permissions"],
+        "tags": [
+          "Admin Permissions"
+        ],
         "description": "Permission management. Permission codes are tenant-unique, role associations must be considered before deletion, and changes are audited."
       },
       "delete": {
@@ -3873,7 +4196,9 @@
           }
         ],
         "summary": "Delete permission",
-        "tags": ["Admin Permissions"],
+        "tags": [
+          "Admin Permissions"
+        ],
         "description": "Permission management. Permission codes are tenant-unique, role associations must be considered before deletion, and changes are audited."
       }
     },
@@ -3955,7 +4280,10 @@
                           "example": true
                         }
                       },
-                      "required": ["required", "adminRequired"],
+                      "required": [
+                        "required",
+                        "adminRequired"
+                      ],
                       "nullable": true
                     },
                     "allowedIdp": {
@@ -3970,7 +4298,9 @@
                           "nullable": true
                         }
                       },
-                      "required": ["providerKeys"],
+                      "required": [
+                        "providerKeys"
+                      ],
                       "nullable": true
                     },
                     "session": {
@@ -3989,12 +4319,28 @@
                           "type": "integer",
                           "example": 3600,
                           "nullable": true
+                        },
+                        "loginSessionMode": {
+                          "type": "string",
+                          "example": "multi"
+                        },
+                        "maxConcurrentSessions": {
+                          "type": "integer",
+                          "example": 5,
+                          "nullable": true
+                        },
+                        "sessionConflictAction": {
+                          "type": "string",
+                          "example": "revoke_previous_sessions"
                         }
                       },
                       "required": [
                         "maxAgeSec",
                         "requireAuthTime",
-                        "reauthenticationIntervalSec"
+                        "reauthenticationIntervalSec",
+                        "loginSessionMode",
+                        "maxConcurrentSessions",
+                        "sessionConflictAction"
                       ],
                       "nullable": true
                     },
@@ -4014,7 +4360,11 @@
                           "example": "revoke_grant"
                         }
                       },
-                      "required": ["ttlSec", "rotationEnabled", "reuseAction"],
+                      "required": [
+                        "ttlSec",
+                        "rotationEnabled",
+                        "reuseAction"
+                      ],
                       "nullable": true
                     },
                     "signup": {
@@ -4032,7 +4382,10 @@
                           }
                         }
                       },
-                      "required": ["mode", "allowedEmailDomains"],
+                      "required": [
+                        "mode",
+                        "allowedEmailDomains"
+                      ],
                       "nullable": true
                     }
                   },
@@ -4061,7 +4414,9 @@
           }
         ],
         "summary": "Get tenant policies",
-        "tags": ["Admin Policies"],
+        "tags": [
+          "Admin Policies"
+        ],
         "description": "Tenant policy management. Policy changes are audited and security-sensitive controls such as PKCE, MFA, session, refresh-token, and signup behavior must remain policy-driven."
       },
       "put": {
@@ -4084,7 +4439,9 @@
           }
         ],
         "summary": "Update tenant policies",
-        "tags": ["Admin Policies"],
+        "tags": [
+          "Admin Policies"
+        ],
         "description": "Tenant policy management. Policy changes are audited and security-sensitive controls such as PKCE, MFA, session, refresh-token, and signup behavior must remain policy-driven."
       }
     },
@@ -4156,7 +4513,12 @@
                       "example": 20
                     }
                   },
-                  "required": ["items", "total", "page", "limit"]
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "limit"
+                  ]
                 }
               }
             }
@@ -4174,7 +4536,9 @@
           }
         ],
         "summary": "List roles",
-        "tags": ["Admin Roles"],
+        "tags": [
+          "Admin Roles"
+        ],
         "description": "Role management. Role codes are tenant-unique, deletion must account for assignments, inheritance must not form cycles, and changes are audited."
       },
       "post": {
@@ -4203,7 +4567,9 @@
                       "example": "1234567890"
                     }
                   },
-                  "required": ["id"]
+                  "required": [
+                    "id"
+                  ]
                 }
               }
             }
@@ -4221,7 +4587,9 @@
           }
         ],
         "summary": "Create role",
-        "tags": ["Admin Roles"],
+        "tags": [
+          "Admin Roles"
+        ],
         "description": "Role management. Role codes are tenant-unique, deletion must account for assignments, inheritance must not form cycles, and changes are audited."
       }
     },
@@ -4299,7 +4667,9 @@
           }
         ],
         "summary": "Get role",
-        "tags": ["Admin Roles"],
+        "tags": [
+          "Admin Roles"
+        ],
         "description": "Role management. Role codes are tenant-unique, deletion must account for assignments, inheritance must not form cycles, and changes are audited."
       },
       "put": {
@@ -4341,7 +4711,9 @@
           }
         ],
         "summary": "Update role",
-        "tags": ["Admin Roles"],
+        "tags": [
+          "Admin Roles"
+        ],
         "description": "Role management. Role codes are tenant-unique, deletion must account for assignments, inheritance must not form cycles, and changes are audited."
       },
       "delete": {
@@ -4373,7 +4745,9 @@
           }
         ],
         "summary": "Delete role",
-        "tags": ["Admin Roles"],
+        "tags": [
+          "Admin Roles"
+        ],
         "description": "Role management. Role codes are tenant-unique, deletion must account for assignments, inheritance must not form cycles, and changes are audited."
       }
     },
@@ -4461,7 +4835,12 @@
                       "example": 20
                     }
                   },
-                  "required": ["items", "total", "page", "limit"]
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "limit"
+                  ]
                 }
               }
             }
@@ -4479,7 +4858,9 @@
           }
         ],
         "summary": "List role permissions",
-        "tags": ["Admin Roles"],
+        "tags": [
+          "Admin Roles"
+        ],
         "description": "Role management. Role codes are tenant-unique, deletion must account for assignments, inheritance must not form cycles, and changes are audited."
       },
       "post": {
@@ -4511,7 +4892,9 @@
           }
         ],
         "summary": "Add permission to role",
-        "tags": ["Admin Roles"],
+        "tags": [
+          "Admin Roles"
+        ],
         "description": "Role management. Role codes are tenant-unique, deletion must account for assignments, inheritance must not form cycles, and changes are audited."
       }
     },
@@ -4553,7 +4936,9 @@
           }
         ],
         "summary": "Remove permission from role",
-        "tags": ["Admin Roles"],
+        "tags": [
+          "Admin Roles"
+        ],
         "description": "Role management. Role codes are tenant-unique, deletion must account for assignments, inheritance must not form cycles, and changes are audited."
       }
     },
@@ -4643,7 +5028,12 @@
                       "example": 20
                     }
                   },
-                  "required": ["items", "total", "page", "limit"]
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "limit"
+                  ]
                 }
               }
             }
@@ -4661,7 +5051,9 @@
           }
         ],
         "summary": "List scopes",
-        "tags": ["Admin Scopes"]
+        "tags": [
+          "Admin Scopes"
+        ]
       },
       "post": {
         "operationId": "AdminScopeController_create",
@@ -4689,7 +5081,9 @@
                       "example": "1234567890"
                     }
                   },
-                  "required": ["id"]
+                  "required": [
+                    "id"
+                  ]
                 }
               }
             }
@@ -4707,7 +5101,9 @@
           }
         ],
         "summary": "Create scope",
-        "tags": ["Admin Scopes"]
+        "tags": [
+          "Admin Scopes"
+        ]
       }
     },
     "/t/{tenantCode}/admin/scopes/{id}": {
@@ -4802,7 +5198,9 @@
           }
         ],
         "summary": "Get scope",
-        "tags": ["Admin Scopes"]
+        "tags": [
+          "Admin Scopes"
+        ]
       },
       "put": {
         "operationId": "AdminScopeController_update",
@@ -4843,7 +5241,9 @@
           }
         ],
         "summary": "Update scope",
-        "tags": ["Admin Scopes"]
+        "tags": [
+          "Admin Scopes"
+        ]
       },
       "delete": {
         "operationId": "AdminScopeController_delete",
@@ -4874,7 +5274,9 @@
           }
         ],
         "summary": "Delete scope",
-        "tags": ["Admin Scopes"]
+        "tags": [
+          "Admin Scopes"
+        ]
       }
     },
     "/admin/tenants": {
@@ -4955,7 +5357,12 @@
                       "example": 20
                     }
                   },
-                  "required": ["items", "total", "page", "limit"]
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "limit"
+                  ]
                 }
               }
             }
@@ -4973,7 +5380,9 @@
           }
         ],
         "summary": "List tenants",
-        "tags": ["Admin Tenants"]
+        "tags": [
+          "Admin Tenants"
+        ]
       },
       "post": {
         "operationId": "AdminTenantController_create",
@@ -5001,7 +5410,9 @@
                       "example": "1234567890"
                     }
                   },
-                  "required": ["id"]
+                  "required": [
+                    "id"
+                  ]
                 }
               }
             }
@@ -5019,7 +5430,9 @@
           }
         ],
         "summary": "Create tenant",
-        "tags": ["Admin Tenants"]
+        "tags": [
+          "Admin Tenants"
+        ]
       }
     },
     "/admin/tenants/{id}": {
@@ -5106,7 +5519,9 @@
           }
         ],
         "summary": "Get tenant",
-        "tags": ["Admin Tenants"]
+        "tags": [
+          "Admin Tenants"
+        ]
       },
       "put": {
         "operationId": "AdminTenantController_update",
@@ -5147,7 +5562,9 @@
           }
         ],
         "summary": "Update tenant",
-        "tags": ["Admin Tenants"]
+        "tags": [
+          "Admin Tenants"
+        ]
       },
       "delete": {
         "operationId": "AdminTenantController_delete",
@@ -5178,7 +5595,9 @@
           }
         ],
         "summary": "Delete tenant",
-        "tags": ["Admin Tenants"]
+        "tags": [
+          "Admin Tenants"
+        ]
       }
     },
     "/t/{tenantCode}/admin/users": {
@@ -5280,7 +5699,12 @@
                       "example": 20
                     }
                   },
-                  "required": ["items", "total", "page", "limit"]
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "limit"
+                  ]
                 }
               }
             }
@@ -5298,7 +5722,9 @@
           }
         ],
         "summary": "List users",
-        "tags": ["Admin Users"],
+        "tags": [
+          "Admin Users"
+        ],
         "description": "User management. Passwords are hashed, sensitive credentials are not returned, status changes are audited, and personally identifiable data is kept minimal."
       },
       "post": {
@@ -5327,7 +5753,9 @@
                       "example": "1234567890"
                     }
                   },
-                  "required": ["id"]
+                  "required": [
+                    "id"
+                  ]
                 }
               }
             }
@@ -5345,7 +5773,9 @@
           }
         ],
         "summary": "Create user",
-        "tags": ["Admin Users"],
+        "tags": [
+          "Admin Users"
+        ],
         "description": "User management. Passwords are hashed, sensitive credentials are not returned, status changes are audited, and personally identifiable data is kept minimal."
       }
     },
@@ -5454,7 +5884,9 @@
           }
         ],
         "summary": "Get user",
-        "tags": ["Admin Users"],
+        "tags": [
+          "Admin Users"
+        ],
         "description": "User management. Passwords are hashed, sensitive credentials are not returned, status changes are audited, and personally identifiable data is kept minimal."
       },
       "put": {
@@ -5496,7 +5928,9 @@
           }
         ],
         "summary": "Update user",
-        "tags": ["Admin Users"],
+        "tags": [
+          "Admin Users"
+        ],
         "description": "User management. Passwords are hashed, sensitive credentials are not returned, status changes are audited, and personally identifiable data is kept minimal."
       },
       "delete": {
@@ -5528,7 +5962,9 @@
           }
         ],
         "summary": "Delete user",
-        "tags": ["Admin Users"],
+        "tags": [
+          "Admin Users"
+        ],
         "description": "User management. Passwords are hashed, sensitive credentials are not returned, status changes are audited, and personally identifiable data is kept minimal."
       }
     },
@@ -5623,7 +6059,12 @@
                       "example": 20
                     }
                   },
-                  "required": ["items", "total", "page", "limit"]
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "limit"
+                  ]
                 }
               }
             }
@@ -5641,7 +6082,9 @@
           }
         ],
         "summary": "List user consents",
-        "tags": ["Admin Users"],
+        "tags": [
+          "Admin Users"
+        ],
         "description": "User management. Passwords are hashed, sensitive credentials are not returned, status changes are audited, and personally identifiable data is kept minimal."
       }
     },
@@ -5736,7 +6179,12 @@
                       "example": 20
                     }
                   },
-                  "required": ["items", "total", "page", "limit"]
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "limit"
+                  ]
                 }
               }
             }
@@ -5754,7 +6202,165 @@
           }
         ],
         "summary": "List user consent history",
-        "tags": ["Admin Users"],
+        "tags": [
+          "Admin Users"
+        ],
+        "description": "User management. Passwords are hashed, sensitive credentials are not returned, status changes are audited, and personally identifiable data is kept minimal."
+      }
+    },
+    "/t/{tenantCode}/admin/users/{id}/sessions": {
+      "get": {
+        "operationId": "AdminUserController_getSessions",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "sessionId": {
+                        "type": "string",
+                        "example": "session-1"
+                      },
+                      "userId": {
+                        "type": "string",
+                        "example": "user-1"
+                      },
+                      "clientId": {
+                        "type": "string",
+                        "example": "web-app"
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-05-25T00:00:00.000Z"
+                      },
+                      "expiresAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-06-08T00:00:00.000Z",
+                        "nullable": true
+                      }
+                    },
+                    "required": [
+                      "sessionId",
+                      "userId",
+                      "clientId",
+                      "createdAt",
+                      "expiresAt"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Admin session is missing or invalid"
+          },
+          "403": {
+            "description": "Admin permission is required"
+          }
+        },
+        "security": [
+          {
+            "admin_session": []
+          }
+        ],
+        "summary": "List user sessions",
+        "tags": [
+          "Admin Users"
+        ],
+        "description": "User management. Passwords are hashed, sensitive credentials are not returned, status changes are audited, and personally identifiable data is kept minimal."
+      },
+      "delete": {
+        "operationId": "AdminUserController_revokeSessions",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "Admin session is missing or invalid"
+          },
+          "403": {
+            "description": "Admin permission is required"
+          }
+        },
+        "security": [
+          {
+            "admin_session": []
+          }
+        ],
+        "summary": "Revoke all user sessions",
+        "tags": [
+          "Admin Users"
+        ],
+        "description": "User management. Passwords are hashed, sensitive credentials are not returned, status changes are audited, and personally identifiable data is kept minimal."
+      }
+    },
+    "/t/{tenantCode}/admin/users/{id}/sessions/{sessionId}": {
+      "delete": {
+        "operationId": "AdminUserController_revokeSession",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "Admin session is missing or invalid"
+          },
+          "403": {
+            "description": "Admin permission is required"
+          }
+        },
+        "security": [
+          {
+            "admin_session": []
+          }
+        ],
+        "summary": "Revoke user session",
+        "tags": [
+          "Admin Users"
+        ],
         "description": "User management. Passwords are hashed, sensitive credentials are not returned, status changes are audited, and personally identifiable data is kept minimal."
       }
     },
@@ -5835,7 +6441,9 @@
           }
         ],
         "summary": "List user roles",
-        "tags": ["Admin Users"],
+        "tags": [
+          "Admin Users"
+        ],
         "description": "User management. Passwords are hashed, sensitive credentials are not returned, status changes are audited, and personally identifiable data is kept minimal."
       }
     },
@@ -5877,7 +6485,9 @@
           }
         ],
         "summary": "Assign role to user",
-        "tags": ["Admin Users"],
+        "tags": [
+          "Admin Users"
+        ],
         "description": "User management. Passwords are hashed, sensitive credentials are not returned, status changes are audited, and personally identifiable data is kept minimal."
       },
       "delete": {
@@ -5917,13 +6527,17 @@
           }
         ],
         "summary": "Remove role from user",
-        "tags": ["Admin Users"],
+        "tags": [
+          "Admin Users"
+        ],
         "description": "User management. Passwords are hashed, sensitive credentials are not returned, status changes are audited, and personally identifiable data is kept minimal."
       }
     },
     "/t/{tenantCode}/oidc/.well-known/openid-configuration": {
       "get": {
-        "tags": ["OIDC Protocol"],
+        "tags": [
+          "OIDC Protocol"
+        ],
         "summary": "OIDC discovery metadata",
         "description": "Returns tenant issuer metadata for client auto-configuration, including authorization, token, JWKS, scopes, response types, and supported grant types. Public endpoint; short TTL caching is acceptable and configuration changes should invalidate caches.",
         "parameters": [
@@ -5997,7 +6611,9 @@
     },
     "/t/{tenantCode}/oidc/auth": {
       "get": {
-        "tags": ["OIDC Protocol"],
+        "tags": [
+          "OIDC Protocol"
+        ],
         "summary": "Authorization endpoint",
         "description": "Starts user authentication and authorization. Redirect URI must match exactly, PKCE is required with S256, state and nonce are required, open redirects are rejected, and full query parameters must not be logged.",
         "parameters": [
@@ -6125,7 +6741,9 @@
     },
     "/t/{tenantCode}/oidc/token": {
       "post": {
-        "tags": ["OIDC Protocol"],
+        "tags": [
+          "OIDC Protocol"
+        ],
         "summary": "Token endpoint",
         "description": "Exchanges authorization codes, refresh tokens, client credentials, or registered custom grants for tokens. Confidential clients must authenticate, public clients use PKCE, authorization codes are one-time and short-lived, refresh token rotation and reuse detection are enforced, and tokens or secrets must never be logged.",
         "parameters": [
@@ -6146,7 +6764,9 @@
             "application/x-www-form-urlencoded": {
               "schema": {
                 "type": "object",
-                "required": ["grant_type"],
+                "required": [
+                  "grant_type"
+                ],
                 "properties": {
                   "grant_type": {
                     "type": "string",
@@ -6182,7 +6802,11 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["access_token", "token_type", "expires_in"],
+                  "required": [
+                    "access_token",
+                    "token_type",
+                    "expires_in"
+                  ],
                   "properties": {
                     "access_token": {
                       "type": "string"
@@ -6252,7 +6876,9 @@
     },
     "/t/{tenantCode}/oidc/jwks": {
       "get": {
-        "tags": ["OIDC Protocol"],
+        "tags": [
+          "OIDC Protocol"
+        ],
         "summary": "JWKS endpoint",
         "description": "Returns public signing keys for token verification. Active and overlap-window previous keys may be returned; private key material is never exposed and each key includes a kid.",
         "parameters": [
@@ -6274,7 +6900,9 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["keys"],
+                  "required": [
+                    "keys"
+                  ],
                   "properties": {
                     "keys": {
                       "type": "array",
@@ -6294,7 +6922,9 @@
     },
     "/t/{tenantCode}/oidc/me": {
       "get": {
-        "tags": ["OIDC Protocol"],
+        "tags": [
+          "OIDC Protocol"
+        ],
         "summary": "UserInfo endpoint",
         "description": "Returns scope-filtered user claims for a valid access token. Only minimal user information is exposed and bearer tokens must not be logged.",
         "parameters": [
@@ -6352,7 +6982,9 @@
     },
     "/t/{tenantCode}/oidc/session/end": {
       "get": {
-        "tags": ["OIDC Protocol"],
+        "tags": [
+          "OIDC Protocol"
+        ],
         "summary": "End session endpoint",
         "description": "Terminates the provider session and processes RP-initiated logout. id_token_hint and post_logout_redirect_uri are validated to prevent open redirects.",
         "parameters": [
@@ -6424,7 +7056,9 @@
     },
     "/t/{tenantCode}/oidc/token/revocation": {
       "post": {
-        "tags": ["OIDC Protocol"],
+        "tags": [
+          "OIDC Protocol"
+        ],
         "summary": "Token revocation endpoint",
         "description": "Revokes access or refresh tokens. Client authentication is required where applicable, refresh-token family revocation is supported by policy, and revocation events are audited.",
         "parameters": [
@@ -6445,7 +7079,9 @@
             "application/x-www-form-urlencoded": {
               "schema": {
                 "type": "object",
-                "required": ["token"],
+                "required": [
+                  "token"
+                ],
                 "properties": {
                   "token": {
                     "type": "string"
@@ -6495,9 +7131,11 @@
     },
     "/t/{tenantCode}/oidc/token/introspection": {
       "post": {
-        "tags": ["OIDC Protocol"],
+        "tags": [
+          "OIDC Protocol"
+        ],
         "summary": "Token introspection endpoint",
-        "description": "Allows authorized resource servers or clients to inspect token activity. Client authentication is required and inactive tokens do not reveal sensitive internals.",
+        "description": "Allows an authorized resource server to inspect opaque token activity with HTTP Basic client authentication. JWT access tokens are locally validated against the tenant issuer and JWKS instead. Tenant and audience policy failures fail closed, and inactive tokens reveal no sensitive internals.",
         "parameters": [
           {
             "name": "tenantCode",
@@ -6516,7 +7154,9 @@
             "application/x-www-form-urlencoded": {
               "schema": {
                 "type": "object",
-                "required": ["token"],
+                "required": [
+                  "token"
+                ],
                 "properties": {
                   "token": {
                     "type": "string"
@@ -6536,30 +7176,140 @@
             }
           }
         },
+        "security": [
+          {
+            "resource-server-basic": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Token introspection response",
             "content": {
               "application/json": {
                 "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "active",
+                        "client_id",
+                        "token_type",
+                        "scope",
+                        "iss",
+                        "aud",
+                        "exp",
+                        "iat",
+                        "tenant_id"
+                      ],
+                      "properties": {
+                        "active": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        },
+                        "client_id": {
+                          "type": "string"
+                        },
+                        "token_type": {
+                          "type": "string",
+                          "example": "Bearer"
+                        },
+                        "scope": {
+                          "type": "string"
+                        },
+                        "iss": {
+                          "type": "string",
+                          "format": "uri"
+                        },
+                        "aud": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "format": "uri"
+                            },
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "format": "uri"
+                              }
+                            }
+                          ]
+                        },
+                        "exp": {
+                          "type": "integer",
+                          "format": "int64"
+                        },
+                        "iat": {
+                          "type": "integer",
+                          "format": "int64"
+                        },
+                        "tenant_id": {
+                          "type": "string"
+                        },
+                        "sub": {
+                          "type": "string"
+                        },
+                        "jti": {
+                          "type": "string"
+                        },
+                        "sid": {
+                          "type": "string"
+                        },
+                        "cnf": {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "active"
+                      ],
+                      "properties": {
+                        "active": {
+                          "type": "boolean",
+                          "enum": [
+                            false
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "OAuth/OIDC error response. Internal stack traces are never exposed.",
+            "content": {
+              "application/json": {
+                "schema": {
                   "type": "object",
-                  "required": ["active"],
                   "properties": {
-                    "active": {
-                      "type": "boolean",
-                      "example": true
+                    "error": {
+                      "type": "string",
+                      "example": "invalid_request"
                     },
-                    "sub": {
-                      "type": "string"
-                    },
-                    "client_id": {
-                      "type": "string"
-                    },
-                    "scope": {
-                      "type": "string"
-                    },
-                    "exp": {
-                      "type": "integer"
+                    "error_description": {
+                      "type": "string",
+                      "example": "The request is missing a required parameter."
+                    }
+                  }
+                },
+                "examples": {
+                  "invalidRequest": {
+                    "value": {
+                      "error": "invalid_request"
+                    }
+                  },
+                  "unsupportedTokenType": {
+                    "value": {
+                      "error": "unsupported_token_type"
                     }
                   }
                 }
@@ -6592,7 +7342,9 @@
     },
     "/t/{tenantCode}/oidc/request": {
       "post": {
-        "tags": ["OIDC Protocol"],
+        "tags": [
+          "OIDC Protocol"
+        ],
         "summary": "Pushed authorization request endpoint",
         "description": "Registers sensitive authorization request parameters before redirecting the user. Client authentication is required when applicable and request URIs are short-lived.",
         "parameters": [
@@ -6711,6 +7463,10 @@
         "scheme": "bearer",
         "bearerFormat": "JWT",
         "type": "http"
+      },
+      "resource-server-basic": {
+        "type": "http",
+        "scheme": "basic"
       },
       "cookie": {
         "type": "apiKey",
