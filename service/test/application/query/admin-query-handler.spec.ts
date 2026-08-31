@@ -621,9 +621,7 @@ describe('AdminQueryHandler - Client', () => {
       );
       expect(item.frontchannelLogoutUri).toBeNull();
       expect(item.allowedResources).toEqual(['https://api.example.com']);
-      expect(item.introspectionResources).toEqual([
-        'https://api.example.com',
-      ]);
+      expect(item.introspectionResources).toEqual(['https://api.example.com']);
     });
   });
 

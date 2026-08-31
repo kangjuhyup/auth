@@ -147,7 +147,9 @@ export class ClientCommandHandler implements ClientCommandPort {
     const nextAuthMethod =
       dto.tokenEndpointAuthMethod ?? client.tokenEndpointAuthMethod;
     const nextHasSecret =
-      dto.secret === undefined ? Boolean(client.secretEnc) : Boolean(dto.secret);
+      dto.secret === undefined
+        ? Boolean(client.secretEnc)
+        : Boolean(dto.secret);
     const normalizedIntrospectionResources =
       this.normalizeAndAssertIntrospectionResources({
         clientType: client.type,
@@ -408,9 +410,7 @@ export class ClientCommandHandler implements ClientCommandPort {
     try {
       return [
         ...new Set(
-          params.resources.map(
-            (resource) => ResourceOrigin.of(resource).value,
-          ),
+          params.resources.map((resource) => ResourceOrigin.of(resource).value),
         ),
       ];
     } catch {

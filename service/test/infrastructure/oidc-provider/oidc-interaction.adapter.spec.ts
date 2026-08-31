@@ -427,7 +427,9 @@ describe('OidcInteractionAdapter policy resolution', () => {
     provider.callback.mockReturnValue(
       jest.fn().mockRejectedValue(invalidClient),
     );
-    eventRepo.save.mockRejectedValue(new Error('audit persistence unavailable'));
+    eventRepo.save.mockRejectedValue(
+      new Error('audit persistence unavailable'),
+    );
 
     await expect(
       adapter.delegateProviderCallback({

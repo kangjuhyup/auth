@@ -393,7 +393,7 @@ function mergeOidcProviderPaths(document: OpenApiDocument): void {
         summary: 'Token introspection endpoint',
         description:
           'Allows an authorized resource server to inspect opaque token activity with HTTP Basic client authentication. JWT access tokens are locally validated against the tenant issuer and JWKS instead. Tenant and audience policy failures fail closed, and inactive tokens reveal no sensitive internals.',
-        requestBody: tokenRequestBody(['token']),
+        requestBody: introspectionRequestBody(),
         security: [{ 'resource-server-basic': [] }],
         responses: {
           '200': {
@@ -469,7 +469,19 @@ function mergeOidcProviderPaths(document: OpenApiDocument): void {
               },
             },
           },
-          '401': OAUTH_ERROR_RESPONSE,
+          '401': {
+            ...OAUTH_ERROR_RESPONSE,
+            content: {
+              'application/json': {
+                schema: OAUTH_ERROR_RESPONSE.content['application/json'].schema,
+                examples: {
+                  invalidClient: {
+                    value: { error: 'invalid_client' },
+                  },
+                },
+              },
+            },
+          },
         },
       }),
     },
@@ -589,6 +601,24 @@ function tokenRequestBody(required: string[]) {
             token_type_hint: { type: 'string', example: 'refresh_token' },
             client_id: { type: 'string' },
             client_secret: { type: 'string' },
+          },
+        },
+      },
+    },
+  };
+}
+
+function introspectionRequestBody() {
+  return {
+    required: true,
+    content: {
+      'application/x-www-form-urlencoded': {
+        schema: {
+          type: 'object',
+          required: ['token'],
+          properties: {
+            token: { type: 'string' },
+            token_type_hint: { type: 'string', example: 'access_token' },
           },
         },
       },

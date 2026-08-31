@@ -623,14 +623,17 @@ describe('ClientCommandHandler', () => {
           introspectionResources: [],
         },
       ],
-    ])('같은 update에서 allowlist를 비우면 제한된 변경을 허용한다', async (dto) => {
-      clientRepo.findById.mockResolvedValue(makeServiceClient());
+    ])(
+      '같은 update에서 allowlist를 비우면 제한된 변경을 허용한다',
+      async (dto) => {
+        clientRepo.findById.mockResolvedValue(makeServiceClient());
 
-      await handler.updateClient('tenant-1', 'client-1', dto);
+        await handler.updateClient('tenant-1', 'client-1', dto);
 
-      const saved = clientRepo.save.mock.calls[0][0] as ClientModel;
-      expect(saved.introspectionResources).toEqual([]);
-    });
+        const saved = clientRepo.save.mock.calls[0][0] as ClientModel;
+        expect(saved.introspectionResources).toEqual([]);
+      },
+    );
   });
 
   describe('updateClientAuthPolicy', () => {

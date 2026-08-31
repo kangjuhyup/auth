@@ -83,7 +83,9 @@ describe('ClientMapper', () => {
       );
       expect(domain.frontchannelLogoutUri).toBeNull();
       expect(domain.allowedResources).toEqual(['https://api.example.com']);
-      expect(domain.introspectionResources).toEqual(['https://api.example.com']);
+      expect(domain.introspectionResources).toEqual([
+        'https://api.example.com',
+      ]);
     });
 
     it('nullable 필드가 null이면 null로 매핑한다', () => {
@@ -103,7 +105,8 @@ describe('ClientMapper', () => {
       'legacy introspectionResources가 %p이면 빈 배열로 매핑한다',
       (introspectionResources) => {
         const entity = makeOrmEntity();
-        entity.introspectionResources = introspectionResources as unknown as string[];
+        entity.introspectionResources =
+          introspectionResources as unknown as string[];
 
         const domain = ClientMapper.toDomain(entity);
 
@@ -119,7 +122,9 @@ describe('ClientMapper', () => {
       source.push('https://billing.example.com');
 
       expect(domain.introspectionResources).not.toBe(source);
-      expect(domain.introspectionResources).toEqual(['https://api.example.com']);
+      expect(domain.introspectionResources).toEqual([
+        'https://api.example.com',
+      ]);
     });
   });
 
@@ -139,7 +144,9 @@ describe('ClientMapper', () => {
       );
       expect(entity.frontchannelLogoutUri).toBeNull();
       expect(entity.allowedResources).toEqual(['https://api.example.com']);
-      expect(entity.introspectionResources).toEqual(['https://api.example.com']);
+      expect(entity.introspectionResources).toEqual([
+        'https://api.example.com',
+      ]);
     });
 
     it('도메인 introspectionResources 배열을 복사한다', () => {
@@ -150,7 +157,9 @@ describe('ClientMapper', () => {
       source.push('https://billing.example.com');
 
       expect(entity.introspectionResources).not.toBe(source);
-      expect(entity.introspectionResources).toEqual(['https://api.example.com']);
+      expect(entity.introspectionResources).toEqual([
+        'https://api.example.com',
+      ]);
     });
 
     it('기존 엔티티가 있으면 clientId와 type을 변경하지 않는다', () => {
@@ -177,7 +186,9 @@ describe('ClientMapper', () => {
 
       expect(entity.name).toBe('My Client');
       expect(entity.allowedResources).toEqual(['https://api.example.com']);
-      expect(entity.introspectionResources).toEqual(['https://api.example.com']);
+      expect(entity.introspectionResources).toEqual([
+        'https://api.example.com',
+      ]);
       expect(entity.secretEnc).toBe('encrypted-secret');
     });
   });

@@ -7163,13 +7163,7 @@
                   },
                   "token_type_hint": {
                     "type": "string",
-                    "example": "refresh_token"
-                  },
-                  "client_id": {
-                    "type": "string"
-                  },
-                  "client_secret": {
-                    "type": "string"
+                    "example": "access_token"
                   }
                 }
               }
@@ -7330,6 +7324,13 @@
                     "error_description": {
                       "type": "string",
                       "example": "The request is missing a required parameter."
+                    }
+                  }
+                },
+                "examples": {
+                  "invalidClient": {
+                    "value": {
+                      "error": "invalid_client"
                     }
                   }
                 }

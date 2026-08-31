@@ -9,9 +9,7 @@ describe.each([
     upSql: [
       `ALTER TABLE "client" ADD COLUMN "introspection_resources" JSON NOT NULL DEFAULT '[]';`,
     ],
-    downSql: [
-      `ALTER TABLE "client" DROP COLUMN "introspection_resources";`,
-    ],
+    downSql: [`ALTER TABLE "client" DROP COLUMN "introspection_resources";`],
   },
   {
     driver: 'mysql',
@@ -21,9 +19,7 @@ describe.each([
       'UPDATE `client` SET `introspection_resources` = JSON_ARRAY() WHERE `introspection_resources` IS NULL;',
       'ALTER TABLE `client` MODIFY COLUMN `introspection_resources` JSON NOT NULL;',
     ],
-    downSql: [
-      'ALTER TABLE `client` DROP COLUMN `introspection_resources`;',
-    ],
+    downSql: ['ALTER TABLE `client` DROP COLUMN `introspection_resources`;'],
   },
   {
     driver: 'mssql',

@@ -45,31 +45,39 @@ export class ClientOidcAdapter implements Adapter {
     return this.toAdapterPayload(client);
   }
 
-  async findByUid(_uid: string): Promise<AdapterPayload | undefined> {
+  async findByUid(uid: string): Promise<AdapterPayload | undefined> {
+    void uid;
     return undefined;
   }
 
-  async findByUserCode(_userCode: string): Promise<AdapterPayload | undefined> {
+  async findByUserCode(userCode: string): Promise<AdapterPayload | undefined> {
+    void userCode;
     return undefined;
   }
 
   async upsert(
-    _id: string,
-    _payload: AdapterPayload,
-    _expiresIn?: number,
+    id: string,
+    payload: AdapterPayload,
+    expiresIn?: number,
   ): Promise<void> {
+    void id;
+    void payload;
+    void expiresIn;
     // no-op: clients are managed via Admin API
   }
 
-  async consume(_id: string): Promise<void> {
+  async consume(id: string): Promise<void> {
+    void id;
     // no-op
   }
 
-  async destroy(_id: string): Promise<void> {
+  async destroy(id: string): Promise<void> {
+    void id;
     // no-op
   }
 
-  async revokeByGrantId(_grantId: string): Promise<void> {
+  async revokeByGrantId(grantId: string): Promise<void> {
+    void grantId;
     // no-op
   }
 

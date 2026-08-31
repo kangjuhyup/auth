@@ -155,15 +155,18 @@ describe('CreateClientDto', () => {
     'http://api.example.com',
     'api.example.com',
     'https:api.example.com',
-  ])('introspectionResources의 비 HTTPS 입력 %s를 거부한다', async (resource) => {
-    const errors = await getErrors(CreateClientDto, {
-      ...valid,
-      introspectionResources: [resource],
-    });
-    expect(
-      errors.some((error) => error.property === 'introspectionResources'),
-    ).toBe(true);
-  });
+  ])(
+    'introspectionResources의 비 HTTPS 입력 %s를 거부한다',
+    async (resource) => {
+      const errors = await getErrors(CreateClientDto, {
+        ...valid,
+        introspectionResources: [resource],
+      });
+      expect(
+        errors.some((error) => error.property === 'introspectionResources'),
+      ).toBe(true);
+    },
+  );
 
   it('applicationType이 web이면 에러 없음', async () => {
     expect(
@@ -246,14 +249,17 @@ describe('UpdateClientDto', () => {
     'http://api.example.com',
     'api.example.com',
     'https:api.example.com',
-  ])('introspectionResources의 비 HTTPS 입력 %s를 거부한다', async (resource) => {
-    const errors = await getErrors(UpdateClientDto, {
-      introspectionResources: [resource],
-    });
-    expect(
-      errors.some((error) => error.property === 'introspectionResources'),
-    ).toBe(true);
-  });
+  ])(
+    'introspectionResources의 비 HTTPS 입력 %s를 거부한다',
+    async (resource) => {
+      const errors = await getErrors(UpdateClientDto, {
+        introspectionResources: [resource],
+      });
+      expect(
+        errors.some((error) => error.property === 'introspectionResources'),
+      ).toBe(true);
+    },
+  );
 });
 
 describe('UpdateClientAuthPolicyDto', () => {

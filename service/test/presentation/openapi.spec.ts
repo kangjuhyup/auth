@@ -133,6 +133,76 @@ describe('openapi docs', () => {
       additionalProperties: false,
       required: ['active'],
     });
+
+    const requestSchema =
+      operation.requestBody.content['application/x-www-form-urlencoded'].schema;
+    expect(requestSchema.required).toEqual(['token']);
+    expect(Object.keys(requestSchema.properties).sort()).toEqual([
+      'token',
+      'token_type_hint',
+    ]);
+
+    expect(
+      operation.responses['401'].content['application/json'].examples,
+    ).toEqual(
+      expect.objectContaining({
+        invalidClient: { value: { error: 'invalid_client' } },
+      }),
+    );
+  });
+
+  it('introspection document response schemas distinguish valid active and exact inactive payloads', () => {
+    const document: { paths: Record<string, any> } = { paths: {} };
+    applyEndpointReference(document);
+
+    const schema =
+      document.paths['/t/{tenantCode}/oidc/token/introspection'].post.responses[
+        '200'
+      ].content['application/json'].schema;
+    const [active, inactive] = schema.oneOf;
+    const activeResponse = {
+      active: true,
+      client_id: 'orders-api',
+      token_type: 'Bearer',
+      scope: 'orders:read',
+      iss: 'https://auth.example.com/t/acme/oidc',
+      aud: 'https://orders.example.com',
+      exp: 1735689600,
+      iat: 1735686000,
+      tenant_id: 'tenant-acme',
+      sub: 'user-123',
+      jti: 'token-123',
+      sid: 'session-123',
+      cnf: { jkt: 'thumbprint' },
+    };
+
+    expect(
+      active.required.every((claim: string) => claim in activeResponse),
+    ).toBe(true);
+    expect(active.properties.active.enum).toEqual([true]);
+    expect(active.additionalProperties).toBe(false);
+    expect(active.properties.aud.oneOf).toEqual([
+      { type: 'string', format: 'uri' },
+      { type: 'array', items: { type: 'string', format: 'uri' } },
+    ]);
+    expect(
+      ['sub', 'jti', 'sid', 'cnf'].every((claim) => claim in active.properties),
+    ).toBe(true);
+    expect(active.required.includes('sub')).toBe(false);
+    const incompleteActiveResponse = { ...activeResponse };
+    delete (incompleteActiveResponse as { exp?: number }).exp;
+    expect(
+      active.required.every(
+        (claim: string) => claim in incompleteActiveResponse,
+      ),
+    ).toBe(false);
+
+    expect(inactive.properties.active.enum).toEqual([false]);
+    expect(inactive.additionalProperties).toBe(false);
+    expect(
+      inactive.required.every((claim: string) => claim in { active: false }),
+    ).toBe(true);
+    expect(Object.keys(inactive.properties)).toEqual(['active']);
   });
 
   it('controller 기반 endpoint에는 ENDPOINTS 문서의 보안 설명을 operation description으로 병합한다', () => {

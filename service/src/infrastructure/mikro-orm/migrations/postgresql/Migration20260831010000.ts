@@ -8,8 +8,6 @@ export class Migration20260831010000 extends Migration {
   }
 
   override async down(): Promise<void> {
-    this.addSql(
-      `ALTER TABLE "client" DROP COLUMN "introspection_resources";`,
-    );
+    this.addSql(`ALTER TABLE "client" DROP COLUMN "introspection_resources";`);
   }
 }
