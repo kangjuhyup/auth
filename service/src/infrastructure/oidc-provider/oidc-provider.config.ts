@@ -15,8 +15,10 @@ import type { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.po
 import type { ScopeRegistryPort } from '@application/ports/scope-registry.port';
 import type { ScopeClaimResolverPort } from '@application/ports/scope-claim-resolver.port';
 import { parseScopeString } from '@domain/models/scope';
+import { ResourceOrigin } from '@domain/value-objects/resource-origin';
 import { buildTenantCookieConfiguration } from './security/tenant-cookie.config';
 import { createSafeOidcFetch } from './security/safe-oidc-fetch';
+import { createIntrospectionAllowedPolicy } from './introspection-policy';
 
 type OidcConfiguration = Configuration & {
   grantTypes: string[];
@@ -132,6 +134,10 @@ export function buildOidcConfiguration(params: {
   return {
     grantTypes: [...supportedGrantTypes],
 
+    extraTokenClaims: async () => ({
+      tenant_id: tenantId,
+    }),
+
     interactions: {
       url(_ctx, interaction) {
         return `/t/${tenantCode}/interaction/${interaction.uid}`;
@@ -176,6 +182,13 @@ export function buildOidcConfiguration(params: {
     features: {
       devInteractions: { enabled: false },
       backchannelLogout: { enabled: true },
+      clientCredentials: {
+        enabled: supportedGrantTypes.includes('client_credentials'),
+      },
+      introspection: {
+        enabled: true,
+        allowedPolicy: createIntrospectionAllowedPolicy(clientRepository),
+      },
 
       // ✅ JWT Access Token을 쓰려면 보통 여기(리소스 지시자)에서 포맷을 결정
       resourceIndicators: {
@@ -191,7 +204,12 @@ export function buildOidcConfiguration(params: {
           }
 
           // 1) resource 정규화 + 안전성 검증
-          const origin = normalizeResourceToOrigin(resource);
+          let origin: string;
+          try {
+            origin = ResourceOrigin.of(resource).value;
+          } catch {
+            throw new Error('invalid_target');
+          }
 
           // 2) client가 허용된 resource인지 조회해서 검증
           const allowed = await clientQuery.getAllowedResources({
@@ -385,29 +403,4 @@ function escapeHtml(value: string): string {
 function getSecretKeys(configService: ConfigService, envKey: string): string[] {
   const raw = configService.getOrThrow<string>(envKey);
   return raw.split(',').map((k) => k.trim());
-}
-
-function normalizeResourceToOrigin(resource: string): string {
-  let url: URL;
-  try {
-    url = new URL(resource);
-  } catch {
-    throw new Error('invalid_target');
-  }
-
-  // https만 허용(개발 환경 예외는 필요 시 분기)
-  if (url.protocol !== 'https:') {
-    throw new Error('invalid_target');
-  }
-
-  // origin 단위로 비교
-  const origin = url.origin;
-
-  // 간단한 내부망/로컬 차단(필요하면 더 강화)
-  const host = url.hostname.toLowerCase();
-  if (host === 'localhost' || host.endsWith('.local')) {
-    throw new Error('invalid_target');
-  }
-
-  return origin;
 }
