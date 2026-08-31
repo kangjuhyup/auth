@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   release-please:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64]
     steps:
       - uses: googleapis/release-please-action@v4
         with:

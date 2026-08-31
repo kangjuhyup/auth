@@ -1,11 +1,12 @@
 # PR 생성·업데이트 시 service unit(+커버리지)·모듈 의존성(dependency-cruiser)·UI unit 테스트 후
 # 같은 코멘트에 결과를 남깁니다.
-# (포크 PR은 기본 GITHUB_TOKEN 권한으로 코멘트가 막힐 수 있습니다.)
+# 공개 저장소의 fork PR은 영구 self-hosted runner에서 실행하지 않습니다.
 
 name: PR tests & comment
 
 on:
-  pull_request:
+  # 신뢰된 base branch의 workflow 정의만 사용합니다.
+  pull_request_target:
     types: [opened, synchronize, reopened]
 
 concurrency:
@@ -19,11 +20,16 @@ permissions:
 jobs:
   # 브랜치 보호 규칙에 잡혀 있을 수 있어 job id 는 유지합니다.
   unit-tests:
-    runs-on: ubuntu-latest
+    # 공개 저장소의 fork PR 코드를 영구 self-hosted runner에서 실행하지 않습니다.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, macOS, ARM64]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          # 위 job guard를 통과한 동일 저장소 PR의 head commit만 검사합니다.
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -134,13 +140,12 @@ jobs:
                 echo "_이 PR diff 기준으로 \`service/src\` 내 변경된 .ts/.js 파일이 없습니다._"
                 echo ""
               else
-                mapfile -t FILELIST <<< "$CHANGED"
-                total=${#FILELIST[@]}
+                total=$(printf '%s\n' "$CHANGED" | awk 'NF { count += 1 } END { print count + 0 }')
                 echo "| 파일 | Lines % |"
                 echo "|------|---------|"
                 max_rows=40
                 n=0
-                for filepath in "${FILELIST[@]}"; do
+                while IFS= read -r filepath; do
                   [ -z "$filepath" ] && continue
                   n=$((n + 1))
                   [ "$n" -gt "$max_rows" ] && continue
@@ -157,7 +162,7 @@ jobs:
                     cell="${pct}%"
                   fi
                   echo "| \`$rel\` | $cell |"
-                done
+                done <<< "$CHANGED"
                 if [ "$total" -gt "$max_rows" ]; then
                   rest=$((total - max_rows))
                   echo ""
