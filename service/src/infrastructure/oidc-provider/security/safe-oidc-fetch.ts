@@ -1,11 +1,6 @@
 import { lookup as dnsLookup } from 'node:dns/promises';
 import ipaddr from 'ipaddr.js';
-import {
-  Agent,
-  type RequestInfo,
-  type RequestInit,
-  type Response,
-} from 'undici';
+import { Agent } from 'undici';
 
 const DEFAULT_TIMEOUT_MS = 2_500;
 
@@ -32,10 +27,18 @@ export type ValidatedLookup = (
   callback: LookupCallback,
 ) => void;
 
+type ProviderFetch = typeof globalThis.fetch;
+type FetchInput = Parameters<ProviderFetch>[0];
+type FetchInit = NonNullable<Parameters<ProviderFetch>[1]>;
+type FetchResponse = ReturnType<ProviderFetch>;
+type TransportInit = Omit<FetchInit, 'dispatcher'> & {
+  dispatcher?: unknown;
+};
 type FetchTransport = (
-  input: RequestInfo,
-  init?: RequestInit,
-) => Promise<Response>;
+  input: FetchInput,
+  init?: TransportInit,
+) => FetchResponse;
+type DispatchingFetchInit = TransportInit & { dispatcher: Agent };
 
 export function createValidatedLookup(
   resolver: Resolver = resolveAllAddresses,
@@ -80,7 +83,7 @@ export function createSafeOidcFetch(
     transport?: FetchTransport;
     timeoutMs?: number;
   } = {},
-): FetchTransport {
+): ProviderFetch {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
     throw new Error('OIDC fetch timeout must be a positive integer');
@@ -106,19 +109,20 @@ export function createSafeOidcFetch(
       ? combineAbortSignals(init.signal, timeoutSignal)
       : timeoutSignal;
 
-    return transport(input, {
+    const dispatchingInit: DispatchingFetchInit = {
       ...init,
       dispatcher,
       redirect: 'manual',
       signal,
-    });
+    };
+    return transport(input, dispatchingInit);
   };
 }
 
 const runtimeFetch: FetchTransport = (input, init) => {
-  const fetch = (globalThis as typeof globalThis & { fetch: FetchTransport })
-    .fetch;
-  return fetch(input, init);
+  // Node's global fetch and npm undici use the same runtime dispatcher API,
+  // but their separately versioned declaration packages are not assignable.
+  return globalThis.fetch(input, init as FetchInit);
 };
 
 function combineAbortSignals(
@@ -152,9 +156,11 @@ async function resolveAllAddresses(
   return dnsLookup(hostname, { all: true, verbatim: true });
 }
 
-function parseSafeUrl(input: RequestInfo): URL {
+function parseSafeUrl(input: FetchInput): URL {
   try {
-    return new URL(typeof input === 'string' ? input : input.toString());
+    if (typeof input === 'string') return new URL(input);
+    if (input instanceof URL) return new URL(input.href);
+    return new URL(input.url);
   } catch {
     throw new UnsafeOidcDestinationError();
   }
