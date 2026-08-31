@@ -268,11 +268,17 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
           });
         }
         if (errorCode === 'invalid_client') {
-          await this.auditClientAuthenticationFailure(
-            params.tenantCode,
-            endpoint,
-            req,
-          );
+          try {
+            await this.auditClientAuthenticationFailure(
+              params.tenantCode,
+              endpoint,
+              req,
+            );
+          } catch {
+            this.metrics.incrementCounter('oidc_audit_failure_total', {
+              tenantCode: params.tenantCode,
+            });
+          }
         }
       }
       throw error;

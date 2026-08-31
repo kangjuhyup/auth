@@ -328,6 +328,149 @@ describe('OidcInteractionAdapter policy resolution', () => {
     expect(JSON.stringify(event)).not.toContain('opaque-access-token');
   });
 
+  it('introspection query endpoint의 invalid_client 실패를 감사한다', async () => {
+    const invalidClient = Object.assign(new Error('invalid_client'), {
+      error: 'invalid_client',
+    });
+    const { adapter, provider, eventRepo } = createAdapter();
+    provider.callback.mockReturnValue(
+      jest.fn().mockRejectedValue(invalidClient),
+    );
+
+    await expect(
+      adapter.delegateProviderCallback({
+        tenantCode: 'acme',
+        req: makeTokenRequest({
+          url: '/t/acme/oidc/token/introspection?resource=orders',
+        }),
+        res: { statusCode: 401 },
+      }),
+    ).rejects.toBe(invalidClient);
+
+    expect(eventRepo.save.mock.calls[0][0].metadata).toEqual({
+      tenantCode: 'acme',
+      endpoint: 'introspection',
+    });
+  });
+
+  it('token query endpoint의 invalid_client 감사에는 grant type만 포함한다', async () => {
+    const invalidClient = Object.assign(new Error('invalid_client'), {
+      error: 'invalid_client',
+    });
+    const { adapter, provider, eventRepo } = createAdapter();
+    provider.callback.mockReturnValue(
+      jest.fn().mockRejectedValue(invalidClient),
+    );
+
+    await expect(
+      adapter.delegateProviderCallback({
+        tenantCode: 'acme',
+        req: makeTokenRequest({ url: '/t/acme/oidc/token?attempt=1' }),
+        res: { statusCode: 401 },
+      }),
+    ).rejects.toBe(invalidClient);
+
+    expect(eventRepo.save.mock.calls[0][0].metadata).toEqual({
+      tenantCode: 'acme',
+      endpoint: 'token',
+      grantType: 'client_credentials',
+    });
+  });
+
+  it('introspection 하위 경로의 invalid_client 실패는 감사하지 않는다', async () => {
+    const invalidClient = Object.assign(new Error('invalid_client'), {
+      error: 'invalid_client',
+    });
+    const { adapter, provider, eventRepo, metrics } = createAdapter();
+    provider.callback.mockReturnValue(
+      jest.fn().mockRejectedValue(invalidClient),
+    );
+
+    await expect(
+      adapter.delegateProviderCallback({
+        tenantCode: 'acme',
+        req: makeTokenRequest({
+          url: '/t/acme/oidc/token/introspection/extra',
+        }),
+        res: { statusCode: 401 },
+      }),
+    ).rejects.toBe(invalidClient);
+
+    expect(eventRepo.save).not.toHaveBeenCalled();
+    expect(metrics.incrementCounter).not.toHaveBeenCalled();
+    expect(metrics.observeLatency).not.toHaveBeenCalled();
+  });
+
+  it('성공한 introspection provider 결과를 그대로 반환하고 실패 감사를 만들지 않는다', async () => {
+    const providerResult = { active: true };
+    const { adapter, provider, eventRepo } = createAdapter();
+    provider.callback.mockReturnValue(
+      jest.fn().mockResolvedValue(providerResult),
+    );
+
+    await expect(
+      adapter.delegateProviderCallback({
+        tenantCode: 'acme',
+        req: makeTokenRequest({ url: '/t/acme/oidc/token/introspection' }),
+        res: { statusCode: 200 },
+      }),
+    ).resolves.toBe(providerResult);
+
+    expect(eventRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('감사 저장 실패가 provider의 invalid_client 오류를 대체하지 않는다', async () => {
+    const invalidClient = Object.assign(new Error('invalid_client'), {
+      error: 'invalid_client',
+    });
+    const { adapter, provider, eventRepo, metrics } = createAdapter();
+    provider.callback.mockReturnValue(
+      jest.fn().mockRejectedValue(invalidClient),
+    );
+    eventRepo.save.mockRejectedValue(new Error('audit persistence unavailable'));
+
+    await expect(
+      adapter.delegateProviderCallback({
+        tenantCode: 'acme',
+        req: makeTokenRequest({ body: { client_id: 'web-app' } }),
+        res: { statusCode: 401 },
+      }),
+    ).rejects.toBe(invalidClient);
+
+    expect(metrics.incrementCounter).toHaveBeenCalledWith(
+      'oidc_audit_failure_total',
+      { tenantCode: 'acme' },
+    );
+  });
+
+  it('감사 client 조회 실패가 provider의 invalid_client 오류를 대체하지 않는다', async () => {
+    const invalidClient = Object.assign(new Error('invalid_client'), {
+      error: 'invalid_client',
+    });
+    const clientRepo = {
+      findByClientId: jest
+        .fn()
+        .mockRejectedValue(new Error('client lookup unavailable')),
+    };
+    const { adapter, provider, metrics } = createAdapter({ clientRepo });
+    provider.callback.mockReturnValue(
+      jest.fn().mockRejectedValue(invalidClient),
+    );
+
+    await expect(
+      adapter.delegateProviderCallback({
+        tenantCode: 'acme',
+        req: makeTokenRequest({ body: { client_id: 'web-app' } }),
+        res: { statusCode: 401 },
+      }),
+    ).rejects.toBe(invalidClient);
+
+    expect(metrics.incrementCounter).toHaveBeenCalledWith(
+      'oidc_audit_failure_total',
+      { tenantCode: 'acme' },
+    );
+  });
+
   it('client_secret 불일치로 추정되는 invalid_client 실패를 구분한다', async () => {
     const invalidClient = Object.assign(new Error('invalid_client'), {
       error: 'invalid_client',
