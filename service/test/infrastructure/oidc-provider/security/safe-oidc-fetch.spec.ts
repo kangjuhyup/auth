@@ -2,9 +2,22 @@ import {
   createSafeOidcFetch,
   createValidatedLookup,
 } from '@infrastructure/oidc-provider/security/safe-oidc-fetch';
-import { Response, type RequestInit } from 'undici';
+import type { Configuration } from 'oidc-provider';
 
 describe('safe OIDC fetch', () => {
+  it('Node 24 provider fetch 계약과 global Request를 그대로 지원한다', async () => {
+    const transport = jest.fn().mockResolvedValue(new Response(null));
+    const providerFetch: NonNullable<Configuration['fetch']> =
+      createSafeOidcFetch({ transport });
+    const request = new Request('https://93.184.216.34/logout');
+
+    await expect(providerFetch(request)).resolves.toBeInstanceOf(Response);
+    expect(transport).toHaveBeenCalledWith(
+      request,
+      expect.objectContaining({ redirect: 'manual' }),
+    );
+  });
+
   it.each([
     'http://public.example.com/logout',
     'https://user:password@public.example.com/logout',
