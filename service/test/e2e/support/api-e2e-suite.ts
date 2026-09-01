@@ -437,6 +437,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
       resource?: string;
       scope?: string;
       prompt?: string;
+      allowConsent?: boolean;
     }) {
       const { agent, uid, verifier } = await beginOidcInteraction(params);
 
@@ -457,6 +458,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
       const code = await resolveAuthorizationCode(
         agent,
         loginResponse.body.redirectTo,
+        params.allowConsent === false ? 0 : 2,
       );
 
       return {
@@ -526,8 +528,10 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
       username: string;
       password: string;
       resource?: string;
+      omitResourceAtTokenEndpoint?: boolean;
       scope?: string;
       prompt?: string;
+      allowConsent?: boolean;
     }): Promise<{ accessToken: string; refreshToken?: string }> {
       const { agent, code, verifier } = await authorizeUserViaOidc(params);
 
@@ -540,7 +544,9 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           redirect_uri: params.redirectUri,
           code,
           code_verifier: verifier,
-          ...(params.resource ? { resource: params.resource } : {}),
+          ...(params.resource && !params.omitResourceAtTokenEndpoint
+            ? { resource: params.resource }
+            : {}),
         })
         .expect(200);
 
@@ -640,6 +646,19 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
         const token = await provider.AccessToken.find(tokenValue);
         expect(token).toBeDefined();
         await token!.destroy();
+      });
+    }
+
+    async function expectAccessTokenAudience(
+      tenantCode: string,
+      tokenValue: string,
+      audience: string,
+    ): Promise<void> {
+      await fixture.runInRequestContext(async () => {
+        const provider = await fixture.registry.get(tenantCode);
+        const token = await provider.AccessToken.find(tokenValue);
+        expect(token).toBeDefined();
+        expect(token!.aud).toBe(audience);
       });
     }
 
@@ -1513,7 +1532,9 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           username: signup.username,
           password: signup.password,
           resource,
+          omitResourceAtTokenEndpoint: true,
           scope: 'openid orders:read',
+          allowConsent: false,
         });
 
         const response = await introspectToken({
@@ -1523,6 +1544,8 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           token: login.accessToken,
           tokenTypeHint: 'access_token',
         }).expect(200);
+
+        await expectAccessTokenAudience('acme', login.accessToken, resource);
 
         expect(response.body).toMatchObject({
           active: true,
@@ -1540,6 +1563,14 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
         expect(response.body).not.toHaveProperty('roles');
         expect(response.body).not.toHaveProperty('permissions');
         expect(response.body).not.toHaveProperty('secret');
+
+        const userInfoResponse = await request(fixture.app.getHttpServer())
+          .get('/t/acme/oidc/me')
+          .set('Authorization', `Bearer ${login.accessToken}`)
+          .expect(401);
+        expect(userInfoResponse.body).toMatchObject({
+          error: 'invalid_token',
+        });
         const permittedKeys = new Set([
           'active',
           'client_id',
@@ -1558,6 +1589,117 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
         expect(
           Object.keys(response.body).every((key) => permittedKeys.has(key)),
         ).toBe(true);
+      });
+
+      it('granted resource를 생략한 refresh_token 교환도 API audience access token을 발급한다', async () => {
+        const resource = 'https://resource.example.test/orders';
+        const adminToken = await loginAsAdmin();
+        await createTenant(adminToken, 'acme', 'Acme Corp');
+        await request(fixture.app.getHttpServer())
+          .post('/t/acme/admin/scopes')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({
+            name: 'orders:read',
+            displayName: 'Read orders',
+            claimKeys: [],
+            enabled: true,
+          })
+          .expect(201);
+        await request(fixture.app.getHttpServer())
+          .post('/t/acme/admin/scopes')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({
+            name: 'offline_access',
+            displayName: 'Offline access',
+            claimKeys: [],
+            enabled: true,
+          })
+          .expect(201);
+        const userClient = await createClient(
+          adminToken,
+          'acme',
+          'orders-offline-web',
+          {
+            grantTypes: ['authorization_code', 'refresh_token'],
+            scope: 'openid orders:read offline_access',
+            allowedResources: ['https://resource.example.test'],
+          },
+        );
+        const resourceServer = await createClient(
+          adminToken,
+          'acme',
+          'orders-offline-api',
+          {
+            type: 'service',
+            secret: 'orders-offline-introspection-secret-000001',
+            redirectUris: [],
+            grantTypes: ['client_credentials'],
+            responseTypes: [],
+            tokenEndpointAuthMethod: 'client_secret_basic',
+            scope: 'orders:read',
+            allowedResources: ['https://resource.example.test'],
+            introspectionResources: [resource],
+          },
+        );
+        const signup = await signupUser('acme', {
+          username: 'refresh-resource-user',
+          password: 'Password123!',
+        });
+        const login = await loginUserViaOidc({
+          tenantCode: 'acme',
+          clientId: userClient.clientId,
+          redirectUri: userClient.redirectUri,
+          username: signup.username,
+          password: signup.password,
+          resource,
+          omitResourceAtTokenEndpoint: true,
+          scope: 'openid orders:read offline_access',
+          prompt: 'consent',
+        });
+
+        expect(login.refreshToken).toEqual(expect.any(String));
+        await expectAccessTokenAudience('acme', login.accessToken, resource);
+        const initialIntrospection = await introspectToken({
+          tenantCode: 'acme',
+          clientId: resourceServer.clientId,
+          clientSecret: resourceServer.secret,
+          token: login.accessToken,
+          tokenTypeHint: 'access_token',
+        }).expect(200);
+        expect(initialIntrospection.body).toMatchObject({
+          active: true,
+          aud: resource,
+          client_id: userClient.clientId,
+        });
+
+        const refreshResponse = await request(fixture.app.getHttpServer())
+          .post('/t/acme/oidc/token')
+          .type('form')
+          .send({
+            grant_type: 'refresh_token',
+            client_id: userClient.clientId,
+            refresh_token: login.refreshToken,
+          })
+          .expect(200);
+        expect(refreshResponse.body.access_token).toEqual(expect.any(String));
+        await expectAccessTokenAudience(
+          'acme',
+          refreshResponse.body.access_token as string,
+          resource,
+        );
+
+        const refreshedIntrospection = await introspectToken({
+          tenantCode: 'acme',
+          clientId: resourceServer.clientId,
+          clientSecret: resourceServer.secret,
+          token: refreshResponse.body.access_token as string,
+          tokenTypeHint: 'access_token',
+        }).expect(200);
+        expect(refreshedIntrospection.body).toMatchObject({
+          active: true,
+          aud: resource,
+          client_id: userClient.clientId,
+        });
       });
 
       it('client_credentials token은 sub 없이 안정적인 introspection metadata를 반환한다', async () => {

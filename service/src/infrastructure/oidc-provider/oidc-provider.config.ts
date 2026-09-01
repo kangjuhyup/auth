@@ -175,6 +175,20 @@ export function buildOidcConfiguration(params: {
       grant.addOIDCScope(
         grantScopes.length > 0 ? grantScopes.join(' ') : client.scope,
       );
+
+      const resourceServers = (ctx.oidc.resourceServers ??
+        {}) as unknown as Record<string, { scopes: Set<string> }>;
+      const requestedResources = Object.entries(resourceServers);
+      if (requestedResources.length === 1) {
+        const [resource, resourceServer] = requestedResources[0];
+        const resourceScopes = grantScopes.filter((scope) =>
+          resourceServer.scopes.has(scope),
+        );
+        if (resourceScopes.length > 0) {
+          grant.addResourceScope(resource, resourceScopes.join(' '));
+        }
+      }
+
       await grant.save();
       return grant;
     },
@@ -193,6 +207,13 @@ export function buildOidcConfiguration(params: {
       // ✅ JWT Access Token을 쓰려면 보통 여기(리소스 지시자)에서 포맷을 결정
       resourceIndicators: {
         enabled: true,
+
+        async useGrantedResource(_ctx, model) {
+          // Authorization과 token endpoint 사이에 resource를 재전송하지
+          // 않는 OIDC 클라이언트에도, provider가 검증·저장한 단일 API
+          // resource만 사용한다. 복수 resource는 명시적 선택을 요구한다.
+          return typeof model.resource === 'string';
+        },
 
         // ✅ 리소스 서버별 정책(포맷 포함)
         async getResourceServerInfo(ctx, resource, client) {
