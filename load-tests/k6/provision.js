@@ -54,7 +54,10 @@ function postWithAdminSession(path, payload, adminSession, operation) {
 export function setup() {
   const loginResponse = http.post(
     `${config.baseUrl}/admin/session`,
-    JSON.stringify({ username: config.adminUsername, password: config.adminPassword }),
+    JSON.stringify({
+      username: config.adminUsername,
+      password: config.adminPassword,
+    }),
     {
       headers: jsonHeaders,
       tags: { endpoint: 'provision-admin-session' },
@@ -68,7 +71,12 @@ export function setup() {
     throw new Error('admin session cookie was not issued');
   }
 
-  postWithAdminSession('/admin/tenants', tenantPayload(), adminSession, 'tenant provisioned');
+  postWithAdminSession(
+    '/admin/tenants',
+    tenantPayload(),
+    adminSession,
+    'tenant provisioned',
+  );
   postWithAdminSession(
     `/t/${config.tenantCode}/admin/scopes`,
     offlineAccessScopePayload(),

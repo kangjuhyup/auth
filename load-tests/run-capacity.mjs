@@ -12,7 +12,7 @@ import {
 } from 'node:fs/promises';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
-import { parseOptions } from './lib/config.mjs';
+import { parseOptions, resolveLoadTestIdentity } from './lib/config.mjs';
 import { startMonitor } from './lib/monitor.mjs';
 import { runCapacityWorkflow, safeErrorMessage } from './lib/orchestrator.mjs';
 
@@ -29,11 +29,18 @@ const CHILD_OVERRIDE_KEYS = new Set([
   'LOAD_HTTP_THROTTLE_LIMIT',
   'LOAD_LOGIN_RATE_LIMIT_IP_MAX',
 ]);
+const COMPUTED_IDENTITY_KEYS = new Set(['LOAD_TEST_UID', 'LOAD_TEST_GID']);
+const BOUNDED_ID_PATTERN = /^(?:0|[1-9]\d{0,9})$/;
 
-function childEnvironment(overrides = {}) {
+export function createChildEnvironment(
+  hostEnvironment,
+  overrides = {},
+  computedIdentity = {},
+) {
   const environment = Object.fromEntries(
-    Object.entries(process.env).filter(
-      ([key]) => !RUNTIME_SECRET_KEYS.has(key),
+    Object.entries(hostEnvironment).filter(
+      ([key]) =>
+        !RUNTIME_SECRET_KEYS.has(key) && !COMPUTED_IDENTITY_KEYS.has(key),
     ),
   );
   for (const [key, value] of Object.entries(overrides)) {
@@ -42,7 +49,30 @@ function childEnvironment(overrides = {}) {
     }
     environment[key] = value;
   }
+  for (const key of COMPUTED_IDENTITY_KEYS) {
+    const value = computedIdentity[key];
+    if (value === undefined) continue;
+    if (
+      typeof value !== 'string' ||
+      !BOUNDED_ID_PATTERN.test(value) ||
+      Number(value) > 2_147_483_647
+    ) {
+      throw new TypeError('invalid computed load-test identity');
+    }
+    environment[key] = value;
+  }
   return environment;
+}
+
+function childEnvironment(overrides = {}) {
+  return createChildEnvironment(
+    process.env,
+    overrides,
+    resolveLoadTestIdentity(
+      typeof process.getuid === 'function' ? () => process.getuid() : undefined,
+      typeof process.getgid === 'function' ? () => process.getgid() : undefined,
+    ),
+  );
 }
 
 function runCommand(file, args, options = {}) {

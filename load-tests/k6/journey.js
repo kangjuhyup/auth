@@ -23,10 +23,10 @@ export const options = {
 };
 
 function oidcClient() {
-  return oidc ??= createOidcClient({
+  return (oidc ??= createOidcClient({
     ...loadConfig(__ENV),
     runKind: scenarioConfig.runKind,
-  });
+  }));
 }
 
 export function setup() {
@@ -45,7 +45,12 @@ export default function (timing) {
     }
   }
   const measuring = Date.now() >= timing.measureAfterMs;
-  session = oidcClient().execute(chooseAction(Math.random()), session, userIndex, measuring);
+  session = oidcClient().execute(
+    chooseAction(Math.random()),
+    session,
+    userIndex,
+    measuring,
+  );
   sleep(1 + Math.random() * 2);
 }
 

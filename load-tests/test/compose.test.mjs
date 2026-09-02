@@ -10,6 +10,8 @@ const syntheticLocalSecrets = {
   ADMIN_PASSWORD: 'local-test-admin-password',
   LOAD_USER_PASSWORD: 'local-test-user-password',
   SERVICE_CLIENT_SECRET: 'local-test-service-client-secret',
+  LOAD_TEST_UID: '12345',
+  LOAD_TEST_GID: '23456',
 };
 
 function renderComposeConfig() {
@@ -32,7 +34,11 @@ function renderComposeConfig() {
     },
   );
 
-  assert.equal(result.status, 0, 'Docker Compose config rendering should succeed');
+  assert.equal(
+    result.status,
+    0,
+    'Docker Compose config rendering should succeed',
+  );
   return JSON.parse(result.stdout);
 }
 
@@ -55,6 +61,7 @@ test('renders an isolated single-replica load topology', () => {
     'service_healthy',
   );
   assert.equal(config.services.k6.image, 'grafana/k6:2.2.0');
+  assert.equal(config.services.k6.user, '12345:23456');
   assert.match(JSON.stringify(config.services), /auth-load/);
 
   assert.deepEqual(Object.keys(config.volumes).sort(), [
@@ -68,7 +75,9 @@ test('renders an isolated single-replica load topology', () => {
     ...config.services['redis-load'].volumes,
   ];
   assert.deepEqual(
-    storageMounts.map(({ source, type }) => ({ source, type })).sort((a, b) => a.source.localeCompare(b.source)),
+    storageMounts
+      .map(({ source, type }) => ({ source, type }))
+      .sort((a, b) => a.source.localeCompare(b.source)),
     [
       { source: 'auth-load-postgres', type: 'volume' },
       { source: 'auth-load-redis', type: 'volume' },

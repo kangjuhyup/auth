@@ -16,6 +16,12 @@ not use or modify the normal development stack or its data.
 Run commands from the repository root. No separately running service is
 required.
 
+On hosts that expose numeric process ownership (including native Linux), the
+runner computes the current UID and GID and runs k6 with that identity. This
+lets k6 write into the host-owned, mode-`0700` result directory without making
+it world-writable. Host-provided `LOAD_TEST_UID` or `LOAD_TEST_GID` values are
+ignored; platforms without numeric ownership use the Compose defaults.
+
 ## Profiles and workload
 
 Every run first provisions isolated test data. The security profile then runs

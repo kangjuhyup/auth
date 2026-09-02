@@ -1,4 +1,17 @@
-const LOCAL_HOSTS = new Set(['auth-service', 'localhost', '127.0.0.1', '[::1]']);
+const LOCAL_HOSTS = new Set([
+  'auth-service',
+  'localhost',
+  '127.0.0.1',
+  '[::1]',
+]);
+const MAX_CONTAINER_ID = 2_147_483_647;
+
+function boundedProcessId(value, name) {
+  if (!Number.isInteger(value) || value < 0 || value > MAX_CONTAINER_ID) {
+    throw new TypeError(`${name} must be a bounded nonnegative integer`);
+  }
+  return String(value);
+}
 
 function positiveInteger(raw, name) {
   if (!/^[1-9]\d*$/.test(raw) || !Number.isSafeInteger(Number(raw))) {
@@ -8,8 +21,11 @@ function positiveInteger(raw, name) {
 }
 
 function boundedSoakSeconds(raw) {
-  if (!/^[1-9]\d*$/.test(raw) || !Number.isSafeInteger(Number(raw))
-    || Number(raw) > 1800) {
+  if (
+    !/^[1-9]\d*$/.test(raw) ||
+    !Number.isSafeInteger(Number(raw)) ||
+    Number(raw) > 1800
+  ) {
     throw new RangeError('SOAK_SECONDS must be between 1 and 1800 seconds');
   }
   return Number(raw);
@@ -41,12 +57,33 @@ export function assertLocalTarget(rawUrl, allowRemote = false) {
 export function parseOptions(env) {
   return Object.freeze({
     maxVus: positiveInteger(env.MAX_VUS ?? '1000', 'MAX_VUS'),
-    warmupSeconds: positiveInteger(env.WARMUP_SECONDS ?? '60', 'WARMUP_SECONDS'),
-    measureSeconds: positiveInteger(env.MEASURE_SECONDS ?? '180', 'MEASURE_SECONDS'),
+    warmupSeconds: positiveInteger(
+      env.WARMUP_SECONDS ?? '60',
+      'WARMUP_SECONDS',
+    ),
+    measureSeconds: positiveInteger(
+      env.MEASURE_SECONDS ?? '180',
+      'MEASURE_SECONDS',
+    ),
     soakSeconds: boundedSoakSeconds(env.SOAK_SECONDS ?? '1800'),
-    mode: enumValue(env.LOAD_TEST_MODE ?? 'capacity', ['capacity', 'smoke'], 'LOAD_TEST_MODE'),
+    mode: enumValue(
+      env.LOAD_TEST_MODE ?? 'capacity',
+      ['capacity', 'smoke'],
+      'LOAD_TEST_MODE',
+    ),
     allowRemoteTarget: env.ALLOW_REMOTE_TARGET === 'true',
   });
+}
+
+export function resolveLoadTestIdentity(getuid, getgid) {
+  const identity = {};
+  if (typeof getuid === 'function') {
+    identity.LOAD_TEST_UID = boundedProcessId(getuid(), 'process UID');
+  }
+  if (typeof getgid === 'function') {
+    identity.LOAD_TEST_GID = boundedProcessId(getgid(), 'process GID');
+  }
+  return identity;
 }
 
 export function createRuntimeEnvironment(options, randomBytesFn) {
@@ -61,7 +98,9 @@ export function createRuntimeEnvironment(options, randomBytesFn) {
   };
 
   return {
-    text: `${Object.entries(runtimeValues).map(([key, value]) => `${key}=${value}`).join('\n')}\n`,
+    text: `${Object.entries(runtimeValues)
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n')}\n`,
     safe: {
       maxVus: options.maxVus,
       warmupSeconds: options.warmupSeconds,

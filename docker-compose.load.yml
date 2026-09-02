@@ -84,6 +84,7 @@ services:
   k6:
     image: grafana/k6:2.2.0
     restart: "no"
+    user: "${LOAD_TEST_UID:-1000}:${LOAD_TEST_GID:-1000}"
     working_dir: /scripts
     environment:
       BASE_URL: http://auth-service:3000

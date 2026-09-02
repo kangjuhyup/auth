@@ -25,7 +25,7 @@ let config;
 export const options = createRateLimitOptions();
 
 function rateLimitConfig() {
-  return config ??= loadConfig(__ENV);
+  return (config ??= loadConfig(__ENV));
 }
 
 function failClosed() {
@@ -56,7 +56,10 @@ export default function () {
     failClosed();
   }
 
-  const decision = evaluateRateLimitResponse(response.status, rateLimitObserved);
+  const decision = evaluateRateLimitResponse(
+    response.status,
+    rateLimitObserved,
+  );
   rateLimitObserved = decision.rateLimitObserved;
   if (decision.metric === 'security_rate_limited_total') {
     rateLimited.add(1, RATE_LIMIT_TAGS);

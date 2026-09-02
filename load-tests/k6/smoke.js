@@ -11,10 +11,12 @@ export const options = createSmokeOptions();
 
 export default function () {
   try {
-    runDeterministicSmoke(createOidcClient({
-      ...loadConfig(__ENV),
-      runKind: scenarioConfig.runKind,
-    }));
+    runDeterministicSmoke(
+      createOidcClient({
+        ...loadConfig(__ENV),
+        runKind: scenarioConfig.runKind,
+      }),
+    );
     harnessFailure.add(false);
   } catch (error) {
     harnessFailure.add(true);

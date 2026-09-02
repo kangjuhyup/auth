@@ -8,7 +8,7 @@ import {
   runCapacityWorkflow,
   safeErrorMessage,
 } from '../lib/orchestrator.mjs';
-import { nodeDependencies } from '../run-capacity.mjs';
+import { createChildEnvironment, nodeDependencies } from '../run-capacity.mjs';
 
 const SECRET_FRAGMENT = '07070707';
 
@@ -798,5 +798,63 @@ test('the real command runner scrubs malicious host runtime-secret precedence', 
       if (previous[key] === undefined) delete process.env[key];
       else process.env[key] = previous[key];
     }
+  }
+});
+
+test('child environment replaces malicious host IDs with validated computed IDs', () => {
+  const environment = createChildEnvironment(
+    {
+      SAFE_PARENT_VALUE: 'preserved',
+      LOAD_TEST_UID: '4294967295',
+      LOAD_TEST_GID: '-1',
+    },
+    {},
+    { LOAD_TEST_UID: '12345', LOAD_TEST_GID: '23456' },
+  );
+
+  assert.equal(environment.SAFE_PARENT_VALUE, 'preserved');
+  assert.equal(environment.LOAD_TEST_UID, '12345');
+  assert.equal(environment.LOAD_TEST_GID, '23456');
+  assert.throws(
+    () =>
+      createChildEnvironment(
+        {},
+        {},
+        {
+          LOAD_TEST_UID: 'not-an-id',
+          LOAD_TEST_GID: '23456',
+        },
+      ),
+    /invalid computed load-test identity/,
+  );
+});
+
+test('the real command runner injects process ownership instead of host ID overrides', async () => {
+  const previousUid = process.env.LOAD_TEST_UID;
+  const previousGid = process.env.LOAD_TEST_GID;
+  try {
+    process.env.LOAD_TEST_UID = '4294967295';
+    process.env.LOAD_TEST_GID = '-1';
+    const result = await nodeDependencies.runCommand(
+      process.execPath,
+      [
+        '-e',
+        'process.stdout.write(JSON.stringify([process.env.LOAD_TEST_UID, process.env.LOAD_TEST_GID]))',
+      ],
+      { captureStdout: true },
+    );
+    const expected = [
+      typeof process.getuid === 'function' ? String(process.getuid()) : null,
+      typeof process.getgid === 'function' ? String(process.getgid()) : null,
+    ];
+    assert.deepEqual(
+      JSON.parse(result.stdout).map((value) => value ?? null),
+      expected,
+    );
+  } finally {
+    if (previousUid === undefined) delete process.env.LOAD_TEST_UID;
+    else process.env.LOAD_TEST_UID = previousUid;
+    if (previousGid === undefined) delete process.env.LOAD_TEST_GID;
+    else process.env.LOAD_TEST_GID = previousGid;
   }
 });

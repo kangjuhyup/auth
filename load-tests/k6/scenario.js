@@ -1,6 +1,12 @@
 import { SAFE_SYSTEM_TAGS } from './system-tags.js';
 
-const SUMMARY_TREND_STATS = Object.freeze(['count', 'avg', 'max', 'p(95)', 'p(99)']);
+const SUMMARY_TREND_STATS = Object.freeze([
+  'count',
+  'avg',
+  'max',
+  'p(95)',
+  'p(99)',
+]);
 
 export function createJourneyOptions({ vus, warmupSeconds, measureSeconds }) {
   return {
