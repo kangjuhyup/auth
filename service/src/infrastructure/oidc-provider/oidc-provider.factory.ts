@@ -23,6 +23,7 @@ import { JwksKeyModel } from '@domain/models/jwks-key';
 import { EventModel } from '@domain/models/event';
 import { GrantTypeRegistryPort } from '@application/ports/grant-type-registry.port';
 import { registerCustomGrantTypes } from './custom-grants/register-custom-grant-types';
+import { registerOidcResourceIndicatorNormalization } from './oidc-resource-indicator.middleware';
 import { CUSTOM_GRANT_TYPES } from './custom-grants';
 import { resolveCustomGrantDefinitions } from './custom-grants/custom-grant-metadata';
 import { ScopeRegistryPort } from '@application/ports/scope-registry.port';
@@ -124,6 +125,7 @@ export async function createOidcProvider(
   const Provider = await loadOidcProviderConstructor();
 
   const provider = new Provider(params.issuer, configuration);
+  registerOidcResourceIndicatorNormalization(provider);
   registerCustomGrantTypes(
     provider,
     {

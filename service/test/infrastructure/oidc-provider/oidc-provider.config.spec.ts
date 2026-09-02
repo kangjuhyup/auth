@@ -159,6 +159,86 @@ describe('buildOidcConfiguration', () => {
     ).toBe('function');
   });
 
+  it('단일 granted resource는 token request에서 생략해도 사용한다', async () => {
+    const cfg = buildOidcConfiguration({
+      ...makeDeps(),
+      tenantCode: 'acme',
+    });
+    const useGrantedResource = (cfg.features?.resourceIndicators as any)
+      .useGrantedResource;
+
+    await expect(
+      useGrantedResource(
+        {} as any,
+        {
+          resource: 'https://api.example.com',
+        } as any,
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      useGrantedResource(
+        {} as any,
+        {
+          resource: ['https://api.example.com', 'https://other.example.com'],
+        } as any,
+      ),
+    ).resolves.toBe(false);
+    const pathModel = {
+      resource: 'https://api.example.com/orders?status=open',
+    } as any;
+    await expect(useGrantedResource({} as any, pathModel)).resolves.toBe(true);
+    expect(pathModel.resource).toBe('https://api.example.com');
+  });
+
+  it('skipConsent grant에 provider가 검증한 단일 resource의 requested scope를 보존한다', async () => {
+    const deps = makeDeps();
+    deps.clientRepository.findByClientId.mockResolvedValue({
+      clientId: 'client-1',
+      scope: 'openid profile orders:read',
+      skipConsent: true,
+    } as any);
+    const addOIDCScope = jest.fn();
+    const addResourceScope = jest.fn();
+    const save = jest.fn().mockResolvedValue('grant-1');
+    const Grant = jest.fn().mockImplementation(() => ({
+      accountId: 'user-1',
+      clientId: 'client-1',
+      addOIDCScope,
+      addResourceScope,
+      save,
+    }));
+    const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
+
+    await cfg.loadExistingGrant!({
+      req: { tenant: { id: 'tenant-1' } },
+      oidc: {
+        client: { clientId: 'client-1' },
+        session: {
+          accountId: 'user-1',
+          grantIdFor: jest.fn().mockReturnValue(undefined),
+        },
+        params: {
+          scope: 'openid orders:read unregistered:write',
+          resource: 'https://api.example.com/orders?status=open',
+        },
+        resourceServers: {
+          'https://api.example.com/orders?status=open': {
+            scopes: new Set(['openid', 'orders:read']),
+          },
+        },
+        provider: { Grant },
+      },
+    } as any);
+
+    expect(addOIDCScope).toHaveBeenCalledWith('openid orders:read');
+    expect(addResourceScope).toHaveBeenCalledTimes(1);
+    expect(addResourceScope).toHaveBeenCalledWith(
+      'https://api.example.com',
+      'openid orders:read',
+    );
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
   it('같은 OP 세션에 참여한 클라이언트에 SLO를 전파하도록 back-channel logout을 활성화한다', () => {
     const deps = makeDeps();
     const cfg = buildOidcConfiguration({
@@ -292,6 +372,24 @@ describe('buildOidcConfiguration', () => {
     expect(info.accessTokenFormat).toBe('jwt');
     expect(info.audience).toBe('https://api.example.com');
     expect(info.scope).toBe('openid profile email orders:read');
+  });
+
+  it('path/query가 포함된 resource도 canonical audience를 반환한다', async () => {
+    const deps = makeDeps();
+    const cfg = buildOidcConfiguration({
+      ...deps,
+      tenantCode: 'acme',
+    });
+    const fn = (cfg.features?.resourceIndicators as any).getResourceServerInfo;
+
+    await expect(
+      fn(
+        makeCtx('tenant-1'),
+        'https://api.example.com/orders?status=open',
+        makeClient('client-1'),
+      ),
+    ).resolves.toMatchObject({ audience: 'https://api.example.com' });
+    expect(deps.clientQuery.getAllowedResources).toHaveBeenCalledTimes(1);
   });
 
   it('findAccount: tenant가 없으면 missing_tenant를 던진다', async () => {
