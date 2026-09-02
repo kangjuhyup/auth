@@ -66,16 +66,16 @@ test('parseOptions rejects non-integers and soak durations outside the bounded r
 test('createRuntimeEnvironment returns generated secrets only in dotenv text', () => {
   const generated = createRuntimeEnvironment(
     parseOptions({ MAX_VUS: '50' }),
-    () => Buffer.alloc(32, 7),
+    (byteLength) => Buffer.alloc(byteLength, 7),
   );
 
-  assert.match(generated.text, /^ADMIN_PASSWORD=0707070707070707/m);
-  assert.match(generated.text, /^DB_PASSWORD=0707070707070707/m);
-  assert.match(generated.text, /^LOAD_USER_PASSWORD=0707070707070707/m);
-  assert.match(generated.text, /^JWKS_ENCRYPTION_KEY=0707070707070707/m);
-  assert.match(generated.text, /^OTP_TOKEN_SECRET=0707070707070707/m);
-  assert.match(generated.text, /^OIDC_COOKIE_KEYS=0707070707070707/m);
-  assert.match(generated.text, /^SERVICE_CLIENT_SECRET=0707070707070707/m);
+  assert.match(generated.text, /^ADMIN_PASSWORD=[0-9a-f]{64}$/m);
+  assert.match(generated.text, /^DB_PASSWORD=[0-9a-f]{64}$/m);
+  assert.match(generated.text, /^LOAD_USER_PASSWORD=[0-9a-f]{64}$/m);
+  assert.match(generated.text, /^JWKS_ENCRYPTION_KEY=[0-9a-f]{64}$/m);
+  assert.match(generated.text, /^OTP_TOKEN_SECRET=[0-9a-f]{64}$/m);
+  assert.match(generated.text, /^OIDC_COOKIE_KEYS=[0-9a-f]{64},[0-9a-f]{64}$/m);
+  assert.match(generated.text, /^SERVICE_CLIENT_SECRET=[0-9a-f]{96}$/m);
   assert.doesNotMatch(JSON.stringify(generated.safe), /07070707/);
   assert.deepEqual(generated.safe, {
     maxVus: 50,
@@ -84,4 +84,11 @@ test('createRuntimeEnvironment returns generated secrets only in dotenv text', (
     soakSeconds: 1800,
     mode: 'capacity',
   });
+});
+
+test('createRuntimeEnvironment rejects entropy values with a wrong requested length', () => {
+  assert.throws(
+    () => createRuntimeEnvironment(parseOptions({ MAX_VUS: '50' }), () => Buffer.alloc(32, 7)),
+    /randomBytesFn must return 48 bytes/,
+  );
 });

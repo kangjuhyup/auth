@@ -16,49 +16,71 @@ const SAFE_ENVIRONMENT_FIELDS = Object.freeze([
   'mode',
   'target',
   'targetUrl',
-  'platform',
-  'arch',
-  'nodeVersion',
-  'dockerVersion',
-  'k6Version',
-  'serviceImage',
-  'composeProject',
-  'startedAt',
 ]);
 
-function finiteNumber(value, fallback = 0) {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+const REQUIRED_AGGREGATE_METRICS = Object.freeze([
+  'load_request_failed',
+  'load_check_failed',
+  'load_http_req_duration_ms',
+]);
+
+function validFiniteNumber(value, { min = 0, max = Number.POSITIVE_INFINITY } = {}) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
 }
 
 function nonNegativeNumber(value) {
-  const number = finiteNumber(value);
-  return number >= 0 ? number : 0;
+  return validFiniteNumber(value) ? value : 0;
 }
 
-function metricValues(raw, name) {
+function metricValues(raw, name, { allowMissing = false } = {}) {
   const metric = raw?.metrics?.[name];
-  return metric && typeof metric === 'object' && metric.values && typeof metric.values === 'object'
-    ? metric.values
-    : {};
+  if (metric === undefined) {
+    if (allowMissing) return undefined;
+    throw new TypeError(`Missing required metric: ${name}`);
+  }
+  if (!metric || typeof metric !== 'object' || !metric.values || typeof metric.values !== 'object') {
+    throw new TypeError(`Invalid metric: ${name}`);
+  }
+  return metric.values;
 }
 
-function durationMetric(raw, name) {
-  const values = metricValues(raw, name);
+function metricNumber(values, key, label, { integer = false, min = 0, max } = {}) {
+  const value = values?.[key];
+  const valid = integer
+    ? Number.isSafeInteger(value) && value >= min && (max === undefined || value <= max)
+    : validFiniteNumber(value, { min, max });
+  if (!valid) throw new TypeError(`Invalid ${label}`);
+  return value;
+}
+
+function durationMetric(raw, name, { required = false, allowMissing = false, positiveCount = false } = {}) {
+  const values = metricValues(raw, name, { allowMissing: !required || allowMissing });
+  if (values === undefined) return { count: 0, p95Ms: 0, p99Ms: 0 };
   return {
-    count: nonNegativeNumber(values.count),
-    p95Ms: nonNegativeNumber(values['p(95)']),
-    p99Ms: nonNegativeNumber(values['p(99)']),
+    count: metricNumber(values, 'count', `${name} count`, { integer: true, min: positiveCount ? 1 : 0 }),
+    p95Ms: metricNumber(values, 'p(95)', `${name} p(95)`),
+    p99Ms: metricNumber(values, 'p(99)', `${name} p(99)`),
   };
 }
 
-function rateMetric(raw, name) {
-  return nonNegativeNumber(metricValues(raw, name).rate);
+function rateMetric(raw, name, { required = false, allowMissing = false } = {}) {
+  const values = metricValues(raw, name, { allowMissing: !required || allowMissing });
+  if (values === undefined) return 0;
+  metricNumber(values, 'count', `${name} count`, { integer: true });
+  return metricNumber(values, 'rate', `${name} rate`, { max: 1 });
 }
 
 function normalizedContext(context) {
+  if (!context || typeof context !== 'object') throw new TypeError('context must be an object');
+  const serviceRestarted = context.serviceRestarted ?? false;
+  if (typeof serviceRestarted !== 'boolean') throw new TypeError('serviceRestarted must be a boolean');
+  const dependencyErrors = context.dependencyErrors ?? 0;
+  if (!Number.isSafeInteger(dependencyErrors) || dependencyErrors < 0) {
+    throw new TypeError('dependencyErrors must be a non-negative safe integer');
+  }
   return {
-    serviceRestarted: context?.serviceRestarted === true,
-    dependencyErrors: nonNegativeNumber(context?.dependencyErrors),
+    serviceRestarted,
+    dependencyErrors,
   };
 }
 
@@ -91,10 +113,23 @@ function taggedSummary(raw, minute) {
   return { metrics };
 }
 
-function printable(value) {
-  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
-    ? String(value)
-    : '';
+function validateSoakMetricTags(raw, bucketCount) {
+  const metrics = raw?.metrics;
+  if (!metrics || typeof metrics !== 'object') return;
+  const knownMetrics = [
+    ...REQUIRED_AGGREGATE_METRICS,
+    ...Object.values(ENDPOINT_METRICS),
+  ];
+  for (const key of Object.keys(metrics)) {
+    const metricName = knownMetrics.find((name) => key.startsWith(`${name}{`));
+    if (!metricName) continue;
+    const match = new RegExp(`^${metricName}\\{minute:([^}]+)\\}$`).exec(key);
+    if (!match || !/^(0|[1-9]\d*)$/.test(match[1])) {
+      throw new RangeError(`Invalid soak minute tag: ${match?.[1] ?? key}`);
+    }
+    const minute = Number(match[1]);
+    if (minute >= bucketCount) throw new RangeError(`Soak minute tag out of range: ${minute}`);
+  }
 }
 
 function safeTargetUrl(value) {
@@ -102,26 +137,64 @@ function safeTargetUrl(value) {
   try {
     const url = new URL(value);
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined;
-    const path = url.pathname === '/' ? '' : url.pathname;
+    const path = /^\/[A-Za-z0-9._~/-]*$/.test(url.pathname) && url.pathname !== '/'
+      ? url.pathname
+      : '';
     return `${url.origin}${path}`;
   } catch {
     return undefined;
   }
 }
 
-export function normalizeK6Summary(raw, context = {}) {
+function safePositiveInteger(value, { max = Number.MAX_SAFE_INTEGER } = {}) {
+  return Number.isSafeInteger(value) && value >= 1 && value <= max ? value : undefined;
+}
+
+function safeSloValue(value, { max = Number.POSITIVE_INFINITY } = {}) {
+  return validFiniteNumber(value, { max }) ? String(value) : 'not recorded';
+}
+
+function safeSlo(input) {
+  return {
+    maxRequestFailureRateExclusive: safeSloValue(input?.maxRequestFailureRateExclusive, { max: 1 }),
+    maxCheckFailureRate: safeSloValue(input?.maxCheckFailureRate, { max: 1 }),
+    maxP95MsExclusive: safeSloValue(input?.maxP95MsExclusive),
+    maxP99MsExclusive: safeSloValue(input?.maxP99MsExclusive),
+  };
+}
+
+function emptyCapacityMetrics() {
+  return {
+    endpointDurations: Object.fromEntries(
+      Object.keys(ENDPOINT_METRICS).map((endpoint) => [endpoint, { count: 0, p95Ms: 0, p99Ms: 0 }]),
+    ),
+  };
+}
+
+export function normalizeK6Summary(raw, context = {}, internal = {}) {
+  const allowMissingAggregate = internal.allowMissingAggregate === true;
   const endpointDurations = Object.fromEntries(
     Object.entries(ENDPOINT_METRICS).map(([endpoint, metricName]) => [
       endpoint,
       durationMetric(raw, metricName),
     ]),
   );
-  const total = durationMetric(raw, 'load_http_req_duration_ms');
+  const total = durationMetric(raw, 'load_http_req_duration_ms', {
+    required: true,
+    allowMissing: allowMissingAggregate,
+    positiveCount: !allowMissingAggregate,
+  });
   const normalized = normalizedContext(context);
 
   return {
-    requestFailureRate: rateMetric(raw, 'load_request_failed'),
-    checkFailureRate: rateMetric(raw, 'load_check_failed'),
+    requestFailureRate: rateMetric(raw, 'load_request_failed', {
+      required: true,
+      allowMissing: allowMissingAggregate,
+    }),
+    checkFailureRate: rateMetric(raw, 'load_check_failed', {
+      required: true,
+      allowMissing: allowMissingAggregate,
+    }),
     p95Ms: total.p95Ms,
     p99Ms: total.p99Ms,
     endpointDurations,
@@ -132,9 +205,12 @@ export function normalizeK6Summary(raw, context = {}) {
 
 export function normalizeSoakWindows(raw, { soakSeconds = 1800, context = {} } = {}) {
   const bucketCount = Math.ceil(boundedSoakSeconds(soakSeconds) / 60);
+  validateSoakMetricTags(raw, bucketCount);
   return Array.from({ length: bucketCount }, (_, minute) => ({
     minute,
-    metrics: normalizeK6Summary(taggedSummary(raw ?? emptySummary(), minute), context),
+    metrics: normalizeK6Summary(taggedSummary(raw ?? emptySummary(), minute), context, {
+      allowMissingAggregate: true,
+    }),
   }));
 }
 
@@ -148,8 +224,14 @@ export function sanitizeEnvironment(input) {
         if (target !== undefined) safe[field] = target;
         continue;
       }
-      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      if (field === 'mode' && (value === 'capacity' || value === 'smoke')) {
         safe[field] = value;
+        continue;
+      }
+      const maximum = field === 'soakSeconds' ? 1800 : Number.MAX_SAFE_INTEGER;
+      const integer = safePositiveInteger(value, { max: maximum });
+      if (integer !== undefined) {
+        safe[field] = integer;
       }
     }
   }
@@ -158,11 +240,11 @@ export function sanitizeEnvironment(input) {
 
 export function renderSummaryMarkdown(report) {
   const environment = sanitizeEnvironment(report?.environment);
-  const metrics = report?.metrics ?? normalizeK6Summary(emptySummary());
-  const slo = report?.slo ?? {};
+  const metrics = report?.metrics ?? emptyCapacityMetrics();
+  const slo = safeSlo(report?.slo);
   const verdict = report?.passed === true ? 'PASS' : 'FAIL';
   const environmentRows = Object.entries(environment)
-    .map(([key, value]) => `| ${key} | ${printable(value)} |`)
+    .map(([key, value]) => `| ${key} | ${value} |`)
     .join('\n');
   const endpointRows = Object.entries(ENDPOINT_METRICS)
     .map(([endpoint]) => {
@@ -191,10 +273,10 @@ export function renderSummaryMarkdown(report) {
     '',
     '| SLO | Limit |',
     '| --- | --- |',
-    `| Request failure rate | < ${printable(slo.maxRequestFailureRateExclusive)} |`,
-    `| Check failure rate | <= ${printable(slo.maxCheckFailureRate)} |`,
-    `| p95 latency | < ${printable(slo.maxP95MsExclusive)} ms |`,
-    `| p99 latency | < ${printable(slo.maxP99MsExclusive)} ms |`,
+    `| Request failure rate | < ${slo.maxRequestFailureRateExclusive} |`,
+    `| Check failure rate | <= ${slo.maxCheckFailureRate} |`,
+    `| p95 latency | < ${slo.maxP95MsExclusive} ms |`,
+    `| p99 latency | < ${slo.maxP99MsExclusive} ms |`,
     '',
     '## Endpoint metrics',
     '',

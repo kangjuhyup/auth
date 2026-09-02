@@ -24,8 +24,8 @@ function enumValue(raw, values, name) {
 
 function randomHex(randomBytesFn, byteLength) {
   const value = randomBytesFn(byteLength);
-  if (!Buffer.isBuffer(value)) {
-    throw new TypeError('randomBytesFn must return a Buffer');
+  if (!Buffer.isBuffer(value) || value.length !== byteLength) {
+    throw new TypeError(`randomBytesFn must return ${byteLength} bytes`);
   }
   return value.toString('hex');
 }

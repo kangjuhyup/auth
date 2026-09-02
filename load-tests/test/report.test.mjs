@@ -58,25 +58,26 @@ test('normalizeK6Summary reads only the named k6 v2 custom metrics', () => {
   });
 });
 
-test('normalizeK6Summary makes missing custom metrics zero-count failures', () => {
-  const metrics = normalizeK6Summary(summary({}));
-  assert.deepEqual(metrics, {
-    requestFailureRate: 0,
-    checkFailureRate: 0,
-    p95Ms: 0,
-    p99Ms: 0,
-    endpointDurations: {
-      login: { count: 0, p95Ms: 0, p99Ms: 0 },
-      introspection: { count: 0, p95Ms: 0, p99Ms: 0 },
-      userinfo: { count: 0, p95Ms: 0, p99Ms: 0 },
-      refresh: { count: 0, p95Ms: 0, p99Ms: 0 },
-      discovery: { count: 0, p95Ms: 0, p99Ms: 0 },
-      jwks: { count: 0, p95Ms: 0, p99Ms: 0 },
-      revoke: { count: 0, p95Ms: 0, p99Ms: 0 },
-    },
-    serviceRestarted: false,
-    dependencyErrors: 0,
-  });
+test('normalizeK6Summary rejects missing required aggregate SLO metrics', () => {
+  const metrics = completeMetrics();
+  delete metrics.load_request_failed;
+  assert.throws(
+    () => normalizeK6Summary(summary(metrics)),
+    /Missing required metric: load_request_failed/,
+  );
+});
+
+test('normalizeK6Summary rejects malformed aggregate metrics and dependency errors', () => {
+  const malformedLatency = completeMetrics();
+  malformedLatency.load_http_req_duration_ms.values['p(95)'] = '125';
+  assert.throws(
+    () => normalizeK6Summary(summary(malformedLatency)),
+    /Invalid load_http_req_duration_ms p\(95\)/,
+  );
+  assert.throws(
+    () => normalizeK6Summary(summary(completeMetrics()), { dependencyErrors: '2' }),
+    /dependencyErrors must be a non-negative safe integer/,
+  );
 });
 
 test('normalizeSoakWindows creates ceil(soak seconds / 60) ordered zero-count buckets', () => {
@@ -85,8 +86,6 @@ test('normalizeSoakWindows creates ceil(soak seconds / 60) ordered zero-count bu
     'load_check_failed{minute:0}': { values: { rate: 0, count: 0 } },
     'load_http_req_duration_ms{minute:0}': trend(2, 111, 222),
     'load_login_duration_ms{minute:0}': trend(1, 1, 2),
-    'load_request_failed{minute:1.5}': { values: { rate: 1, count: 1 } },
-    'load_request_failed{minute:2}': { values: { rate: 1, count: 1 } },
   });
   const windows = normalizeSoakWindows(raw, { soakSeconds: 61 });
 
@@ -116,6 +115,21 @@ test('normalizeSoakWindows creates ceil(soak seconds / 60) ordered zero-count bu
   assert.equal(windows[1].metrics.requestFailureRate, 0);
 });
 
+test('normalizeSoakWindows rejects non-integer and out-of-range recognized minute tags', () => {
+  assert.throws(
+    () => normalizeSoakWindows(summary({
+      'load_request_failed{minute:1.5}': { values: { rate: 1, count: 1 } },
+    }), { soakSeconds: 61 }),
+    /Invalid soak minute tag: 1\.5/,
+  );
+  assert.throws(
+    () => normalizeSoakWindows(summary({
+      'load_login_duration_ms{minute:2}': trend(1, 1, 2),
+    }), { soakSeconds: 61 }),
+    /Soak minute tag out of range: 2/,
+  );
+});
+
 test('sanitizeEnvironment constructs a fresh allowlisted object', () => {
   const source = {
     maxVus: 50,
@@ -125,6 +139,8 @@ test('sanitizeEnvironment constructs a fresh allowlisted object', () => {
     mode: 'capacity',
     target: 'http://auth-service:3000',
     targetUrl: `http://user:${fixtureSecret}@auth-service:3000/health?access_token=${fixtureSecret}`,
+    platform: `linux\n| ${fixtureSecret}`,
+    serviceImage: fixtureSecret,
     ADMIN_PASSWORD: fixtureSecret,
     SERVICE_CLIENT_SECRET: fixtureSecret,
     access_token: fixtureSecret,
@@ -155,7 +171,7 @@ test('renderSummaryMarkdown includes verdict, duration, SLOs, endpoints, and no 
       ADMIN_PASSWORD: fixtureSecret,
     },
     slo: {
-      maxRequestFailureRateExclusive: 0.01,
+      maxRequestFailureRateExclusive: `0.01 |\n${fixtureSecret}`,
       maxCheckFailureRate: 0,
       maxP95MsExclusive: 1000,
       maxP99MsExclusive: 2000,
@@ -171,4 +187,5 @@ test('renderSummaryMarkdown includes verdict, duration, SLOs, endpoints, and no 
   assert.match(markdown, /\| Endpoint \| Count \| p95 \(ms\) \| p99 \(ms\) \|/);
   assert.match(markdown, /\| login \| 30 \| 101 \| 201 \|/);
   assert.doesNotMatch(markdown, new RegExp(fixtureSecret));
+  assert.doesNotMatch(markdown, /0\.01 \|/);
 });
