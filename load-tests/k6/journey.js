@@ -12,7 +12,7 @@ const harnessFailure = new Rate('load_harness_failure');
 let oidc;
 let session;
 
-const journeyOptions = createJourneyOptions(scenarioConfig, false);
+const journeyOptions = createJourneyOptions(scenarioConfig);
 
 export const options = {
   ...journeyOptions,

@@ -146,10 +146,10 @@ test('createJourneyOptions uses one constant-VU scenario and preserves host-owne
   );
 });
 
-test('createJourneyOptions can force the temporary red threshold before a real journey exists', () => {
+test('createJourneyOptions cannot expose a deliberately impossible threshold', () => {
   assert.deepEqual(
-    createJourneyOptions({ vus: 1, warmupSeconds: 0, measureSeconds: 1 }, true).thresholds,
-    { load_completed_login_flows: ['count<0'] },
+    createJourneyOptions({ vus: 1, warmupSeconds: 1, measureSeconds: 1 }, true).thresholds,
+    { load_harness_failure: [{ threshold: 'rate==0', abortOnFail: true }] },
   );
 });
 

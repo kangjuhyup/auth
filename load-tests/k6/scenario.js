@@ -2,11 +2,7 @@ import { SAFE_SYSTEM_TAGS } from './system-tags.js';
 
 const SUMMARY_TREND_STATS = Object.freeze(['count', 'avg', 'max', 'p(95)', 'p(99)']);
 
-export function createJourneyOptions({ vus, warmupSeconds, measureSeconds }, useTemporaryRedThreshold) {
-  const thresholds = useTemporaryRedThreshold
-    ? { load_completed_login_flows: ['count<0'] }
-    : { load_harness_failure: [{ threshold: 'rate==0', abortOnFail: true }] };
-
+export function createJourneyOptions({ vus, warmupSeconds, measureSeconds }) {
   return {
     systemTags: SAFE_SYSTEM_TAGS,
     scenarios: {
@@ -18,7 +14,9 @@ export function createJourneyOptions({ vus, warmupSeconds, measureSeconds }, use
       },
     },
     summaryTrendStats: SUMMARY_TREND_STATS,
-    thresholds,
+    thresholds: {
+      load_harness_failure: [{ threshold: 'rate==0', abortOnFail: true }],
+    },
   };
 }
 
