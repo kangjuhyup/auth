@@ -617,6 +617,17 @@ function requiredNonNegativeInteger(
   return value;
 }
 
+function requiredNullableExitCode(value) {
+  if (value === null) return null;
+  return requiredNonNegativeInteger(value, 'monitor exit code', { max: 255 });
+}
+
+function requiredNullableBoolean(value, label) {
+  if (value === null) return null;
+  if (typeof value !== 'boolean') throw new TypeError(`Invalid ${label}`);
+  return value;
+}
+
 function normalizedTrafficMix(input) {
   const configured = Object.freeze({
     introspection: 45,
@@ -700,6 +711,8 @@ function normalizedMonitorSummary(input) {
         value.missingSamples,
         'monitor missing samples',
       ),
+      lastExitCode: requiredNullableExitCode(value.lastExitCode),
+      oomKilled: requiredNullableBoolean(value.oomKilled, 'monitor OOM flag'),
     };
   }
   return {
@@ -898,6 +911,8 @@ function candidateService(monitorSummary) {
     maxRestartCount: selected.maxRestartCount,
     stoppedSamples: selected.stoppedSamples,
     missingSamples: selected.missingSamples,
+    lastExitCode: selected.lastExitCode,
+    oomKilled: selected.oomKilled,
   };
 }
 
@@ -998,7 +1013,7 @@ export function renderSummaryMarkdown(report) {
   );
   const monitorRows = Object.entries(monitorSummary.services).map(
     ([service, values]) =>
-      `| ${service} | ${values.peakCpuPercent} | ${values.peakMemoryUsageBytes} | ${values.peakNetworkInputBytes} | ${values.peakNetworkOutputBytes} | ${values.maxRestartCount} | ${values.stoppedSamples} | ${values.missingSamples} |`,
+      `| ${service} | ${values.peakCpuPercent} | ${values.peakMemoryUsageBytes} | ${values.peakNetworkInputBytes} | ${values.peakNetworkOutputBytes} | ${values.maxRestartCount} | ${values.stoppedSamples} | ${values.missingSamples} | ${values.lastExitCode ?? 'unknown'} | ${values.oomKilled === null ? 'unknown' : values.oomKilled ? 'yes' : 'no'} |`,
   );
   const bottleneckRows =
     bottleneckCandidate.status === 'candidate'
@@ -1012,9 +1027,9 @@ export function renderSummaryMarkdown(report) {
           '| --- | ---: | ---: |',
           `| ${bottleneckCandidate.endpoint.name} | ${bottleneckCandidate.endpoint.p95Ms} | ${bottleneckCandidate.endpoint.p99Ms} |`,
           '',
-          '| Service | Worst status | Peak CPU (%) | Peak memory (bytes) | Peak network in (bytes) | Peak network out (bytes) | Max restarts | Stopped samples | Missing samples |',
-          '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
-          `| ${bottleneckCandidate.service.name} | ${bottleneckCandidate.service.worstStatus} | ${bottleneckCandidate.service.peakCpuPercent} | ${bottleneckCandidate.service.peakMemoryUsageBytes} | ${bottleneckCandidate.service.peakNetworkInputBytes} | ${bottleneckCandidate.service.peakNetworkOutputBytes} | ${bottleneckCandidate.service.maxRestartCount} | ${bottleneckCandidate.service.stoppedSamples} | ${bottleneckCandidate.service.missingSamples} |`,
+          '| Service | Worst status | Peak CPU (%) | Peak memory (bytes) | Peak network in (bytes) | Peak network out (bytes) | Max restarts | Stopped samples | Missing samples | Last exit code | OOM killed |',
+          '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |',
+          `| ${bottleneckCandidate.service.name} | ${bottleneckCandidate.service.worstStatus} | ${bottleneckCandidate.service.peakCpuPercent} | ${bottleneckCandidate.service.peakMemoryUsageBytes} | ${bottleneckCandidate.service.peakNetworkInputBytes} | ${bottleneckCandidate.service.peakNetworkOutputBytes} | ${bottleneckCandidate.service.maxRestartCount} | ${bottleneckCandidate.service.stoppedSamples} | ${bottleneckCandidate.service.missingSamples} | ${bottleneckCandidate.service.lastExitCode ?? 'unknown'} | ${bottleneckCandidate.service.oomKilled === null ? 'unknown' : bottleneckCandidate.service.oomKilled ? 'yes' : 'no'} |`,
           '',
           '| Correlated dependency evidence | Peak/count |',
           '| --- | ---: |',
@@ -1094,8 +1109,8 @@ export function renderSummaryMarkdown(report) {
     '',
     `Samples: ${monitorSummary.sampleCount}`,
     '',
-    '| Service | Peak CPU (%) | Peak memory (bytes) | Peak network in (bytes) | Peak network out (bytes) | Max restarts | Stopped samples | Missing samples |',
-    '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
+    '| Service | Peak CPU (%) | Peak memory (bytes) | Peak network in (bytes) | Peak network out (bytes) | Max restarts | Stopped samples | Missing samples | Last exit code | OOM killed |',
+    '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |',
     ...monitorRows,
     '',
     '| Dependency evidence | Peak/count |',

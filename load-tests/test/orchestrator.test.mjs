@@ -63,7 +63,11 @@ function singleTrend(value) {
   };
 }
 
-function service(status = 'running', restartCount = 0) {
+function service(
+  status = 'running',
+  restartCount = 0,
+  { exitCode = status === 'stopped' ? 137 : 0, oomKilled = false } = {},
+) {
   return {
     status,
     cpuPercent: 1,
@@ -72,6 +76,8 @@ function service(status = 'running', restartCount = 0) {
     networkInputBytes: 3_000,
     networkOutputBytes: 4_000,
     restartCount,
+    exitCode: status === 'missing' ? null : exitCode,
+    oomKilled: status === 'missing' ? null : oomKilled,
   };
 }
 
@@ -80,6 +86,7 @@ function monitorSample({
   statuses = {},
   authRestartCount = 0,
   dependencyErrors = 0,
+  serviceLifecycle = {},
 } = {}) {
   return {
     timestamp,
@@ -89,6 +96,7 @@ function monitorSample({
         service(
           statuses[name] ?? 'running',
           name === 'auth-service' ? authRestartCount : 0,
+          serviceLifecycle[name],
         ),
       ]),
     ),
@@ -222,10 +230,14 @@ function createHarness({
   smokeSummary = SMOKE_SUMMARY,
   soakSummary,
   missingSummaryScript,
+  missingSummaryRunKind,
+  malformedSummaryRunKind,
+  unreadableSummaryRunKind,
   abortOnFirstProbe,
   soakMonitorSamples = [],
   k6StartedAtMs = Date.parse('2026-09-02T01:02:03.004Z'),
   checkpointSamples = [],
+  checkpointSample,
   checkpointBarrier,
   monitorReady = Promise.resolve(),
   cleanupExitCodes = [0, 0],
@@ -244,6 +256,8 @@ function createHarness({
   let probeCount = 0;
   let cleanupCount = 0;
   let runtimeCleanupCount = 0;
+  let lastRunKind;
+  const unreadablePaths = new Set();
   const monitorSamples = [
     monitorSample({ timestamp: '2026-09-02T01:02:03.000Z' }),
   ];
@@ -281,8 +295,30 @@ function createHarness({
         return { exitCode: 0, stdout: '', stderr: '' };
       if (script?.startsWith('/scripts/')) {
         const containerSummaryPath = envValue(args, 'SUMMARY_PATH');
-        if (missingSummaryScript === script)
-          return { exitCode: 1, stdout: '', stderr: 'sensitive stderr' };
+        const runKind = envValue(args, 'RUN_KIND');
+        lastRunKind = runKind;
+        const exitCode =
+          script === '/scripts/journey.js'
+            ? probeExitCode({
+                runKind,
+                vus: Number(envValue(args, 'VUS')),
+              })
+            : missingSummaryScript === script
+              ? 1
+              : 0;
+        if (runKind === 'soak') monitorSamples.push(...soakMonitorSamples);
+        if (
+          missingSummaryScript === script &&
+          (missingSummaryRunKind === undefined ||
+            missingSummaryRunKind === runKind)
+        ) {
+          return {
+            exitCode,
+            stdout: '',
+            stderr: `sensitive stderr ${SECRET_FRAGMENT}`,
+            startedAtMs: k6StartedAtMs,
+          };
+        }
         const summaryName = containerSummaryPath.split('/').at(-1);
         let raw;
         if (script === '/scripts/rate-limit.js') raw = securitySummary;
@@ -290,9 +326,7 @@ function createHarness({
         else {
           probeCount += 1;
           if (abortOnFirstProbe && probeCount === 1) abortOnFirstProbe();
-          const runKind = envValue(args, 'RUN_KIND');
           const vus = Number(envValue(args, 'VUS'));
-          if (runKind === 'soak') monitorSamples.push(...soakMonitorSamples);
           raw =
             runKind === 'soak'
               ? (soakSummary ??
@@ -303,15 +337,21 @@ function createHarness({
               : (probeSummary?.(vus) ??
                 capacitySummary({ passed: probePasses(vus) }));
         }
-        files.set(`${resultDirectory}/${summaryName}`, JSON.stringify(raw));
+        const hostSummaryPath = `${resultDirectory}/${summaryName}`;
+        files.set(
+          hostSummaryPath,
+          malformedSummaryRunKind !== undefined &&
+            malformedSummaryRunKind === runKind
+            ? `{${SECRET_FRAGMENT}`
+            : JSON.stringify(raw),
+        );
+        if (
+          unreadableSummaryRunKind !== undefined &&
+          unreadableSummaryRunKind === runKind
+        )
+          unreadablePaths.add(hostSummaryPath);
         return {
-          exitCode:
-            script === '/scripts/journey.js'
-              ? probeExitCode({
-                  runKind: envValue(args, 'RUN_KIND'),
-                  vus: Number(envValue(args, 'VUS')),
-                })
-              : 0,
+          exitCode,
           stdout: '',
           stderr: '',
           startedAtMs: k6StartedAtMs,
@@ -342,7 +382,12 @@ function createHarness({
           events.push({ kind: 'monitor-checkpoint' });
           if (checkpointBarrier) await checkpointBarrier.promise;
           monitorSamples.push(
-            checkpointSamples[monitorCheckpoints - 1] ?? monitorSample(),
+            checkpointSample?.({
+              checkpoint: monitorCheckpoints,
+              runKind: lastRunKind,
+            }) ??
+              checkpointSamples[monitorCheckpoints - 1] ??
+              monitorSample(),
           );
         },
         async stop() {
@@ -361,6 +406,12 @@ function createHarness({
         resultDirectory = path.slice(0, -'/environment.json'.length);
     },
     async readFile(path) {
+      events.push({ kind: 'read', path });
+      if (unreadablePaths.has(path)) {
+        const error = new Error(`untrusted unreadable ${SECRET_FRAGMENT}`);
+        error.code = 'EACCES';
+        throw error;
+      }
       if (!files.has(path)) {
         const error = new Error('fixture file is absent');
         error.code = 'ENOENT';
@@ -889,6 +940,8 @@ test('probe reports retain only bounded evidence for candidate correlation', asy
             maxRestartCount: 0,
             stoppedSamples: 0,
             missingSamples: 0,
+            lastExitCode: 0,
+            oomKilled: false,
           },
         ]),
       ),
@@ -1069,6 +1122,177 @@ test('a nonzero k6 exit without a summary is a safe harness error and still clea
     harness.commands.filter(({ args }) => args.includes('down')).length,
     2,
   );
+});
+
+test('terminal monitoring is checkpointed before a missing summary is read and cleanup follows', async () => {
+  const harness = createHarness({
+    missingSummaryScript: '/scripts/journey.js',
+    missingSummaryRunKind: 'probe',
+    probeExitCode: () => 99,
+    checkpointSample: () =>
+      monitorSample({ statuses: { 'auth-service': 'stopped' } }),
+  });
+  await runCapacityWorkflow(options({ maxVus: 1 }), harness.deps);
+
+  const probeCommand = harness.events.findIndex(
+    ({ kind, args }) =>
+      kind === 'command' && envValue(args, 'RUN_KIND') === 'probe',
+  );
+  const checkpoint = harness.events.findIndex(
+    ({ kind }, index) => kind === 'monitor-checkpoint' && index > probeCommand,
+  );
+  const summaryRead = harness.events.findIndex(
+    ({ kind, path }, index) =>
+      kind === 'read' &&
+      path.endsWith('/coarse-1.json') &&
+      index > probeCommand,
+  );
+  const monitorStop = harness.events.findIndex(
+    ({ kind }, index) => kind === 'monitor-stop' && index > summaryRead,
+  );
+  assert.ok(probeCommand >= 0);
+  assert.ok(checkpoint > probeCommand);
+  assert.ok(summaryRead > checkpoint);
+  assert.ok(monitorStop > summaryRead);
+});
+
+test('an interrupted soak without a summary writes bounded failure artifacts', async () => {
+  const harness = createHarness({
+    missingSummaryScript: '/scripts/journey.js',
+    missingSummaryRunKind: 'soak',
+    probeExitCode: ({ runKind }) => (runKind === 'soak' ? 99 : 0),
+    soakMonitorSamples: [
+      monitorSample({ timestamp: '2026-09-02T17:38:07.000Z' }),
+      monitorSample({ timestamp: '2026-09-02T18:03:07.000Z' }),
+    ],
+    checkpointSample: ({ runKind }) =>
+      runKind === 'soak'
+        ? monitorSample({
+            timestamp: '2026-09-02T18:08:07.000Z',
+            statuses: { 'auth-service': 'stopped' },
+            serviceLifecycle: {
+              'auth-service': { exitCode: 137, oomKilled: true },
+            },
+          })
+        : monitorSample(),
+  });
+  const report = await runCapacityWorkflow(
+    options({ maxVus: 350, soakSeconds: 1800 }),
+    harness.deps,
+  );
+
+  assert.equal(report.passed, false);
+  assert.equal(report.capacity.lastPassingVus, 350);
+  assert.equal(report.soak.status, 'INTERRUPTED');
+  assert.equal(report.soak.reason, 'EXPECTED_SERVICE_STOPPED');
+  assert.equal(report.soak.k6ExitCode, 99);
+  assert.equal(report.soak.summaryAvailable, false);
+  assert.equal(report.soak.target.service, 'auth-service');
+  assert.equal(report.soak.target.status, 'stopped');
+  assert.equal(report.soak.target.exitCode, 137);
+  assert.equal(report.soak.target.oomKilled, true);
+  assert.equal(report.soak.measurementStartedAt, null);
+  assert.equal(report.soak.measurementEndedAt, null);
+  assert.deepEqual(report.soak.windows, []);
+  assert.equal(report.soak.evidence.startedAt, '2026-09-02T17:38:07.000Z');
+  assert.equal(report.soak.evidence.endedAt, '2026-09-02T18:08:07.000Z');
+  assert.equal(report.soak.observedDurationSeconds, 1800);
+
+  const capacityPath = report.summaryPath.replace(
+    'summary.md',
+    'capacity.json',
+  );
+  const soakPath = report.summaryPath.replace('summary.md', 'soak.json');
+  assert.equal(harness.files.has(capacityPath), true);
+  assert.equal(harness.files.has(soakPath), true);
+  const markdown = harness.files.get(report.summaryPath);
+  assert.match(markdown, /Soak endurance: INTERRUPTED\/FAIL/);
+  assert.match(markdown, /350 VUs did not survive/);
+  assert.match(markdown, /auth-service.*stopped/);
+  assert.match(markdown, /exit code.*137/i);
+  assert.match(markdown, /OOM killed.*yes/i);
+  assert.doesNotMatch(markdown, /sensitive stderr|07070707/);
+  assert.doesNotMatch(JSON.stringify(report), /sensitive stderr|07070707/);
+  assert.deepEqual(harness.monitorCounts(), { starts: 1, stops: 1 });
+  assert.deepEqual(harness.commands.at(-1).args, CLEANUP_ARGS);
+});
+
+test('a missing probe summary becomes a zero-observation failure only with terminal target evidence', async () => {
+  const harness = createHarness({
+    missingSummaryScript: '/scripts/journey.js',
+    missingSummaryRunKind: 'probe',
+    probeExitCode: () => 23,
+    checkpointSample: () =>
+      monitorSample({ statuses: { 'redis-load': 'missing' } }),
+  });
+  const report = await runCapacityWorkflow(
+    options({ maxVus: 1 }),
+    harness.deps,
+  );
+  const [probe] = report.capacity.probes;
+  assert.equal(probe.summaryAvailable, false);
+  assert.equal(probe.k6ExitCode, 23);
+  assert.equal(probe.metrics.requestCount, 0);
+  assert.equal(probe.metrics.rps, 0);
+  assert.equal(probe.metrics.serviceStatuses['redis-load'], 'missing');
+  assert.equal(probe.evaluation.passed, false);
+  assert.equal(report.capacity.lastPassingVus, 0);
+  assert.equal(report.capacity.firstFailingVus, 1);
+});
+
+test('missing or invalid summaries still abort outside exact preserved infrastructure collapse', async (t) => {
+  await t.test('zero exit plus missing soak summary', async () => {
+    const harness = createHarness({
+      missingSummaryScript: '/scripts/journey.js',
+      missingSummaryRunKind: 'soak',
+      checkpointSample: ({ runKind }) =>
+        monitorSample({
+          statuses: runKind === 'soak' ? { 'auth-service': 'stopped' } : {},
+        }),
+    });
+    await assert.rejects(
+      runCapacityWorkflow(options({ maxVus: 1 }), harness.deps),
+      /soak run failed/,
+    );
+  });
+
+  await t.test(
+    'nonzero exit plus no terminal infrastructure evidence',
+    async () => {
+      const harness = createHarness({
+        missingSummaryScript: '/scripts/journey.js',
+        missingSummaryRunKind: 'soak',
+        probeExitCode: ({ runKind }) => (runKind === 'soak' ? 99 : 0),
+      });
+      await assert.rejects(
+        runCapacityWorkflow(options({ maxVus: 1 }), harness.deps),
+        /soak run failed \(status 99\)/,
+      );
+    },
+  );
+
+  for (const failureKind of ['malformed', 'unreadable']) {
+    await t.test(`${failureKind} present summary`, async () => {
+      const harness = createHarness({
+        [failureKind === 'malformed'
+          ? 'malformedSummaryRunKind'
+          : 'unreadableSummaryRunKind']: 'soak',
+        probeExitCode: ({ runKind }) => (runKind === 'soak' ? 99 : 0),
+        checkpointSample: ({ runKind }) =>
+          monitorSample({
+            statuses: runKind === 'soak' ? { 'auth-service': 'stopped' } : {},
+          }),
+      });
+      await assert.rejects(
+        runCapacityWorkflow(options({ maxVus: 1 }), harness.deps),
+        (error) => {
+          assert.match(error.message, /soak run failed/);
+          assert.doesNotMatch(error.message, /07070707|untrusted/);
+          return true;
+        },
+      );
+    });
+  }
 });
 
 test('security profile must prove a 429 before capacity traffic starts', async () => {

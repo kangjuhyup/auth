@@ -116,9 +116,11 @@ Generated artifacts are written beneath the gitignored
 - `capacity.json`: each coarse and refinement probe, its SLO evaluation, the last
   passing VU level, and the first failing VU level;
 - `soak.json`: bounded soak windows, their evaluations, and the first violation
-  minute when one exists;
+  minute when one exists, or a bounded `INTERRUPTED` record when trusted
+  terminal evidence proves an expected container stopped or disappeared before
+  k6 could write its summary;
 - `docker-stats.csv`: time-series CPU, memory, network, container state,
-  restart-count, and dependency samples; and
+  restart count, container exit code/OOM observation, and dependency samples;
 - `environment.json` plus per-phase k6 summaries: allowlisted run context and
   machine-readable observations used to construct the report.
 
@@ -158,6 +160,17 @@ the required aggregate metrics, the runner records zero observations only when
 the phase-local trusted monitor sample proves an expected auth, PostgreSQL, or
 Redis container is stopped or missing. A malformed present metric, a zero k6
 exit, or missing exact infrastructure evidence remains a harness error.
+
+If k6 cannot write any soak summary, the same exception is intentionally
+narrower: the nonzero k6 exit must be paired with a terminal stopped/missing
+state for an exact `auth-load` target. The workflow then writes `capacity.json`,
+`soak.json`, and `summary.md` with an `INTERRUPTED/FAIL` verdict, the bounded k6
+exit code, observed target status, container exit code/OOM flag when known, and
+the phase-local evidence timestamps. It does not invent soak minute metrics or
+a measurement epoch, and it does not claim that the probed VU level survived
+the requested soak. Exit and OOM values are observations only, not causal
+diagnoses. Missing summaries in every other condition still abort as harness
+errors.
 
 Smoke mode writes its deterministic k6 smoke summary only. It verifies coverage
 of login/token exchange, introspection, UserInfo, refresh, discovery, JWKS, and

@@ -280,18 +280,21 @@ function controlEnvironment(values) {
   return result;
 }
 
-async function readJson(deps, path, phase) {
+async function readJson(deps, path, phase, { allowMissing = false } = {}) {
   let text;
   try {
     text = await deps.readFile(path, 'utf8');
-  } catch {
+  } catch (error) {
+    if (allowMissing && error?.code === 'ENOENT') {
+      return { raw: null, summaryMissing: true };
+    }
     throw new HarnessError(phase);
   }
   try {
     const parsed = JSON.parse(text);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
       throw new Error();
-    return parsed;
+    return { raw: parsed, summaryMissing: false };
   } catch {
     throw new HarnessError(phase);
   }
@@ -341,14 +344,22 @@ async function runK6(
     { env: { ...profile }, signal: deps.signal },
     { allowFailure: true },
   );
-  let raw;
-  if (summaryRequired) raw = await readJson(deps, summaryPath, phase);
   if (afterCommand) await afterCommand();
   throwIfAborted(deps.signal);
+  if (result.exitCode < 0 || result.exitCode > 255)
+    throw new HarnessError(phase);
+  let raw;
+  let summaryMissing = false;
+  if (summaryRequired) {
+    ({ raw, summaryMissing } = await readJson(deps, summaryPath, phase, {
+      allowMissing: preserveFailureSummary && result.exitCode !== 0,
+    }));
+  }
   if (result.exitCode !== 0 && !preserveFailureSummary)
     throw new HarnessError(phase, result.exitCode);
   return {
     raw,
+    summaryMissing,
     summaryPath,
     startedAtMs: result.startedAtMs,
     exitCode: result.exitCode,
@@ -508,7 +519,15 @@ function contextFromSamples(samples) {
         !state ||
         !Object.hasOwn(statusSeverity, state.status) ||
         !Number.isSafeInteger(state.restartCount) ||
-        state.restartCount < 0
+        state.restartCount < 0 ||
+        (state.status === 'missing'
+          ? state.exitCode !== null || state.oomKilled !== null
+          : !Number.isSafeInteger(state.exitCode) ||
+            state.exitCode < 0 ||
+            state.exitCode > 255 ||
+            typeof state.oomKilled !== 'boolean') ||
+        (state.status === 'running' &&
+          (state.exitCode !== 0 || state.oomKilled))
       ) {
         throw new HarnessError('monitor snapshot');
       }
@@ -525,6 +544,50 @@ function contextFromSamples(samples) {
     dependencyErrors = Math.max(dependencyErrors, errors);
   }
   return { serviceStatuses, serviceRestarted, dependencyErrors };
+}
+
+function terminalInfrastructureInterruption(samples, exitCode) {
+  if (
+    !Number.isSafeInteger(exitCode) ||
+    exitCode < 1 ||
+    exitCode > 255 ||
+    !Array.isArray(samples) ||
+    samples.length === 0
+  ) {
+    return null;
+  }
+  const terminalSample = samples.at(-1);
+  contextFromSamples([terminalSample]);
+  const targetService = EXPECTED_SERVICES.find(
+    (service) => terminalSample.services[service].status !== 'running',
+  );
+  if (!targetService) return null;
+  const targetState = terminalSample.services[targetService];
+  const evidence = evidenceFromSamples(samples);
+  const observedDurationSeconds =
+    (Date.parse(evidence.endedAt) - Date.parse(evidence.startedAt)) / 1_000;
+  if (
+    !Number.isFinite(observedDurationSeconds) ||
+    observedDurationSeconds < 0 ||
+    observedDurationSeconds > 86_400
+  ) {
+    throw new HarnessError('monitor evidence');
+  }
+  return Object.freeze({
+    reason:
+      targetState.status === 'stopped'
+        ? 'EXPECTED_SERVICE_STOPPED'
+        : 'EXPECTED_SERVICE_MISSING',
+    k6ExitCode: exitCode,
+    target: Object.freeze({
+      service: targetService,
+      status: targetState.status,
+      exitCode: targetState.exitCode,
+      oomKilled: targetState.oomKilled,
+    }),
+    evidence,
+    observedDurationSeconds,
+  });
 }
 
 function monitorSamplesSince(monitor, startIndex) {
@@ -574,23 +637,33 @@ function hasStoppedOrMissingService(context) {
 async function runProbe(deps, monitor, resultDirectory, options, vus, phase) {
   const sampleIndex = monitorSnapshot(monitor).length;
   const fileName = `${phase}-${vus}.json`;
-  const { raw, summaryPath, exitCode } = await runK6(deps, resultDirectory, {
-    script: '/scripts/journey.js',
-    summaryName: fileName,
-    controls: {
-      VUS: vus,
-      WARMUP_SECONDS: options.warmupSeconds,
-      MEASURE_SECONDS: options.measureSeconds,
-      SOAK_SECONDS: options.soakSeconds,
-      RUN_KIND: 'probe',
+  const { raw, summaryPath, exitCode, summaryMissing } = await runK6(
+    deps,
+    resultDirectory,
+    {
+      script: '/scripts/journey.js',
+      summaryName: fileName,
+      controls: {
+        VUS: vus,
+        WARMUP_SECONDS: options.warmupSeconds,
+        MEASURE_SECONDS: options.measureSeconds,
+        SOAK_SECONDS: options.soakSeconds,
+        RUN_KIND: 'probe',
+      },
+      phase: 'capacity probe',
+      preserveFailureSummary: true,
+      afterCommand: () => checkpointMonitor(monitor),
     },
-    phase: 'capacity probe',
-    preserveFailureSummary: true,
-    afterCommand: () => checkpointMonitor(monitor),
-  });
+  );
   const samples = monitorSamplesSince(monitor, sampleIndex);
   const context = contextFromSamples(samples);
   const infrastructureFailure = hasInfrastructureFailure(context);
+  const interruption = summaryMissing
+    ? terminalInfrastructureInterruption(samples, exitCode)
+    : null;
+  if (summaryMissing && !interruption) {
+    throw new HarnessError('capacity probe', exitCode);
+  }
   if (exitCode !== 0 && !infrastructureFailure) {
     throw new HarnessError('capacity probe', exitCode);
   }
@@ -598,7 +671,8 @@ async function runProbe(deps, monitor, resultDirectory, options, vus, phase) {
   try {
     metrics = normalizeK6Summary(raw, context, {
       allowMissingAggregate:
-        exitCode !== 0 && hasStoppedOrMissingService(context),
+        summaryMissing ||
+        (exitCode !== 0 && hasStoppedOrMissingService(context)),
       measurementSeconds: options.measureSeconds,
     });
   } catch {
@@ -610,6 +684,9 @@ async function runProbe(deps, monitor, resultDirectory, options, vus, phase) {
     vus,
     measurementSeconds: options.measureSeconds,
     summaryPath,
+    summaryAvailable: !summaryMissing,
+    k6ExitCode: exitCode,
+    interruption,
     metrics,
     evaluation,
     evidence: evidenceFromSamples(samples),
@@ -651,20 +728,47 @@ export function bucketMonitorSamples(
 async function runSoak(deps, monitor, resultDirectory, options, vus) {
   const sampleIndex = monitorSnapshot(monitor).length;
   const measurementDurationMs = options.soakSeconds * 1_000;
-  const { raw, summaryPath, exitCode } = await runK6(deps, resultDirectory, {
-    script: '/scripts/journey.js',
-    summaryName: 'soak-raw.json',
-    controls: {
-      VUS: vus,
-      WARMUP_SECONDS: options.warmupSeconds,
-      MEASURE_SECONDS: options.soakSeconds,
-      SOAK_SECONDS: options.soakSeconds,
-      RUN_KIND: 'soak',
+  const { raw, summaryPath, exitCode, summaryMissing } = await runK6(
+    deps,
+    resultDirectory,
+    {
+      script: '/scripts/journey.js',
+      summaryName: 'soak-raw.json',
+      controls: {
+        VUS: vus,
+        WARMUP_SECONDS: options.warmupSeconds,
+        MEASURE_SECONDS: options.soakSeconds,
+        SOAK_SECONDS: options.soakSeconds,
+        RUN_KIND: 'soak',
+      },
+      phase: 'soak run',
+      preserveFailureSummary: true,
+      afterCommand: () => checkpointMonitor(monitor),
     },
-    phase: 'soak run',
-    preserveFailureSummary: true,
-    afterCommand: () => checkpointMonitor(monitor),
-  });
+  );
+  const samples = monitorSamplesSince(monitor, sampleIndex);
+  const overallContext = contextFromSamples(samples);
+  if (summaryMissing) {
+    const interruption = terminalInfrastructureInterruption(samples, exitCode);
+    if (!interruption) throw new HarnessError('soak run', exitCode);
+    return {
+      ran: true,
+      status: 'INTERRUPTED',
+      reason: interruption.reason,
+      vus,
+      summaryPath,
+      summaryAvailable: false,
+      k6ExitCode: interruption.k6ExitCode,
+      target: interruption.target,
+      evidence: interruption.evidence,
+      observedDurationSeconds: interruption.observedDurationSeconds,
+      windows: [],
+      passed: false,
+      firstViolationMinute: null,
+      measurementStartedAt: null,
+      measurementEndedAt: null,
+    };
+  }
   let measurementStartMs;
   let normalized;
   try {
@@ -676,8 +780,6 @@ async function runSoak(deps, monitor, resultDirectory, options, vus) {
     throw new HarnessError('soak summary parsing');
   }
   const bucketCount = Math.ceil(options.soakSeconds / 60);
-  const samples = monitorSamplesSince(monitor, sampleIndex);
-  const overallContext = contextFromSamples(samples);
   if (exitCode !== 0 && !hasInfrastructureFailure(overallContext)) {
     throw new HarnessError('soak run', exitCode);
   }
@@ -714,8 +816,12 @@ async function runSoak(deps, monitor, resultDirectory, options, vus) {
   const firstViolation = windows.find(({ evaluation }) => !evaluation.passed);
   return {
     ran: true,
+    status: firstViolation === undefined ? 'PASSED' : 'FAILED',
+    reason: null,
     vus,
     summaryPath,
+    summaryAvailable: true,
+    k6ExitCode: exitCode,
     windows,
     passed: firstViolation === undefined,
     firstViolationMinute: firstViolation?.minute ?? null,
@@ -745,7 +851,9 @@ function renderCapacitySection(capacity, soak, soakSeconds) {
     return `| ${phase} | ${vus} | ${metrics.rps} | ${metrics.p95Ms} | ${metrics.p99Ms} | ${metrics.requestFailureRate} | ${metrics.checkFailureRate} | ${endpointCounts} | ${evaluation.passed ? 'PASS' : 'FAIL'} |`;
   });
   const soakConclusion = soak.ran
-    ? `Soak endurance: ${soak.passed ? 'PASS' : 'FAIL'} at ${soak.vus} VUs for ${soakSeconds} seconds`
+    ? soak.status === 'INTERRUPTED'
+      ? `Soak endurance: INTERRUPTED/FAIL at ${soak.vus} VUs; ${soak.vus} VUs did not survive the requested ${soakSeconds} seconds`
+      : `Soak endurance: ${soak.passed ? 'PASS' : 'FAIL'} at ${soak.vus} VUs for ${soakSeconds} seconds`
     : 'Soak endurance: NOT RUN (no probe-passing VU)';
   const soakRows = soak.windows.map(
     ({ minute, measurementSeconds, metrics, evaluation }) =>
@@ -757,6 +865,17 @@ function renderCapacitySection(capacity, soak, soakSeconds) {
     conclusion,
     `First failing level: ${firstFailure}`,
     soakConclusion,
+    ...(soak.status === 'INTERRUPTED'
+      ? [
+          `Interruption reason: ${soak.reason}`,
+          `Observed target: ${soak.target.service} ${soak.target.status}`,
+          `Observed container exit code: ${soak.target.exitCode ?? 'unknown'}`,
+          `Observed OOM killed: ${soak.target.oomKilled === null ? 'unknown' : soak.target.oomKilled ? 'yes' : 'no'}`,
+          `k6 exit code: ${soak.k6ExitCode}`,
+          `Evidence window: ${soak.evidence.startedAt} to ${soak.evidence.endedAt}`,
+          `Observed duration: ${soak.observedDurationSeconds} seconds`,
+        ]
+      : []),
     '',
     '| Phase | VUs | RPS | Overall p95 (ms) | Overall p99 (ms) | Request failure | Check failure | Endpoint counts | SLO |',
     '| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |',

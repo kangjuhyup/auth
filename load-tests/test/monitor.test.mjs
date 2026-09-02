@@ -89,11 +89,13 @@ test('dependency status parsers retain bounded persistent error counters', () =>
   );
 });
 
-test('Docker inspect identity parser accepts only the minimal four-field record', () => {
-  const line = `${JSON.stringify(IDS['auth-service'])}\t1\t"auth-load"\t"auth-service"`;
+test('Docker inspect identity parser accepts only bounded safe lifecycle fields', () => {
+  const line = `${JSON.stringify(IDS['auth-service'])}\t1\t137\ttrue\t"auth-load"\t"auth-service"`;
   assert.deepEqual(parseDockerInspectIdentity(line), {
     containerId: IDS['auth-service'],
     restartCount: 1,
+    exitCode: 137,
+    oomKilled: true,
     project: 'auth-load',
     service: 'auth-service',
   });
@@ -102,16 +104,30 @@ test('Docker inspect identity parser accepts only the minimal four-field record'
     /Docker inspect identity/,
   );
   assert.throws(
-    () => parseDockerInspectIdentity('"missing"\t0\t"auth-load"'),
+    () => parseDockerInspectIdentity('"missing"\t0\t0\tfalse\t"auth-load"'),
     /Docker inspect identity/,
   );
   assert.throws(
     () =>
       parseDockerInspectIdentity(
-        `${JSON.stringify(IDS['auth-service'])}\t0\t"wrong-project"\t"auth-service"`,
+        `${JSON.stringify(IDS['auth-service'])}\t0\t0\tfalse\t"wrong-project"\t"auth-service"`,
       ),
     /Docker inspect identity/,
   );
+  for (const [exitCode, oomKilled] of [
+    [-1, false],
+    [256, false],
+    [1.5, false],
+    [0, 'false'],
+  ]) {
+    assert.throws(
+      () =>
+        parseDockerInspectIdentity(
+          `${JSON.stringify(IDS['auth-service'])}\t0\t${JSON.stringify(exitCode)}\t${JSON.stringify(oomKilled)}\t"auth-load"\t"auth-service"`,
+        ),
+      /Docker inspect identity/,
+    );
+  }
 });
 
 test('parseRedisInfo returns only bounded operational fields', () => {
@@ -138,6 +154,8 @@ function monitorDependencies({
   redisStatuses = [
     'connected_clients:4\r\nused_memory:8192\r\nrejected_connections:3\r\n',
   ],
+  exitCodes = {},
+  oomKilled = {},
 } = {}) {
   const commands = [];
   const writes = [];
@@ -227,6 +245,8 @@ function monitorDependencies({
                 [
                   JSON.stringify(id),
                   service === 'auth-service' ? '1' : '0',
+                  JSON.stringify(exitCodes[service] ?? 0),
+                  JSON.stringify(oomKilled[service] ?? false),
                   '"auth-load"',
                   JSON.stringify(
                     swappedInspectIdentity && service === 'auth-service'
@@ -348,12 +368,16 @@ test('startMonitor resolves exact dedicated containers before sampling only thei
     ],
   ]);
   assert.match(inspect[1][2], /RestartCount/);
+  assert.match(inspect[1][2], /State\.ExitCode/);
+  assert.match(inspect[1][2], /State\.OOMKilled/);
   assert.doesNotMatch(inspect[1][2], /Config\.Env|json \.\}\}/);
   assert.equal(writes[0].options.mode, 0o600);
   assert.match(
     writes.map(({ value }) => value).join(''),
     /auth-service,running,1,1048576,2147483648/,
   );
+  assert.match(writes[0].value, /exit_code,oom_killed/);
+  assert.match(writes.map(({ value }) => value).join(''), /,1,0,false,7,4,/);
   assert.equal(intervalMilliseconds(), 5_000);
   const composePs = commands.find(
     ([, args]) => args.includes('ps') && args.includes('--format'),
@@ -364,6 +388,59 @@ test('startMonitor resolves exact dedicated containers before sampling only thei
     true,
     'Compose JSON IDs must be full-length before exact identity comparison',
   );
+});
+
+test('terminal samples retain exact stopped exit metadata and missing sentinels', async () => {
+  const stopped = monitorDependencies({
+    exitCodes: { 'auth-service': 137 },
+    oomKilled: { 'auth-service': true },
+  });
+  stopped.setServiceState('auth-service', 'exited');
+  const stoppedMonitor = startMonitor(
+    stopped.deps,
+    'load-tests/results/run/docker-stats.csv',
+  );
+  await stoppedMonitor.ready();
+  const stoppedService = stoppedMonitor.snapshot()[0].services['auth-service'];
+  assert.equal(stoppedService.status, 'stopped');
+  assert.equal(stoppedService.exitCode, 137);
+  assert.equal(stoppedService.oomKilled, true);
+  assert.match(
+    stopped.writes.map(({ value }) => value).join(''),
+    /auth-service,stopped,0,0,0,0,0,1,137,true/,
+  );
+  await stoppedMonitor.stop();
+
+  const missing = monitorDependencies({ missingService: 'auth-service' });
+  const missingMonitor = startMonitor(
+    missing.deps,
+    'load-tests/results/run/docker-stats.csv',
+  );
+  await missingMonitor.ready();
+  const missingService = missingMonitor.snapshot()[0].services['auth-service'];
+  assert.equal(missingService.status, 'missing');
+  assert.equal(missingService.exitCode, null);
+  assert.equal(missingService.oomKilled, null);
+  assert.match(
+    missing.writes.map(({ value }) => value).join(''),
+    /auth-service,missing,0,0,0,0,0,0,unknown,unknown/,
+  );
+  await missingMonitor.stop();
+});
+
+test('running targets reject stopped-only exit metadata', async () => {
+  for (const invalid of [
+    { exitCodes: { 'auth-service': 137 } },
+    { oomKilled: { 'auth-service': true } },
+  ]) {
+    const harness = monitorDependencies(invalid);
+    const monitor = startMonitor(
+      harness.deps,
+      'load-tests/results/run/docker-stats.csv',
+    );
+    await assert.rejects(monitor.ready(), /Docker inspect response/);
+    await assert.rejects(monitor.stop(), /Docker inspect response/);
+  }
 });
 
 test('checkpoint awaits an in-flight interval sample and forces a terminal sample', async () => {
@@ -572,6 +649,8 @@ test('summarizeMonitorSamples returns strict aggregate bottleneck peaks', () => 
     networkInputBytes: networkIn,
     networkOutputBytes: networkOut,
     restartCount,
+    exitCode: status === 'missing' ? null : status === 'stopped' ? 137 : 0,
+    oomKilled: status === 'missing' ? null : status === 'stopped',
   });
   const summary = summarizeMonitorSamples([
     {
@@ -609,6 +688,8 @@ test('summarizeMonitorSamples returns strict aggregate bottleneck peaks', () => 
         maxRestartCount: 1,
         stoppedSamples: 1,
         missingSamples: 0,
+        lastExitCode: 137,
+        oomKilled: true,
       },
       'postgres-load': {
         peakCpuPercent: 20,
@@ -618,6 +699,8 @@ test('summarizeMonitorSamples returns strict aggregate bottleneck peaks', () => 
         maxRestartCount: 0,
         stoppedSamples: 0,
         missingSamples: 1,
+        lastExitCode: null,
+        oomKilled: null,
       },
       'redis-load': {
         peakCpuPercent: 35,
@@ -627,6 +710,8 @@ test('summarizeMonitorSamples returns strict aggregate bottleneck peaks', () => 
         maxRestartCount: 0,
         stoppedSamples: 0,
         missingSamples: 0,
+        lastExitCode: 0,
+        oomKilled: false,
       },
     },
     peakPostgresConnections: 8,

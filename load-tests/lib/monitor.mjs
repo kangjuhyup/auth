@@ -19,6 +19,8 @@ const CONTAINER_STATES = new Set([
 const INSPECT_IDENTITY_FORMAT = [
   '{{json .Id}}',
   '{{json .RestartCount}}',
+  '{{json .State.ExitCode}}',
+  '{{json .State.OOMKilled}}',
   '{{json (index .Config.Labels "com.docker.compose.project")}}',
   '{{json (index .Config.Labels "com.docker.compose.service")}}',
 ].join('\t');
@@ -32,6 +34,8 @@ const CSV_HEADER = [
   'network_input_bytes',
   'network_output_bytes',
   'restart_count',
+  'exit_code',
+  'oom_killed',
   'postgres_connections',
   'redis_connected_clients',
   'redis_used_memory_bytes',
@@ -232,7 +236,7 @@ export function parseDockerInspectIdentity(line) {
   if (typeof line !== 'string')
     throw new TypeError('Invalid Docker inspect identity');
   const fields = line.split('\t');
-  if (fields.length !== 4)
+  if (fields.length !== 6)
     throw new TypeError('Invalid Docker inspect identity');
   let values;
   try {
@@ -240,17 +244,22 @@ export function parseDockerInspectIdentity(line) {
   } catch {
     throw new TypeError('Invalid Docker inspect identity');
   }
-  const [containerId, restartCount, project, service] = values;
+  const [containerId, restartCount, exitCode, oomKilled, project, service] =
+    values;
   if (
     !validContainerId(containerId) ||
     !Number.isSafeInteger(restartCount) ||
     restartCount < 0 ||
+    !Number.isSafeInteger(exitCode) ||
+    exitCode < 0 ||
+    exitCode > 255 ||
+    typeof oomKilled !== 'boolean' ||
     project !== 'auth-load' ||
     !SERVICES.includes(service)
   ) {
     throw new TypeError('Invalid Docker inspect identity');
   }
-  return { containerId, restartCount, project, service };
+  return { containerId, restartCount, exitCode, oomKilled, project, service };
 }
 
 function parseJsonRecords(stdout, label) {
@@ -345,11 +354,13 @@ function parseInspectRecords(stdout, expectedIds, composeRows) {
       !SERVICES.includes(service) ||
       !expectedIds.includes(record.containerId) ||
       composeRows.get(service)?.ID !== record.containerId ||
+      (composeRows.get(service)?.status === 'running' &&
+        (record.exitCode !== 0 || record.oomKilled)) ||
       byService.has(service)
     ) {
       throw new Error('Invalid Docker inspect response');
     }
-    byService.set(service, record.restartCount);
+    byService.set(service, record);
   }
   if (byService.size !== expectedIds.length)
     throw new Error('Invalid Docker inspect response');
@@ -368,7 +379,7 @@ function parseStatsRecords(stdout, ids, composeRows) {
     if (matches.length !== 1) throw new Error('Invalid Docker stats response');
     const id = matches[0];
     const service = SERVICES.find(
-      (candidate) => composeRows.get(candidate).ID === id,
+      (candidate) => composeRows.get(candidate)?.ID === id,
     );
     if (
       !service ||
@@ -452,7 +463,7 @@ async function collectSample(deps, outputPath, samples, dependencyState) {
           runningIds,
           composeRows,
         );
-  const restarts =
+  const lifecycle =
     ids.length === 0
       ? new Map()
       : parseInspectRecords(
@@ -569,8 +580,17 @@ async function collectSample(deps, outputPath, samples, dependencyState) {
       networkInputBytes: 0,
       networkOutputBytes: 0,
     };
-    const restartCount = restarts.get(service) ?? 0;
-    services[service] = { status, ...serviceStats, restartCount };
+    const serviceLifecycle = lifecycle.get(service);
+    const restartCount = serviceLifecycle?.restartCount ?? 0;
+    const exitCode = serviceLifecycle?.exitCode ?? null;
+    const oomKilled = serviceLifecycle?.oomKilled ?? null;
+    services[service] = {
+      status,
+      ...serviceStats,
+      restartCount,
+      exitCode,
+      oomKilled,
+    };
     rows.push(
       [
         timestamp,
@@ -582,6 +602,8 @@ async function collectSample(deps, outputPath, samples, dependencyState) {
         serviceStats.networkInputBytes,
         serviceStats.networkOutputBytes,
         restartCount,
+        exitCode ?? 'unknown',
+        oomKilled ?? 'unknown',
         dependencyState.postgresConnections,
         dependencyState.redis?.connectedClients,
         dependencyState.redis?.usedMemoryBytes,
@@ -619,6 +641,8 @@ export function summarizeMonitorSamples(samples) {
         maxRestartCount: 0,
         stoppedSamples: 0,
         missingSamples: 0,
+        lastExitCode: null,
+        oomKilled: null,
       },
     ]),
   );
@@ -669,6 +693,29 @@ export function summarizeMonitorSamples(samples) {
           integer: true,
         }),
       );
+      if (source.status === 'missing') {
+        if (source.exitCode !== null || source.oomKilled !== null) {
+          throw new TypeError('Invalid monitor samples');
+        }
+        target.lastExitCode = null;
+        target.oomKilled = null;
+      } else {
+        target.lastExitCode = boundedNumber(
+          source.exitCode,
+          'monitor exit code',
+          { integer: true, max: 255 },
+        );
+        if (typeof source.oomKilled !== 'boolean') {
+          throw new TypeError('Invalid monitor samples');
+        }
+        if (
+          source.status === 'running' &&
+          (source.exitCode !== 0 || source.oomKilled)
+        ) {
+          throw new TypeError('Invalid monitor samples');
+        }
+        target.oomKilled = source.oomKilled;
+      }
       if (source.status === 'stopped') target.stoppedSamples += 1;
       if (source.status === 'missing') target.missingSamples += 1;
     }

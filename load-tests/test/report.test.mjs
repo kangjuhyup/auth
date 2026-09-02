@@ -424,6 +424,8 @@ function evidenceWindow({
           maxRestartCount: 1,
           stoppedSamples: authStoppedSamples,
           missingSamples: 0,
+          lastExitCode: authStoppedSamples > 0 ? 137 : 0,
+          oomKilled: authStoppedSamples > 0,
         },
         'postgres-load': {
           peakCpuPercent: 10,
@@ -433,6 +435,8 @@ function evidenceWindow({
           maxRestartCount: 0,
           stoppedSamples: 0,
           missingSamples: 0,
+          lastExitCode: 0,
+          oomKilled: false,
         },
         'redis-load': {
           peakCpuPercent: redisCpu,
@@ -442,6 +446,8 @@ function evidenceWindow({
           maxRestartCount: 0,
           stoppedSamples: 0,
           missingSamples: 0,
+          lastExitCode: 0,
+          oomKilled: false,
         },
       },
       peakPostgresConnections: 12,
@@ -514,6 +520,8 @@ test('deriveBottleneckCandidate selects the earliest failure and correlates its 
       maxRestartCount: 1,
       stoppedSamples: 1,
       missingSamples: 0,
+      lastExitCode: 137,
+      oomKilled: true,
     },
     dependencies: {
       peakPostgresConnections: 12,
@@ -754,6 +762,8 @@ test('renderSummaryMarkdown includes verdict, duration, SLOs, endpoints, and no 
               maxRestartCount: service === 'auth-service' ? 1 : 0,
               stoppedSamples: service === 'postgres-load' ? 1 : 0,
               missingSamples: 0,
+              lastExitCode: service === 'postgres-load' ? 15 : 0,
+              oomKilled: false,
             },
           ],
         ),
@@ -780,6 +790,8 @@ test('renderSummaryMarkdown includes verdict, duration, SLOs, endpoints, and no 
   assert.match(markdown, /\/admin\/session \| 123/);
   assert.match(markdown, /Monitor bottleneck evidence/);
   assert.match(markdown, /auth-service \| 70 \| 1000 \| 2000 \| 3000 \| 1/);
+  assert.match(markdown, /Last exit code \| OOM killed/);
+  assert.match(markdown, /postgres-load.*15.*no/);
   assert.match(markdown, /PostgreSQL connections \| 20/);
   assert.match(markdown, /## Violations\n\n- none/);
   assert.doesNotMatch(markdown, new RegExp(fixtureSecret));
@@ -831,6 +843,8 @@ test('renderSummaryMarkdown derives safe failure names instead of rendering raw 
             maxRestartCount: 0,
             stoppedSamples: 0,
             missingSamples: 0,
+            lastExitCode: 0,
+            oomKilled: false,
           },
         ]),
       ),
@@ -864,4 +878,44 @@ test('renderSummaryMarkdown derives safe failure names instead of rendering raw 
     /auth-service \| stopped \| 70 \| 1000 \| 2000 \| 3000 \| 1/,
   );
   assert.doesNotMatch(markdown, new RegExp(fixtureSecret));
+});
+
+test('renderSummaryMarkdown rejects unsafe monitor exit metadata without echoing it', () => {
+  const report = {
+    passed: false,
+    environment: completeEnvironment(),
+    metrics: normalizeK6Summary(
+      summary(completeMetrics()),
+      {},
+      {
+        measurementSeconds: 180,
+      },
+    ),
+    trafficMix: {
+      introspection: 45,
+      userinfo: 25,
+      refresh: 12,
+      discovery: 8,
+      jwks: 5,
+      relogin: 5,
+    },
+    securityGate: {
+      path: '/admin/session',
+      timeToFirst429Ms: 123,
+      authRejectedCount: 10,
+      rateLimitedCount: 5,
+      unexpectedCount: 0,
+    },
+    monitorSummary: evidenceWindow().monitorSummary,
+    capacity: { probes: [] },
+    soak: { ran: false, windows: [] },
+  };
+  report.monitorSummary.services['auth-service'].lastExitCode = fixtureSecret;
+  assert.throws(
+    () => renderSummaryMarkdown(report),
+    (error) => {
+      assert.doesNotMatch(error.message, new RegExp(fixtureSecret));
+      return true;
+    },
+  );
 });
