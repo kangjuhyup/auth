@@ -6,6 +6,54 @@ export function classifyLoginResponse(status) {
   return 'unexpected';
 }
 
+function positiveSafeInteger(value, name) {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new RangeError(`${name} must be a positive safe integer`);
+  }
+  return value;
+}
+
+function nonNegativeSafeInteger(value, name) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new RangeError(`${name} must be a non-negative safe integer`);
+  }
+  return value;
+}
+
+export function rateLimitProbeUsername(vuId, iteration) {
+  const safeVuId = positiveSafeInteger(vuId, 'vuId');
+  const safeIteration = nonNegativeSafeInteger(iteration, 'iteration');
+  return `rate-limit-probe-v${safeVuId}-i${safeIteration}`;
+}
+
+export function evaluateRateLimitResponse(status, rateLimitObserved) {
+  const classification = classifyLoginResponse(status);
+  if (classification === 'rate-limited') {
+    return {
+      classification,
+      metric: 'security_rate_limited_total',
+      accepted: true,
+      rateLimitObserved: true,
+    };
+  }
+
+  if (classification === 'auth-rejected' && !rateLimitObserved) {
+    return {
+      classification,
+      metric: 'security_auth_rejected_total',
+      accepted: true,
+      rateLimitObserved: false,
+    };
+  }
+
+  return {
+    classification,
+    metric: 'security_unexpected_total',
+    accepted: false,
+    rateLimitObserved: Boolean(rateLimitObserved),
+  };
+}
+
 export function createRateLimitOptions() {
   return {
     systemTags: [...SAFE_SYSTEM_TAGS],

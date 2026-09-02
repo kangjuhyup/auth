@@ -3,7 +3,11 @@ import exec from 'k6/execution';
 import { Counter } from 'k6/metrics';
 import { loadConfig, loadScenarioConfig } from './config.js';
 import { handleK6Summary } from './metrics.js';
-import { classifyLoginResponse, createRateLimitOptions } from './rate-limit-classifier.js';
+import {
+  createRateLimitOptions,
+  evaluateRateLimitResponse,
+  rateLimitProbeUsername,
+} from './rate-limit-classifier.js';
 
 const scenarioConfig = loadScenarioConfig(__ENV, 'probe');
 const jsonHeaders = Object.freeze({ 'Content-Type': 'application/json' });
@@ -20,16 +24,11 @@ let config;
 
 export const options = createRateLimitOptions();
 
-function rateLimitProbeUsername() {
-  return `rate-limit-probe-vu-${exec.vu.idInTest}`;
-}
-
 function rateLimitConfig() {
   return config ??= loadConfig(__ENV);
 }
 
 function failClosed() {
-  unexpected.add(1, RATE_LIMIT_TAGS);
   throw new Error('rate-limit probe received an unexpected response');
 }
 
@@ -40,7 +39,10 @@ export default function () {
     response = http.post(
       `${runtimeConfig.baseUrl}/admin/session`,
       JSON.stringify({
-        username: rateLimitProbeUsername(),
+        username: rateLimitProbeUsername(
+          exec.vu.idInTest,
+          exec.scenario.iterationInTest,
+        ),
         password: runtimeConfig.loadUserPassword,
       }),
       {
@@ -50,25 +52,23 @@ export default function () {
       },
     );
   } catch {
+    unexpected.add(1, RATE_LIMIT_TAGS);
     failClosed();
   }
 
-  const classification = classifyLoginResponse(response.status);
-  if (classification === 'rate-limited') {
-    rateLimitObserved = true;
+  const decision = evaluateRateLimitResponse(response.status, rateLimitObserved);
+  rateLimitObserved = decision.rateLimitObserved;
+  if (decision.metric === 'security_rate_limited_total') {
     rateLimited.add(1, RATE_LIMIT_TAGS);
     return;
   }
 
-  if (classification === 'auth-rejected' && !rateLimitObserved) {
+  if (decision.metric === 'security_auth_rejected_total') {
     authRejected.add(1, RATE_LIMIT_TAGS);
     return;
   }
 
-  if (response.status >= 200 && response.status < 300 && !rateLimitObserved) {
-    return;
-  }
-
+  unexpected.add(1, RATE_LIMIT_TAGS);
   failClosed();
 }
 
