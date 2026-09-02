@@ -452,6 +452,12 @@ async function collectSample(deps, outputPath, samples, dependencyState) {
     ],
     dependencyState,
   );
+  if (
+    postgresStdout === undefined &&
+    dependencyState.postgresPersistentErrorsBaseline === undefined
+  ) {
+    throw new Error('Initial dependency probe failed');
+  }
   if (postgresStdout !== undefined) {
     const postgres = parsePostgresStatus(postgresStdout);
     dependencyState.postgresConnections = postgres.connectionCount;
@@ -476,6 +482,12 @@ async function collectSample(deps, outputPath, samples, dependencyState) {
     ],
     dependencyState,
   );
+  if (
+    redisStdout === undefined &&
+    dependencyState.redisRejectedConnectionsBaseline === undefined
+  ) {
+    throw new Error('Initial dependency probe failed');
+  }
   if (redisStdout !== undefined) {
     const redis = parseRedisStatus(redisStdout);
     dependencyState.redis = redis;
@@ -559,12 +571,12 @@ export function startMonitor(deps, outputPath) {
   };
   let stopped = false;
   let failure;
-  let pending = Promise.resolve()
+  const initialSample = Promise.resolve()
     .then(() => deps.writeFile(outputPath, `${CSV_HEADER}\n`, { mode: 0o600 }))
-    .then(() => collectSample(deps, outputPath, samples, dependencyState))
-    .catch((error) => {
-      failure = error;
-    });
+    .then(() => collectSample(deps, outputPath, samples, dependencyState));
+  let pending = initialSample.catch((error) => {
+    failure = error;
+  });
   const interval = schedule(() => {
     if (stopped || failure) return;
     pending = pending
@@ -575,6 +587,9 @@ export function startMonitor(deps, outputPath) {
   }, 5_000);
 
   return Object.freeze({
+    ready() {
+      return initialSample;
+    },
     snapshot() {
       if (failure) throw failure;
       return samples.slice();

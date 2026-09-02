@@ -604,6 +604,24 @@ async function executeWorkflow(options, deps, resultDirectory, environment) {
     `${resultDirectory}/docker-stats.csv`,
   );
   environment.monitor = monitor;
+  if (
+    !monitor ||
+    typeof monitor.ready !== 'function' ||
+    typeof monitor.snapshot !== 'function' ||
+    typeof monitor.stop !== 'function'
+  ) {
+    throw new HarnessError('monitor readiness');
+  }
+  try {
+    const readiness = monitor.ready();
+    if (!readiness || typeof readiness.then !== 'function') {
+      throw new Error('Invalid monitor readiness result');
+    }
+    await readiness;
+  } catch {
+    throw new HarnessError('monitor readiness');
+  }
+  throwIfAborted(deps.signal);
   const probes = [];
   let lastPassingVus = 0;
   let firstFailingVus = null;

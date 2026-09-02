@@ -115,6 +115,16 @@ function envValue(args, name) {
   return args.find((value) => value.startsWith(prefix))?.slice(prefix.length);
 }
 
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 function createHarness({
   probePasses = () => true,
   probeSummary,
@@ -125,6 +135,7 @@ function createHarness({
   abortOnFirstProbe,
   soakMonitorSamples = [],
   k6StartedAtMs = Date.parse('2026-09-02T01:02:03.004Z'),
+  monitorReady = Promise.resolve(),
   signal,
 } = {}) {
   const commands = [];
@@ -185,6 +196,7 @@ function createHarness({
       monitorStarts += 1;
       events.push({ kind: 'monitor-start', path });
       return {
+        ready: () => monitorReady,
         snapshot: () => monitorSamples.slice(),
         async stop() {
           monitorStops += 1;
@@ -345,6 +357,45 @@ test('workflow stops coarse search at failure, refines the bracket, and soaks la
   );
   assert.equal(report.soak.vus, 17);
   assert.equal(report.soak.windows.length, 2);
+});
+
+test('capacity probes wait for the initial monitor baseline sample', async () => {
+  const readiness = deferred();
+  const harness = createHarness({ monitorReady: readiness.promise });
+  const workflow = runCapacityWorkflow(options({ maxVus: 10 }), harness.deps);
+
+  await new Promise((resolve) => globalThis.setImmediate(resolve));
+  assert.deepEqual(harness.monitorCounts(), { starts: 1, stops: 0 });
+  assert.equal(k6Calls(harness.commands, '/scripts/journey.js').length, 0);
+
+  readiness.resolve();
+  await workflow;
+  assert.ok(k6Calls(harness.commands, '/scripts/journey.js').length > 0);
+});
+
+test('monitor readiness rejection aborts before probes and still cleans up', async () => {
+  const readiness = deferred();
+  const harness = createHarness({ monitorReady: readiness.promise });
+  const workflow = runCapacityWorkflow(options({ maxVus: 10 }), harness.deps);
+
+  await new Promise((resolve) => globalThis.setImmediate(resolve));
+  readiness.reject(new Error('untrusted initial monitor failure'));
+  await assert.rejects(workflow, /monitor readiness failed/);
+
+  assert.equal(k6Calls(harness.commands, '/scripts/journey.js').length, 0);
+  assert.deepEqual(harness.monitorCounts(), { starts: 1, stops: 1 });
+  assert.equal(harness.files.has('load-tests/.runtime.env'), false);
+  assert.deepEqual(harness.commands.at(-1).args, CLEANUP_ARGS);
+});
+
+test('a monitor readiness method must return a promise before probes start', async () => {
+  const harness = createHarness({ monitorReady: null });
+  await assert.rejects(
+    runCapacityWorkflow(options({ maxVus: 10 }), harness.deps),
+    /monitor readiness failed/,
+  );
+  assert.equal(k6Calls(harness.commands, '/scripts/journey.js').length, 0);
+  assert.deepEqual(harness.commands.at(-1).args, CLEANUP_ARGS);
 });
 
 test('all coarse levels passing reports an observed lower bound', async () => {
