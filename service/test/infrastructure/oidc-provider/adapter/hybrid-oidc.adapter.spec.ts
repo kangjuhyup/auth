@@ -4,6 +4,7 @@ describe('HybridAdapter', () => {
   const makeRdb = () => ({
     upsert: jest.fn().mockResolvedValue(undefined),
     find: jest.fn().mockResolvedValue(undefined),
+    hasGrantConflict: jest.fn().mockResolvedValue(false),
     consume: jest.fn().mockResolvedValue(undefined),
     destroy: jest.fn().mockResolvedValue(undefined),
     revokeByGrantId: jest.fn().mockResolvedValue(undefined),
@@ -18,6 +19,7 @@ describe('HybridAdapter', () => {
     findByUserCode: jest.fn().mockResolvedValue(undefined),
 
     consume: jest.fn().mockResolvedValue(undefined),
+    markRefreshTokenReuseConflict: jest.fn().mockResolvedValue(undefined),
     destroy: jest.fn().mockResolvedValue(undefined),
     revokeByGrantId: jest.fn().mockResolvedValue(undefined),
 
@@ -33,6 +35,7 @@ describe('HybridAdapter', () => {
   });
 
   const makeAdapter = (over?: {
+    kind?: string;
     rdb?: any;
     cache?: any;
     cacheTtlMarginSec?: number;
@@ -43,7 +46,7 @@ describe('HybridAdapter', () => {
     const cache = over?.cache ?? makeCache();
 
     const adapter = new HybridAdapter({
-      kind: 'AccessToken',
+      kind: over?.kind ?? 'AccessToken',
       rdb,
       cache,
       cacheTtlMarginSec: over?.cacheTtlMarginSec ?? 5,
@@ -91,6 +94,22 @@ describe('HybridAdapter', () => {
     expect(cache.upsert).toHaveBeenCalledTimes(1);
   });
 
+  it('upsert: RDB에서 reuse 정리된 늦은 token을 cache에도 남기지 않는다', async () => {
+    const rdb = makeRdb();
+    const cache = makeCache();
+    rdb.find.mockResolvedValue(undefined);
+    cache.find.mockResolvedValue({ grantId: 'grant-1' });
+    const { adapter } = makeAdapter({ rdb, cache });
+
+    await adapter.upsert(
+      'late-access-token',
+      { grantId: 'grant-1' } as any,
+      100,
+    );
+
+    expect(cache.destroy).toHaveBeenCalledWith('late-access-token');
+  });
+
   it('consume: rdb.consume 후 cache.consume 호출(best-effort)', async () => {
     const { adapter, rdb, cache } = makeAdapter();
 
@@ -100,6 +119,38 @@ describe('HybridAdapter', () => {
     expect(cache.consume).toHaveBeenCalledTimes(1);
     expect(rdb.consume.mock.invocationCallOrder[0]).toBeLessThan(
       cache.consume.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('consume: rdb의 원자적 consume이 패배하면 cache를 변경하지 않고 invalid_grant를 전달한다', async () => {
+    const rdb = makeRdb();
+    const cache = makeCache();
+    const conflict = Object.assign(new Error('grant request is invalid'), {
+      error: 'invalid_grant',
+      statusCode: 400,
+    });
+    rdb.consume.mockRejectedValue(conflict);
+    const { adapter } = makeAdapter({ rdb, cache });
+
+    await expect(adapter.consume('id-1')).rejects.toBe(conflict);
+    expect(cache.consume).not.toHaveBeenCalled();
+  });
+
+  it('consume: refresh token의 RDB 경쟁 패배를 Redis grant fence로 즉시 전파한다', async () => {
+    const rdb = makeRdb();
+    const cache = makeCache();
+    const conflict = Object.assign(new Error('grant request is invalid'), {
+      error: 'invalid_grant',
+      statusCode: 400,
+    });
+    rdb.consume.mockRejectedValue(conflict);
+    cache.find.mockResolvedValue({ grantId: 'grant-1' });
+    const { adapter } = makeAdapter({ kind: 'RefreshToken', rdb, cache });
+
+    await expect(adapter.consume('refresh-token-1')).rejects.toBe(conflict);
+    expect(cache.markRefreshTokenReuseConflict).toHaveBeenCalledWith(
+      'refresh-token-1',
+      'grant-1',
     );
   });
 
@@ -158,6 +209,18 @@ describe('HybridAdapter', () => {
     expect(rdb.find).not.toHaveBeenCalled();
   });
 
+  it('find: grant-bound cache hit도 RDB conflict fence가 있으면 fail closed한다', async () => {
+    const rdb = makeRdb();
+    const cache = makeCache();
+    cache.find.mockResolvedValue({ grantId: 'grant-1', sub: 'user-1' });
+    rdb.hasGrantConflict.mockResolvedValue(true);
+    const { adapter } = makeAdapter({ rdb, cache });
+
+    await expect(adapter.find('access-token-1')).resolves.toBeUndefined();
+    expect(rdb.find).not.toHaveBeenCalled();
+    expect(cache.destroy).toHaveBeenCalledWith('access-token-1');
+  });
+
   it('find: cache miss + rdb miss이면 negativeCacheById를 호출하고 undefined 반환', async () => {
     const { adapter, rdb, cache } = makeAdapter();
     rdb.find.mockResolvedValue(undefined);
@@ -214,6 +277,16 @@ describe('HybridAdapter', () => {
     expect(rdb.findByUid).not.toHaveBeenCalled();
   });
 
+  it('findByUid: 직접 cache hit도 RDB grant fence가 있으면 fail closed한다', async () => {
+    const rdb = makeRdb();
+    const cache = makeCache();
+    cache.findByUid.mockResolvedValue({ grantId: 'grant-1', sub: 'user-1' });
+    rdb.hasGrantConflict.mockResolvedValue(true);
+    const { adapter } = makeAdapter({ rdb, cache });
+
+    await expect(adapter.findByUid('uid-1')).resolves.toBeUndefined();
+  });
+
   it('findByUid: cache miss + rdb miss이면 negativeCacheUid를 호출하고 undefined 반환', async () => {
     const { adapter, rdb, cache } = makeAdapter();
     rdb.findByUid.mockResolvedValue(undefined);
@@ -266,6 +339,19 @@ describe('HybridAdapter', () => {
     expect(res).toEqual({ p: 1 });
     expect(cache.findByUserCode).toHaveBeenCalledTimes(1);
     expect(rdb.findByUserCode).not.toHaveBeenCalled();
+  });
+
+  it('findByUserCode: 직접 cache hit도 RDB grant fence가 있으면 fail closed한다', async () => {
+    const rdb = makeRdb();
+    const cache = makeCache();
+    cache.findByUserCode.mockResolvedValue({
+      grantId: 'grant-1',
+      sub: 'user-1',
+    });
+    rdb.hasGrantConflict.mockResolvedValue(true);
+    const { adapter } = makeAdapter({ rdb, cache });
+
+    await expect(adapter.findByUserCode('code-1')).resolves.toBeUndefined();
   });
 
   it('findByUserCode: cache miss + rdb miss이면 negativeCacheUserCode를 호출하고 undefined 반환', async () => {

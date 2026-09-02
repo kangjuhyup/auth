@@ -1,5 +1,15 @@
 import { RdbOidcAdapter } from '@infrastructure/oidc-provider/adapters/rdb-oidc.adapter';
+import { OidcModelOrmEntity } from '@infrastructure/mikro-orm/entities/oidc-model';
 import { LightweightEntityManager } from './support/in-memory-stores';
+
+jest.mock('@infrastructure/oidc-provider/oidc-provider.loader', () => ({
+  createOidcInvalidGrantError: async (detail: string) =>
+    Object.assign(new Error('invalid_grant'), {
+      error: 'invalid_grant',
+      error_detail: detail,
+      statusCode: 400,
+    }),
+}));
 
 describe('RdbOidcAdapter integration', () => {
   let em: LightweightEntityManager;
@@ -92,6 +102,94 @@ describe('RdbOidcAdapter integration', () => {
       sub: 'user-1',
       consumed: true,
     });
+  });
+
+  it('동일한 refresh token을 동시에 consume하면 정확히 하나만 성공한다', async () => {
+    const refreshTokenAdapter = new RdbOidcAdapter(
+      'tenant-a',
+      'RefreshToken',
+      em as any,
+    );
+    await refreshTokenAdapter.upsert(
+      'refresh-token-1',
+      { grantId: 'grant-1', clientId: 'e-vote' } as any,
+      60,
+    );
+    await refreshTokenAdapter.upsert(
+      'refresh-token-child',
+      { grantId: 'grant-1', clientId: 'e-vote' } as any,
+      120,
+    );
+    await adapter.upsert(
+      'access-token-child',
+      {
+        grantId: 'grant-1',
+        clientId: 'e-vote',
+        uid: 'access-uid',
+        userCode: 'access-code',
+      } as any,
+      120,
+    );
+
+    const results = await Promise.allSettled([
+      refreshTokenAdapter.consume('refresh-token-1'),
+      refreshTokenAdapter.consume('refresh-token-1'),
+    ]);
+
+    expect(
+      results.filter((result) => result.status === 'fulfilled'),
+    ).toHaveLength(1);
+    const rejected = results.find((result) => result.status === 'rejected');
+    expect(rejected).toMatchObject({
+      status: 'rejected',
+      reason: { error: 'invalid_grant', statusCode: 400 },
+    });
+    await expect(
+      em.findOne(OidcModelOrmEntity, {
+        tenantId: 'tenant-a',
+        kind: 'RefreshTokenReuseConflict',
+        id: 'refresh-token-1',
+      }),
+    ).resolves.toMatchObject({ payload: { grantId: 'grant-1' } });
+    await expect(
+      em.findOne(OidcModelOrmEntity, {
+        tenantId: 'tenant-a',
+        kind: 'RefreshTokenReuseGrantConflict',
+        id: 'grant-1',
+      }),
+    ).resolves.toMatchObject({
+      payload: { tokenId: 'refresh-token-1' },
+      expiresAt: null,
+    });
+    await expect(
+      refreshTokenAdapter.consume('refresh-token-child'),
+    ).rejects.toMatchObject({ error: 'invalid_grant', statusCode: 400 });
+    await expect(
+      refreshTokenAdapter.find('refresh-token-child'),
+    ).resolves.toBeUndefined();
+    await expect(adapter.find('access-token-child')).resolves.toBeUndefined();
+    await expect(adapter.findByUid('access-uid')).resolves.toBeUndefined();
+    await expect(
+      adapter.findByUserCode('access-code'),
+    ).resolves.toBeUndefined();
+  });
+
+  it('reuse marker 뒤 늦게 저장되는 grant-bound token을 남기지 않는다', async () => {
+    em.create(OidcModelOrmEntity, {
+      tenantId: 'tenant-a',
+      kind: 'RefreshTokenReuseGrantConflict',
+      id: 'grant-1',
+      payload: { tokenId: 'refresh-token-1' },
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+
+    await adapter.upsert(
+      'late-access-token',
+      { grantId: 'grant-1', clientId: 'e-vote' } as any,
+      60,
+    );
+
+    await expect(adapter.find('late-access-token')).resolves.toBeUndefined();
   });
 
   it('destroy와 revokeByGrantId는 현재 kind 범위에서만 삭제한다', async () => {

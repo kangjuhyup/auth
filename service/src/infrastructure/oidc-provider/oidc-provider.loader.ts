@@ -1,29 +1,32 @@
 import type Provider from 'oidc-provider';
 
 type OidcProviderModule = typeof import('oidc-provider');
-type OidcProviderConstructor = OidcProviderModule['default'];
 
-let providerConstructorPromise: Promise<OidcProviderConstructor> | undefined;
+let providerModulePromise: Promise<OidcProviderModule> | undefined;
 
 function importOidcProviderModule(): Promise<OidcProviderModule> {
   // Preserve native dynamic import at runtime for the ESM-only package.
-  return new Function(
-    'specifier',
-    'return import(specifier)',
-  )('oidc-provider') as Promise<OidcProviderModule>;
+  return new Function('specifier', 'return import(specifier)')(
+    'oidc-provider',
+  ) as Promise<OidcProviderModule>;
 }
 
-export async function loadOidcProviderConstructor(): Promise<
-  typeof Provider
-> {
-  providerConstructorPromise ??= importOidcProviderModule().then(
-    (module) => module.default,
-  );
+export async function loadOidcProviderConstructor(): Promise<typeof Provider> {
+  return (await loadOidcProviderModule()).default;
+}
+
+export async function createOidcInvalidGrantError(detail: string) {
+  const { errors } = await loadOidcProviderModule();
+  return new errors.InvalidGrant(detail);
+}
+
+async function loadOidcProviderModule(): Promise<OidcProviderModule> {
+  providerModulePromise ??= importOidcProviderModule();
 
   try {
-    return await providerConstructorPromise;
+    return await providerModulePromise;
   } catch (error) {
-    providerConstructorPromise = undefined;
+    providerModulePromise = undefined;
     throw error;
   }
 }

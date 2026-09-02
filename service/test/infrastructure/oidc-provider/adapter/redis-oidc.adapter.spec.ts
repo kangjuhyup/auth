@@ -1,6 +1,15 @@
 import { RedisAdapter } from '@infrastructure/oidc-provider/adapters/redis-oidc.adapter';
 import { InMemoryRedis } from './support/in-memory-stores';
 
+jest.mock('@infrastructure/oidc-provider/oidc-provider.loader', () => ({
+  createOidcInvalidGrantError: async (detail: string) =>
+    Object.assign(new Error('invalid_grant'), {
+      error: 'invalid_grant',
+      error_detail: detail,
+      statusCode: 400,
+    }),
+}));
+
 describe('RedisAdapter integration', () => {
   let redis: InMemoryRedis;
   let adapter: RedisAdapter;
@@ -87,6 +96,81 @@ describe('RedisAdapter integration', () => {
       consumed: true,
       sub: 'user-1',
     });
+  });
+
+  it('동일한 refresh token을 동시에 consume하면 정확히 하나만 성공한다', async () => {
+    const refreshTokenAdapter = new RedisAdapter(
+      'tenant-a',
+      'RefreshToken',
+      redis as any,
+    );
+    await refreshTokenAdapter.upsert(
+      'refresh-token-1',
+      { grantId: 'grant-1', clientId: 'e-vote' } as any,
+      60,
+    );
+    await refreshTokenAdapter.upsert(
+      'refresh-token-child',
+      { grantId: 'grant-1', clientId: 'e-vote' } as any,
+      120,
+    );
+    await adapter.upsert(
+      'access-token-child',
+      { grantId: 'grant-1', clientId: 'e-vote' } as any,
+      120,
+    );
+
+    const results = await Promise.allSettled([
+      refreshTokenAdapter.consume('refresh-token-1'),
+      refreshTokenAdapter.consume('refresh-token-1'),
+    ]);
+
+    expect(
+      results.filter((result) => result.status === 'fulfilled'),
+    ).toHaveLength(1);
+    const rejected = results.find((result) => result.status === 'rejected');
+    expect(rejected).toMatchObject({
+      status: 'rejected',
+      reason: { error: 'invalid_grant', statusCode: 400 },
+    });
+    await expect(
+      redis.get('oidc:tenant-a:reuse-conflict:refresh-token-1'),
+    ).resolves.toBe('grant-1');
+    await expect(
+      redis.get('oidc:tenant-a:reuse-conflict:grant:grant-1'),
+    ).resolves.toBe('refresh-token-1');
+    await expect(
+      redis.ttl('oidc:tenant-a:reuse-conflict:grant:grant-1'),
+    ).resolves.toBe(-1);
+
+    redis.advanceTime(61_000);
+    await expect(
+      refreshTokenAdapter.consume('refresh-token-child'),
+    ).rejects.toMatchObject({ error: 'invalid_grant', statusCode: 400 });
+    await expect(
+      refreshTokenAdapter.find('refresh-token-child'),
+    ).resolves.toBeUndefined();
+    await expect(adapter.find('access-token-child')).resolves.toBeUndefined();
+  });
+
+  it('reuse marker 뒤 늦게 저장되는 grant-bound token을 남기지 않는다', async () => {
+    await redis.set(
+      'oidc:tenant-a:reuse-conflict:grant:grant-1',
+      'refresh-token-1',
+      'EX',
+      60,
+    );
+
+    await adapter.upsert(
+      'late-access-token',
+      { grantId: 'grant-1', clientId: 'e-vote' } as any,
+      60,
+    );
+
+    await expect(adapter.find('late-access-token')).resolves.toBeUndefined();
+    await expect(
+      redis.smembers('oidc:tenant-a:AccessToken:grant:grant-1'),
+    ).resolves.toEqual([]);
   });
 
   it('destroy는 본문과 uid/userCode/grant 인덱스를 함께 정리한다', async () => {

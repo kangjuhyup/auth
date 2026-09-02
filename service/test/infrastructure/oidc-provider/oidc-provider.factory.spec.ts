@@ -19,6 +19,16 @@ jest.mock('@infrastructure/oidc-provider/oidc-provider.loader', () => ({
   loadOidcProviderConstructor: jest.fn(),
 }));
 
+jest.mock('@infrastructure/oidc-provider/refresh-token-reuse.store', () => ({
+  RefreshTokenReuseStore: jest.fn().mockImplementation(() => ({
+    hasConflict: jest.fn().mockResolvedValue(false),
+    hasGrantConflict: jest.fn().mockResolvedValue(false),
+    claimCleanup: jest.fn().mockResolvedValue(true),
+    claimAudit: jest.fn().mockResolvedValue(true),
+    revokeGrantFamily: jest.fn().mockResolvedValue(undefined),
+  })),
+}));
+
 jest.mock(
   '@infrastructure/oidc-provider/custom-grants/register-custom-grant-types',
   () => ({
@@ -76,7 +86,9 @@ function createParams(): CreateOidcProviderParams & {
     redis: {} as any,
     userQuery: {} as any,
     clientQuery: {} as any,
-    configService: {} as any,
+    configService: {
+      getOrThrow: jest.fn().mockReturnValue('hybrid'),
+    } as any,
     tenantCode: 'acme',
     clientRepository: {
       findByClientId: jest.fn().mockResolvedValue({ id: 'client-ref-1' }),
@@ -136,6 +148,21 @@ function createParams(): CreateOidcProviderParams & {
       snapshot: jest.fn(),
     } as any,
   };
+}
+
+function getReuseStoreMock(): {
+  hasConflict: jest.Mock;
+  hasGrantConflict: jest.Mock;
+  claimCleanup: jest.Mock;
+  claimAudit: jest.Mock;
+  revokeGrantFamily: jest.Mock;
+} {
+  const Store = (
+    jest.requireMock(
+      '@infrastructure/oidc-provider/refresh-token-reuse.store',
+    ) as { RefreshTokenReuseStore: jest.Mock }
+  ).RefreshTokenReuseStore;
+  return Store.mock.results.at(-1)!.value;
 }
 
 describe('createOidcProvider', () => {
@@ -302,6 +329,8 @@ describe('createOidcProvider', () => {
   it('rotated refresh token 재사용으로 grant가 revoke되면 보안 감사 이벤트를 저장한다', async () => {
     const params = createParams();
     const provider = await createOidcProvider(params);
+    const reuseStore = getReuseStoreMock();
+    reuseStore.hasConflict.mockResolvedValue(true);
 
     const listener = (provider as any).on.mock.calls.find(
       ([event]: [string, unknown]) => event === 'grant.revoked',
@@ -318,6 +347,7 @@ describe('createOidcProvider', () => {
           client: { clientId: 'app-web' },
           entities: {
             RefreshToken: {
+              jti: 'refresh-token-1',
               consumed: true,
               accountId: 'user-1',
               clientId: 'app-web',
@@ -328,7 +358,7 @@ describe('createOidcProvider', () => {
       },
       'grant-1',
     );
-    await Promise.resolve();
+    await new Promise((resolve) => setImmediate(resolve));
 
     expect(params.eventRepository.save).toHaveBeenCalledTimes(1);
     const event = (params.eventRepository.save as jest.Mock).mock.calls[0][0];
@@ -345,6 +375,100 @@ describe('createOidcProvider', () => {
       action: 'revoke_grant',
       rotations: 2,
     });
+    expect(reuseStore.claimCleanup).toHaveBeenCalledWith('grant-1');
+    expect(reuseStore.revokeGrantFamily).toHaveBeenCalledWith('grant-1');
+  });
+
+  it('동시 consume 충돌이면 grant family를 폐기하고 기존 reuse 감사를 발생시킨다', async () => {
+    const params = createParams();
+    const provider = await createOidcProvider(params);
+    const conflict = new Error('invalid_grant');
+    const reuseStore = getReuseStoreMock();
+    reuseStore.hasConflict.mockResolvedValue(true);
+    reuseStore.hasGrantConflict.mockResolvedValue(true);
+    reuseStore.claimCleanup
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+    const refreshToken = {
+      jti: 'refresh-token-1',
+      consumed: false,
+      accountId: 'user-1',
+      clientId: 'app-web',
+      grantId: 'grant-1',
+      rotations: 1,
+    };
+    const ctx = {
+      req: { tenant: { id: 'tenant-1' }, correlationId: 'req-1' },
+      get: jest.fn().mockReturnValue('Mozilla/5.0'),
+      oidc: {
+        route: 'token',
+        params: { grant_type: 'refresh_token' },
+        client: { clientId: 'app-web' },
+        entities: { RefreshToken: refreshToken },
+      },
+    };
+
+    (provider as any).emit('grant.error', ctx, conflict);
+    (provider as any).emit('grant.success', ctx);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(reuseStore.revokeGrantFamily).toHaveBeenCalledTimes(1);
+    expect(reuseStore.claimCleanup).toHaveBeenCalledTimes(2);
+    expect(reuseStore.revokeGrantFamily).toHaveBeenCalledWith('grant-1');
+    expect(reuseStore.claimAudit).toHaveBeenCalledWith('refresh-token-1');
+    expect(params.eventRepository.save).toHaveBeenCalledTimes(1);
+    expect(
+      (params.eventRepository.save as jest.Mock).mock.calls[0][0],
+    ).toMatchObject({
+      reason: 'RefreshTokenReuseDetected',
+      resourceId: 'grant-1',
+    });
+  });
+
+  it('공유 grant marker가 있는 성공 요청만 후속 family 폐기를 수행한다', async () => {
+    const params = createParams();
+    const provider = await createOidcProvider(params);
+    const reuseStore = getReuseStoreMock();
+    reuseStore.hasGrantConflict.mockImplementation(
+      async (grantId: string) => grantId === 'grant-1',
+    );
+    const baseCtx = {
+      req: { tenant: { id: 'tenant-1' } },
+      get: jest.fn(),
+      oidc: {
+        route: 'token',
+        params: { grant_type: 'refresh_token' },
+        client: { clientId: 'app-web' },
+        entities: {},
+      },
+    };
+
+    (provider as any).emit('grant.success', {
+      ...baseCtx,
+      oidc: {
+        ...baseCtx.oidc,
+        entities: {
+          RotatedRefreshToken: { jti: 'refresh-token-0', grantId: 'grant-0' },
+        },
+      },
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(reuseStore.revokeGrantFamily).not.toHaveBeenCalled();
+
+    (provider as any).emit('grant.success', {
+      ...baseCtx,
+      oidc: {
+        ...baseCtx.oidc,
+        entities: {
+          RotatedRefreshToken: { jti: 'refresh-token-1', grantId: 'grant-1' },
+        },
+      },
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(reuseStore.revokeGrantFamily).toHaveBeenCalledTimes(1);
+    expect(reuseStore.revokeGrantFamily).toHaveBeenCalledWith('grant-1');
   });
 
   it('real provider introspection.error invalid_client를 client FK로 best-effort 감사한다', async () => {
