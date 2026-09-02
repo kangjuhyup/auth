@@ -1,4 +1,11 @@
-const LOCAL_HOSTS = new Set(['auth-service', 'localhost', '127.0.0.1', '[::1]']);
+const LOCAL_HOSTS = new Set([
+  'auth-service',
+  'localhost',
+  '127.0.0.1',
+  '[::1]',
+]);
+const SUMMARY_PATH_PATTERN =
+  /^\/results\/(?:\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\/)?[A-Za-z0-9][A-Za-z0-9._-]*\.json$/;
 
 function requiredValue(env, name) {
   const value = env[name];
@@ -23,16 +30,19 @@ function boundedSoakSeconds(value) {
   return seconds;
 }
 
-function summaryPath(value) {
+export function safeSummaryPath(value) {
   if (value === undefined) return undefined;
-  if (typeof value !== 'string' || !/^\/results\/[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(value)) {
+  if (typeof value !== 'string' || !SUMMARY_PATH_PATTERN.test(value)) {
     throw new Error('SUMMARY_PATH must be a safe result path');
   }
   return value;
 }
 
 function assertLocalTarget(rawUrl) {
-  const match = /^([a-z][a-z0-9+.-]*):\/\/(\[[^\]]+\]|[^/:?#]+)(?::([0-9]+))?(?:[/?#].*)?$/i.exec(rawUrl);
+  const match =
+    /^([a-z][a-z0-9+.-]*):\/\/(\[[^\]]+\]|[^/:?#]+)(?::([0-9]+))?(?:[/?#].*)?$/i.exec(
+      rawUrl,
+    );
   if (!match) {
     throw new Error('BASE_URL must be an absolute URL');
   }
@@ -69,10 +79,16 @@ export function loadScenarioConfig(env, defaultRunKind = 'probe') {
 
   return Object.freeze({
     vus: positiveInteger(env.VUS ?? '1', 'VUS'),
-    warmupSeconds: positiveInteger(env.WARMUP_SECONDS ?? '60', 'WARMUP_SECONDS'),
-    measureSeconds: positiveInteger(env.MEASURE_SECONDS ?? '180', 'MEASURE_SECONDS'),
+    warmupSeconds: positiveInteger(
+      env.WARMUP_SECONDS ?? '60',
+      'WARMUP_SECONDS',
+    ),
+    measureSeconds: positiveInteger(
+      env.MEASURE_SECONDS ?? '180',
+      'MEASURE_SECONDS',
+    ),
     runKind,
     soakSeconds: boundedSoakSeconds(env.SOAK_SECONDS ?? '1800'),
-    summaryPath: summaryPath(env.SUMMARY_PATH),
+    summaryPath: safeSummaryPath(env.SUMMARY_PATH),
   });
 }

@@ -304,6 +304,11 @@ test('workflow securely prepares runtime state and switches guard profiles in or
     LOAD_HTTP_THROTTLE_LIMIT: '1000000',
     LOAD_LOGIN_RATE_LIMIT_IP_MAX: '100000',
   });
+  const security = k6Calls(harness.commands, '/scripts/rate-limit.js')[0];
+  assert.equal(
+    envValue(security.args, 'SUMMARY_PATH'),
+    '/results/2026-09-02T01-02-03-004Z/security.json',
+  );
   const recreates = harness.commands.filter(({ args }) =>
     args.includes('--force-recreate'),
   );

@@ -35,7 +35,12 @@
     "dev": "yarn service:dev & yarn ui:dev",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "load:test:unit": "node --test load-tests/test/*.test.mjs",
+    "load:test:config": "docker compose --project-name auth-load -f docker-compose.load.yml --env-file load-tests/.env.load.example config --quiet",
+    "load:test:smoke": "LOAD_TEST_MODE=smoke MAX_VUS=1 node load-tests/run-capacity.mjs",
+    "load:test:capacity": "node load-tests/run-capacity.mjs",
+    "load:test:cleanup": "docker compose --project-name auth-load -f docker-compose.load.yml --env-file load-tests/.env.load.example down --volumes --remove-orphans"
   },
   "lint-staged": {
     "*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}": "eslint --fix",

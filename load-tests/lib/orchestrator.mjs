@@ -207,8 +207,14 @@ async function runK6(
     ? `${resultDirectory}/${summaryName}`
     : undefined;
   if (summaryPath) await deps.rm(summaryPath, { force: true });
+  const runDirectory = resultDirectory.slice('load-tests/results/'.length);
+  if (!/^[0-9TZ-]+$/.test(runDirectory))
+    throw new HarnessError('k6 control configuration');
   const controlValues = summaryName
-    ? { ...controls, SUMMARY_PATH: `/results/${summaryName}` }
+    ? {
+        ...controls,
+        SUMMARY_PATH: `/results/${runDirectory}/${summaryName}`,
+      }
     : controls;
   const args = [
     ...composeWithRuntime(),

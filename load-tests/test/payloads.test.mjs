@@ -42,7 +42,11 @@ test('loadConfig accepts only the dedicated local target and required runtime ma
 });
 
 test('loadConfig rejects every missing secret without echoing its value', () => {
-  for (const name of ['ADMIN_PASSWORD', 'LOAD_USER_PASSWORD', 'SERVICE_CLIENT_SECRET']) {
+  for (const name of [
+    'ADMIN_PASSWORD',
+    'LOAD_USER_PASSWORD',
+    'SERVICE_CLIENT_SECRET',
+  ]) {
     let error;
     try {
       loadConfig({ ...environment, [name]: '' });
@@ -84,16 +88,35 @@ test('loadScenarioConfig permits only bounded runner controls and result paths',
       summaryPath: '/results/soak-7.json',
     },
   );
+  assert.equal(
+    loadScenarioConfig({
+      ...environment,
+      VUS: '1',
+      SUMMARY_PATH: '/results/2026-09-02T01-02-03-004Z/smoke.json',
+    }).summaryPath,
+    '/results/2026-09-02T01-02-03-004Z/smoke.json',
+  );
   assert.throws(
-    () => loadScenarioConfig({ ...environment, VUS: '0', SUMMARY_PATH: '/results/probe.json' }),
+    () =>
+      loadScenarioConfig({
+        ...environment,
+        VUS: '0',
+        SUMMARY_PATH: '/results/probe.json',
+      }),
     /VUS must be a positive integer/,
   );
   assert.throws(
-    () => loadScenarioConfig({ ...environment, RUN_KIND: 'capacity', SUMMARY_PATH: '/results/probe.json' }),
+    () =>
+      loadScenarioConfig({
+        ...environment,
+        RUN_KIND: 'capacity',
+        SUMMARY_PATH: '/results/probe.json',
+      }),
     /RUN_KIND must be one of: probe, smoke, soak/,
   );
   assert.throws(
-    () => loadScenarioConfig({ ...environment, SUMMARY_PATH: '/tmp/secret.json' }),
+    () =>
+      loadScenarioConfig({ ...environment, SUMMARY_PATH: '/tmp/secret.json' }),
     /SUMMARY_PATH must be a safe result path/,
   );
 });
@@ -119,7 +142,7 @@ test('public client enables refresh with provider-owned PKCE flow', () => {
     scope: 'openid profile email offline_access',
     postLogoutRedirectUris: ['http://localhost:18080/logout'],
     applicationType: 'web',
-    allowedResources: ['https://resource.loadtest.local'],
+    allowedResources: ['https://resource.example.test'],
     skipConsent: true,
   });
 });
@@ -137,10 +160,17 @@ test('service client can introspect only the load-test resource', () => {
     scope: 'openid profile email',
     postLogoutRedirectUris: [],
     applicationType: 'web',
-    allowedResources: ['https://resource.loadtest.local'],
-    introspectionResources: ['https://resource.loadtest.local'],
+    allowedResources: ['https://resource.example.test'],
+    introspectionResources: ['https://resource.example.test'],
     skipConsent: true,
   });
+});
+
+test('service client introspection uses an origin accepted by the resource policy', () => {
+  const [resource] = serviceClientPayload(config).introspectionResources;
+
+  assert.match(resource, /^https:\/\//);
+  assert.doesNotMatch(resource, /\.local(?:\/|$)/);
 });
 
 test('refresh-token scope is provisioned explicitly', () => {

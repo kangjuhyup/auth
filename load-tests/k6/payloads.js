@@ -1,4 +1,4 @@
-const RESOURCE_AUDIENCE = 'https://resource.loadtest.local';
+const RESOURCE_AUDIENCE = 'https://resource.example.test';
 
 export function userNameFor(index) {
   if (!Number.isSafeInteger(index) || index < 1) {
