@@ -223,4 +223,16 @@ describe('openapi route coverage', () => {
       scheme: 'basic',
     });
   });
+
+  it('access-token bearer scheme은 runtime token format을 JWT로 고정 표기하지 않는다', () => {
+    expect(
+      document.components?.securitySchemes?.['access-token'],
+    ).toMatchObject({
+      type: 'http',
+      scheme: 'bearer',
+    });
+    expect(
+      document.components?.securitySchemes?.['access-token'],
+    ).not.toHaveProperty('bearerFormat');
+  });
 });

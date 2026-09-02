@@ -193,6 +193,28 @@ describe('buildOidcConfiguration', () => {
     expect(typeof cfg.features?.introspection?.allowedPolicy).toBe('function');
   });
 
+  it('RFC 7009 revocation을 활성화하고 client가 소유한 token만 폐기한다', async () => {
+    const cfg = buildOidcConfiguration({ ...makeDeps(), tenantCode: 'acme' });
+    const allowedPolicy = cfg.features?.revocation?.allowedPolicy;
+
+    expect(cfg.features?.revocation?.enabled).toBe(true);
+    expect(typeof allowedPolicy).toBe('function');
+    await expect(
+      allowedPolicy!(
+        {} as any,
+        { clientId: 'vote-web' } as any,
+        { clientId: 'vote-web' } as any,
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      allowedPolicy!(
+        {} as any,
+        { clientId: 'other-web' } as any,
+        { clientId: 'vote-web' } as any,
+      ),
+    ).resolves.toBe(false);
+  });
+
   it('tenant가 client_credentials를 지원하지 않으면 해당 feature를 비활성화한다', () => {
     const deps = makeDeps();
     deps.supportedGrantTypes = ['authorization_code', 'refresh_token'];

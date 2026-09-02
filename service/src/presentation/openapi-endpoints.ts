@@ -380,7 +380,7 @@ function mergeOidcProviderPaths(document: OpenApiDocument): void {
       post: oidcOperation({
         summary: 'Token revocation endpoint',
         description:
-          'Revokes access or refresh tokens. Client authentication is required where applicable, refresh-token family revocation is supported by policy, and revocation events are audited.',
+          'Revokes an access or refresh token through node-oidc-provider. Public clients send client_id without a secret; confidential clients use their registered token endpoint authentication method. Only the client that owns a token may revoke it. Revoking a refresh token invalidates its grant token family, but does not terminate the OP browser session; use the discovered end_session_endpoint separately when RP logout is required.',
         requestBody: tokenRequestBody(['token']),
         responses: {
           '200': { description: 'Token revocation accepted' },

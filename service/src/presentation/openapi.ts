@@ -93,14 +93,10 @@ export function createOpenApiDocument(app: INestApplication) {
     .setVersion('0.1.1')
     .addServer('/', 'Service origin')
     .addServer('/api', 'Vite proxy')
-    .addBearerAuth(
-      {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-      },
-      'access-token',
-    )
+    .addSecurity('access-token', {
+      type: 'http',
+      scheme: 'bearer',
+    })
     .addBasicAuth({ type: 'http', scheme: 'basic' }, 'resource-server-basic')
     .addCookieAuth('admin_session', {
       type: 'apiKey',

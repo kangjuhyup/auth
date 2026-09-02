@@ -189,6 +189,12 @@ export function buildOidcConfiguration(params: {
         enabled: true,
         allowedPolicy: createIntrospectionAllowedPolicy(clientRepository),
       },
+      revocation: {
+        enabled: true,
+        async allowedPolicy(_ctx, client, token) {
+          return token.clientId === client.clientId;
+        },
+      },
 
       // ✅ JWT Access Token을 쓰려면 보통 여기(리소스 지시자)에서 포맷을 결정
       resourceIndicators: {
