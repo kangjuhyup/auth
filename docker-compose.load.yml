@@ -1,0 +1,106 @@
+name: auth-load
+
+services:
+  postgres-load:
+    image: postgres:16-alpine
+    restart: "no"
+    environment:
+      POSTGRES_DB: auth_load
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d auth_load"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - auth-load-postgres:/var/lib/postgresql/data
+    networks: [auth-load]
+
+  redis-load:
+    image: redis:7-alpine
+    restart: "no"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - auth-load-redis:/data
+    networks: [auth-load]
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.service
+    restart: "no"
+    environment:
+      NODE_ENV: production
+      DB_DRIVER: postgresql
+      DB_HOST: postgres-load
+      DB_PORT: "5432"
+      DB_NAME: auth_load
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_URL: redis://redis-load:6379
+      OIDC_ISSUER: http://auth-service:3000
+      OIDC_ACCESS_TOKEN_FORMAT: opaque
+      OIDC_ADAPTER_DRIVER: hybrid
+      OIDC_COOKIE_KEYS: ${OIDC_COOKIE_KEYS}
+      OIDC_CACHE_TTL_MARGIN_SEC: "5"
+      OIDC_CACHE_NEGATIVE_TTL_SEC: "3"
+      OIDC_CACHE_BACKFILL_TTL_SEC: "60"
+      JWKS_ENCRYPTION_KEY: ${JWKS_ENCRYPTION_KEY}
+      OTP_TOKEN_SECRET: ${OTP_TOKEN_SECRET}
+      OTP_PASSWORD_RESET_TTL_SEC: "900"
+      ADMIN_USERNAME: loadtest-admin
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADMIN_UI_URL: http://localhost:5173
+      HTTP_THROTTLE_ENABLED: "true"
+      HTTP_THROTTLE_TTL_MS: "60000"
+      HTTP_THROTTLE_LIMIT: ${LOAD_HTTP_THROTTLE_LIMIT:-1000000}
+      LOGIN_RATE_LIMIT_IP_MAX: ${LOAD_LOGIN_RATE_LIMIT_IP_MAX:-100000}
+      LOGIN_RATE_LIMIT_IP_WINDOW_SEC: "60"
+      LOGIN_FAILURE_MAX: "5"
+      LOGIN_FAILURE_WINDOW_SEC: "900"
+      LOGIN_LOCK_TTL_SEC: "900"
+    ports:
+      - "127.0.0.1:13000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+    depends_on:
+      postgres-load: { condition: service_healthy }
+      redis-load: { condition: service_healthy }
+    networks: [auth-load]
+
+  k6:
+    image: grafana/k6:2.2.0
+    restart: "no"
+    working_dir: /scripts
+    environment:
+      BASE_URL: http://auth-service:3000
+      ADMIN_USERNAME: loadtest-admin
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      LOAD_USER_PASSWORD: ${LOAD_USER_PASSWORD}
+      SERVICE_CLIENT_SECRET: ${SERVICE_CLIENT_SECRET}
+    volumes:
+      - ./load-tests/k6:/scripts:ro
+      - ./load-tests/results:/results
+    depends_on:
+      auth-service: { condition: service_started }
+    networks: [auth-load]
+
+volumes:
+  auth-load-postgres:
+  auth-load-redis:
+
+networks:
+  auth-load:
