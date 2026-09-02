@@ -161,6 +161,29 @@ describe('openapi docs', () => {
     });
   });
 
+  it('revocation 계약은 public client 인증 필드와 RFC 7009 token hint를 문서화한다', () => {
+    const document: { paths: Record<string, any> } = { paths: {} };
+    applyEndpointReference(document);
+
+    const operation =
+      document.paths['/t/{tenantCode}/oidc/token/revocation'].post;
+    const schema =
+      operation.requestBody.content['application/x-www-form-urlencoded'].schema;
+
+    expect(schema.required).toEqual(['token']);
+    expect(schema.properties).toEqual(
+      expect.objectContaining({
+        token: expect.any(Object),
+        token_type_hint: expect.objectContaining({ example: 'refresh_token' }),
+        client_id: expect.any(Object),
+      }),
+    );
+    expect(operation.description).toContain('Public clients send client_id');
+    expect(operation.description).toContain(
+      'does not terminate the OP browser session',
+    );
+  });
+
   it('introspection document response schemas distinguish valid active and exact inactive payloads', () => {
     const document: { paths: Record<string, any> } = { paths: {} };
     applyEndpointReference(document);

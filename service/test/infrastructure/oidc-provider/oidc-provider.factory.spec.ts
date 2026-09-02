@@ -173,6 +173,7 @@ describe('createOidcProvider', () => {
       const provider = Object.assign(new EventEmitter(), {
         issuer,
         configuration,
+        use: jest.fn(),
       });
       provider.on = jest.fn(provider.on.bind(provider));
       return provider;

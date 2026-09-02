@@ -31,6 +31,7 @@ import { OidcProviderRegistry } from './oidc-provider.registry';
 import { OperationalMetricsPort } from '@application/ports/operational-metrics.port';
 import { OidcSessionControlService } from './session/oidc-session-control.service';
 import type { OidcSessionRecord } from './session/oidc-session-index.store';
+import { ResourceOrigin } from '@domain/value-objects/resource-origin';
 
 @Injectable()
 export class OidcInteractionAdapter extends OidcInteractionPort {
@@ -193,7 +194,10 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
         | Record<string, string[]>
         | undefined) ?? {};
     for (const [resource, scopes] of Object.entries(missingResourceScopes)) {
-      grant.addResourceScope(resource, scopes.join(' '));
+      grant.addResourceScope(
+        ResourceOrigin.of(resource).value,
+        scopes.join(' '),
+      );
     }
 
     const grantId = await grant.save();

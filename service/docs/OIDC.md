@@ -71,7 +71,7 @@ new Provider(`https://auth.example.com/t/${tenantCode}/oidc`, configuration);
 /t/:tenantCode/oidc/auth
 /t/:tenantCode/oidc/token
 /t/:tenantCode/oidc/userinfo
-/t/:tenantCode/oidc/revoke
+/t/:tenantCode/oidc/token/revocation
 /t/:tenantCode/oidc/session/end
 /t/:tenantCode/oidc/interaction/:uid
 ```
@@ -142,7 +142,7 @@ new Provider(`https://auth.example.com/t/${tenantCode}/oidc`, configuration);
 
 - 민감정보나 내부 상태는 userinfo/claims 에 직접 노출하지 않음
 
-## 4.4 `/revoke`
+## 4.4 `/token/revocation`
 
 용도:
 
@@ -151,6 +151,8 @@ new Provider(`https://auth.example.com/t/${tenantCode}/oidc`, configuration);
 이 프로젝트에서:
 
 - revocation 엔드포인트 자체는 `node-oidc-provider` 가 처리
+- public client는 secret 없이 자신의 `client_id`를 보내고, confidential client는 등록된 token endpoint 인증 방식을 사용
+- token 소유 client만 폐기할 수 있으며 다른 public client의 요청은 token 존재 여부를 노출하지 않도록 성공 응답만 반환하고 상태를 변경하지 않음
 - 저장소 정리는 OIDC adapter 가 담당
 - adapter 에는 `revokeByGrantId(grantId)` 구현이 존재
 
@@ -163,6 +165,19 @@ new Provider(`https://auth.example.com/t/${tenantCode}/oidc`, configuration);
 의미:
 
 - 같은 grant 에 속한 토큰/세션 정리가 adapter 레벨에서 수행된다.
+
+RP 로그아웃 순서:
+
+1. RP가 보관한 refresh token을 discovery의 `revocation_endpoint`로 폐기한다.
+2. access token이 opaque이면 resource server는 introspection 결과 `active: false`를 확인한다.
+3. 브라우저의 OP SSO 세션까지 종료해야 하면 검증된 `id_token_hint`와 등록된 `post_logout_redirect_uri`를 사용해 discovery의 `end_session_endpoint`를 호출한다.
+4. back-channel logout URI가 등록된 같은 tenant의 RP는 OP 세션 종료 알림을 받을 수 있다.
+
+주의:
+
+- RP 로컬 세션 삭제만으로 access/refresh token 또는 OP SSO 세션이 폐기되지는 않는다.
+- API audience access token을 UserInfo endpoint에 사용하지 않는다. UI 세션은 검증된 ID token claims를 사용한다.
+- token 값, client secret, Authorization header는 로그에 남기지 않는다.
 
 ## 4.5 `/session/end`
 
@@ -484,7 +499,7 @@ curl -u 'orders-api:REDACTED_RESOURCE_SERVER_SECRET' \
 inactive token의 response body는 추가 claim 없이 정확히 다음과 같다.
 
 ```json
-{"active": false}
+{ "active": false }
 ```
 
 잘못된 form 요청은 `invalid_request` 또는 `unsupported_token_type` (`400`)을 반환할 수 있고, client authentication 실패는 `invalid_client` (`401`)이다.
