@@ -107,6 +107,10 @@ function capacitySummary({
   soakSeconds,
   failingMinute,
   measurementEpochMs = MEASUREMENT_EPOCH_MS,
+  requestCount = 100,
+  requestRate = 10,
+  soakRequestCounts = [],
+  soakRequestRates = [],
 } = {}) {
   const endpointNames = [
     'login',
@@ -132,7 +136,10 @@ function capacitySummary({
         p95,
         p95,
       );
-      metrics[`load_requests{minute:${minute}}`] = counter(100, 10);
+      metrics[`load_requests{minute:${minute}}`] = counter(
+        soakRequestCounts[minute] ?? requestCount,
+        soakRequestRates[minute] ?? requestRate,
+      );
       for (const endpoint of endpointNames)
         metrics[`load_${endpoint}_duration_ms{minute:${minute}}`] = trend(
           1,
@@ -147,7 +154,7 @@ function capacitySummary({
       load_request_failed: rate(passed ? 0 : 2, passed ? 100 : 98),
       load_check_failed: rate(0, 100),
       load_http_req_duration_ms: trend(),
-      load_requests: counter(100, 10),
+      load_requests: counter(requestCount, requestRate),
       ...Object.fromEntries(
         endpointNames.map((endpoint) => [
           `load_${endpoint}_duration_ms`,
@@ -537,6 +544,52 @@ test('workflow stops coarse search at failure, refines the bracket, and soaks la
   assert.equal(report.soak.vus, 17);
   assert.equal(report.soak.windows.length, 2);
   assert.equal(harness.checkpointCount(), journeys.length);
+});
+
+test('workflow persists and renders canonical probe and soak-window RPS', async () => {
+  const harness = createHarness({
+    probeSummary: () =>
+      capacitySummary({
+        requestCount: 111,
+        requestRate: 0.7142353962549727,
+      }),
+    soakSummary: capacitySummary({
+      soakSeconds: 65,
+      soakRequestCounts: [45, 2],
+      soakRequestRates: [0.6380510331483288, 0.028357823695481277],
+    }),
+  });
+
+  const report = await runCapacityWorkflow(
+    options({ maxVus: 1, measureSeconds: 150, soakSeconds: 65 }),
+    harness.deps,
+  );
+  const capacityPath = [...harness.files.keys()].find((path) =>
+    path.endsWith('/capacity.json'),
+  );
+  const soakPath = [...harness.files.keys()].find((path) =>
+    path.endsWith('/soak.json'),
+  );
+  const capacity = JSON.parse(harness.files.get(capacityPath));
+  const soak = JSON.parse(harness.files.get(soakPath));
+  const markdown = harness.files.get(report.summaryPath);
+
+  assert.equal(report.capacity.probes[0].metrics.rps, 0.74);
+  assert.deepEqual(
+    report.soak.windows.map(({ metrics }) => metrics.rps),
+    [0.75, 0.4],
+  );
+  assert.equal(capacity.probes[0].metrics.rps, 0.74);
+  assert.deepEqual(
+    soak.windows.map(({ metrics }) => metrics.rps),
+    [0.75, 0.4],
+  );
+  assert.match(markdown, /\| coarse \| 1 \| 0\.74 \|/);
+  assert.match(markdown, /\| 0 \| 60 \| 0\.75 \|/);
+  assert.match(markdown, /\| 1 \| 5 \| 0\.4 \|/);
+  assert.doesNotMatch(markdown, /0\.7142353962549727/);
+  assert.doesNotMatch(markdown, /0\.6380510331483288/);
+  assert.doesNotMatch(markdown, /0\.028357823695481277/);
 });
 
 test('capacity probes wait for the initial monitor baseline sample', async () => {

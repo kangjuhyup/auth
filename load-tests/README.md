@@ -122,6 +122,13 @@ Generated artifacts are written beneath the gitignored
 - `environment.json` plus per-phase k6 summaries: allowlisted run context and
   machine-readable observations used to construct the report.
 
+Reported RPS is derived from measured observations, never from k6's raw Counter
+rate (whose denominator includes the whole scenario and therefore warm-up).
+Probe RPS is `load_requests.count / MEASURE_SECONDS`. Each soak window uses its
+exact measured length: 60 seconds for a full minute and the remaining seconds
+for a partial final bucket. `capacity.json`, `soak.json`, and `summary.md` retain
+these canonical values; the summary also lists each soak window's denominator.
+
 Start with `summary.md`, confirm the search bracket in `capacity.json`, inspect
 the time and failure window in `soak.json`, then correlate it with resource and
 restart samples in `docker-stats.csv`. Treat a reported maximum as the maximum

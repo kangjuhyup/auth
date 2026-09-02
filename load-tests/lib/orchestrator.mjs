@@ -599,6 +599,7 @@ async function runProbe(deps, monitor, resultDirectory, options, vus, phase) {
     metrics = normalizeK6Summary(raw, context, {
       allowMissingAggregate:
         exitCode !== 0 && hasStoppedOrMissingService(context),
+      measurementSeconds: options.measureSeconds,
     });
   } catch {
     throw new HarnessError('capacity summary parsing');
@@ -607,6 +608,7 @@ async function runProbe(deps, monitor, resultDirectory, options, vus, phase) {
   return {
     phase,
     vus,
+    measurementSeconds: options.measureSeconds,
     summaryPath,
     metrics,
     evaluation,
@@ -684,7 +686,7 @@ async function runSoak(deps, monitor, resultDirectory, options, vus) {
     measurementDurationMs,
     bucketCount,
   });
-  const windows = normalized.map(({ minute, metrics }) => {
+  const windows = normalized.map(({ minute, measurementSeconds, metrics }) => {
     const samplesForWindow = [...monitorBuckets[minute]];
     const terminalSample = samples.at(-1);
     if (
@@ -703,6 +705,7 @@ async function runSoak(deps, monitor, resultDirectory, options, vus) {
     };
     return {
       minute,
+      measurementSeconds,
       metrics: withContext,
       evaluation: evaluateCapacityMetrics(withContext),
       evidence: evidenceFromSamples(samplesForWindow),
@@ -744,6 +747,10 @@ function renderCapacitySection(capacity, soak, soakSeconds) {
   const soakConclusion = soak.ran
     ? `Soak endurance: ${soak.passed ? 'PASS' : 'FAIL'} at ${soak.vus} VUs for ${soakSeconds} seconds`
     : 'Soak endurance: NOT RUN (no probe-passing VU)';
+  const soakRows = soak.windows.map(
+    ({ minute, measurementSeconds, metrics, evaluation }) =>
+      `| ${minute} | ${measurementSeconds} | ${metrics.rps} | ${metrics.requestCount} | ${metrics.p95Ms} | ${metrics.p99Ms} | ${metrics.requestFailureRate} | ${metrics.checkFailureRate} | ${evaluation.passed ? 'PASS' : 'FAIL'} |`,
+  );
   return [
     '## Capacity search',
     '',
@@ -755,6 +762,16 @@ function renderCapacitySection(capacity, soak, soakSeconds) {
     '| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |',
     ...rows,
     '',
+    ...(soak.ran
+      ? [
+          '### Soak windows',
+          '',
+          '| Minute | Measurement seconds | RPS | Requests | Overall p95 (ms) | Overall p99 (ms) | Request failure | Check failure | SLO |',
+          '| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |',
+          ...soakRows,
+          '',
+        ]
+      : []),
   ].join('\n');
 }
 

@@ -181,6 +181,22 @@ function counterMetric(
   };
 }
 
+function canonicalRequestsPerSecond(requestCount, measurementSeconds) {
+  if (!Number.isSafeInteger(requestCount) || requestCount < 0) {
+    throw new TypeError('requestCount must be a bounded non-negative integer');
+  }
+  if (!Number.isSafeInteger(measurementSeconds) || measurementSeconds < 1) {
+    throw new TypeError(
+      'measurementSeconds must be a bounded positive integer',
+    );
+  }
+  const rps = requestCount / measurementSeconds;
+  if (!validFiniteNumber(rps)) {
+    throw new TypeError('Invalid canonical RPS');
+  }
+  return rps;
+}
+
 function normalizedContext(context) {
   if (!context || typeof context !== 'object')
     throw new TypeError('context must be an object');
@@ -459,8 +475,8 @@ function emptyCapacityMetrics() {
   };
 }
 
-export function normalizeK6Summary(raw, context = {}, internal = {}) {
-  const allowMissingAggregate = internal.allowMissingAggregate === true;
+export function normalizeK6Summary(raw, context = {}, options = {}) {
+  const allowMissingAggregate = options.allowMissingAggregate === true;
   const endpointDurations = Object.fromEntries(
     Object.entries(ENDPOINT_METRICS).map(([endpoint, metricName]) => [
       endpoint,
@@ -488,7 +504,7 @@ export function normalizeK6Summary(raw, context = {}, internal = {}) {
       allowMissing: allowMissingAggregate,
     }),
     requestCount: requests.count,
-    rps: requests.rate,
+    rps: canonicalRequestsPerSecond(requests.count, options.measurementSeconds),
     p95Ms: total.p95Ms,
     p99Ms: total.p99Ms,
     endpointDurations,
@@ -502,19 +518,25 @@ export function normalizeSoakWindows(
   raw,
   { soakSeconds = 1800, context = {} } = {},
 ) {
-  const bucketCount = Math.ceil(boundedSoakSeconds(soakSeconds) / 60);
+  const measurementSeconds = boundedSoakSeconds(soakSeconds);
+  const bucketCount = Math.ceil(measurementSeconds / 60);
   normalizeMeasurementEpoch(raw);
   validateSoakMetricTags(raw, bucketCount);
-  return Array.from({ length: bucketCount }, (_, minute) => ({
-    minute,
-    metrics: normalizeK6Summary(
-      taggedSummary(raw ?? emptySummary(), minute),
-      context,
-      {
-        allowMissingAggregate: true,
-      },
-    ),
-  }));
+  return Array.from({ length: bucketCount }, (_, minute) => {
+    const windowSeconds = Math.min(60, measurementSeconds - minute * 60);
+    return {
+      minute,
+      measurementSeconds: windowSeconds,
+      metrics: normalizeK6Summary(
+        taggedSummary(raw ?? emptySummary(), minute),
+        context,
+        {
+          allowMissingAggregate: true,
+          measurementSeconds: windowSeconds,
+        },
+      ),
+    };
+  });
 }
 
 export function sanitizeEnvironment(input) {

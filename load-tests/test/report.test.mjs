@@ -75,16 +75,20 @@ function completeMetrics() {
 }
 
 test('normalizeK6Summary reads only the named k6 v2 custom metrics', () => {
-  const metrics = normalizeK6Summary(summary(completeMetrics()), {
-    serviceRestarted: true,
-    dependencyErrors: 2,
-  });
+  const metrics = normalizeK6Summary(
+    summary(completeMetrics()),
+    {
+      serviceRestarted: true,
+      dependencyErrors: 2,
+    },
+    { measurementSeconds: 8 },
+  );
 
   assert.deepEqual(metrics, {
     requestFailureRate: 0.01,
     checkFailureRate: 0,
     requestCount: 200,
-    rps: 33.25,
+    rps: 25,
     p95Ms: 125,
     p99Ms: 250,
     endpointDurations: {
@@ -106,11 +110,50 @@ test('normalizeK6Summary reads only the named k6 v2 custom metrics', () => {
   });
 });
 
+test('normalizeK6Summary derives probe RPS from count and the measured window', () => {
+  const raw = completeMetrics();
+  raw.load_requests = counter(111, 0.7142353962549727);
+
+  const metrics = normalizeK6Summary(
+    summary(raw),
+    {},
+    {
+      measurementSeconds: 150,
+    },
+  );
+
+  assert.equal(metrics.requestCount, 111);
+  assert.equal(metrics.rps, 0.74);
+});
+
+test('normalizeK6Summary rejects an absent or invalid measured window', () => {
+  for (const measurementSeconds of [
+    undefined,
+    0,
+    -1,
+    1.5,
+    Number.MAX_SAFE_INTEGER + 1,
+    Number.POSITIVE_INFINITY,
+  ]) {
+    assert.throws(
+      () =>
+        normalizeK6Summary(
+          summary(completeMetrics()),
+          {},
+          {
+            measurementSeconds,
+          },
+        ),
+      /measurementSeconds/,
+    );
+  }
+});
+
 test('normalizeK6Summary rejects missing required aggregate SLO metrics', () => {
   const metrics = completeMetrics();
   delete metrics.load_request_failed;
   assert.throws(
-    () => normalizeK6Summary(summary(metrics)),
+    () => normalizeK6Summary(summary(metrics), {}, { measurementSeconds: 180 }),
     /Missing required metric: load_request_failed/,
   );
 });
@@ -119,19 +162,34 @@ test('normalizeK6Summary rejects malformed aggregate metrics and dependency erro
   const malformedLatency = completeMetrics();
   malformedLatency.load_http_req_duration_ms.values['p(95)'] = '125';
   assert.throws(
-    () => normalizeK6Summary(summary(malformedLatency)),
+    () =>
+      normalizeK6Summary(
+        summary(malformedLatency),
+        {},
+        {
+          measurementSeconds: 180,
+        },
+      ),
     /Invalid load_http_req_duration_ms p\(95\)/,
   );
   assert.throws(
     () =>
-      normalizeK6Summary(summary(completeMetrics()), { dependencyErrors: '2' }),
+      normalizeK6Summary(
+        summary(completeMetrics()),
+        { dependencyErrors: '2' },
+        { measurementSeconds: 180 },
+      ),
     /dependencyErrors must be a non-negative safe integer/,
   );
   assert.throws(
     () =>
-      normalizeK6Summary(summary(completeMetrics()), {
-        serviceStatuses: { 'auth-service': 'stopped' },
-      }),
+      normalizeK6Summary(
+        summary(completeMetrics()),
+        {
+          serviceStatuses: { 'auth-service': 'stopped' },
+        },
+        { measurementSeconds: 180 },
+      ),
     /serviceStatuses/,
   );
 });
@@ -140,28 +198,56 @@ test('normalizeK6Summary rejects inconsistent rates and malformed endpoint perce
   const inconsistentRate = completeMetrics();
   inconsistentRate.load_request_failed.values.rate = 0;
   assert.throws(
-    () => normalizeK6Summary(summary(inconsistentRate)),
+    () =>
+      normalizeK6Summary(
+        summary(inconsistentRate),
+        {},
+        {
+          measurementSeconds: 180,
+        },
+      ),
     /Invalid load_request_failed rate structure/,
   );
 
   const malformedEndpoint = completeMetrics();
   malformedEndpoint.load_login_duration_ms.values['p(99)'] = Number.NaN;
   assert.throws(
-    () => normalizeK6Summary(summary(malformedEndpoint)),
+    () =>
+      normalizeK6Summary(
+        summary(malformedEndpoint),
+        {},
+        {
+          measurementSeconds: 180,
+        },
+      ),
     /Invalid load_login_duration_ms p\(99\)/,
   );
 
   const malformedTrend = completeMetrics();
   malformedTrend.load_http_req_duration_ms.type = 'gauge';
   assert.throws(
-    () => normalizeK6Summary(summary(malformedTrend)),
+    () =>
+      normalizeK6Summary(
+        summary(malformedTrend),
+        {},
+        {
+          measurementSeconds: 180,
+        },
+      ),
     /load_http_req_duration_ms trend structure/,
   );
 
   const malformedRequests = completeMetrics();
   malformedRequests.load_requests.values.rate = -1;
   assert.throws(
-    () => normalizeK6Summary(summary(malformedRequests)),
+    () =>
+      normalizeK6Summary(
+        summary(malformedRequests),
+        {},
+        {
+          measurementSeconds: 180,
+        },
+      ),
     /load_requests/,
   );
 });
@@ -216,11 +302,12 @@ test('normalizeSoakWindows creates ceil(soak seconds / 60) ordered zero-count bu
   assert.equal(windows.length, 2);
   assert.deepEqual(windows[0], {
     minute: 0,
+    measurementSeconds: 60,
     metrics: {
       requestFailureRate: 0.01,
       checkFailureRate: 0,
       requestCount: 2,
-      rps: 0.5,
+      rps: 0.03333333333333333,
       p95Ms: 111,
       p99Ms: 222,
       endpointDurations: {
@@ -242,8 +329,31 @@ test('normalizeSoakWindows creates ceil(soak seconds / 60) ordered zero-count bu
     },
   });
   assert.equal(windows[1].minute, 1);
+  assert.equal(windows[1].measurementSeconds, 1);
   assert.equal(windows[1].metrics.endpointDurations.login.count, 0);
   assert.equal(windows[1].metrics.requestFailureRate, 0);
+});
+
+test('normalizeSoakWindows derives RPS from each exact full or partial bucket', () => {
+  const raw = summary({
+    load_measurement_epoch_ms: measurementEpoch(),
+    'load_requests{minute:0}': counter(45, 0.6380510331483288),
+    'load_requests{minute:1}': counter(2, 0.028357823695481277),
+  });
+
+  const windows = normalizeSoakWindows(raw, { soakSeconds: 65 });
+
+  assert.deepEqual(
+    windows.map(({ minute, metrics }) => ({
+      minute,
+      requestCount: metrics.requestCount,
+      rps: metrics.rps,
+    })),
+    [
+      { minute: 0, requestCount: 45, rps: 0.75 },
+      { minute: 1, requestCount: 2, rps: 0.4 },
+    ],
+  );
 });
 
 test('normalizeSoakWindows rejects non-integer and out-of-range recognized minute tags', () => {
@@ -346,7 +456,7 @@ function normalizedMetricsWithEndpointLatency(endpoint, p95Ms, p99Ms) {
   const metrics = completeMetrics();
   metrics.load_request_failed = rate(0, 200);
   metrics[`load_${endpoint}_duration_ms`] = trend(10, p95Ms, p99Ms);
-  return normalizeK6Summary(summary(metrics));
+  return normalizeK6Summary(summary(metrics), {}, { measurementSeconds: 180 });
 }
 
 test('deriveBottleneckCandidate selects the earliest failure and correlates its own evidence window', () => {
@@ -599,14 +709,20 @@ test('renderSummaryMarkdown includes verdict, duration, SLOs, endpoints, and no 
   passingMetrics.load_request_failed = rate(1, 199);
   const markdown = renderSummaryMarkdown({
     passed: true,
-    environment: completeEnvironment({ soakSeconds: 61 }),
+    environment: completeEnvironment({ measureSeconds: 8, soakSeconds: 61 }),
     slo: {
       maxRequestFailureRateExclusive: `0.01 |\n${fixtureSecret}`,
       maxCheckFailureRate: 0,
       maxP95MsExclusive: 1000,
       maxP99MsExclusive: 2000,
     },
-    metrics: normalizeK6Summary(summary(passingMetrics)),
+    metrics: normalizeK6Summary(
+      summary(passingMetrics),
+      {},
+      {
+        measurementSeconds: 8,
+      },
+    ),
     violations: [fixtureSecret],
     firstViolationMinute: null,
     trafficMix: {
@@ -657,7 +773,7 @@ test('renderSummaryMarkdown includes verdict, duration, SLOs, endpoints, and no 
   assert.match(markdown, /Request failure rate \| < not recorded/);
   assert.match(markdown, /Request failure rate \| 0\.005/);
   assert.match(markdown, /Request count \| 200/);
-  assert.match(markdown, /RPS \| 33\.25/);
+  assert.match(markdown, /RPS \| 25/);
   assert.match(markdown, /Traffic mix/);
   assert.match(markdown, /introspection \| 45%/);
   assert.match(markdown, /Security gate/);
@@ -680,7 +796,13 @@ test('renderSummaryMarkdown derives safe failure names instead of rendering raw 
     environment: completeEnvironment({
       arbitraryUnknown: `http://auth-service:3000/health?body=${fixtureSecret}`,
     }),
-    metrics: normalizeK6Summary(summary(completeMetrics())),
+    metrics: normalizeK6Summary(
+      summary(completeMetrics()),
+      {},
+      {
+        measurementSeconds: 180,
+      },
+    ),
     trafficMix: {
       introspection: 45,
       userinfo: 25,
