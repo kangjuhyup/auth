@@ -28,6 +28,8 @@ import { resolveCustomGrantDefinitions } from './custom-grants/custom-grant-meta
 import { ScopeRegistryPort } from '@application/ports/scope-registry.port';
 import { ScopeClaimResolverPort } from '@application/ports/scope-claim-resolver.port';
 import { OperationalMetricsPort } from '@application/ports/operational-metrics.port';
+import { RefreshTokenReuseStore } from './refresh-token-reuse.store';
+import type { OidcAdapterDriver } from './adapters/oidc-adapter.constants';
 
 export type CreateOidcProviderParams = {
   issuer: string;
@@ -124,6 +126,14 @@ export async function createOidcProvider(
   const Provider = await loadOidcProviderConstructor();
 
   const provider = new Provider(params.issuer, configuration);
+  const refreshTokenReuseStore = new RefreshTokenReuseStore(
+    tenant.id,
+    params.configService.getOrThrow<string>(
+      'OIDC_ADAPTER_DRIVER',
+    ) as OidcAdapterDriver,
+    params.em,
+    params.redis,
+  );
   registerCustomGrantTypes(
     provider,
     {
@@ -142,12 +152,46 @@ export async function createOidcProvider(
 
   provider.on('grant.revoked', (ctx, grantId) => {
     if (!isRefreshTokenReuseRevocation(ctx)) return;
-    void auditRefreshTokenReuse(
-      params.eventRepository,
-      params.clientRepository,
-      ctx,
-      grantId,
-    ).catch(() => undefined);
+    const auditContext = captureRefreshTokenReuseAuditContext(ctx, grantId);
+    if (!auditContext) return;
+    const tokenId = getCurrentRefreshTokenId(ctx);
+    if (tokenId) {
+      void (async () => {
+        if (!(await refreshTokenReuseStore.hasConflict(tokenId, grantId))) {
+          return;
+        }
+        await Promise.all([
+          (async () => {
+            if (await refreshTokenReuseStore.claimCleanup(grantId)) {
+              await refreshTokenReuseStore.revokeGrantFamily(grantId);
+            }
+          })(),
+          (async () => {
+            if (await refreshTokenReuseStore.claimAudit(tokenId)) {
+              await auditRefreshTokenReuse(
+                params.eventRepository,
+                params.clientRepository,
+                auditContext,
+              );
+            }
+          })(),
+        ]);
+      })().catch(() => {
+        incrementMetricSafely(
+          params.metrics,
+          'refresh_token_reuse_revocation_failure_total',
+          { tenantCode: params.tenantCode },
+        );
+      });
+    }
+  });
+  registerConcurrentRefreshTokenReuseRevocation({
+    provider,
+    refreshTokenReuseStore,
+    eventRepository: params.eventRepository,
+    clientRepository: params.clientRepository,
+    metrics: params.metrics,
+    tenantCode: params.tenantCode,
   });
   registerClientAuthenticationFailureAudit({
     provider,
@@ -159,6 +203,97 @@ export async function createOidcProvider(
   });
 
   return provider;
+}
+
+function registerConcurrentRefreshTokenReuseRevocation(params: {
+  provider: Provider;
+  refreshTokenReuseStore: RefreshTokenReuseStore;
+  eventRepository: EventRepository;
+  clientRepository: ClientRepository;
+  metrics: OperationalMetricsPort;
+  tenantCode: string;
+}): void {
+  params.provider.on('grant.success', (ctx: any) => {
+    if (!isRefreshTokenGrantRequest(ctx)) return;
+    const grantId = getRefreshTokenGrantId(ctx);
+    if (!grantId) return;
+
+    void (async () => {
+      if (
+        (await params.refreshTokenReuseStore.hasGrantConflict(grantId)) &&
+        (await params.refreshTokenReuseStore.claimCleanup(grantId))
+      ) {
+        await params.refreshTokenReuseStore.revokeGrantFamily(grantId);
+      }
+    })().catch(() => {
+      incrementMetricSafely(
+        params.metrics,
+        'refresh_token_reuse_revocation_failure_total',
+        { tenantCode: params.tenantCode },
+      );
+    });
+  });
+
+  params.provider.on('grant.error', (ctx: any) => {
+    if (!isRefreshTokenGrantRequest(ctx)) return;
+    const refreshToken = ctx?.oidc?.entities?.RefreshToken;
+    const grantId = refreshToken?.grantId;
+    const tokenId = refreshToken?.jti;
+    if (!grantId || !tokenId || !refreshToken) return;
+    const auditContext = captureRefreshTokenReuseAuditContext(ctx, grantId);
+
+    void (async () => {
+      if (
+        !(await params.refreshTokenReuseStore.hasConflict(tokenId, grantId))
+      ) {
+        return;
+      }
+      await Promise.all([
+        (async () => {
+          if (await params.refreshTokenReuseStore.claimCleanup(grantId)) {
+            await params.refreshTokenReuseStore.revokeGrantFamily(grantId);
+          }
+        })(),
+        (async () => {
+          if (
+            auditContext &&
+            (await params.refreshTokenReuseStore.claimAudit(tokenId))
+          ) {
+            await auditRefreshTokenReuse(
+              params.eventRepository,
+              params.clientRepository,
+              auditContext,
+            );
+          }
+        })(),
+      ]);
+    })().catch(() => {
+      incrementMetricSafely(
+        params.metrics,
+        'refresh_token_reuse_revocation_failure_total',
+        { tenantCode: params.tenantCode },
+      );
+    });
+  });
+}
+
+function isRefreshTokenGrantRequest(ctx: any): boolean {
+  return (
+    ctx?.oidc?.route === 'token' &&
+    ctx?.oidc?.params?.grant_type === 'refresh_token'
+  );
+}
+
+function getRefreshTokenGrantId(ctx: any): string | null {
+  const grantId =
+    ctx?.oidc?.entities?.RefreshToken?.grantId ??
+    ctx?.oidc?.entities?.RotatedRefreshToken?.grantId;
+  return typeof grantId === 'string' && grantId.length > 0 ? grantId : null;
+}
+
+function getCurrentRefreshTokenId(ctx: any): string | null {
+  const tokenId = ctx?.oidc?.entities?.RefreshToken?.jti;
+  return typeof tokenId === 'string' && tokenId.length > 0 ? tokenId : null;
 }
 
 function isRefreshTokenReuseRevocation(ctx: any): boolean {
@@ -173,42 +308,77 @@ function isRefreshTokenReuseRevocation(ctx: any): boolean {
 async function auditRefreshTokenReuse(
   eventRepository: EventRepository,
   clientRepository: ClientRepository,
-  ctx: any,
-  grantId: string,
+  context: RefreshTokenReuseAuditContext,
 ): Promise<void> {
-  const tenantId = ctx?.req?.tenant?.id;
-  if (!tenantId) return;
-
-  const refreshToken = ctx?.oidc?.entities?.RefreshToken;
-  const publicClientId = getSafePublicClientId(
-    ctx?.oidc?.client?.clientId ?? refreshToken?.clientId,
-  );
-  const client = publicClientId
-    ? await clientRepository.findByClientId(tenantId, publicClientId)
+  const client = context.publicClientId
+    ? await clientRepository.findByClientId(
+        context.tenantId,
+        context.publicClientId,
+      )
     : null;
   await eventRepository.save(
     new EventModel({
-      tenantId,
-      userId: refreshToken?.accountId ?? null,
+      tenantId: context.tenantId,
+      userId: context.accountId,
       clientId: client?.id ?? null,
       category: 'SECURITY',
       severity: 'WARN',
       action: 'TOKEN_REVOKED',
       resourceType: 'grant',
-      resourceId: truncateAuditText(grantId, EVENT_RESOURCE_ID_MAX_LENGTH),
+      resourceId: truncateAuditText(
+        context.grantId,
+        EVENT_RESOURCE_ID_MAX_LENGTH,
+      ),
       success: false,
       reason: 'RefreshTokenReuseDetected',
-      ip: getSafeIpBuffer(ctx),
-      userAgent: getSafeUserAgent(ctx),
-      correlationId: getSafeCorrelationId(ctx),
+      ip: context.ip,
+      userAgent: context.userAgent,
+      correlationId: context.correlationId,
       metadata: {
         grantType: 'refresh_token',
         action: 'revoke_grant',
-        rotations: refreshToken?.rotations ?? null,
+        rotations: context.rotations,
       },
       occurredAt: new Date(),
     }),
   );
+}
+
+type RefreshTokenReuseAuditContext = {
+  tenantId: string;
+  grantId: string;
+  accountId: string | null;
+  publicClientId: string | null;
+  rotations: number | null;
+  ip: Buffer | null;
+  userAgent: string | null;
+  correlationId: string | null;
+};
+
+function captureRefreshTokenReuseAuditContext(
+  ctx: any,
+  grantId: string,
+): RefreshTokenReuseAuditContext | null {
+  const tenantId = ctx?.req?.tenant?.id;
+  if (typeof tenantId !== 'string' || tenantId.length === 0) return null;
+  const refreshToken = ctx?.oidc?.entities?.RefreshToken;
+  const accountId =
+    typeof refreshToken?.accountId === 'string' ? refreshToken.accountId : null;
+  const rotations =
+    typeof refreshToken?.rotations === 'number' ? refreshToken.rotations : null;
+
+  return {
+    tenantId,
+    grantId,
+    accountId,
+    publicClientId: getSafePublicClientId(
+      ctx?.oidc?.client?.clientId ?? refreshToken?.clientId,
+    ),
+    rotations,
+    ip: getSafeIpBuffer(ctx),
+    userAgent: getSafeUserAgent(ctx),
+    correlationId: getSafeCorrelationId(ctx),
+  };
 }
 
 function registerClientAuthenticationFailureAudit(params: {

@@ -357,7 +357,9 @@ async function seedMasterData(
   `);
 }
 
-export async function createApiE2eFixture(): Promise<ApiE2eFixture> {
+export async function createApiE2eFixture(
+  options: { initializePersistence?: boolean } = {},
+): Promise<ApiE2eFixture> {
   const env = loadTestEnvironment();
   await ensurePostgresDatabase(env);
   applyTestEnvironment(env);
@@ -432,7 +434,9 @@ export async function createApiE2eFixture(): Promise<ApiE2eFixture> {
     }
   };
 
-  await initializePersistence();
+  if (options.initializePersistence !== false) {
+    await initializePersistence();
+  }
 
   return {
     app,

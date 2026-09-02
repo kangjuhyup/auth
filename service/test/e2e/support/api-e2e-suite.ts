@@ -2,6 +2,8 @@ import { createHash, createHmac, createPublicKey, verify } from 'node:crypto';
 import request from 'supertest';
 import { ConsentModel } from '@domain/models/consent';
 import { UserIdentityModel } from '@domain/models/user-identity';
+import { RedisAdapter } from '@infrastructure/oidc-provider/adapters/redis-oidc.adapter';
+import { RefreshTokenReuseStore } from '@infrastructure/oidc-provider/refresh-token-reuse.store';
 import { EventRepositoryImpl } from '@infrastructure/repositories/event.repository.impl';
 import { ApiE2eFixture, createApiE2eFixture } from './api-test-app';
 import { cleanupE2eResources } from './e2e-cleanup';
@@ -629,6 +631,48 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
       throw new Error('Expected invalid_client audit event was not persisted');
+    }
+
+    async function waitForRefreshTokenReuseAudit(tenantId: string) {
+      const repository = new EventRepositoryImpl(fixture.orm.em);
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        const events = await fixture.runInRequestContext(() =>
+          repository.list({
+            tenantId,
+            page: 1,
+            limit: 50,
+            action: 'TOKEN_REVOKED',
+          }),
+        );
+        const event = events.items.find(
+          (candidate) => candidate.reason === 'RefreshTokenReuseDetected',
+        );
+        if (event) return event;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      throw new Error('Expected refresh token reuse audit event');
+    }
+
+    async function waitForRefreshTokenFamilyRemoval(
+      tenantId: string,
+      grantId: string,
+    ): Promise<void> {
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        const [row] = await fixture.orm.em
+          .getConnection()
+          .execute<
+            Array<{ count: string }>
+          >(`select count(*) as "count" from "oidc_model" where "tenant_id" = ? and ("grant_id" = ? or ("kind" = 'Grant' and "id" = ?))`, [tenantId, grantId, grantId]);
+        const redisKeys = await fixture.redis.keys(
+          `oidc:${tenantId}:*:grant:${grantId}`,
+        );
+        const activeRedisKeys = redisKeys.filter(
+          (key) => !key.includes(':reuse-conflict:grant:'),
+        );
+        if (Number(row.count) === 0 && activeRedisKeys.length === 0) return;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      throw new Error('Expected refresh token family to be removed');
     }
 
     async function revokeAccessToken(
@@ -1461,6 +1505,170 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
         expect(discovery.body.introspection_endpoint).toEqual(
           expect.stringMatching(/\/t\/acme\/oidc\/token\/introspection$/),
         );
+      });
+
+      it('동일한 rotating refresh token의 동시 재사용은 한 요청만 성공시키고 token family를 폐기한다', async () => {
+        const adminToken = await loginAsAdmin();
+        const tenant = await createTenant(adminToken, 'acme', 'Acme Corp');
+        await request(fixture.app.getHttpServer())
+          .post('/t/acme/admin/scopes')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({
+            name: 'offline_access',
+            displayName: 'Offline access',
+            claimKeys: [],
+            enabled: true,
+          })
+          .expect(201);
+        const client = await createClient(
+          adminToken,
+          'acme',
+          'concurrent-refresh-web',
+          {
+            grantTypes: ['authorization_code', 'refresh_token'],
+            scope: 'openid offline_access',
+            skipConsent: false,
+          },
+        );
+        const user = await signupUser('acme', {
+          username: 'concurrent-refresh-user',
+          password: 'Password123!',
+        });
+        const login = await loginUserViaOidc({
+          tenantCode: 'acme',
+          clientId: client.clientId,
+          redirectUri: client.redirectUri,
+          username: user.username,
+          password: user.password,
+          scope: 'openid offline_access',
+          prompt: 'consent',
+        });
+        expect(login.refreshToken).toEqual(expect.any(String));
+
+        const provider = await fixture.registry.get('acme');
+        const originalRefreshToken = await provider.RefreshToken.find(
+          login.refreshToken!,
+        );
+        expect(originalRefreshToken).toBeDefined();
+        const grantId = originalRefreshToken!.grantId;
+        if (!grantId) throw new Error('Expected refresh token grantId');
+        let cacheBackfillSpy: jest.SpyInstance | undefined;
+        let redisFencePropagationSpy: jest.SpyInstance | undefined;
+        if (process.env.OIDC_ADAPTER_DRIVER === 'hybrid') {
+          await fixture.redis.del(
+            `oidc:${tenant.id}:RefreshToken:${originalRefreshToken!.jti}`,
+          );
+          cacheBackfillSpy = jest
+            .spyOn(RedisAdapter.prototype, 'cacheById')
+            .mockRejectedValue(new Error('simulated refresh token cache miss'));
+          redisFencePropagationSpy = jest
+            .spyOn(RedisAdapter.prototype, 'markRefreshTokenReuseConflict')
+            .mockRejectedValue(
+              new Error('simulated Redis fence write failure'),
+            );
+        }
+        const secondFixture = await createApiE2eFixture({
+          initializePersistence: false,
+        });
+        const originalRevokeGrantFamily =
+          RefreshTokenReuseStore.prototype.revokeGrantFamily;
+        let releaseCleanup!: () => void;
+        const cleanupGate = new Promise<void>((resolve) => {
+          releaseCleanup = resolve;
+        });
+        const revokeGrantFamilySpy = jest
+          .spyOn(RefreshTokenReuseStore.prototype, 'revokeGrantFamily')
+          .mockImplementation(async function (
+            this: RefreshTokenReuseStore,
+            id,
+          ) {
+            await cleanupGate;
+            return originalRevokeGrantFamily.call(this, id);
+          });
+
+        const exchange = (server: unknown) =>
+          request(server as any)
+            .post('/t/acme/oidc/token')
+            .type('form')
+            .send({
+              grant_type: 'refresh_token',
+              client_id: client.clientId,
+              refresh_token: login.refreshToken,
+            });
+        try {
+          const responses = await Promise.all([
+            exchange(fixture.app.getHttpServer()),
+            exchange(secondFixture.app.getHttpServer()),
+          ]);
+          const winner = responses.find((response) => response.status === 200);
+          const loser = responses.find((response) => response.status === 400);
+
+          expect(responses.map((response) => response.status).sort()).toEqual([
+            200, 400,
+          ]);
+          expect(winner?.body.access_token).toEqual(expect.any(String));
+          expect(winner?.body.refresh_token).toEqual(expect.any(String));
+          expect(loser?.body).toMatchObject({ error: 'invalid_grant' });
+
+          await request(fixture.app.getHttpServer())
+            .post('/t/acme/oidc/token')
+            .type('form')
+            .send({
+              grant_type: 'refresh_token',
+              client_id: client.clientId,
+              refresh_token: winner!.body.refresh_token,
+            })
+            .expect(400)
+            .expect(({ body }) => {
+              expect(body).toMatchObject({ error: 'invalid_grant' });
+            });
+          await expect(
+            provider.AccessToken.find(winner!.body.access_token as string),
+          ).resolves.toBeUndefined();
+          expect(
+            revokeGrantFamilySpy.mock.calls.filter(([id]) => id === grantId),
+          ).toHaveLength(1);
+
+          releaseCleanup();
+
+          await waitForRefreshTokenReuseAudit(tenant.id);
+          await waitForRefreshTokenFamilyRemoval(tenant.id, grantId);
+
+          const events = await fixture.runInRequestContext(() =>
+            new EventRepositoryImpl(fixture.orm.em).list({
+              tenantId: tenant.id,
+              page: 1,
+              limit: 50,
+              action: 'TOKEN_REVOKED',
+            }),
+          );
+          expect(
+            events.items.filter(
+              (event) => event.reason === 'RefreshTokenReuseDetected',
+            ),
+          ).toHaveLength(1);
+          await expect(
+            provider.AccessToken.find(winner!.body.access_token as string),
+          ).resolves.toBeUndefined();
+          await expect(
+            provider.RefreshToken.find(winner!.body.refresh_token as string),
+          ).resolves.toBeUndefined();
+          await expect(provider.Grant.find(grantId)).resolves.toBeUndefined();
+          const remainingGrantKeys = await fixture.redis.keys(
+            `oidc:${tenant.id}:*:grant:${grantId}`,
+          );
+          expect(
+            remainingGrantKeys.every((key) =>
+              key.includes(':reuse-conflict:grant:'),
+            ),
+          ).toBe(true);
+        } finally {
+          releaseCleanup();
+          revokeGrantFamilySpy.mockRestore();
+          redisFencePropagationSpy?.mockRestore();
+          cacheBackfillSpy?.mockRestore();
+          await secondFixture.close();
+        }
       });
 
       it('소유 resource의 user access token만 안정적인 introspection metadata를 반환한다', async () => {

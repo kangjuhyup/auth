@@ -1,11 +1,12 @@
 import type { Adapter, AdapterPayload } from 'oidc-provider';
 import { RedisAdapter } from './redis-oidc.adapter';
+import { OIDC_GRANT_BOUND_KINDS } from '../refresh-token-reuse.constants';
 
 // Hybrid 내부에서 “cache”를 RedisAdapter로 확정해서
 // resolveId/negative cache 같은 확장 메서드를 활용합니다.
 type HybridParams = {
   kind: string;
-  rdb: Adapter;
+  rdb: Adapter & { hasGrantConflict(grantId: string): Promise<boolean> };
   cache: RedisAdapter;
 
   // upsert에서 Redis TTL을 약간 줄여 만료 경계 문제 방지
@@ -21,7 +22,9 @@ type HybridParams = {
 
 export class HybridAdapter implements Adapter {
   private readonly kind: string;
-  private readonly rdb: Adapter;
+  private readonly rdb: Adapter & {
+    hasGrantConflict(grantId: string): Promise<boolean>;
+  };
   private readonly cache: RedisAdapter;
 
   private readonly ttlMargin: number;
@@ -53,10 +56,30 @@ export class HybridAdapter implements Adapter {
       const ttl = this.adjustTtl(expiresIn);
       await this.cache.upsert(id, payload, ttl);
     });
+
+    if (
+      typeof payload.grantId === 'string' &&
+      OIDC_GRANT_BOUND_KINDS.includes(this.kind as any) &&
+      !(await this.rdb.find(id))
+    ) {
+      await this.bestEffort(() => this.cache.destroy(id));
+    }
   }
 
   async consume(id: string): Promise<void> {
-    await this.rdb.consume(id);
+    try {
+      await this.rdb.consume(id);
+    } catch (error) {
+      if (this.kind === 'RefreshToken') {
+        await this.bestEffort(async () => {
+          const token = await this.cache.find(id);
+          if (typeof token?.grantId === 'string') {
+            await this.cache.markRefreshTokenReuseConflict(id, token.grantId);
+          }
+        });
+      }
+      throw error;
+    }
 
     // consume은 consumed=true 상태가 중요.
     // 캐시 일관성을 위해 “삭제”보다 “consume 반영”이 더 정확하지만,
@@ -103,7 +126,13 @@ export class HybridAdapter implements Adapter {
       return await this.cache.find(id);
     }, undefined);
 
-    if (cached) return cached;
+    if (cached) {
+      if (await this.isGrantConflictFenced(cached)) {
+        await this.bestEffort(() => this.cache.destroy(id));
+        return undefined;
+      }
+      return cached;
+    }
 
     // 2) cache miss -> RDB 조회
     const data = await this.rdb.find(id);
@@ -143,7 +172,11 @@ export class HybridAdapter implements Adapter {
       return await this.cache.findByUid(uid);
     }, undefined);
 
-    if (cachedPayload) return cachedPayload;
+    if (cachedPayload) {
+      return (await this.isGrantConflictFenced(cachedPayload))
+        ? undefined
+        : cachedPayload;
+    }
 
     // 2) 완전 cache miss -> RDB 조회
     const data = await (this.rdb as any).findByUid(uid);
@@ -178,7 +211,11 @@ export class HybridAdapter implements Adapter {
       return await this.cache.findByUserCode(userCode);
     }, undefined);
 
-    if (cachedPayload) return cachedPayload;
+    if (cachedPayload) {
+      return (await this.isGrantConflictFenced(cachedPayload))
+        ? undefined
+        : cachedPayload;
+    }
 
     // 2) RDB 조회
     const data = await (this.rdb as any).findByUserCode(userCode);
@@ -200,6 +237,16 @@ export class HybridAdapter implements Adapter {
   private adjustTtl(expiresIn?: number): number | undefined {
     if (!expiresIn || expiresIn <= 0) return undefined;
     return Math.max(1, Math.floor(expiresIn - this.ttlMargin));
+  }
+
+  private async isGrantConflictFenced(
+    payload: AdapterPayload,
+  ): Promise<boolean> {
+    return (
+      typeof payload.grantId === 'string' &&
+      OIDC_GRANT_BOUND_KINDS.includes(this.kind as any) &&
+      (await this.rdb.hasGrantConflict(payload.grantId))
+    );
   }
 
   private async bestEffort(fn: () => Promise<void>): Promise<void> {

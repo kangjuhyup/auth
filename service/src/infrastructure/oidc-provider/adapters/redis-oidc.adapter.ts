@@ -1,8 +1,54 @@
 import type { Adapter, AdapterPayload } from 'oidc-provider';
 import type { Redis } from 'ioredis';
 import type { OidcSessionIndexStore } from '../session/oidc-session-index.store';
+import { createOidcInvalidGrantError } from '../oidc-provider.loader';
+import {
+  OIDC_GRANT_BOUND_KINDS,
+  redisRefreshTokenReuseConflictKey,
+  redisRefreshTokenReuseGrantConflictKey,
+} from '../refresh-token-reuse.constants';
 
 const NEG = '__nil__';
+
+const CONSUME_ONCE_SCRIPT = `
+local raw = redis.call('GET', KEYS[1])
+if not raw then
+  return {0, ''}
+end
+
+local decoded, stored = pcall(cjson.decode, raw)
+if not decoded or type(stored) ~= 'table' then
+  return {-2, ''}
+end
+
+local grantId = stored.meta and stored.meta.grantId
+if type(grantId) == 'string' and string.len(grantId) > 0 then
+  if redis.call('GET', KEYS[3] .. grantId) then
+    return {-1, grantId}
+  end
+end
+
+if stored.consumedAt ~= nil and stored.consumedAt ~= cjson.null then
+  if type(grantId) == 'string' and string.len(grantId) > 0 then
+    redis.call('SET', KEYS[2], grantId)
+    redis.call('SET', KEYS[3] .. grantId, ARGV[2])
+    return {-1, grantId}
+  end
+  return {-1, ''}
+end
+
+stored.consumedAt = ARGV[1]
+local ttl = redis.call('PTTL', KEYS[1])
+if ttl >= 0 then
+  redis.call('SET', KEYS[1], cjson.encode(stored), 'PX', math.max(ttl, 1))
+elseif ttl == -1 then
+  redis.call('SET', KEYS[1], cjson.encode(stored))
+else
+  return {0, ''}
+end
+
+return {1, ''}
+`;
 
 type StoredMeta = {
   uid?: string | null;
@@ -110,6 +156,15 @@ export class RedisAdapter implements Adapter {
     }
 
     await multi.exec();
+    if (
+      typeof nextMeta.grantId === 'string' &&
+      OIDC_GRANT_BOUND_KINDS.includes(this.kind as any) &&
+      (await this.redis.get(
+        redisRefreshTokenReuseGrantConflictKey(this.tenantId, nextMeta.grantId),
+      ))
+    ) {
+      await this.destroy(id);
+    }
     if (this.kind === 'Session') {
       const expiresAt = ttl ? new Date(Date.now() + ttl * 1000) : null;
       await this.sessionIndex?.upsertSession(id, payload, expiresAt);
@@ -121,6 +176,24 @@ export class RedisAdapter implements Adapter {
     if (!stored) return undefined;
 
     const consumed = !!stored.consumedAt;
+    if (
+      this.kind === 'RefreshToken' &&
+      consumed &&
+      typeof stored.meta.grantId === 'string'
+    ) {
+      await this.markRefreshTokenReuseConflict(id, stored.meta.grantId);
+    } else if (
+      typeof stored.meta.grantId === 'string' &&
+      OIDC_GRANT_BOUND_KINDS.includes(this.kind as any) &&
+      (await this.redis.get(
+        redisRefreshTokenReuseGrantConflictKey(
+          this.tenantId,
+          stored.meta.grantId,
+        ),
+      ))
+    ) {
+      return undefined;
+    }
     return {
       ...(stored.payload as any),
       ...(consumed ? { consumed: true } : undefined),
@@ -140,22 +213,33 @@ export class RedisAdapter implements Adapter {
   }
 
   async consume(id: string): Promise<void> {
-    const k = this.key(id);
-    const raw = await this.redis.get(k);
-    if (!raw) return;
-
-    const parsed = safeJsonParse<Stored>(raw);
-    if (!parsed?.payload || !parsed.meta) return;
-
-    const ttl = await this.redis.ttl(k); // 남은 TTL 보존
-
-    parsed.consumedAt = new Date().toISOString();
-
-    if (ttl && ttl > 0) {
-      await this.redis.set(k, JSON.stringify(parsed), 'EX', ttl);
-    } else {
-      await this.redis.set(k, JSON.stringify(parsed));
+    const result = (await this.redis.eval(
+      CONSUME_ONCE_SCRIPT,
+      3,
+      this.key(id),
+      redisRefreshTokenReuseConflictKey(this.tenantId, id),
+      redisRefreshTokenReuseGrantConflictKey(this.tenantId, ''),
+      new Date().toISOString(),
+      id,
+    )) as [number | string, string?];
+    const consumed = Number(result[0]);
+    if (consumed !== 1) {
+      throw await createOidcInvalidGrantError('token already consumed');
     }
+  }
+
+  async markRefreshTokenReuseConflict(
+    tokenId: string,
+    grantId: string,
+  ): Promise<void> {
+    await this.redis.set(
+      redisRefreshTokenReuseConflictKey(this.tenantId, tokenId),
+      grantId,
+    );
+    await this.redis.set(
+      redisRefreshTokenReuseGrantConflictKey(this.tenantId, grantId),
+      tokenId,
+    );
   }
 
   async destroy(id: string): Promise<void> {

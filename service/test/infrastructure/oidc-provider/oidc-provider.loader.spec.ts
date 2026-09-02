@@ -40,4 +40,35 @@ describe('loadOidcProviderConstructor', () => {
 
     expect(importFn).toHaveBeenCalledWith('oidc-provider');
   });
+
+  it('consume 충돌을 표준 invalid_grant 오류로 생성한다', async () => {
+    class InvalidGrant extends Error {
+      readonly error = 'invalid_grant';
+
+      readonly statusCode = 400;
+
+      readonly error_detail: string;
+
+      constructor(detail: string) {
+        super('invalid_grant');
+        this.error_detail = detail;
+      }
+    }
+    const importFn = jest.fn().mockResolvedValue({
+      default: jest.fn(),
+      errors: { InvalidGrant },
+    });
+    (globalThis as any).Function = jest.fn().mockImplementation(() => importFn);
+
+    const { createOidcInvalidGrantError } = (await loadModule()) as any;
+
+    const error = await createOidcInvalidGrantError('token already consumed');
+
+    expect(error).toMatchObject({
+      error: 'invalid_grant',
+      statusCode: 400,
+      message: 'invalid_grant',
+      error_detail: 'token already consumed',
+    });
+  });
 });

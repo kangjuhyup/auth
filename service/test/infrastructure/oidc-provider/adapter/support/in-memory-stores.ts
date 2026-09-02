@@ -109,7 +109,14 @@ export class InMemoryRedis {
     return entry.value;
   }
 
-  async set(key: string, value: string, ...args: unknown[]): Promise<'OK'> {
+  async set(
+    key: string,
+    value: string,
+    ...args: unknown[]
+  ): Promise<'OK' | null> {
+    if (args.includes('NX') && this.getEntry(key)) {
+      return null;
+    }
     const expireSeconds = parseExpireArgs(args);
 
     this.entries.set(key, {
@@ -122,6 +129,44 @@ export class InMemoryRedis {
     });
 
     return 'OK';
+  }
+
+  async eval(
+    _script: string,
+    _numberOfKeys: number,
+    key: string,
+    conflictKey: string,
+    grantConflictKeyPrefix: string,
+    consumedAt: string,
+    tokenId: string,
+  ): Promise<[number, string]> {
+    const entry = this.getEntry(key);
+    if (!entry || entry.type !== 'string') {
+      return [0, ''];
+    }
+
+    const stored = JSON.parse(entry.value) as {
+      consumedAt?: string | null;
+      meta?: { grantId?: string | null };
+    };
+    const grantId = stored.meta?.grantId ?? '';
+    if (grantId && this.getEntry(`${grantConflictKeyPrefix}${grantId}`)) {
+      return [-1, grantId];
+    }
+    if (stored.consumedAt) {
+      if (grantId) {
+        this.entries.set(conflictKey, { type: 'string', value: grantId });
+        this.entries.set(`${grantConflictKeyPrefix}${grantId}`, {
+          type: 'string',
+          value: tokenId,
+        });
+      }
+      return [-1, grantId];
+    }
+
+    stored.consumedAt = consumedAt;
+    entry.value = JSON.stringify(stored);
+    return [1, ''];
   }
 
   async expire(key: string, seconds: number): Promise<number> {
@@ -250,6 +295,16 @@ export class LightweightEntityManager {
     return new LightweightEntityManager(this.store);
   }
 
+  getConnection(): { execute: () => Promise<[]> } {
+    return { execute: async () => [] };
+  }
+
+  async transactional<T>(
+    callback: (em: LightweightEntityManager) => Promise<T>,
+  ): Promise<T> {
+    return callback(this);
+  }
+
   async findOne(
     entity: typeof OidcModelOrmEntity | typeof OidcSessionIndexOrmEntity,
     where: Where,
@@ -290,6 +345,39 @@ export class LightweightEntityManager {
 
   async flush(): Promise<void> {}
 
+  async upsert(
+    EntityClass: typeof OidcModelOrmEntity | typeof OidcSessionIndexOrmEntity,
+    data: Partial<OidcModelOrmEntity & OidcSessionIndexOrmEntity>,
+  ): Promise<OidcModelOrmEntity | OidcSessionIndexOrmEntity> {
+    const rows = this.rowsFor(EntityClass);
+    const existing = rows.find(
+      (row) =>
+        row.tenantId === data.tenantId &&
+        (row as any).kind === data.kind &&
+        (row as any).id === data.id,
+    );
+    if (existing) {
+      Object.assign(existing, data);
+      return existing;
+    }
+    return this.create(EntityClass, data);
+  }
+
+  async insert(
+    EntityClass: typeof OidcModelOrmEntity | typeof OidcSessionIndexOrmEntity,
+    data: Partial<OidcModelOrmEntity & OidcSessionIndexOrmEntity>,
+  ): Promise<void> {
+    const rows = this.rowsFor(EntityClass);
+    const duplicate = rows.some(
+      (row) =>
+        row.tenantId === data.tenantId &&
+        (row as any).kind === data.kind &&
+        (row as any).id === data.id,
+    );
+    if (duplicate) throw new Error('duplicate');
+    this.create(EntityClass, data);
+  }
+
   async nativeDelete(
     entity: typeof OidcModelOrmEntity | typeof OidcSessionIndexOrmEntity,
     where: Where,
@@ -303,6 +391,18 @@ export class LightweightEntityManager {
       this.store.oidcModels = nextRows as OidcModelOrmEntity[];
     }
     return before - nextRows.length;
+  }
+
+  async nativeUpdate(
+    entity: typeof OidcModelOrmEntity | typeof OidcSessionIndexOrmEntity,
+    where: Where,
+    data: Where,
+  ): Promise<number> {
+    const rows = this.rowsFor(entity).filter((row) => matchesWhere(row, where));
+    for (const row of rows) {
+      Object.assign(row, data);
+    }
+    return rows.length;
   }
 
   private rowsFor(
