@@ -1,4 +1,5 @@
 import { URL } from 'node:url';
+import { evaluateCapacityMetrics } from './capacity.mjs';
 
 export const ENDPOINT_METRICS = Object.freeze({
   login: 'load_login_duration_ms',
@@ -40,6 +41,10 @@ function validFiniteNumber(
 
 function nonNegativeNumber(value) {
   return validFiniteNumber(value) ? value : 0;
+}
+
+function nonNegativeSafeInteger(value) {
+  return Number.isSafeInteger(value) && value >= 0 ? value : 0;
 }
 
 function metricValues(raw, name, { allowMissing = false } = {}) {
@@ -232,6 +237,49 @@ function safeSlo(input) {
   };
 }
 
+function evaluationSlo(input) {
+  const result = {};
+  for (const [name, maximum] of [
+    ['maxRequestFailureRateExclusive', 1],
+    ['maxCheckFailureRate', 1],
+    ['maxP95MsExclusive', Number.POSITIVE_INFINITY],
+    ['maxP99MsExclusive', Number.POSITIVE_INFINITY],
+  ]) {
+    if (validFiniteNumber(input?.[name], { max: maximum })) {
+      result[name] = input[name];
+    }
+  }
+  return result;
+}
+
+function safeCapacityMetrics(input) {
+  return {
+    requestFailureRate: validFiniteNumber(input?.requestFailureRate, { max: 1 })
+      ? input.requestFailureRate
+      : 0,
+    checkFailureRate: validFiniteNumber(input?.checkFailureRate, { max: 1 })
+      ? input.checkFailureRate
+      : 0,
+    p95Ms: nonNegativeNumber(input?.p95Ms),
+    p99Ms: nonNegativeNumber(input?.p99Ms),
+    endpointDurations: Object.fromEntries(
+      Object.keys(ENDPOINT_METRICS).map((endpoint) => {
+        const duration = input?.endpointDurations?.[endpoint];
+        return [
+          endpoint,
+          {
+            count: nonNegativeSafeInteger(duration?.count),
+            p95Ms: nonNegativeNumber(duration?.p95Ms),
+            p99Ms: nonNegativeNumber(duration?.p99Ms),
+          },
+        ];
+      }),
+    ),
+    serviceRestarted: input?.serviceRestarted === true,
+    dependencyErrors: nonNegativeSafeInteger(input?.dependencyErrors),
+  };
+}
+
 function emptyCapacityMetrics() {
   return {
     endpointDurations: Object.fromEntries(
@@ -319,7 +367,9 @@ export function sanitizeEnvironment(input) {
 
 export function renderSummaryMarkdown(report) {
   const environment = sanitizeEnvironment(report?.environment);
-  const metrics = report?.metrics ?? emptyCapacityMetrics();
+  const metrics = safeCapacityMetrics(
+    report?.metrics ?? emptyCapacityMetrics(),
+  );
   const slo = safeSlo(report?.slo);
   const verdict = report?.passed === true ? 'PASS' : 'FAIL';
   const environmentRows = Object.entries(environment)
@@ -334,6 +384,10 @@ export function renderSummaryMarkdown(report) {
   const firstViolation = Number.isSafeInteger(report?.firstViolationMinute)
     ? String(report.firstViolationMinute)
     : 'none';
+  const violations =
+    verdict === 'PASS'
+      ? []
+      : evaluateCapacityMetrics(metrics, evaluationSlo(report?.slo)).violations;
 
   return [
     '# Local capacity test summary',
@@ -357,6 +411,17 @@ export function renderSummaryMarkdown(report) {
     `| p95 latency | < ${slo.maxP95MsExclusive} ms |`,
     `| p99 latency | < ${slo.maxP99MsExclusive} ms |`,
     '',
+    '## Evaluated outcome',
+    '',
+    '| Metric | Value |',
+    '| --- | ---: |',
+    `| Request failure rate | ${metrics.requestFailureRate} |`,
+    `| Check failure rate | ${metrics.checkFailureRate} |`,
+    `| Overall p95 (ms) | ${metrics.p95Ms} |`,
+    `| Overall p99 (ms) | ${metrics.p99Ms} |`,
+    `| Service restarted | ${metrics.serviceRestarted ? 'yes' : 'no'} |`,
+    `| Dependency errors | ${metrics.dependencyErrors} |`,
+    '',
     '## Endpoint metrics',
     '',
     '| Endpoint | Count | p95 (ms) | p99 (ms) |',
@@ -365,7 +430,9 @@ export function renderSummaryMarkdown(report) {
     '',
     '## Violations',
     '',
-    ...(verdict === 'PASS' ? ['- none'] : ['- capacity constraints violated']),
+    ...(violations.length > 0
+      ? violations.map((violation) => `- ${violation}`)
+      : ['- none']),
     '',
   ].join('\n');
 }

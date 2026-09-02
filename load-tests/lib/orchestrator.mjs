@@ -483,12 +483,15 @@ function renderCapacitySection(capacity, soak, soakSeconds) {
     ({ phase, vus, evaluation }) =>
       `| ${phase} | ${vus} | ${evaluation.passed ? 'PASS' : 'FAIL'} |`,
   );
+  const soakConclusion = soak.ran
+    ? `Soak endurance: ${soak.passed ? 'PASS' : 'FAIL'} at ${soak.vus} VUs for ${soakSeconds} seconds`
+    : 'Soak endurance: NOT RUN (no probe-passing VU)';
   return [
     '## Capacity search',
     '',
     conclusion,
     `First failing level: ${firstFailure}`,
-    `Soak endurance: ${soak.passed ? 'PASS' : 'FAIL'} at ${soak.vus} VUs for ${soakSeconds} seconds`,
+    soakConclusion,
     '',
     '| Phase | VUs | SLO |',
     '| --- | ---: | --- |',

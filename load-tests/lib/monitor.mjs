@@ -387,6 +387,21 @@ async function dependencyCommand(deps, args, state) {
   return result.stdout;
 }
 
+function baselineDelta(state, name, value) {
+  const baselineName = `${name}Baseline`;
+  const lastName = `${name}Last`;
+  if (state[baselineName] === undefined) {
+    state[baselineName] = value;
+    state[lastName] = value;
+    return 0;
+  }
+  if (value < state[lastName]) {
+    throw new Error('Persistent dependency counter reset');
+  }
+  state[lastName] = value;
+  return value - state[baselineName];
+}
+
 async function collectSample(deps, outputPath, samples, dependencyState) {
   const composeRows = resolveComposeRows(
     await requiredCommand(
@@ -440,8 +455,9 @@ async function collectSample(deps, outputPath, samples, dependencyState) {
   if (postgresStdout !== undefined) {
     const postgres = parsePostgresStatus(postgresStdout);
     dependencyState.postgresConnections = postgres.connectionCount;
-    dependencyState.postgresPersistentErrors = Math.max(
-      dependencyState.postgresPersistentErrors,
+    dependencyState.postgresPersistentErrors = baselineDelta(
+      dependencyState,
+      'postgresPersistentErrors',
       postgres.persistentErrors,
     );
   }
@@ -463,8 +479,9 @@ async function collectSample(deps, outputPath, samples, dependencyState) {
   if (redisStdout !== undefined) {
     const redis = parseRedisStatus(redisStdout);
     dependencyState.redis = redis;
-    dependencyState.redisRejectedConnections = Math.max(
-      dependencyState.redisRejectedConnections,
+    dependencyState.redisRejectedConnections = baselineDelta(
+      dependencyState,
+      'redisRejectedConnections',
       redis.rejectedConnections,
     );
   }
@@ -472,6 +489,9 @@ async function collectSample(deps, outputPath, samples, dependencyState) {
     dependencyState.probeFailures +
     dependencyState.postgresPersistentErrors +
     dependencyState.redisRejectedConnections;
+  if (!Number.isSafeInteger(dependencyErrors)) {
+    throw new Error('Invalid dependency error count');
+  }
   const timestamp = deps.now().toISOString();
   const services = {};
   const rows = [];
@@ -529,8 +549,12 @@ export function startMonitor(deps, outputPath) {
   const dependencyState = {
     probeFailures: 0,
     postgresConnections: undefined,
+    postgresPersistentErrorsBaseline: undefined,
+    postgresPersistentErrorsLast: undefined,
     postgresPersistentErrors: 0,
     redis: undefined,
+    redisRejectedConnectionsBaseline: undefined,
+    redisRejectedConnectionsLast: undefined,
     redisRejectedConnections: 0,
   };
   let stopped = false;

@@ -196,6 +196,8 @@ test('sanitizeEnvironment constructs a fresh allowlisted object', () => {
 });
 
 test('renderSummaryMarkdown includes verdict, duration, SLOs, endpoints, and no secret', () => {
+  const passingMetrics = completeMetrics();
+  passingMetrics.load_request_failed = rate(1, 199);
   const markdown = renderSummaryMarkdown({
     passed: true,
     environment: {
@@ -209,7 +211,7 @@ test('renderSummaryMarkdown includes verdict, duration, SLOs, endpoints, and no 
       maxP95MsExclusive: 1000,
       maxP99MsExclusive: 2000,
     },
-    metrics: normalizeK6Summary(summary(completeMetrics())),
+    metrics: normalizeK6Summary(summary(passingMetrics)),
     violations: [fixtureSecret],
     firstViolationMinute: null,
   });
@@ -219,6 +221,23 @@ test('renderSummaryMarkdown includes verdict, duration, SLOs, endpoints, and no 
   assert.match(markdown, /\| SLO \| Limit \|/);
   assert.match(markdown, /\| Endpoint \| Count \| p95 \(ms\) \| p99 \(ms\) \|/);
   assert.match(markdown, /\| login \| 30 \| 101 \| 201 \|/);
+  assert.match(markdown, /Request failure rate \| < not recorded/);
+  assert.match(markdown, /Request failure rate \| 0\.005/);
+  assert.match(markdown, /## Violations\n\n- none/);
   assert.doesNotMatch(markdown, new RegExp(fixtureSecret));
-  assert.doesNotMatch(markdown, /0\.01 \|/);
+});
+
+test('renderSummaryMarkdown derives safe failure names instead of rendering raw failure data', () => {
+  const markdown = renderSummaryMarkdown({
+    passed: false,
+    environment: {
+      targetUrl: `http://auth-service:3000/health?body=${fixtureSecret}`,
+    },
+    metrics: normalizeK6Summary(summary(completeMetrics())),
+    violations: [fixtureSecret],
+    error: { body: fixtureSecret },
+  });
+
+  assert.match(markdown, /- request failure rate must be < 0\.01/);
+  assert.doesNotMatch(markdown, new RegExp(fixtureSecret));
 });

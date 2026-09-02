@@ -378,6 +378,9 @@ test('a valid failed SLO is capacity data and not a harness exception', async ()
     true,
   );
   assert.equal(report.soak.ran, false);
+  const markdown = harness.files.get(report.summaryPath);
+  assert.match(markdown, /Soak endurance: NOT RUN/);
+  assert.doesNotMatch(markdown, /FAIL at 0 VUs/);
 });
 
 test('soak reports the first minute with an exact auth-service restart sample', async () => {
@@ -438,6 +441,13 @@ test('soak fails closed without an explicit k6 process start boundary', async ()
 test('failed soak reports probe capacity separately and renders earliest violating metrics', async () => {
   const harness = createHarness({
     soakSummary: capacitySummary({ soakSeconds: 61, failingMinute: 0 }),
+    soakMonitorSamples: [
+      {
+        timestamp: '2026-09-02T01:02:04.004Z',
+        services: { 'auth-service': { restartCount: 1 } },
+        dependencyErrors: 7,
+      },
+    ],
   });
   const report = await runCapacityWorkflow(
     options({ maxVus: 10 }),
@@ -451,6 +461,16 @@ test('failed soak reports probe capacity separately and renders earliest violati
   assert.match(markdown, /Highest probe-passing level: at least 10 VUs/);
   assert.match(markdown, /Soak endurance: FAIL at 10 VUs for 61 seconds/);
   assert.match(markdown, /First violation minute: 0/);
+  assert.match(markdown, /\| Request failure rate \| 0 \|/);
+  assert.match(markdown, /\| Check failure rate \| 0 \|/);
+  assert.match(markdown, /\| Overall p95 \(ms\) \| 1500 \|/);
+  assert.match(markdown, /\| Overall p99 \(ms\) \| 1500 \|/);
+  assert.match(markdown, /\| Service restarted \| yes \|/);
+  assert.match(markdown, /\| Dependency errors \| 7 \|/);
+  assert.match(markdown, /- p95 latency must be < 1000 ms/);
+  assert.match(markdown, /- endpoint login p95 latency must be < 1000 ms/);
+  assert.match(markdown, /- service restarted/);
+  assert.match(markdown, /- dependency connection errors: 7/);
   assert.doesNotMatch(markdown, /survived/i);
 });
 

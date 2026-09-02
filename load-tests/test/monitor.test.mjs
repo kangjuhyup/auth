@@ -118,6 +118,10 @@ function monitorDependencies({
   missingService,
   postgresFailures = 0,
   redisFailures = 0,
+  postgresStatuses = ['7|2\n'],
+  redisStatuses = [
+    'connected_clients:4\r\nused_memory:8192\r\nrejected_connections:3\r\n',
+  ],
 } = {}) {
   const commands = [];
   const writes = [];
@@ -206,16 +210,25 @@ function monitorDependencies({
           postgresCalls += 1;
           if (postgresCalls <= postgresFailures)
             return { exitCode: 1, stdout: '', stderr: 'not retained' };
-          return { exitCode: 0, stdout: '7|2\n', stderr: '' };
+          const successIndex = postgresCalls - postgresFailures - 1;
+          return {
+            exitCode: 0,
+            stdout:
+              postgresStatuses[
+                Math.min(successIndex, postgresStatuses.length - 1)
+              ],
+            stderr: '',
+          };
         }
         if (args.includes('redis-cli')) {
           redisCalls += 1;
           if (redisCalls <= redisFailures)
             return { exitCode: 1, stdout: '', stderr: 'not retained' };
+          const successIndex = redisCalls - redisFailures - 1;
           return {
             exitCode: 0,
             stdout:
-              'connected_clients:4\r\nused_memory:8192\r\nrejected_connections:3\r\n',
+              redisStatuses[Math.min(successIndex, redisStatuses.length - 1)],
             stderr: '',
           };
         }
@@ -297,7 +310,40 @@ test('startMonitor ignores an active k6 one-off but rejects a missing target ser
   );
 });
 
-test('startMonitor counts recovered dependency probes and persistent errors', async () => {
+test('startMonitor treats nonzero lifetime counters on its first sample as the baseline', async () => {
+  const harness = monitorDependencies();
+  const monitor = startMonitor(
+    harness.deps,
+    'load-tests/results/run/docker-stats.csv',
+  );
+  await monitor.stop();
+  assert.equal(monitor.snapshot()[0].dependencyErrors, 0);
+});
+
+test('startMonitor reports later counter growth as a persistent baseline delta', async () => {
+  const harness = monitorDependencies({
+    postgresStatuses: ['7|2\n', '7|4\n', '7|4\n'],
+    redisStatuses: [
+      'connected_clients:4\r\nused_memory:8192\r\nrejected_connections:3\r\n',
+      'connected_clients:4\r\nused_memory:8192\r\nrejected_connections:6\r\n',
+      'connected_clients:4\r\nused_memory:8192\r\nrejected_connections:6\r\n',
+    ],
+  });
+  const monitor = startMonitor(
+    harness.deps,
+    'load-tests/results/run/docker-stats.csv',
+  );
+  await new Promise((resolve) => globalThis.setImmediate(resolve));
+  harness.tick();
+  harness.tick();
+  await monitor.stop();
+  assert.deepEqual(
+    monitor.snapshot().map(({ dependencyErrors }) => dependencyErrors),
+    [0, 5, 5],
+  );
+});
+
+test('startMonitor retains failed first probes after later baselines succeed', async () => {
   const harness = monitorDependencies({
     postgresFailures: 1,
     redisFailures: 1,
@@ -312,7 +358,20 @@ test('startMonitor counts recovered dependency probes and persistent errors', as
   const samples = monitor.snapshot();
   assert.equal(samples.length, 2);
   assert.equal(samples[0].dependencyErrors, 2);
-  assert.equal(samples[1].dependencyErrors, 7);
+  assert.equal(samples[1].dependencyErrors, 2);
   assert.equal(samples[1].postgresConnections, 7);
   assert.equal(samples[1].redis.connectedClients, 4);
+});
+
+test('startMonitor fails closed when a persistent dependency counter resets', async () => {
+  const harness = monitorDependencies({
+    postgresStatuses: ['7|2\n', '7|1\n'],
+  });
+  const monitor = startMonitor(
+    harness.deps,
+    'load-tests/results/run/docker-stats.csv',
+  );
+  await new Promise((resolve) => globalThis.setImmediate(resolve));
+  harness.tick();
+  await assert.rejects(monitor.stop(), /dependency counter reset/);
 });
