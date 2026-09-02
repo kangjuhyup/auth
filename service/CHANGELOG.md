@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.0](https://github.com/kangjuhyup/auth/compare/auth-service-v0.1.1...auth-service-v0.2.0) (2026-06-06)
+
+
+### Features
+
+* **admin-ui:** add user search filters ([134cccf](https://github.com/kangjuhyup/auth/commit/134cccf569b96fcec1b0bbc9660a1cbc9eb92a91))
+* **auth:** 관리자 세션 refresh 흐름 추가 ([9f5efbb](https://github.com/kangjuhyup/auth/commit/9f5efbbf7648acf5f5af7c2d163a401e8f3f6a7f))
+* **oidc:** 멀티로그인 세션 제한 집행 ([28e7774](https://github.com/kangjuhyup/auth/commit/28e77740dc0750aceefb165b827af40a37b7ac1b))
+* **service:** IdP 연결 관리 기능 추가 ([808bfce](https://github.com/kangjuhyup/auth/commit/808bfceca3bb89db5a7c1bdd9e493802db286226))
+* **service:** TOTP MFA 등록 흐름 추가 ([f17b322](https://github.com/kangjuhyup/auth/commit/f17b3220815aaf911674384643c82dee65aa9091))
+* **service:** 리프레시 토큰 보안 정책 적용 ([c5a8e2b](https://github.com/kangjuhyup/auth/commit/c5a8e2b1e47199be949e7dfe99dc471807f14f75))
+* **service:** 부팅 시 마이그레이션 실행 옵션 추가 ([601ef88](https://github.com/kangjuhyup/auth/commit/601ef88caf7897d8c59585202efa63cfa5d30330))
+* **service:** 사용자 보안 작업 감사 로그 추가 ([29ab234](https://github.com/kangjuhyup/auth/commit/29ab234cebf034052da6c44c7af35f604f49ef84))
+* **service:** 연락처 인증 흐름 추가 ([a54d3c5](https://github.com/kangjuhyup/auth/commit/a54d3c5fc4896bf3a58808507b24e2e0b80f5d60))
+
 ## [0.1.1](https://github.com/kangjuhyup/auth/compare/auth-service-v0.1.0...auth-service-v0.1.1) (2026-04-05)
 
 

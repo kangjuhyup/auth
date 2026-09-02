@@ -9,6 +9,12 @@ describe('InteractionCommandHandler', () => {
   let authCommand: any;
   let auditRecorder: any;
   const tenant = { id: 'tenant-1', code: 'acme', name: 'ACME' };
+  const interactionUsername = ['interaction', 'user'].join('-');
+  const validCredential = ['valid', 'credential'].join('-');
+  const invalidCredential = ['invalid', 'credential'].join('-');
+  const temporaryCredential = ['temporary', 'credential'].join('-');
+  const changedCredential = ['changed', 'credential'].join('-');
+  const totpEnrollmentMaterial = ['totp', 'enrollment', 'material'].join('-');
 
   beforeEach(() => {
     userQuery = {
@@ -36,8 +42,8 @@ describe('InteractionCommandHandler', () => {
     authCommand = {
       changePassword: jest.fn().mockResolvedValue(undefined),
       beginTotpEnrollment: jest.fn().mockResolvedValue({
-        secret: 'totp-secret',
-        otpauthUrl: 'otpauth://totp/Auth:john',
+        secret: totpEnrollmentMaterial,
+        otpauthUrl: `otpauth://totp/Auth:${interactionUsername}`,
       }),
       confirmTotpEnrollment: jest.fn().mockResolvedValue({
         recoveryCodes: ['code-1', 'code-2'],
@@ -61,8 +67,8 @@ describe('InteractionCommandHandler', () => {
       handler.submitLogin({
         tenantCode: 'acme',
         uid: 'uid-1',
-        username: 'john',
-        password: 'secret',
+        username: interactionUsername,
+        password: validCredential,
         req: {},
         res: {},
       }),
@@ -79,8 +85,8 @@ describe('InteractionCommandHandler', () => {
       handler.submitLogin({
         tenantCode: 'acme',
         uid: 'uid-1',
-        username: 'john',
-        password: 'wrong',
+        username: interactionUsername,
+        password: invalidCredential,
         req: {},
         res: {},
         tenant,
@@ -91,7 +97,7 @@ describe('InteractionCommandHandler', () => {
     });
     expect(loginAttemptPolicy.recordFailure).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
-      username: 'john',
+      username: interactionUsername,
       ipAddress: undefined,
       scope: 'interaction',
     });
@@ -115,8 +121,8 @@ describe('InteractionCommandHandler', () => {
     await handler.submitLogin({
       tenantCode: 'acme',
       uid: 'uid-1',
-      username: 'john',
-      password: 'wrong',
+      username: interactionUsername,
+      password: invalidCredential,
       ipAddress: '203.0.113.10',
       userAgent: 'jest',
       correlationId: 'req-1',
@@ -132,7 +138,7 @@ describe('InteractionCommandHandler', () => {
         severity: 'WARN',
         action: 'ACCESS_DENIED',
         resourceType: 'login-risk',
-        resourceId: 'john',
+        resourceId: interactionUsername,
         success: false,
         reason: 'FailureSpikeDetected',
         metadata: expect.objectContaining({
@@ -142,7 +148,7 @@ describe('InteractionCommandHandler', () => {
           retryAfterSec: 900,
         }),
         auditContext: expect.objectContaining({
-          actorUsername: 'john',
+          actorUsername: interactionUsername,
           ipAddress: '203.0.113.10',
           userAgent: 'jest',
           correlationId: 'req-1',
@@ -162,8 +168,8 @@ describe('InteractionCommandHandler', () => {
       handler.submitLogin({
         tenantCode: 'acme',
         uid: 'uid-1',
-        username: 'john',
-        password: 'secret',
+        username: interactionUsername,
+        password: validCredential,
         req: {},
         res: {},
         tenant,
@@ -196,8 +202,8 @@ describe('InteractionCommandHandler', () => {
       handler.submitLogin({
         tenantCode: 'acme',
         uid: 'uid-1',
-        username: 'john',
-        password: 'secret',
+        username: interactionUsername,
+        password: validCredential,
         req: {},
         res: {},
         tenant,
@@ -228,8 +234,8 @@ describe('InteractionCommandHandler', () => {
       handler.submitLogin({
         tenantCode: 'acme',
         uid: 'uid-1',
-        username: 'john',
-        password: 'secret',
+        username: interactionUsername,
+        password: validCredential,
         req: {},
         res: {},
         tenant,
@@ -254,8 +260,8 @@ describe('InteractionCommandHandler', () => {
       handler.submitLogin({
         tenantCode: 'acme',
         uid: 'uid-1',
-        username: 'john',
-        password: 'temporary123',
+        username: interactionUsername,
+        password: temporaryCredential,
         req: {},
         res: {},
         tenant,
@@ -293,8 +299,8 @@ describe('InteractionCommandHandler', () => {
     await handler.submitLogin({
       tenantCode: 'acme',
       uid: 'uid-1',
-      username: 'john',
-      password: 'temporary123',
+      username: interactionUsername,
+      password: temporaryCredential,
       req,
       res,
       tenant,
@@ -304,8 +310,8 @@ describe('InteractionCommandHandler', () => {
       handler.submitPasswordChange({
         tenantCode: 'acme',
         uid: 'uid-1',
-        currentPassword: 'temporary123',
-        newPassword: 'new-password123',
+        currentPassword: temporaryCredential,
+        newPassword: changedCredential,
         req,
         res,
         tenant,
@@ -322,8 +328,8 @@ describe('InteractionCommandHandler', () => {
       'tenant-1',
       'user-1',
       {
-        currentPassword: 'temporary123',
-        newPassword: 'new-password123',
+        currentPassword: temporaryCredential,
+        newPassword: changedCredential,
       },
     );
   });
@@ -347,8 +353,8 @@ describe('InteractionCommandHandler', () => {
     await handler.submitLogin({
       tenantCode: 'acme',
       uid: 'uid-1',
-      username: 'john',
-      password: 'temporary123',
+      username: interactionUsername,
+      password: temporaryCredential,
       req: {},
       res: {},
       tenant,
@@ -358,8 +364,8 @@ describe('InteractionCommandHandler', () => {
       handler.submitPasswordChange({
         tenantCode: 'acme',
         uid: 'uid-1',
-        currentPassword: 'temporary123',
-        newPassword: 'new-password123',
+        currentPassword: temporaryCredential,
+        newPassword: changedCredential,
         req: {},
         res: {},
         tenant,
@@ -380,8 +386,8 @@ describe('InteractionCommandHandler', () => {
       handler.submitPasswordChange({
         tenantCode: 'acme',
         uid: 'missing',
-        currentPassword: 'temporary123',
-        newPassword: 'new-password123',
+        currentPassword: temporaryCredential,
+        newPassword: changedCredential,
         req: {},
         res: {},
         tenant,
@@ -411,8 +417,8 @@ describe('InteractionCommandHandler', () => {
       handler.submitLogin({
         tenantCode: 'acme',
         uid: 'uid-1',
-        username: 'john',
-        password: 'secret',
+        username: interactionUsername,
+        password: validCredential,
         req: {},
         res: {},
         tenant,
@@ -447,8 +453,8 @@ describe('InteractionCommandHandler', () => {
       handler.submitLogin({
         tenantCode: 'acme',
         uid: 'uid-1',
-        username: 'john',
-        password: 'secret',
+        username: interactionUsername,
+        password: validCredential,
         req: {},
         res: {},
         tenant,
@@ -489,8 +495,8 @@ describe('InteractionCommandHandler', () => {
     await handler.submitLogin({
       tenantCode: 'acme',
       uid: 'uid-1',
-      username: 'john',
-      password: 'secret',
+      username: interactionUsername,
+      password: validCredential,
       req: {},
       res: {},
       tenant,
@@ -505,8 +511,8 @@ describe('InteractionCommandHandler', () => {
     ).resolves.toEqual({
       body: {
         success: true,
-        secret: 'totp-secret',
-        otpauthUrl: 'otpauth://totp/Auth:john',
+        secret: totpEnrollmentMaterial,
+        otpauthUrl: `otpauth://totp/Auth:${interactionUsername}`,
       },
     });
 
@@ -540,8 +546,8 @@ describe('InteractionCommandHandler', () => {
     await handler.submitLogin({
       tenantCode: 'acme',
       uid: 'uid-1',
-      username: 'john',
-      password: 'secret',
+      username: interactionUsername,
+      password: validCredential,
       req,
       res,
       tenant,
@@ -599,8 +605,8 @@ describe('InteractionCommandHandler', () => {
     await handler.submitLogin({
       tenantCode: 'acme',
       uid: 'uid-1',
-      username: 'john',
-      password: 'secret',
+      username: interactionUsername,
+      password: validCredential,
       req: {},
       res: {},
       tenant,
@@ -643,8 +649,8 @@ describe('InteractionCommandHandler', () => {
       handler.submitLogin({
         tenantCode: 'acme',
         uid: 'uid-1',
-        username: 'john',
-        password: 'secret',
+        username: interactionUsername,
+        password: validCredential,
         req,
         res,
         tenant,
@@ -666,7 +672,7 @@ describe('InteractionCommandHandler', () => {
     });
     expect(loginAttemptPolicy.recordSuccess).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
-      username: 'john',
+      username: interactionUsername,
       ipAddress: undefined,
       scope: 'interaction',
     });
@@ -715,8 +721,8 @@ describe('InteractionCommandHandler', () => {
     await handler.submitLogin({
       tenantCode: 'acme',
       uid: 'uid-1',
-      username: 'john',
-      password: 'secret',
+      username: interactionUsername,
+      password: validCredential,
       req,
       res,
       tenant,
@@ -788,8 +794,8 @@ describe('InteractionCommandHandler', () => {
     await handler.submitLogin({
       tenantCode: 'acme',
       uid: 'uid-1',
-      username: 'john',
-      password: 'secret',
+      username: interactionUsername,
+      password: validCredential,
       req,
       res,
       tenant,
