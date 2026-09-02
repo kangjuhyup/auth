@@ -13,14 +13,22 @@ function trend(count, p95, p99) {
   return { values: { count, 'p(95)': p95, 'p(99)': p99 } };
 }
 
+function rate(passes, fails) {
+  return {
+    type: 'rate',
+    contains: 'default',
+    values: { passes, fails, rate: passes / (passes + fails) },
+  };
+}
+
 function summary(metrics) {
   return { metrics };
 }
 
 function completeMetrics() {
   return {
-    load_request_failed: { values: { rate: 0.01, count: 2 } },
-    load_check_failed: { values: { rate: 0, count: 0 } },
+    load_request_failed: rate(2, 198),
+    load_check_failed: rate(0, 200),
     load_http_req_duration_ms: trend(200, 125, 250),
     load_login_duration_ms: trend(30, 101, 201),
     load_introspection_duration_ms: trend(31, 102, 202),
@@ -75,15 +83,32 @@ test('normalizeK6Summary rejects malformed aggregate metrics and dependency erro
     /Invalid load_http_req_duration_ms p\(95\)/,
   );
   assert.throws(
-    () => normalizeK6Summary(summary(completeMetrics()), { dependencyErrors: '2' }),
+    () =>
+      normalizeK6Summary(summary(completeMetrics()), { dependencyErrors: '2' }),
     /dependencyErrors must be a non-negative safe integer/,
+  );
+});
+
+test('normalizeK6Summary rejects inconsistent rates and malformed endpoint percentiles', () => {
+  const inconsistentRate = completeMetrics();
+  inconsistentRate.load_request_failed.values.rate = 0;
+  assert.throws(
+    () => normalizeK6Summary(summary(inconsistentRate)),
+    /Invalid load_request_failed rate structure/,
+  );
+
+  const malformedEndpoint = completeMetrics();
+  malformedEndpoint.load_login_duration_ms.values['p(99)'] = Number.NaN;
+  assert.throws(
+    () => normalizeK6Summary(summary(malformedEndpoint)),
+    /Invalid load_login_duration_ms p\(99\)/,
   );
 });
 
 test('normalizeSoakWindows creates ceil(soak seconds / 60) ordered zero-count buckets', () => {
   const raw = summary({
-    'load_request_failed{minute:0}': { values: { rate: 0.01, count: 1 } },
-    'load_check_failed{minute:0}': { values: { rate: 0, count: 0 } },
+    'load_request_failed{minute:0}': rate(1, 99),
+    'load_check_failed{minute:0}': rate(0, 100),
     'load_http_req_duration_ms{minute:0}': trend(2, 111, 222),
     'load_login_duration_ms{minute:0}': trend(1, 1, 2),
   });
@@ -117,15 +142,23 @@ test('normalizeSoakWindows creates ceil(soak seconds / 60) ordered zero-count bu
 
 test('normalizeSoakWindows rejects non-integer and out-of-range recognized minute tags', () => {
   assert.throws(
-    () => normalizeSoakWindows(summary({
-      'load_request_failed{minute:1.5}': { values: { rate: 1, count: 1 } },
-    }), { soakSeconds: 61 }),
+    () =>
+      normalizeSoakWindows(
+        summary({
+          'load_request_failed{minute:1.5}': rate(1, 0),
+        }),
+        { soakSeconds: 61 },
+      ),
     /Invalid soak minute tag: 1\.5/,
   );
   assert.throws(
-    () => normalizeSoakWindows(summary({
-      'load_login_duration_ms{minute:2}': trend(1, 1, 2),
-    }), { soakSeconds: 61 }),
+    () =>
+      normalizeSoakWindows(
+        summary({
+          'load_login_duration_ms{minute:2}': trend(1, 1, 2),
+        }),
+        { soakSeconds: 61 },
+      ),
     /Soak minute tag out of range: 2/,
   );
 });

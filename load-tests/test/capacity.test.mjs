@@ -7,8 +7,15 @@ import {
 } from '../lib/capacity.mjs';
 
 const completeEndpoints = Object.fromEntries(
-  ['login', 'introspection', 'userinfo', 'refresh', 'discovery', 'jwks', 'revoke']
-    .map((name) => [name, { count: 1, p95Ms: 100, p99Ms: 200 }]),
+  [
+    'login',
+    'introspection',
+    'userinfo',
+    'refresh',
+    'discovery',
+    'jwks',
+    'revoke',
+  ].map((name) => [name, { count: 1, p95Ms: 100, p99Ms: 200 }]),
 );
 
 function passingMetrics(overrides = {}) {
@@ -51,26 +58,39 @@ test('nextRefinementLevel returns a floored untested midpoint', () => {
 });
 
 test('nextRefinementLevel rejects an invalid bracket', () => {
-  assert.throws(() => nextRefinementLevel(20, 20), /invalid refinement bracket/);
-  assert.throws(() => nextRefinementLevel(-1, 20), /invalid refinement bracket/);
+  assert.throws(
+    () => nextRefinementLevel(20, 20),
+    /invalid refinement bracket/,
+  );
+  assert.throws(
+    () => nextRefinementLevel(-1, 20),
+    /invalid refinement bracket/,
+  );
 });
 
 test('evaluateCapacityMetrics accepts metrics strictly inside every default SLO', () => {
-  assert.deepEqual(evaluateCapacityMetrics(passingMetrics()), { passed: true, violations: [] });
+  assert.deepEqual(evaluateCapacityMetrics(passingMetrics()), {
+    passed: true,
+    violations: [],
+  });
 });
 
 test('evaluateCapacityMetrics rejects the strict one-percent boundary', () => {
-  const result = evaluateCapacityMetrics(passingMetrics({ requestFailureRate: 0.01 }));
+  const result = evaluateCapacityMetrics(
+    passingMetrics({ requestFailureRate: 0.01 }),
+  );
   assert.equal(result.passed, false);
   assert.match(result.violations.join('\n'), /request failure rate/);
 });
 
 test('evaluateCapacityMetrics rejects check failures and exclusive latency boundaries', () => {
-  const result = evaluateCapacityMetrics(passingMetrics({
-    checkFailureRate: 0.0001,
-    p95Ms: 1000,
-    p99Ms: 2000,
-  }));
+  const result = evaluateCapacityMetrics(
+    passingMetrics({
+      checkFailureRate: 0.0001,
+      p95Ms: 1000,
+      p99Ms: 2000,
+    }),
+  );
   assert.equal(result.passed, false);
   assert.deepEqual(result.violations, [
     'check failure rate must be <= 0',
@@ -92,16 +112,46 @@ test('evaluateCapacityMetrics rejects missing or empty metrics for every named e
 });
 
 test('evaluateCapacityMetrics rejects an endpoint without a positive count', () => {
-  const endpointDurations = { ...completeEndpoints, login: { p95Ms: 100, p99Ms: 200 } };
+  const endpointDurations = {
+    ...completeEndpoints,
+    login: { p95Ms: 100, p99Ms: 200 },
+  };
   const result = evaluateCapacityMetrics(passingMetrics({ endpointDurations }));
   assert.deepEqual(result.violations, ['endpoint login has no observations']);
 });
 
+test('evaluateCapacityMetrics enforces p95 and p99 SLOs for every observed endpoint', () => {
+  const endpointDurations = {
+    ...completeEndpoints,
+    login: { count: 1, p95Ms: 1000, p99Ms: 1999 },
+    refresh: { count: 1, p95Ms: 999, p99Ms: 2000 },
+  };
+  const result = evaluateCapacityMetrics(passingMetrics({ endpointDurations }));
+  assert.deepEqual(result.violations, [
+    'endpoint login p95 latency must be < 1000 ms',
+    'endpoint refresh p99 latency must be < 2000 ms',
+  ]);
+});
+
+test('evaluateCapacityMetrics fails closed for malformed observed endpoint percentiles', () => {
+  const endpointDurations = {
+    ...completeEndpoints,
+    login: { count: 1, p95Ms: undefined, p99Ms: Number.NaN },
+  };
+  const result = evaluateCapacityMetrics(passingMetrics({ endpointDurations }));
+  assert.deepEqual(result.violations, [
+    'endpoint login has invalid p95 latency',
+    'endpoint login has invalid p99 latency',
+  ]);
+});
+
 test('evaluateCapacityMetrics reports restart and dependency errors last in stable order', () => {
-  const result = evaluateCapacityMetrics(passingMetrics({
-    serviceRestarted: true,
-    dependencyErrors: 2,
-  }));
+  const result = evaluateCapacityMetrics(
+    passingMetrics({
+      serviceRestarted: true,
+      dependencyErrors: 2,
+    }),
+  );
   assert.deepEqual(result.violations, [
     'service restarted',
     'dependency connection errors: 2',
@@ -109,15 +159,18 @@ test('evaluateCapacityMetrics reports restart and dependency errors last in stab
 });
 
 test('evaluateCapacityMetrics accepts custom SLO values', () => {
-  const result = evaluateCapacityMetrics(passingMetrics({
-    requestFailureRate: 0.02,
-    p95Ms: 1200,
-    p99Ms: 2200,
-  }), {
-    maxRequestFailureRateExclusive: 0.03,
-    maxCheckFailureRate: 0,
-    maxP95MsExclusive: 1300,
-    maxP99MsExclusive: 2300,
-  });
+  const result = evaluateCapacityMetrics(
+    passingMetrics({
+      requestFailureRate: 0.02,
+      p95Ms: 1200,
+      p99Ms: 2200,
+    }),
+    {
+      maxRequestFailureRateExclusive: 0.03,
+      maxCheckFailureRate: 0,
+      maxP95MsExclusive: 1300,
+      maxP99MsExclusive: 2300,
+    },
+  );
   assert.equal(result.passed, true);
 });

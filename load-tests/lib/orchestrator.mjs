@@ -230,17 +230,65 @@ async function runK6(
   let raw;
   if (summaryRequired) raw = await readJson(deps, summaryPath, phase);
   if (result.exitCode !== 0) throw new HarnessError(phase, result.exitCode);
-  return { raw, summaryPath };
+  return { raw, summaryPath, startedAtMs: result.startedAtMs };
 }
 
 function thresholdPassed(metric, expression) {
   return metric?.thresholds?.[expression]?.ok === true;
 }
 
-function requireSecurityGate(raw) {
-  const limited = raw?.metrics?.security_rate_limited_total;
-  const unexpected = raw?.metrics?.security_unexpected_total;
+function boundedCounterMetric(raw, name) {
+  const metric = raw?.metrics?.[name];
+  const count = metric?.values?.count;
+  const rate = metric?.values?.rate;
   if (
+    metric?.type !== 'counter' ||
+    metric.contains !== 'default' ||
+    !Number.isSafeInteger(count) ||
+    count < 0 ||
+    typeof rate !== 'number' ||
+    !Number.isFinite(rate) ||
+    rate < 0
+  ) {
+    throw new HarnessError(
+      name.includes('security_') ? 'security gate' : 'metric gate',
+    );
+  }
+  return metric;
+}
+
+function boundedRateMetric(raw, name, phase) {
+  const metric = raw?.metrics?.[name];
+  const passes = metric?.values?.passes;
+  const fails = metric?.values?.fails;
+  const rate = metric?.values?.rate;
+  const total = passes + fails;
+  if (
+    metric?.type !== 'rate' ||
+    metric.contains !== 'default' ||
+    !Number.isSafeInteger(passes) ||
+    passes < 0 ||
+    !Number.isSafeInteger(fails) ||
+    fails < 0 ||
+    !Number.isSafeInteger(total) ||
+    total < 1 ||
+    typeof rate !== 'number' ||
+    !Number.isFinite(rate) ||
+    rate < 0 ||
+    rate > 1 ||
+    Math.abs(rate - passes / total) > 1e-12
+  ) {
+    throw new HarnessError(phase);
+  }
+  return metric;
+}
+
+function requireSecurityGate(raw) {
+  const rejected = boundedCounterMetric(raw, 'security_auth_rejected_total');
+  const limited = boundedCounterMetric(raw, 'security_rate_limited_total');
+  const unexpected = boundedCounterMetric(raw, 'security_unexpected_total');
+  if (
+    rejected.values.count < 0 ||
     !Number.isFinite(limited?.values?.count) ||
     limited.values.count <= 0 ||
     !Number.isFinite(unexpected?.values?.count) ||
@@ -253,11 +301,14 @@ function requireSecurityGate(raw) {
 }
 
 function requireSmokeGate(raw) {
-  const checks = raw?.metrics?.checks;
-  const harness = raw?.metrics?.load_harness_failure;
+  const checks = boundedRateMetric(raw, 'checks', 'smoke gate');
+  const harness = boundedRateMetric(raw, 'load_harness_failure', 'smoke gate');
   if (
-    checks?.values?.rate !== 1 ||
-    harness?.values?.rate !== 0 ||
+    checks.values.rate !== 1 ||
+    checks.values.passes < 1 ||
+    checks.values.fails !== 0 ||
+    harness.values.rate !== 0 ||
+    harness.values.passes !== 0 ||
     !thresholdPassed(checks, 'rate==1') ||
     !thresholdPassed(harness, 'rate==0')
   ) {
@@ -287,9 +338,7 @@ function contextFromSamples(samples) {
     const errors = sample?.dependencyErrors ?? 0;
     if (!Number.isSafeInteger(errors) || errors < 0)
       throw new HarnessError('monitor snapshot');
-    dependencyErrors += errors;
-    if (!Number.isSafeInteger(dependencyErrors))
-      throw new HarnessError('monitor snapshot');
+    dependencyErrors = Math.max(dependencyErrors, errors);
   }
   return { serviceRestarted, dependencyErrors };
 }
@@ -326,23 +375,42 @@ async function runProbe(deps, monitor, resultDirectory, options, vus, phase) {
   return { phase, vus, summaryPath, metrics, evaluation };
 }
 
-function samplesBySoakMinute(samples, startedAtMs, bucketCount) {
+export function bucketMonitorSamples(
+  samples,
+  { measurementStartMs, measurementDurationMs, bucketCount },
+) {
+  if (
+    !Array.isArray(samples) ||
+    !Number.isSafeInteger(measurementStartMs) ||
+    !Number.isSafeInteger(measurementDurationMs) ||
+    measurementDurationMs < 1 ||
+    !Number.isSafeInteger(bucketCount) ||
+    bucketCount !== Math.ceil(measurementDurationMs / 60_000)
+  ) {
+    throw new HarnessError('monitor timing');
+  }
+  const measurementEndMs = measurementStartMs + measurementDurationMs;
+  if (!Number.isSafeInteger(measurementEndMs))
+    throw new HarnessError('monitor timing');
   const buckets = Array.from({ length: bucketCount }, () => []);
   for (const sample of samples) {
     const sampledAtMs = Date.parse(sample?.timestamp);
-    if (!Number.isFinite(sampledAtMs) || sampledAtMs < startedAtMs) continue;
-    const minute = Math.floor((sampledAtMs - startedAtMs) / 60_000);
-    if (minute >= 0 && minute < bucketCount) buckets[minute].push(sample);
+    if (!Number.isFinite(sampledAtMs)) throw new HarnessError('monitor timing');
+    if (sampledAtMs < measurementStartMs || sampledAtMs > measurementEndMs)
+      continue;
+    const minute = Math.min(
+      bucketCount - 1,
+      Math.floor((sampledAtMs - measurementStartMs) / 60_000),
+    );
+    buckets[minute].push(sample);
   }
   return buckets;
 }
 
 async function runSoak(deps, monitor, resultDirectory, options, vus) {
   const sampleIndex = monitorSnapshot(monitor).length;
-  const startedAt = deps.now();
-  if (!(startedAt instanceof Date) || !Number.isFinite(startedAt.getTime()))
-    throw new HarnessError('clock');
-  const { raw, summaryPath } = await runK6(deps, resultDirectory, {
+  const measurementDurationMs = options.soakSeconds * 1_000;
+  const { raw, summaryPath, startedAtMs } = await runK6(deps, resultDirectory, {
     script: '/scripts/journey.js',
     summaryName: 'soak-raw.json',
     controls: {
@@ -354,11 +422,14 @@ async function runSoak(deps, monitor, resultDirectory, options, vus) {
     },
     phase: 'soak run',
   });
+  if (!Number.isSafeInteger(startedAtMs)) throw new HarnessError('soak timing');
+  const measurementStartMs = startedAtMs + options.warmupSeconds * 1_000;
+  if (!Number.isSafeInteger(measurementStartMs))
+    throw new HarnessError('soak timing');
   const bucketCount = Math.ceil(options.soakSeconds / 60);
-  const monitorBuckets = samplesBySoakMinute(
+  const monitorBuckets = bucketMonitorSamples(
     monitorSamplesSince(monitor, sampleIndex),
-    startedAt.getTime(),
-    bucketCount,
+    { measurementStartMs, measurementDurationMs, bucketCount },
   );
   let normalized;
   try {
@@ -389,6 +460,10 @@ async function runSoak(deps, monitor, resultDirectory, options, vus) {
     windows,
     passed: firstViolation === undefined,
     firstViolationMinute: firstViolation?.minute ?? null,
+    measurementStartedAt: new Date(measurementStartMs).toISOString(),
+    measurementEndedAt: new Date(
+      measurementStartMs + measurementDurationMs,
+    ).toISOString(),
   };
 }
 
@@ -396,10 +471,10 @@ function json(value) {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
-function renderCapacitySection(capacity) {
+function renderCapacitySection(capacity, soak, soakSeconds) {
   const conclusion = capacity.atLeast
-    ? `Observed capacity: at least ${capacity.lastPassingVus} VUs`
-    : `Observed passing capacity: ${capacity.lastPassingVus} VUs`;
+    ? `Highest probe-passing level: at least ${capacity.lastPassingVus} VUs (search cap)`
+    : `Highest probe-passing level: ${capacity.lastPassingVus} VUs`;
   const firstFailure =
     capacity.firstFailingVus === null
       ? 'not observed'
@@ -413,6 +488,7 @@ function renderCapacitySection(capacity) {
     '',
     conclusion,
     `First failing level: ${firstFailure}`,
+    `Soak endurance: ${soak.passed ? 'PASS' : 'FAIL'} at ${soak.vus} VUs for ${soakSeconds} seconds`,
     '',
     '| Phase | VUs | SLO |',
     '| --- | ---: | --- |',
@@ -580,7 +656,9 @@ async function executeWorkflow(options, deps, resultDirectory, environment) {
         };
   const passed = lastPassingVus > 0 && soak.passed;
   const representativeMetrics =
-    soak.windows.at(-1)?.metrics ?? probes.at(-1)?.metrics;
+    soak.windows.find(({ evaluation }) => !evaluation.passed)?.metrics ??
+    soak.windows.at(-1)?.metrics ??
+    probes.at(-1)?.metrics;
   const report = {
     mode: 'capacity',
     environment: safeEnvironment,
@@ -600,7 +678,7 @@ async function executeWorkflow(options, deps, resultDirectory, environment) {
   });
   await deps.writeFile(
     report.summaryPath,
-    `${renderSummaryMarkdown(report)}\n${renderCapacitySection(capacity)}`,
+    `${renderSummaryMarkdown(report)}\n${renderCapacitySection(capacity, soak, options.soakSeconds)}`,
     { mode: 0o600 },
   );
   return Object.freeze(report);

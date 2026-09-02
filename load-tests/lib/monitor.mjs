@@ -6,6 +6,12 @@ const COMPOSE_ARGS = Object.freeze([
   'docker-compose.load.yml',
 ]);
 const SERVICES = Object.freeze(['auth-service', 'postgres-load', 'redis-load']);
+const INSPECT_IDENTITY_FORMAT = [
+  '{{json .Id}}',
+  '{{json .RestartCount}}',
+  '{{json (index .Config.Labels "com.docker.compose.project")}}',
+  '{{json (index .Config.Labels "com.docker.compose.service")}}',
+].join('\t');
 const CSV_HEADER = [
   'timestamp',
   'service',
@@ -18,6 +24,9 @@ const CSV_HEADER = [
   'postgres_connections',
   'redis_connected_clients',
   'redis_used_memory_bytes',
+  'postgres_persistent_errors',
+  'redis_rejected_connections',
+  'dependency_errors',
 ].join(',');
 
 function boundedNumber(
@@ -123,20 +132,50 @@ export function parsePostgresConnectionCount(stdout) {
   });
 }
 
-export function parseRedisInfo(stdout) {
+export function parsePostgresStatus(stdout) {
+  if (typeof stdout !== 'string')
+    throw new TypeError('Invalid PostgreSQL status');
+  const match = /^(0|[1-9]\d*)\|(0|[1-9]\d*)\r?\n?$/.exec(stdout);
+  if (!match) throw new TypeError('Invalid PostgreSQL status');
+  return {
+    connectionCount: boundedNumber(
+      Number(match[1]),
+      'PostgreSQL connection count',
+      {
+        integer: true,
+      },
+    ),
+    persistentErrors: boundedNumber(
+      Number(match[2]),
+      'PostgreSQL persistent errors',
+      {
+        integer: true,
+      },
+    ),
+  };
+}
+
+function parseRedisFields(stdout, requiredFields) {
   if (typeof stdout !== 'string')
     throw new TypeError('Invalid Redis INFO response');
   const values = new Map();
+  const names = requiredFields.join('|');
+  const linePattern = new RegExp(`^(${names}):(0|[1-9]\\d*)$`);
   for (const line of stdout.split(/\r?\n/)) {
-    const match = /^(connected_clients|used_memory):(0|[1-9]\d*)$/.exec(line);
+    const match = linePattern.exec(line);
     if (!match) continue;
     if (values.has(match[1]))
       throw new TypeError('Invalid Redis INFO response');
     values.set(match[1], Number(match[2]));
   }
-  if (!values.has('connected_clients') || !values.has('used_memory')) {
+  if (requiredFields.some((field) => !values.has(field))) {
     throw new TypeError('Invalid Redis INFO response');
   }
+  return values;
+}
+
+export function parseRedisInfo(stdout) {
+  const values = parseRedisFields(stdout, ['connected_clients', 'used_memory']);
   return {
     connectedClients: boundedNumber(
       values.get('connected_clients'),
@@ -149,6 +188,58 @@ export function parseRedisInfo(stdout) {
       { integer: true },
     ),
   };
+}
+
+export function parseRedisStatus(stdout) {
+  const values = parseRedisFields(stdout, [
+    'connected_clients',
+    'used_memory',
+    'rejected_connections',
+  ]);
+  return {
+    connectedClients: boundedNumber(
+      values.get('connected_clients'),
+      'Redis connected clients',
+      { integer: true },
+    ),
+    usedMemoryBytes: boundedNumber(
+      values.get('used_memory'),
+      'Redis used memory',
+      {
+        integer: true,
+      },
+    ),
+    rejectedConnections: boundedNumber(
+      values.get('rejected_connections'),
+      'Redis rejected connections',
+      { integer: true },
+    ),
+  };
+}
+
+export function parseDockerInspectIdentity(line) {
+  if (typeof line !== 'string')
+    throw new TypeError('Invalid Docker inspect identity');
+  const fields = line.split('\t');
+  if (fields.length !== 4)
+    throw new TypeError('Invalid Docker inspect identity');
+  let values;
+  try {
+    values = fields.map((field) => JSON.parse(field));
+  } catch {
+    throw new TypeError('Invalid Docker inspect identity');
+  }
+  const [containerId, restartCount, project, service] = values;
+  if (
+    !validContainerId(containerId) ||
+    !Number.isSafeInteger(restartCount) ||
+    restartCount < 0 ||
+    project !== 'auth-load' ||
+    !SERVICES.includes(service)
+  ) {
+    throw new TypeError('Invalid Docker inspect identity');
+  }
+  return { containerId, restartCount, project, service };
 }
 
 function parseJsonRecords(stdout, label) {
@@ -200,7 +291,7 @@ function resolveComposeRows(stdout) {
       throw new Error('Invalid dedicated service containers');
     byService.set(row.Service, row);
   }
-  if (byService.size !== SERVICES.length || rows.length !== SERVICES.length) {
+  if (byService.size !== SERVICES.length) {
     throw new Error('Invalid dedicated service containers');
   }
   return byService;
@@ -224,27 +315,24 @@ function resolveQuietIds(stdout, composeRows) {
 }
 
 function parseInspectRecords(stdout, expectedIds) {
-  const records = parseJsonRecords(stdout, 'Docker inspect response');
+  if (typeof stdout !== 'string' || stdout.trim() === '') {
+    throw new Error('Invalid Docker inspect response');
+  }
+  const records = stdout.trim().split(/\r?\n/).map(parseDockerInspectIdentity);
   if (records.length !== SERVICES.length)
     throw new Error('Invalid Docker inspect response');
   const byService = new Map();
   for (const record of records) {
-    const labels = record.Config?.Labels;
-    const service = labels?.['com.docker.compose.service'];
+    const service = record.service;
     if (
-      labels?.['com.docker.compose.project'] !== 'auth-load' ||
+      record.project !== 'auth-load' ||
       !SERVICES.includes(service) ||
-      !expectedIds.includes(record.Id) ||
+      !expectedIds.includes(record.containerId) ||
       byService.has(service)
     ) {
       throw new Error('Invalid Docker inspect response');
     }
-    byService.set(
-      service,
-      boundedNumber(record.RestartCount, 'Docker restart count', {
-        integer: true,
-      }),
-    );
+    byService.set(service, record.restartCount);
   }
   if (byService.size !== SERVICES.length)
     throw new Error('Invalid Docker inspect response');
@@ -279,7 +367,27 @@ function parseStatsRecords(stdout, ids, composeRows) {
   return byService;
 }
 
-async function collectSample(deps, outputPath, samples) {
+async function dependencyCommand(deps, args, state) {
+  let result;
+  try {
+    result = await deps.runCommand('docker', args, { captureStdout: true });
+  } catch {
+    state.probeFailures += 1;
+    return undefined;
+  }
+  if (!result || !Number.isSafeInteger(result.exitCode)) {
+    throw new Error('Invalid dependency probe result');
+  }
+  if (result.exitCode !== 0) {
+    state.probeFailures += 1;
+    return undefined;
+  }
+  if (typeof result.stdout !== 'string')
+    throw new Error('Invalid dependency probe result');
+  return result.stdout;
+}
+
+async function collectSample(deps, outputPath, samples, dependencyState) {
   const composeRows = resolveComposeRows(
     await requiredCommand(
       deps,
@@ -307,46 +415,63 @@ async function collectSample(deps, outputPath, samples) {
   const restarts = parseInspectRecords(
     await requiredCommand(
       deps,
-      ['inspect', '--format', '{{json .}}', ...ids],
+      ['inspect', '--format', INSPECT_IDENTITY_FORMAT, ...ids],
       'Docker inspect',
     ),
     ids,
   );
-  const postgresConnections = parsePostgresConnectionCount(
-    await requiredCommand(
-      deps,
-      [
-        ...COMPOSE_ARGS,
-        'exec',
-        '-T',
-        'postgres-load',
-        'psql',
-        '-U',
-        'postgres',
-        '-d',
-        'auth_load',
-        '-Atc',
-        'select count(*) from pg_stat_activity',
-      ],
-      'PostgreSQL sampling',
-    ),
+  const postgresStdout = await dependencyCommand(
+    deps,
+    [
+      ...COMPOSE_ARGS,
+      'exec',
+      '-T',
+      'postgres-load',
+      'psql',
+      '-U',
+      'postgres',
+      '-d',
+      'auth_load',
+      '-Atc',
+      "select count(*) || '|' || coalesce((select sessions_abandoned + sessions_fatal + sessions_killed from pg_stat_database where datname = 'auth_load'), 0) from pg_stat_activity",
+    ],
+    dependencyState,
   );
-  const redis = parseRedisInfo(
-    await requiredCommand(
-      deps,
-      [
-        ...COMPOSE_ARGS,
-        'exec',
-        '-T',
-        'redis-load',
-        'redis-cli',
-        'INFO',
-        'clients',
-        'memory',
-      ],
-      'Redis sampling',
-    ),
+  if (postgresStdout !== undefined) {
+    const postgres = parsePostgresStatus(postgresStdout);
+    dependencyState.postgresConnections = postgres.connectionCount;
+    dependencyState.postgresPersistentErrors = Math.max(
+      dependencyState.postgresPersistentErrors,
+      postgres.persistentErrors,
+    );
+  }
+  const redisStdout = await dependencyCommand(
+    deps,
+    [
+      ...COMPOSE_ARGS,
+      'exec',
+      '-T',
+      'redis-load',
+      'redis-cli',
+      'INFO',
+      'clients',
+      'memory',
+      'stats',
+    ],
+    dependencyState,
   );
+  if (redisStdout !== undefined) {
+    const redis = parseRedisStatus(redisStdout);
+    dependencyState.redis = redis;
+    dependencyState.redisRejectedConnections = Math.max(
+      dependencyState.redisRejectedConnections,
+      redis.rejectedConnections,
+    );
+  }
+  const dependencyErrors =
+    dependencyState.probeFailures +
+    dependencyState.postgresPersistentErrors +
+    dependencyState.redisRejectedConnections;
   const timestamp = deps.now().toISOString();
   const services = {};
   const rows = [];
@@ -364,18 +489,23 @@ async function collectSample(deps, outputPath, samples) {
         serviceStats.networkInputBytes,
         serviceStats.networkOutputBytes,
         restartCount,
-        postgresConnections,
-        redis.connectedClients,
-        redis.usedMemoryBytes,
+        dependencyState.postgresConnections,
+        dependencyState.redis?.connectedClients,
+        dependencyState.redis?.usedMemoryBytes,
+        dependencyState.postgresPersistentErrors,
+        dependencyState.redisRejectedConnections,
+        dependencyErrors,
       ].join(','),
     );
   }
   const sample = Object.freeze({
     timestamp,
     services: Object.freeze(services),
-    postgresConnections,
-    redis: Object.freeze(redis),
-    dependencyErrors: 0,
+    postgresConnections: dependencyState.postgresConnections,
+    redis: dependencyState.redis
+      ? Object.freeze({ ...dependencyState.redis })
+      : undefined,
+    dependencyErrors,
   });
   samples.push(sample);
   await deps.appendFile(outputPath, `${rows.join('\n')}\n`);
@@ -396,18 +526,25 @@ export function startMonitor(deps, outputPath) {
   const schedule = deps.setInterval ?? globalThis.setInterval;
   const cancel = deps.clearInterval ?? globalThis.clearInterval;
   const samples = [];
+  const dependencyState = {
+    probeFailures: 0,
+    postgresConnections: undefined,
+    postgresPersistentErrors: 0,
+    redis: undefined,
+    redisRejectedConnections: 0,
+  };
   let stopped = false;
   let failure;
   let pending = Promise.resolve()
     .then(() => deps.writeFile(outputPath, `${CSV_HEADER}\n`, { mode: 0o600 }))
-    .then(() => collectSample(deps, outputPath, samples))
+    .then(() => collectSample(deps, outputPath, samples, dependencyState))
     .catch((error) => {
       failure = error;
     });
   const interval = schedule(() => {
     if (stopped || failure) return;
     pending = pending
-      .then(() => collectSample(deps, outputPath, samples))
+      .then(() => collectSample(deps, outputPath, samples, dependencyState))
       .catch((error) => {
         failure = error;
       });

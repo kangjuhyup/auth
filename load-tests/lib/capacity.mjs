@@ -44,10 +44,14 @@ export function evaluateCapacityMetrics(metrics, slo = DEFAULT_SLO) {
   const violations = [];
 
   if (metrics.requestFailureRate >= limits.maxRequestFailureRateExclusive) {
-    violations.push(`request failure rate must be < ${limits.maxRequestFailureRateExclusive}`);
+    violations.push(
+      `request failure rate must be < ${limits.maxRequestFailureRateExclusive}`,
+    );
   }
   if (metrics.checkFailureRate > limits.maxCheckFailureRate) {
-    violations.push(`check failure rate must be <= ${limits.maxCheckFailureRate}`);
+    violations.push(
+      `check failure rate must be <= ${limits.maxCheckFailureRate}`,
+    );
   }
   if (metrics.p95Ms >= limits.maxP95MsExclusive) {
     violations.push(`p95 latency must be < ${limits.maxP95MsExclusive} ms`);
@@ -57,14 +61,32 @@ export function evaluateCapacityMetrics(metrics, slo = DEFAULT_SLO) {
   }
 
   for (const endpoint of ENDPOINT_NAMES) {
-    if (!(metrics.endpointDurations?.[endpoint]?.count > 0)) {
+    const duration = metrics.endpointDurations?.[endpoint];
+    if (!Number.isSafeInteger(duration?.count) || duration.count < 1) {
       violations.push(`endpoint ${endpoint} has no observations`);
+      continue;
+    }
+    if (!Number.isFinite(duration.p95Ms) || duration.p95Ms < 0) {
+      violations.push(`endpoint ${endpoint} has invalid p95 latency`);
+    } else if (duration.p95Ms >= limits.maxP95MsExclusive) {
+      violations.push(
+        `endpoint ${endpoint} p95 latency must be < ${limits.maxP95MsExclusive} ms`,
+      );
+    }
+    if (!Number.isFinite(duration.p99Ms) || duration.p99Ms < 0) {
+      violations.push(`endpoint ${endpoint} has invalid p99 latency`);
+    } else if (duration.p99Ms >= limits.maxP99MsExclusive) {
+      violations.push(
+        `endpoint ${endpoint} p99 latency must be < ${limits.maxP99MsExclusive} ms`,
+      );
     }
   }
 
   if (metrics.serviceRestarted) violations.push('service restarted');
   if (metrics.dependencyErrors > 0) {
-    violations.push(`dependency connection errors: ${metrics.dependencyErrors}`);
+    violations.push(
+      `dependency connection errors: ${metrics.dependencyErrors}`,
+    );
   }
 
   return { passed: violations.length === 0, violations };

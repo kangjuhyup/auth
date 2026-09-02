@@ -3,7 +3,11 @@ import { Buffer } from 'node:buffer';
 import process from 'node:process';
 import test from 'node:test';
 import { parseOptions } from '../lib/config.mjs';
-import { runCapacityWorkflow, safeErrorMessage } from '../lib/orchestrator.mjs';
+import {
+  bucketMonitorSamples,
+  runCapacityWorkflow,
+  safeErrorMessage,
+} from '../lib/orchestrator.mjs';
 import { nodeDependencies } from '../run-capacity.mjs';
 
 const SECRET_FRAGMENT = '07070707';
@@ -12,7 +16,27 @@ function trend(count = 1, p95 = 100, p99 = 200) {
   return { values: { count, 'p(95)': p95, 'p(99)': p99 } };
 }
 
-function capacitySummary({ passed = true, soakSeconds } = {}) {
+function rate(trueCount, falseCount) {
+  return {
+    type: 'rate',
+    contains: 'default',
+    values: {
+      passes: trueCount,
+      fails: falseCount,
+      rate: trueCount / (trueCount + falseCount),
+    },
+  };
+}
+
+function counter(count, rateValue = count) {
+  return {
+    type: 'counter',
+    contains: 'default',
+    values: { count, rate: rateValue },
+  };
+}
+
+function capacitySummary({ passed = true, soakSeconds, failingMinute } = {}) {
   const endpointNames = [
     'login',
     'introspection',
@@ -26,21 +50,28 @@ function capacitySummary({ passed = true, soakSeconds } = {}) {
     const metrics = {};
     for (let minute = 0; minute < Math.ceil(soakSeconds / 60); minute += 1) {
       metrics[`load_request_failed{minute:${minute}}`] = {
-        values: { count: 1, rate: passed ? 0 : 0.02 },
+        ...rate(passed ? 0 : 2, passed ? 100 : 98),
       };
-      metrics[`load_check_failed{minute:${minute}}`] = {
-        values: { count: 1, rate: 0 },
-      };
-      metrics[`load_http_req_duration_ms{minute:${minute}}`] = trend();
+      metrics[`load_check_failed{minute:${minute}}`] = rate(0, 100);
+      const p95 = minute === failingMinute ? 1_500 : 100;
+      metrics[`load_http_req_duration_ms{minute:${minute}}`] = trend(
+        1,
+        p95,
+        p95,
+      );
       for (const endpoint of endpointNames)
-        metrics[`load_${endpoint}_duration_ms{minute:${minute}}`] = trend();
+        metrics[`load_${endpoint}_duration_ms{minute:${minute}}`] = trend(
+          1,
+          p95,
+          p95,
+        );
     }
     return { metrics };
   }
   return {
     metrics: {
-      load_request_failed: { values: { count: 1, rate: passed ? 0 : 0.02 } },
-      load_check_failed: { values: { count: 1, rate: 0 } },
+      load_request_failed: rate(passed ? 0 : 2, passed ? 100 : 98),
+      load_check_failed: rate(0, 100),
       load_http_req_duration_ms: trend(),
       ...Object.fromEntries(
         endpointNames.map((endpoint) => [
@@ -54,13 +85,13 @@ function capacitySummary({ passed = true, soakSeconds } = {}) {
 
 const SECURITY_SUMMARY = Object.freeze({
   metrics: {
-    security_auth_rejected_total: { values: { count: 10 } },
+    security_auth_rejected_total: counter(10),
     security_rate_limited_total: {
-      values: { count: 5 },
+      ...counter(5),
       thresholds: { 'count>0': { ok: true } },
     },
     security_unexpected_total: {
-      values: { count: 0 },
+      ...counter(0, 0),
       thresholds: { 'count==0': { ok: true } },
     },
   },
@@ -69,11 +100,11 @@ const SECURITY_SUMMARY = Object.freeze({
 const SMOKE_SUMMARY = Object.freeze({
   metrics: {
     checks: {
-      values: { count: 7, passes: 7, fails: 0, rate: 1 },
+      ...rate(7, 0),
       thresholds: { 'rate==1': { ok: true } },
     },
     load_harness_failure: {
-      values: { count: 1, rate: 0 },
+      ...rate(0, 1),
       thresholds: { 'rate==0': { ok: true } },
     },
   },
@@ -88,9 +119,12 @@ function createHarness({
   probePasses = () => true,
   probeSummary,
   securitySummary = SECURITY_SUMMARY,
+  smokeSummary = SMOKE_SUMMARY,
+  soakSummary,
   missingSummaryScript,
   abortOnFirstProbe,
   soakMonitorSamples = [],
+  k6StartedAtMs = Date.parse('2026-09-02T01:02:03.004Z'),
   signal,
 } = {}) {
   const commands = [];
@@ -117,7 +151,7 @@ function createHarness({
         const summaryName = containerSummaryPath.split('/').at(-1);
         let raw;
         if (script === '/scripts/rate-limit.js') raw = securitySummary;
-        else if (script === '/scripts/smoke.js') raw = SMOKE_SUMMARY;
+        else if (script === '/scripts/smoke.js') raw = smokeSummary;
         else {
           probeCount += 1;
           if (abortOnFirstProbe && probeCount === 1) abortOnFirstProbe();
@@ -126,15 +160,21 @@ function createHarness({
           if (runKind === 'soak') monitorSamples.push(...soakMonitorSamples);
           raw =
             runKind === 'soak'
-              ? capacitySummary({
+              ? (soakSummary ??
+                capacitySummary({
                   passed: true,
                   soakSeconds: Number(envValue(args, 'SOAK_SECONDS')),
-                })
+                }))
               : (probeSummary?.(vus) ??
                 capacitySummary({ passed: probePasses(vus) }));
         }
         files.set(`${resultDirectory}/${summaryName}`, JSON.stringify(raw));
-        return { exitCode: 0, stdout: '', stderr: '' };
+        return {
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          startedAtMs: k6StartedAtMs,
+        };
       }
       return { exitCode: 0, stdout: '', stderr: '' };
     },
@@ -308,7 +348,9 @@ test('workflow stops coarse search at failure, refines the bracket, and soaks la
 });
 
 test('all coarse levels passing reports an observed lower bound', async () => {
-  const harness = createHarness();
+  const harness = createHarness({
+    k6StartedAtMs: Date.parse('2026-09-02T01:02:07.500Z'),
+  });
   const report = await runCapacityWorkflow(
     options({ maxVus: 25 }),
     harness.deps,
@@ -316,7 +358,11 @@ test('all coarse levels passing reports an observed lower bound', async () => {
   assert.equal(report.capacity.lastPassingVus, 25);
   assert.equal(report.capacity.firstFailingVus, null);
   assert.equal(report.capacity.atLeast, true);
-  assert.match(harness.files.get(report.summaryPath), /at least 25 VUs/);
+  assert.equal(report.soak.measurementStartedAt, '2026-09-02T01:02:08.500Z');
+  assert.equal(report.soak.measurementEndedAt, '2026-09-02T01:03:09.500Z');
+  const markdown = harness.files.get(report.summaryPath);
+  assert.match(markdown, /Highest probe-passing level: at least 25 VUs/);
+  assert.match(markdown, /Soak endurance: PASS at 25 VUs for 61 seconds/);
 });
 
 test('a valid failed SLO is capacity data and not a harness exception', async () => {
@@ -338,7 +384,7 @@ test('soak reports the first minute with an exact auth-service restart sample', 
   const harness = createHarness({
     soakMonitorSamples: [
       {
-        timestamp: '2026-09-02T01:03:03.004Z',
+        timestamp: '2026-09-02T01:03:04.004Z',
         services: { 'auth-service': { restartCount: 1 } },
         dependencyErrors: 0,
       },
@@ -353,6 +399,83 @@ test('soak reports the first minute with an exact auth-service restart sample', 
   assert.match(
     report.soak.windows[1].evaluation.violations.join('\n'),
     /service restarted/,
+  );
+});
+
+test('monitor soak buckets exclude warmup and retain exact measurement edges', () => {
+  const measurementStartMs = Date.parse('2026-09-02T01:02:04.004Z');
+  const samples = [
+    '2026-09-02T01:02:04.003Z',
+    '2026-09-02T01:02:04.004Z',
+    '2026-09-02T01:03:04.003Z',
+    '2026-09-02T01:03:04.004Z',
+    '2026-09-02T01:03:05.004Z',
+    '2026-09-02T01:03:05.005Z',
+  ].map((timestamp) => ({ timestamp }));
+  const buckets = bucketMonitorSamples(samples, {
+    measurementStartMs,
+    measurementDurationMs: 61_000,
+    bucketCount: 2,
+  });
+  assert.deepEqual(
+    buckets.map((bucket) => bucket.map(({ timestamp }) => timestamp)),
+    [
+      ['2026-09-02T01:02:04.004Z', '2026-09-02T01:03:04.003Z'],
+      ['2026-09-02T01:03:04.004Z', '2026-09-02T01:03:05.004Z'],
+    ],
+  );
+});
+
+test('soak fails closed without an explicit k6 process start boundary', async () => {
+  const harness = createHarness({ k6StartedAtMs: null });
+  await assert.rejects(
+    runCapacityWorkflow(options({ maxVus: 10 }), harness.deps),
+    /soak timing failed/,
+  );
+  assert.deepEqual(harness.commands.at(-1).args, CLEANUP_ARGS);
+});
+
+test('failed soak reports probe capacity separately and renders earliest violating metrics', async () => {
+  const harness = createHarness({
+    soakSummary: capacitySummary({ soakSeconds: 61, failingMinute: 0 }),
+  });
+  const report = await runCapacityWorkflow(
+    options({ maxVus: 10 }),
+    harness.deps,
+  );
+  const markdown = harness.files.get(report.summaryPath);
+  assert.equal(report.capacity.lastPassingVus, 10);
+  assert.equal(report.soak.passed, false);
+  assert.equal(report.soak.firstViolationMinute, 0);
+  assert.equal(report.metrics.p95Ms, 1_500);
+  assert.match(markdown, /Highest probe-passing level: at least 10 VUs/);
+  assert.match(markdown, /Soak endurance: FAIL at 10 VUs for 61 seconds/);
+  assert.match(markdown, /First violation minute: 0/);
+  assert.doesNotMatch(markdown, /survived/i);
+});
+
+test('persistent dependency errors reach soak evaluation and sanitized reports', async () => {
+  const harness = createHarness({
+    soakMonitorSamples: [
+      {
+        timestamp: '2026-09-02T01:02:04.004Z',
+        services: { 'auth-service': { restartCount: 0 } },
+        dependencyErrors: 7,
+      },
+    ],
+  });
+  const report = await runCapacityWorkflow(
+    options({ maxVus: 10 }),
+    harness.deps,
+  );
+  assert.equal(report.soak.firstViolationMinute, 0);
+  assert.match(
+    report.soak.windows[0].evaluation.violations.join('\n'),
+    /dependency connection errors: 7/,
+  );
+  assert.match(
+    harness.files.get(report.summaryPath.replace(/summary\.md$/, 'soak.json')),
+    /"dependencyErrors": 7/,
   );
 });
 
@@ -408,6 +531,107 @@ test('security profile must prove a 429 before capacity traffic starts', async (
   assert.deepEqual(harness.commands.at(-1).args, CLEANUP_ARGS);
 });
 
+test('security and smoke gates reject truncated or inconsistent metric structures', async () => {
+  const truncatedSecurity = createHarness({
+    securitySummary: {
+      metrics: {
+        security_auth_rejected_total: counter(10),
+        security_rate_limited_total: {
+          ...counter(5),
+          thresholds: { 'count>0': { ok: true } },
+        },
+        security_unexpected_total: {
+          type: 'counter',
+          contains: 'default',
+          values: { count: 0 },
+          thresholds: { 'count==0': { ok: true } },
+        },
+      },
+    },
+  });
+  await assert.rejects(
+    runCapacityWorkflow(options(), truncatedSecurity.deps),
+    /security gate failed/,
+  );
+
+  const inconsistentSmoke = createHarness({
+    smokeSummary: {
+      metrics: {
+        checks: {
+          ...rate(6, 1),
+          values: { passes: 6, fails: 1, rate: 1 },
+          thresholds: { 'rate==1': { ok: true } },
+        },
+        load_harness_failure: {
+          ...rate(0, 1),
+          thresholds: { 'rate==0': { ok: true } },
+        },
+      },
+    },
+  });
+  await assert.rejects(
+    runCapacityWorkflow(options(), inconsistentSmoke.deps),
+    /smoke gate failed/,
+  );
+});
+
+test('security and smoke gates reject negative, NaN, and missing metric values', async () => {
+  const negativeSecurity = createHarness({
+    securitySummary: {
+      metrics: {
+        security_auth_rejected_total: counter(10),
+        security_rate_limited_total: {
+          ...counter(-1, Number.NaN),
+          thresholds: { 'count>0': { ok: true } },
+        },
+        security_unexpected_total: {
+          ...counter(0, 0),
+          thresholds: { 'count==0': { ok: true } },
+        },
+      },
+    },
+  });
+  await assert.rejects(
+    runCapacityWorkflow(options(), negativeSecurity.deps),
+    /security gate failed/,
+  );
+
+  const missingSmoke = createHarness({
+    smokeSummary: {
+      metrics: {
+        checks: {
+          ...rate(7, 0),
+          thresholds: { 'rate==1': { ok: true } },
+        },
+      },
+    },
+  });
+  await assert.rejects(
+    runCapacityWorkflow(options(), missingSmoke.deps),
+    /smoke gate failed/,
+  );
+
+  const nanSmoke = createHarness({
+    smokeSummary: {
+      metrics: {
+        checks: {
+          ...rate(7, 0),
+          values: { passes: 7, fails: 0, rate: Number.NaN },
+          thresholds: { 'rate==1': { ok: true } },
+        },
+        load_harness_failure: {
+          ...rate(0, 1),
+          thresholds: { 'rate==0': { ok: true } },
+        },
+      },
+    },
+  });
+  await assert.rejects(
+    runCapacityWorkflow(options(), nanSmoke.deps),
+    /smoke gate failed/,
+  );
+});
+
 test('monitor and dedicated cleanup run in finally after an abort during probing', async () => {
   const controller = new globalThis.AbortController();
   const harness = createHarness({
@@ -442,6 +666,7 @@ test('safeErrorMessage never exposes arbitrary error content', () => {
 });
 
 test('the real command runner captures bounded stdout only when requested', async () => {
+  const earliestStart = Date.now();
   const captured = await nodeDependencies.runCommand(
     process.execPath,
     ['-e', "process.stdout.write('synthetic-monitor-output')"],
@@ -451,10 +676,51 @@ test('the real command runner captures bounded stdout only when requested', asyn
     '-e',
     "process.stdout.write('discarded-command-output')",
   ]);
-  assert.deepEqual(captured, {
-    exitCode: 0,
-    stdout: 'synthetic-monitor-output',
-    stderr: '',
-  });
+  assert.equal(captured.exitCode, 0);
+  assert.equal(captured.stdout, 'synthetic-monitor-output');
+  assert.equal(captured.stderr, '');
+  assert.ok(captured.startedAtMs >= earliestStart);
+  assert.ok(captured.startedAtMs <= Date.now());
   assert.equal(discarded.stdout, '');
+});
+
+test('the real command runner scrubs malicious host runtime-secret precedence', async () => {
+  const secretKeys = [
+    'ADMIN_PASSWORD',
+    'DB_PASSWORD',
+    'LOAD_USER_PASSWORD',
+    'JWKS_ENCRYPTION_KEY',
+    'OTP_TOKEN_SECRET',
+    'OIDC_COOKIE_KEYS',
+    'SERVICE_CLIENT_SECRET',
+  ];
+  const previous = Object.fromEntries(
+    secretKeys.map((key) => [key, process.env[key]]),
+  );
+  try {
+    for (const key of secretKeys) process.env[key] = `malicious-${key}`;
+    const result = await nodeDependencies.runCommand(
+      process.execPath,
+      [
+        '-e',
+        `process.stdout.write(JSON.stringify(${JSON.stringify(secretKeys)}.map((key) => Object.hasOwn(process.env, key))))`,
+      ],
+      {
+        captureStdout: true,
+        env: {
+          LOAD_HTTP_THROTTLE_LIMIT: '120',
+          LOAD_LOGIN_RATE_LIMIT_IP_MAX: '10',
+        },
+      },
+    );
+    assert.deepEqual(
+      JSON.parse(result.stdout),
+      secretKeys.map(() => false),
+    );
+  } finally {
+    for (const key of secretKeys) {
+      if (previous[key] === undefined) delete process.env[key];
+      else process.env[key] = previous[key];
+    }
+  }
 });

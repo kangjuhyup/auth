@@ -16,6 +16,35 @@ import { parseOptions } from './lib/config.mjs';
 import { startMonitor } from './lib/monitor.mjs';
 import { runCapacityWorkflow, safeErrorMessage } from './lib/orchestrator.mjs';
 
+const RUNTIME_SECRET_KEYS = new Set([
+  'ADMIN_PASSWORD',
+  'DB_PASSWORD',
+  'LOAD_USER_PASSWORD',
+  'JWKS_ENCRYPTION_KEY',
+  'OTP_TOKEN_SECRET',
+  'OIDC_COOKIE_KEYS',
+  'SERVICE_CLIENT_SECRET',
+]);
+const CHILD_OVERRIDE_KEYS = new Set([
+  'LOAD_HTTP_THROTTLE_LIMIT',
+  'LOAD_LOGIN_RATE_LIMIT_IP_MAX',
+]);
+
+function childEnvironment(overrides = {}) {
+  const environment = Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([key]) => !RUNTIME_SECRET_KEYS.has(key),
+    ),
+  );
+  for (const [key, value] of Object.entries(overrides)) {
+    if (!CHILD_OVERRIDE_KEYS.has(key) || typeof value !== 'string') {
+      throw new TypeError('invalid child environment override');
+    }
+    environment[key] = value;
+  }
+  return environment;
+}
+
 function runCommand(file, args, options = {}) {
   return new Promise((resolve, reject) => {
     const stdoutChunks = [];
@@ -24,10 +53,11 @@ function runCommand(file, args, options = {}) {
     let captureOverflow = false;
     let settled = false;
     let child;
+    const startedAtMs = Date.now();
     try {
       child = spawn(file, args, {
         cwd: process.cwd(),
-        env: { ...process.env, ...options.env },
+        env: childEnvironment(options.env),
         shell: false,
         signal: options.signal,
         stdio: ['ignore', 'pipe', 'ignore'],
@@ -60,6 +90,7 @@ function runCommand(file, args, options = {}) {
       }
       resolve({
         exitCode: Number.isSafeInteger(exitCode) ? exitCode : 1,
+        startedAtMs,
         stdout: options.captureStdout
           ? stdoutChunks.map((chunk) => chunk.toString('utf8')).join('')
           : '',
