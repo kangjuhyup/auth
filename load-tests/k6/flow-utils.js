@@ -62,9 +62,15 @@ export function extractAuthorizationCode(location) {
   if (url.origin !== CALLBACK_ORIGIN || url.pathname !== CALLBACK_PATH || url.hash) {
     throw new Error('redirect must use the configured RP redirect URI');
   }
-  const code = url.searchParams.get('code');
-  if (!code) throw new Error('callback does not contain an authorization code');
-  return { code, state: url.searchParams.get('state') };
+  const codes = url.searchParams.getAll('code');
+  if (codes.length !== 1 || !codes[0]) {
+    throw new Error('callback must contain exactly one authorization code');
+  }
+  const states = url.searchParams.getAll('state');
+  if (states.length !== 1 || !states[0]) {
+    throw new Error('callback must contain exactly one state');
+  }
+  return { code: codes[0], state: states[0] };
 }
 
 export function chooseAction(value) {

@@ -8,6 +8,7 @@ import {
   extractInteractionUid,
 } from '../k6/flow-utils.js';
 import { userNameFor } from '../k6/payloads.js';
+import { SAFE_SYSTEM_TAGS } from '../k6/system-tags.js';
 
 const serviceOrigin = 'http://auth-service:3000';
 
@@ -71,6 +72,20 @@ test('extractAuthorizationCode accepts only the exact RP callback and requires a
     () => extractAuthorizationCode('http://attacker.test/callback?code=opaque-code'),
     /redirect URI/,
   );
+  assert.throws(
+    () => extractAuthorizationCode('http://localhost:18080/callback?code=first&code=second&state=state-1'),
+    /exactly one authorization code/,
+  );
+  assert.throws(
+    () => extractAuthorizationCode('http://localhost:18080/callback?code=opaque-code&state=first&state=second'),
+    /exactly one state/,
+  );
+});
+
+test('safe k6 system tags keep only fixed status and method dimensions', () => {
+  assert.deepEqual(SAFE_SYSTEM_TAGS, ['status', 'method']);
+  assert.equal(SAFE_SYSTEM_TAGS.includes('url'), false);
+  assert.equal(SAFE_SYSTEM_TAGS.includes('name'), false);
 });
 
 test('userNameFor enforces positive safe user-index boundaries', () => {

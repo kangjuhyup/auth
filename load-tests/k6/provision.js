@@ -2,6 +2,7 @@ import http from 'k6/http';
 import { check } from 'k6';
 import exec from 'k6/execution';
 import { loadConfig } from './config.js';
+import { SAFE_SYSTEM_TAGS } from './system-tags.js';
 import {
   offlineAccessScopePayload,
   publicClientPayload,
@@ -14,6 +15,7 @@ const config = loadConfig(__ENV);
 const jsonHeaders = { 'Content-Type': 'application/json' };
 
 export const options = {
+  systemTags: SAFE_SYSTEM_TAGS,
   scenarios: {
     provisionUsers: {
       executor: 'shared-iterations',
