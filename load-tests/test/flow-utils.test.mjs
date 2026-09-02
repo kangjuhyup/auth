@@ -9,6 +9,11 @@ import {
 } from '../k6/flow-utils.js';
 import { userNameFor } from '../k6/payloads.js';
 import { SAFE_SYSTEM_TAGS } from '../k6/system-tags.js';
+import {
+  createJourneyOptions,
+  createSmokeOptions,
+  runDeterministicSmoke,
+} from '../k6/scenario.js';
 
 const serviceOrigin = 'http://auth-service:3000';
 
@@ -20,6 +25,19 @@ test('buildPkce derives an S256 challenge without retaining the seed', () => {
     challenge: 'hash:dnU9MTtpdGVyYXRpb249MjtyYW5kb209YWJjZGVmZ2hp',
   });
   assert.equal(Object.values(pkce).some((value) => value.includes('random=abcdefghi')), false);
+});
+
+test('buildPkce does not depend on browser-only base64 globals in k6', () => {
+  const originalBtoa = globalThis.btoa;
+  try {
+    globalThis.btoa = undefined;
+    assert.deepEqual(buildPkce('vu=1;iteration=2;random=abcdefghi', (value) => `hash:${value}`), {
+      verifier: 'dnU9MTtpdGVyYXRpb249MjtyYW5kb209YWJjZGVmZ2hp',
+      challenge: 'hash:dnU9MTtpdGVyYXRpb249MjtyYW5kb209YWJjZGVmZ2hp',
+    });
+  } finally {
+    globalThis.btoa = originalBtoa;
+  }
 });
 
 test('extractInteractionUid accepts only a same-origin interaction path', () => {
@@ -105,4 +123,80 @@ test('chooseAction implements the approved cumulative weights', () => {
   assert.equal(chooseAction(0.95), 'relogin');
   assert.throws(() => chooseAction(-0.001), /between 0 and 1/);
   assert.throws(() => chooseAction(1), /between 0 and 1/);
+});
+
+test('createJourneyOptions uses one constant-VU scenario and preserves host-owned SLO classification', () => {
+  assert.deepEqual(
+    createJourneyOptions({ vus: 7, warmupSeconds: 2, measureSeconds: 3 }, false),
+    {
+      systemTags: ['status', 'method'],
+      scenarios: {
+        users: {
+          executor: 'constant-vus',
+          vus: 7,
+          duration: '5s',
+          gracefulStop: '30s',
+        },
+      },
+      summaryTrendStats: ['count', 'avg', 'max', 'p(95)', 'p(99)'],
+      thresholds: {
+        load_harness_failure: [{ threshold: 'rate==0', abortOnFail: true }],
+      },
+    },
+  );
+});
+
+test('createJourneyOptions can force the temporary red threshold before a real journey exists', () => {
+  assert.deepEqual(
+    createJourneyOptions({ vus: 1, warmupSeconds: 0, measureSeconds: 1 }, true).thresholds,
+    { load_completed_login_flows: ['count<0'] },
+  );
+});
+
+test('createSmokeOptions uses a single deterministic VU and requires every check to pass', () => {
+  assert.deepEqual(createSmokeOptions(), {
+    systemTags: ['status', 'method'],
+    vus: 1,
+    iterations: 1,
+    thresholds: {
+      checks: ['rate==1'],
+      load_harness_failure: ['rate==0'],
+    },
+    summaryTrendStats: ['count', 'avg', 'max', 'p(95)', 'p(99)'],
+  });
+});
+
+test('runDeterministicSmoke covers every OIDC action in the required protocol order', () => {
+  const calls = [];
+  const initialSession = { accessToken: 'opaque-access', refreshToken: 'opaque-refresh' };
+  const refreshedSession = { accessToken: 'next-access', refreshToken: 'next-refresh' };
+  const oidc = {
+    login: (userIndex, measuring) => {
+      calls.push(['login', userIndex, measuring]);
+      return initialSession;
+    },
+    introspect: (session, measuring) => calls.push(['introspect', session, measuring]),
+    userinfo: (session, measuring) => calls.push(['userinfo', session, measuring]),
+    refresh: (session, measuring) => {
+      calls.push(['refresh', session, measuring]);
+      return refreshedSession;
+    },
+    discovery: (measuring) => calls.push(['discovery', measuring]),
+    jwks: (measuring) => calls.push(['jwks', measuring]),
+    revokeAndRelogin: (session, userIndex, measuring) => {
+      calls.push(['revokeAndRelogin', session, userIndex, measuring]);
+    },
+  };
+
+  runDeterministicSmoke(oidc);
+
+  assert.deepEqual(calls, [
+    ['login', 1, false],
+    ['introspect', initialSession, true],
+    ['userinfo', initialSession, true],
+    ['refresh', initialSession, true],
+    ['discovery', true],
+    ['jwks', true],
+    ['revokeAndRelogin', refreshedSession, 1, true],
+  ]);
 });

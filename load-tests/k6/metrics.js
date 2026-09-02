@@ -113,8 +113,11 @@ function buildSoakSubmetricThresholds() {
 
 export const soakSubmetricThresholds = buildSoakSubmetricThresholds();
 
-export function handleK6Summary(data) {
+export function handleK6Summary(data, summaryPath) {
+  if (typeof summaryPath !== 'string' || !/^\/results\/[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(summaryPath)) {
+    throw new Error('SUMMARY_PATH must be a safe result path');
+  }
   return {
-    [__ENV.SUMMARY_PATH]: JSON.stringify(data),
+    [summaryPath]: JSON.stringify(data),
   };
 }

@@ -1,11 +1,22 @@
 const CALLBACK_ORIGIN = 'http://localhost:18080';
 const CALLBACK_PATH = '/callback';
+const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
 function base64Url(value) {
   if (typeof value !== 'string' || value.length === 0 || !/^[\x20-\x7e]+$/.test(value)) {
     throw new TypeError('PKCE seed must be a non-empty ASCII string');
   }
-  return btoa(value).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  let encoded = '';
+  for (let index = 0; index < value.length; index += 3) {
+    const first = value.charCodeAt(index);
+    const second = value.charCodeAt(index + 1);
+    const third = value.charCodeAt(index + 2);
+    encoded += BASE64_ALPHABET[first >> 2];
+    encoded += BASE64_ALPHABET[((first & 0b11) << 4) | (second >> 4)];
+    if (!Number.isNaN(second)) encoded += BASE64_ALPHABET[((second & 0b1111) << 2) | (third >> 6)];
+    if (!Number.isNaN(third)) encoded += BASE64_ALPHABET[third & 0b111111];
+  }
+  return encoded.replace(/\+/g, '-').replace(/\//g, '_');
 }
 
 function parsedLocation(location, baseUrl) {

@@ -8,7 +8,7 @@ import {
   tenantPayload,
   userNameFor,
 } from '../k6/payloads.js';
-import { loadConfig } from '../k6/config.js';
+import { loadConfig, loadScenarioConfig } from '../k6/config.js';
 
 const environment = {
   BASE_URL: 'http://auth-service:3000',
@@ -63,6 +63,39 @@ test('loadConfig validates a local target without Node URL globals', () => {
   } finally {
     globalThis.URL = originalUrl;
   }
+});
+
+test('loadScenarioConfig permits only bounded runner controls and result paths', () => {
+  assert.deepEqual(
+    loadScenarioConfig({
+      VUS: '7',
+      WARMUP_SECONDS: '2',
+      MEASURE_SECONDS: '3',
+      RUN_KIND: 'soak',
+      SOAK_SECONDS: '61',
+      SUMMARY_PATH: '/results/soak-7.json',
+    }),
+    {
+      vus: 7,
+      warmupSeconds: 2,
+      measureSeconds: 3,
+      runKind: 'soak',
+      soakSeconds: 61,
+      summaryPath: '/results/soak-7.json',
+    },
+  );
+  assert.throws(
+    () => loadScenarioConfig({ ...environment, VUS: '0', SUMMARY_PATH: '/results/probe.json' }),
+    /VUS must be a positive integer/,
+  );
+  assert.throws(
+    () => loadScenarioConfig({ ...environment, RUN_KIND: 'capacity', SUMMARY_PATH: '/results/probe.json' }),
+    /RUN_KIND must be one of: probe, smoke, soak/,
+  );
+  assert.throws(
+    () => loadScenarioConfig({ ...environment, SUMMARY_PATH: '/tmp/secret.json' }),
+    /SUMMARY_PATH must be a safe result path/,
+  );
 });
 
 test('tenant payload opens an isolated load-test tenant without phone verification', () => {
