@@ -186,6 +186,12 @@ const SMOKE_SUMMARY = Object.freeze({
   },
 });
 
+const EARLY_COLLAPSE_SUMMARY = Object.freeze({
+  metrics: {
+    load_harness_failure: rate(1, 0),
+  },
+});
+
 function envValue(args, name) {
   const prefix = `${name}=`;
   return args.find((value) => value.startsWith(prefix))?.slice(prefix.length);
@@ -636,9 +642,19 @@ test('soak monitoring uses the summary epoch and not the host process timestamp'
   assert.equal(report.soak.measurementStartedAt, '2026-09-02T05:06:07.008Z');
   assert.equal(report.soak.measurementEndedAt, '2026-09-02T05:07:08.008Z');
   assert.equal(report.soak.firstViolationMinute, 1);
+  assert.equal(report.soak.windows[0].evidence, null);
+  assert.equal(
+    report.soak.windows[1].evidence.monitorSummary.services['redis-load']
+      .stoppedSamples,
+    1,
+  );
   assert.match(
     report.soak.windows[1].evaluation.violations.join('\n'),
     /redis-load stopped/,
+  );
+  assert.match(
+    harness.files.get(report.summaryPath),
+    /Candidate: login \+ redis-load/,
   );
 });
 
@@ -689,6 +705,150 @@ test('nonzero k6 exits preserve stopped and missing target state as SLO data', a
       );
     });
   }
+});
+
+test('early infrastructure collapse normalizes absent aggregate metrics into a failed search bracket', async (t) => {
+  for (const [target, status] of [
+    ['auth-service', 'stopped'],
+    ['postgres-load', 'missing'],
+    ['redis-load', 'stopped'],
+  ]) {
+    await t.test(`${target} ${status}`, async () => {
+      const harness = createHarness({
+        probeSummary: () => EARLY_COLLAPSE_SUMMARY,
+        probeExitCode: () => 99,
+        checkpointSamples: [monitorSample({ statuses: { [target]: status } })],
+      });
+      const report = await runCapacityWorkflow(
+        options({ maxVus: 1 }),
+        harness.deps,
+      );
+      const [probe] = report.capacity.probes;
+
+      assert.equal(report.capacity.lastPassingVus, 0);
+      assert.equal(report.capacity.firstFailingVus, 1);
+      assert.equal(probe.metrics.requestCount, 0);
+      assert.equal(probe.metrics.rps, 0);
+      assert.equal(probe.metrics.endpointDurations.login.count, 0);
+      assert.equal(probe.metrics.serviceStatuses[target], status);
+      assert.equal(probe.evaluation.passed, false);
+      assert.match(
+        probe.evaluation.violations.join('\n'),
+        new RegExp(`${target} ${status}`),
+      );
+      assert.match(
+        probe.evaluation.violations.join('\n'),
+        /request count must contain observations/,
+      );
+      assert.match(harness.files.get(report.summaryPath), /Result: \[FAIL\]/);
+      assert.match(
+        harness.files.get(report.summaryPath),
+        /Candidate: insufficient evidence/,
+      );
+    });
+  }
+});
+
+test('absent aggregate metrics remain a harness error without the exact collapse conditions', async (t) => {
+  await t.test('nonzero exit without infrastructure proof', async () => {
+    const harness = createHarness({
+      probeSummary: () => EARLY_COLLAPSE_SUMMARY,
+      probeExitCode: () => 99,
+    });
+    await assert.rejects(
+      runCapacityWorkflow(options({ maxVus: 1 }), harness.deps),
+      /capacity probe failed \(status 99\)/,
+    );
+  });
+
+  await t.test('zero exit despite stopped infrastructure', async () => {
+    const harness = createHarness({
+      probeSummary: () => EARLY_COLLAPSE_SUMMARY,
+      checkpointSamples: [
+        monitorSample({ statuses: { 'auth-service': 'stopped' } }),
+      ],
+    });
+    await assert.rejects(
+      runCapacityWorkflow(options({ maxVus: 1 }), harness.deps),
+      /capacity summary parsing failed/,
+    );
+  });
+
+  await t.test('present malformed aggregate metric', async () => {
+    const malformedSummary = globalThis.structuredClone(EARLY_COLLAPSE_SUMMARY);
+    malformedSummary.metrics.load_requests = {
+      type: 'counter',
+      contains: 'default',
+      values: { count: '0', rate: 0 },
+    };
+    const harness = createHarness({
+      probeSummary: () => malformedSummary,
+      probeExitCode: () => 99,
+      checkpointSamples: [
+        monitorSample({ statuses: { 'auth-service': 'missing' } }),
+      ],
+    });
+    await assert.rejects(
+      runCapacityWorkflow(options({ maxVus: 1 }), harness.deps),
+      /capacity summary parsing failed/,
+    );
+  });
+
+  for (const [label, checkpoint] of [
+    ['restart evidence alone', monitorSample({ authRestartCount: 1 })],
+    ['dependency evidence alone', monitorSample({ dependencyErrors: 1 })],
+  ]) {
+    await t.test(label, async () => {
+      const harness = createHarness({
+        probeSummary: () => EARLY_COLLAPSE_SUMMARY,
+        probeExitCode: () => 99,
+        checkpointSamples: [checkpoint],
+      });
+      await assert.rejects(
+        runCapacityWorkflow(options({ maxVus: 1 }), harness.deps),
+        /capacity summary parsing failed/,
+      );
+    });
+  }
+});
+
+test('probe reports retain only bounded evidence for candidate correlation', async () => {
+  const harness = createHarness({ probePasses: () => false });
+  const report = await runCapacityWorkflow(
+    options({ maxVus: 1 }),
+    harness.deps,
+  );
+  const [probe] = report.capacity.probes;
+
+  assert.deepEqual(probe.evidence, {
+    startedAt: '2026-09-02T01:02:04.004Z',
+    endedAt: '2026-09-02T01:02:04.004Z',
+    monitorSummary: {
+      sampleCount: 1,
+      services: Object.fromEntries(
+        ['auth-service', 'postgres-load', 'redis-load'].map((name) => [
+          name,
+          {
+            peakCpuPercent: 1,
+            peakMemoryUsageBytes: 1_000,
+            peakNetworkInputBytes: 3_000,
+            peakNetworkOutputBytes: 4_000,
+            maxRestartCount: 0,
+            stoppedSamples: 0,
+            missingSamples: 0,
+          },
+        ]),
+      ),
+      peakPostgresConnections: 5,
+      peakRedisConnectedClients: 6,
+      peakRedisUsedMemoryBytes: 7_000,
+      dependencyErrors: 0,
+    },
+  });
+  const markdown = harness.files.get(report.summaryPath);
+  assert.match(markdown, /Correlated bottleneck candidate \(not causation\)/);
+  assert.match(markdown, /coarse probe at 1 VUs/);
+  assert.match(markdown, /login \| 100 \| 200/);
 });
 
 test('soak reports the first minute with an exact auth-service restart sample', async () => {

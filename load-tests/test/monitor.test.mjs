@@ -359,6 +359,11 @@ test('startMonitor resolves exact dedicated containers before sampling only thei
     ([, args]) => args.includes('ps') && args.includes('--format'),
   );
   assert.equal(composePs[1].includes('--all'), true);
+  assert.equal(
+    composePs[1].includes('--no-trunc'),
+    true,
+    'Compose JSON IDs must be full-length before exact identity comparison',
+  );
 });
 
 test('checkpoint awaits an in-flight interval sample and forces a terminal sample', async () => {

@@ -702,11 +702,240 @@ function normalizedMonitorSummary(input) {
   };
 }
 
+const BOTTLENECK_DISCLAIMER = 'correlation only; not causation';
+
+function canonicalEvidenceTimestamp(value) {
+  if (typeof value !== 'string') throw new TypeError();
+  const milliseconds = Date.parse(value);
+  if (
+    !Number.isFinite(milliseconds) ||
+    milliseconds < 1 ||
+    new Date(milliseconds).toISOString() !== value
+  ) {
+    throw new TypeError();
+  }
+  return { value, milliseconds };
+}
+
+function firstFailureSource(report) {
+  if (report?.capacity !== undefined) {
+    if (
+      !report.capacity ||
+      typeof report.capacity !== 'object' ||
+      !Array.isArray(report.capacity.probes)
+    ) {
+      throw new TypeError();
+    }
+    for (const probe of report.capacity.probes) {
+      if (typeof probe?.evaluation?.passed !== 'boolean') throw new TypeError();
+      if (!probe.evaluation.passed) {
+        if (
+          !['coarse', 'refine'].includes(probe.phase) ||
+          !Number.isSafeInteger(probe.vus) ||
+          probe.vus < 1
+        ) {
+          throw new TypeError();
+        }
+        return {
+          phaseLabel: `${probe.phase} probe at ${probe.vus} VUs`,
+          metrics: probe.metrics,
+          evidence: probe.evidence,
+        };
+      }
+    }
+  }
+
+  if (report?.soak !== undefined) {
+    if (
+      !report.soak ||
+      typeof report.soak !== 'object' ||
+      typeof report.soak.ran !== 'boolean' ||
+      !Array.isArray(report.soak.windows)
+    ) {
+      throw new TypeError();
+    }
+    if (report.soak.ran) {
+      if (!Number.isSafeInteger(report.soak.vus) || report.soak.vus < 1) {
+        throw new TypeError();
+      }
+      const minutes = new Set();
+      let firstFailure;
+      for (const window of report.soak.windows) {
+        if (
+          !Number.isSafeInteger(window?.minute) ||
+          window.minute < 0 ||
+          window.minute > 29 ||
+          minutes.has(window.minute) ||
+          typeof window?.evaluation?.passed !== 'boolean'
+        ) {
+          throw new TypeError();
+        }
+        minutes.add(window.minute);
+        if (
+          !window.evaluation.passed &&
+          (firstFailure === undefined || window.minute < firstFailure.minute)
+        ) {
+          firstFailure = window;
+        }
+      }
+      if (firstFailure) {
+        return {
+          phaseLabel: `soak minute ${firstFailure.minute} at ${report.soak.vus} VUs`,
+          metrics: firstFailure.metrics,
+          evidence: firstFailure.evidence,
+        };
+      }
+    }
+  }
+  return undefined;
+}
+
+function highestLatencyEndpoint(metrics) {
+  if (!metrics || typeof metrics !== 'object') throw new TypeError();
+  let selected;
+  for (const endpoint of Object.keys(ENDPOINT_METRICS)) {
+    const value = metrics.endpointDurations?.[endpoint];
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      !Number.isSafeInteger(value.count) ||
+      value.count < 0 ||
+      !validFiniteNumber(value.p95Ms) ||
+      !validFiniteNumber(value.p99Ms)
+    ) {
+      throw new TypeError();
+    }
+    if (
+      value.count > 0 &&
+      (selected === undefined ||
+        value.p99Ms > selected.p99Ms ||
+        (value.p99Ms === selected.p99Ms && value.p95Ms > selected.p95Ms))
+    ) {
+      selected = { name: endpoint, p95Ms: value.p95Ms, p99Ms: value.p99Ms };
+    }
+  }
+  return selected;
+}
+
+function candidateService(monitorSummary) {
+  let selected;
+  for (const [index, service] of EXPECTED_SERVICES.entries()) {
+    const value = monitorSummary.services[service];
+    const severity =
+      value.missingSamples > 0
+        ? 3
+        : value.stoppedSamples > 0
+          ? 2
+          : value.maxRestartCount > 0
+            ? 1
+            : 0;
+    const hasSignal =
+      severity > 0 ||
+      value.peakCpuPercent > 0 ||
+      value.peakMemoryUsageBytes > 0 ||
+      value.peakNetworkInputBytes > 0 ||
+      value.peakNetworkOutputBytes > 0;
+    if (!hasSignal) continue;
+    const candidate = { index, severity, name: service, ...value };
+    const fields = [
+      'severity',
+      'peakCpuPercent',
+      'peakMemoryUsageBytes',
+      'peakNetworkInputBytes',
+      'peakNetworkOutputBytes',
+      'maxRestartCount',
+    ];
+    if (
+      selected === undefined ||
+      fields.some((field, fieldIndex) => {
+        if (candidate[field] === selected[field]) return false;
+        return (
+          fields
+            .slice(0, fieldIndex)
+            .every((previous) => candidate[previous] === selected[previous]) &&
+          candidate[field] > selected[field]
+        );
+      })
+    ) {
+      selected = candidate;
+    }
+  }
+  if (!selected) return undefined;
+  return {
+    name: selected.name,
+    worstStatus:
+      selected.missingSamples > 0
+        ? 'missing'
+        : selected.stoppedSamples > 0
+          ? 'stopped'
+          : 'running',
+    peakCpuPercent: selected.peakCpuPercent,
+    peakMemoryUsageBytes: selected.peakMemoryUsageBytes,
+    peakNetworkInputBytes: selected.peakNetworkInputBytes,
+    peakNetworkOutputBytes: selected.peakNetworkOutputBytes,
+    maxRestartCount: selected.maxRestartCount,
+    stoppedSamples: selected.stoppedSamples,
+    missingSamples: selected.missingSamples,
+  };
+}
+
+function insufficientCandidate(phaseLabel = 'not observed') {
+  return {
+    status: 'insufficient evidence',
+    disclaimer: BOTTLENECK_DISCLAIMER,
+    phaseLabel,
+  };
+}
+
+export function deriveBottleneckCandidate(report) {
+  try {
+    const source = firstFailureSource(report);
+    if (!source) return insufficientCandidate();
+    const endpoint = highestLatencyEndpoint(source.metrics);
+    if (
+      source.evidence === null ||
+      source.evidence === undefined ||
+      !endpoint
+    ) {
+      return insufficientCandidate(source.phaseLabel);
+    }
+    if (!source.evidence || typeof source.evidence !== 'object') {
+      throw new TypeError();
+    }
+    const startedAt = canonicalEvidenceTimestamp(source.evidence.startedAt);
+    const endedAt = canonicalEvidenceTimestamp(source.evidence.endedAt);
+    if (endedAt.milliseconds < startedAt.milliseconds) throw new TypeError();
+    const monitorSummary = normalizedMonitorSummary(
+      source.evidence.monitorSummary,
+    );
+    const service = candidateService(monitorSummary);
+    if (!service) return insufficientCandidate(source.phaseLabel);
+    return {
+      status: 'candidate',
+      disclaimer: BOTTLENECK_DISCLAIMER,
+      phaseLabel: source.phaseLabel,
+      startedAt: startedAt.value,
+      endedAt: endedAt.value,
+      endpoint,
+      service,
+      dependencies: {
+        peakPostgresConnections: monitorSummary.peakPostgresConnections,
+        peakRedisConnectedClients: monitorSummary.peakRedisConnectedClients,
+        peakRedisUsedMemoryBytes: monitorSummary.peakRedisUsedMemoryBytes,
+        dependencyErrors: monitorSummary.dependencyErrors,
+      },
+    };
+  } catch {
+    throw new TypeError('Invalid bottleneck evidence');
+  }
+}
+
 export function renderSummaryMarkdown(report) {
   const environment = sanitizeEnvironment(report?.environment);
   const trafficMix = normalizedTrafficMix(report?.trafficMix);
   const securityGate = normalizedSecurityGate(report?.securityGate);
   const monitorSummary = normalizedMonitorSummary(report?.monitorSummary);
+  const bottleneckCandidate = deriveBottleneckCandidate(report);
   const metrics = safeCapacityMetrics(
     report?.metrics ?? emptyCapacityMetrics(),
   );
@@ -749,6 +978,34 @@ export function renderSummaryMarkdown(report) {
     ([service, values]) =>
       `| ${service} | ${values.peakCpuPercent} | ${values.peakMemoryUsageBytes} | ${values.peakNetworkInputBytes} | ${values.peakNetworkOutputBytes} | ${values.maxRestartCount} | ${values.stoppedSamples} | ${values.missingSamples} |`,
   );
+  const bottleneckRows =
+    bottleneckCandidate.status === 'candidate'
+      ? [
+          `Phase: ${bottleneckCandidate.phaseLabel}`,
+          `Evidence window: ${bottleneckCandidate.startedAt} to ${bottleneckCandidate.endedAt}`,
+          `Candidate: ${bottleneckCandidate.endpoint.name} + ${bottleneckCandidate.service.name}`,
+          `Disclaimer: ${bottleneckCandidate.disclaimer}`,
+          '',
+          '| Endpoint (highest p99 in first failure) | p95 (ms) | p99 (ms) |',
+          '| --- | ---: | ---: |',
+          `| ${bottleneckCandidate.endpoint.name} | ${bottleneckCandidate.endpoint.p95Ms} | ${bottleneckCandidate.endpoint.p99Ms} |`,
+          '',
+          '| Service | Worst status | Peak CPU (%) | Peak memory (bytes) | Peak network in (bytes) | Peak network out (bytes) | Max restarts | Stopped samples | Missing samples |',
+          '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
+          `| ${bottleneckCandidate.service.name} | ${bottleneckCandidate.service.worstStatus} | ${bottleneckCandidate.service.peakCpuPercent} | ${bottleneckCandidate.service.peakMemoryUsageBytes} | ${bottleneckCandidate.service.peakNetworkInputBytes} | ${bottleneckCandidate.service.peakNetworkOutputBytes} | ${bottleneckCandidate.service.maxRestartCount} | ${bottleneckCandidate.service.stoppedSamples} | ${bottleneckCandidate.service.missingSamples} |`,
+          '',
+          '| Correlated dependency evidence | Peak/count |',
+          '| --- | ---: |',
+          `| PostgreSQL connections | ${bottleneckCandidate.dependencies.peakPostgresConnections} |`,
+          `| Redis connected clients | ${bottleneckCandidate.dependencies.peakRedisConnectedClients} |`,
+          `| Redis used memory (bytes) | ${bottleneckCandidate.dependencies.peakRedisUsedMemoryBytes} |`,
+          `| Dependency errors | ${bottleneckCandidate.dependencies.dependencyErrors} |`,
+        ]
+      : [
+          `Phase: ${bottleneckCandidate.phaseLabel}`,
+          'Candidate: insufficient evidence',
+          `Disclaimer: ${bottleneckCandidate.disclaimer}`,
+        ];
 
   return [
     '# Local capacity test summary',
@@ -806,6 +1063,10 @@ export function renderSummaryMarkdown(report) {
     '| Endpoint | Count | p95 (ms) | p99 (ms) |',
     '| --- | ---: | ---: | ---: |',
     endpointRows,
+    '',
+    '## Correlated bottleneck candidate (not causation)',
+    '',
+    ...bottleneckRows,
     '',
     '## Monitor bottleneck evidence',
     '',

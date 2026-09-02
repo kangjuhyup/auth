@@ -423,7 +423,7 @@ async function collectSample(deps, outputPath, samples, dependencyState) {
   const composeRows = resolveComposeRows(
     await requiredCommand(
       deps,
-      [...COMPOSE_ARGS, 'ps', '--all', '--format', 'json'],
+      [...COMPOSE_ARGS, 'ps', '--all', '--no-trunc', '--format', 'json'],
       'container discovery',
     ),
   );

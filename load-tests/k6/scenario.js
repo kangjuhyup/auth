@@ -1,4 +1,5 @@
 import { SAFE_SYSTEM_TAGS } from './system-tags.js';
+import { chooseAction } from './flow-utils.js';
 
 const SUMMARY_TREND_STATS = Object.freeze([
   'count',
@@ -71,6 +72,41 @@ export function createSmokeOptions() {
       load_harness_failure: ['rate==0'],
     },
     summaryTrendStats: SUMMARY_TREND_STATS,
+  };
+}
+
+export function runJourneyIteration({
+  oidc,
+  session,
+  userIndex,
+  timing,
+  now,
+  actionValue,
+  recordHarnessFailure = () => {},
+}) {
+  let activeSession = session;
+  let initialized = false;
+  if (!activeSession) {
+    try {
+      activeSession = oidc.login(userIndex, false);
+      initialized = true;
+      recordHarnessFailure(false);
+    } catch (error) {
+      recordHarnessFailure(true);
+      throw error;
+    }
+  }
+  if (typeof now !== 'function') throw new TypeError('clock is required');
+  const measuring = now() >= timing.measurementEpochMs;
+  return {
+    session: oidc.execute(
+      chooseAction(actionValue),
+      activeSession,
+      userIndex,
+      measuring,
+    ),
+    initialized,
+    measuring,
   };
 }
 

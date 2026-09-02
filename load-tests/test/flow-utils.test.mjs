@@ -7,6 +7,7 @@ import {
   createOidcSession,
   extractAuthorizationCode,
   extractInteractionUid,
+  metricContextForMeasurement,
   oidcTokenProfiles,
   refreshOidcSession,
   resolveAuthorizationCodeWithConsent,
@@ -19,6 +20,7 @@ import {
   createSmokeOptions,
   measurementMinute,
   runDeterministicSmoke,
+  runJourneyIteration,
 } from '../k6/scenario.js';
 
 const serviceOrigin = 'http://auth-service:3000';
@@ -483,6 +485,125 @@ test('soak minute calculation supports every bounded duration and rejects invali
   }
   assert.throws(() => measurementMinute(epoch - 1, epoch, 61), /measurement/);
   assert.throws(() => measurementMinute(epoch, 1.5, 61), /epoch/);
+});
+
+test('unmeasured warmup metric context never resolves a soak minute', () => {
+  let minuteCalls = 0;
+  const context = metricContextForMeasurement({
+    measuring: false,
+    runKind: 'soak',
+    measurementMinute: () => {
+      minuteCalls += 1;
+      throw new Error('pre-epoch minute must not be resolved');
+    },
+  });
+
+  assert.deepEqual(context, { runKind: 'soak' });
+  assert.equal(minuteCalls, 0);
+});
+
+test('measured soak metric context resolves exactly one minute and fails before the epoch', () => {
+  let minuteCalls = 0;
+  assert.deepEqual(
+    metricContextForMeasurement({
+      measuring: true,
+      runKind: 'soak',
+      measurementMinute: () => {
+        minuteCalls += 1;
+        return 1;
+      },
+    }),
+    { runKind: 'soak', minute: 1 },
+  );
+  assert.equal(minuteCalls, 1);
+
+  const epoch = 1_700_000_000_000;
+  assert.throws(
+    () =>
+      metricContextForMeasurement({
+        measuring: true,
+        runKind: 'soak',
+        measurementMinute: () => measurementMinute(epoch - 1, epoch, 61),
+      }),
+    /measurement has not started/,
+  );
+});
+
+test('journey iteration completes a pre-epoch soak login without custom SLO samples', () => {
+  const startedAt = 1_700_000_000_000;
+  const timing = createMeasurementTiming(startedAt, 15);
+  let minuteCalls = 0;
+  let customSamples = 0;
+  const measurementContext = (measuring) => {
+    const context = metricContextForMeasurement({
+      measuring,
+      runKind: 'soak',
+      measurementMinute: () => {
+        minuteCalls += 1;
+        return measurementMinute(
+          startedAt + 1_000,
+          timing.measurementEpochMs,
+          61,
+        );
+      },
+    });
+    if (measuring) customSamples += 1;
+    return context;
+  };
+  const oidc = {
+    login(_userIndex, measuring) {
+      measurementContext(measuring);
+      return { session: 'warmup' };
+    },
+    execute(_action, session, _userIndex, measuring) {
+      measurementContext(measuring);
+      return session;
+    },
+  };
+
+  const result = runJourneyIteration({
+    oidc,
+    session: undefined,
+    userIndex: 1,
+    timing,
+    now: () => startedAt + 1_000,
+    actionValue: 0,
+  });
+
+  assert.deepEqual(result, {
+    session: { session: 'warmup' },
+    initialized: true,
+    measuring: false,
+  });
+  assert.equal(minuteCalls, 0);
+  assert.equal(customSamples, 0);
+});
+
+test('journey iteration samples the measurement clock after an initial login completes', () => {
+  const events = [];
+  const timing = createMeasurementTiming(1_700_000_000_000, 1);
+  runJourneyIteration({
+    oidc: {
+      login() {
+        events.push('login');
+        return { session: 'ready' };
+      },
+      execute(_action, session, _userIndex, measuring) {
+        events.push(`execute:${measuring}`);
+        return session;
+      },
+    },
+    session: undefined,
+    userIndex: 1,
+    timing,
+    now: () => {
+      events.push('clock');
+      return timing.measurementEpochMs;
+    },
+    actionValue: 0,
+  });
+
+  assert.deepEqual(events, ['login', 'clock', 'execute:true']);
 });
 
 test('createSmokeOptions uses a single deterministic VU and requires every check to pass', () => {

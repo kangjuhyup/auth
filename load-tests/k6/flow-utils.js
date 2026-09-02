@@ -277,6 +277,26 @@ export function refreshOidcSession(session, resourceTokens) {
   });
 }
 
+export function metricContextForMeasurement({
+  measuring,
+  runKind,
+  measurementMinute,
+}) {
+  if (typeof measuring !== 'boolean') {
+    throw new TypeError('measuring must be a boolean');
+  }
+  if (!measuring) return { runKind };
+  if (runKind === 'soak' && typeof measurementMinute !== 'function') {
+    throw new TypeError('soak measurement minute is required');
+  }
+  return {
+    runKind,
+    ...(typeof measurementMinute === 'function'
+      ? { minute: measurementMinute() }
+      : {}),
+  };
+}
+
 export function chooseAction(value) {
   if (
     typeof value !== 'number' ||

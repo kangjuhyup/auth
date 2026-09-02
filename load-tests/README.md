@@ -110,8 +110,9 @@ Generated artifacts are written beneath the gitignored
 
 - `summary.md`: the human-readable conclusion, allowlisted host/image context,
   configured traffic mix, bounded rate-limit evidence, per-probe VU/RPS and
-  latency/failure/endpoint counts, search bracket, soak outcome, and aggregate
-  container/dependency bottleneck evidence;
+  latency/failure/endpoint counts, search bracket, soak outcome, the earliest
+  failing phase's correlated candidate, and aggregate container/dependency
+  bottleneck evidence;
 - `capacity.json`: each coarse and refinement probe, its SLO evaluation, the last
   passing VU level, and the first failing VU level;
 - `soak.json`: bounded soak windows, their evaluations, and the first violation
@@ -128,13 +129,28 @@ restart samples in `docker-stats.csv`. Treat a reported maximum as the maximum
 to `MAX_VUS` passes, the result is only “at least N VUs” at the configured search
 cap, not proof that N is the service's absolute maximum.
 
+The correlated bottleneck entry is explicitly a candidate, not a causal claim.
+It selects the highest-p99 required endpoint from the earliest failing probe or
+soak window and pairs it only with allowlisted resource, status, restart, and
+dependency peaks collected for that same phase. If either side has no bounded
+observation, the report says `insufficient evidence`; the full-run monitor table
+remains available as raw aggregate evidence.
+
 For soak runs, k6 `setup()` establishes one measurement epoch shared by every
 VU and emits it exactly once in the k6 summary. After k6 exits, the host monitor
 drains pending collection, takes a terminal sample, validates that single epoch,
 and uses it as the sole anchor for minute buckets. Samples on the exact final
 measurement edge belong to the final bucket; stopped or missing expected
 containers remain explicit SLO failures rather than being discarded as generic
-command output.
+command output. Initial logins during the nonzero warm-up do not emit custom SLO
+samples and do not resolve a minute tag. Once measurement begins, a sample
+without a valid epoch-derived minute still fails closed.
+
+If k6 exits nonzero during initial login or warm-up and its partial summary lacks
+the required aggregate metrics, the runner records zero observations only when
+the phase-local trusted monitor sample proves an expected auth, PostgreSQL, or
+Redis container is stopped or missing. A malformed present metric, a zero k6
+exit, or missing exact infrastructure evidence remains a harness error.
 
 Smoke mode writes its deterministic k6 smoke summary only. It verifies coverage
 of login/token exchange, introspection, UserInfo, refresh, discovery, JWKS, and

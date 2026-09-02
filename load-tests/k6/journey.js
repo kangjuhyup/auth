@@ -2,7 +2,6 @@ import { sleep } from 'k6';
 import exec from 'k6/execution';
 import { Rate } from 'k6/metrics';
 import { loadConfig, loadScenarioConfig } from './config.js';
-import { chooseAction } from './flow-utils.js';
 import {
   handleK6Summary,
   recordMeasurementEpoch,
@@ -13,6 +12,7 @@ import {
   createJourneyOptions,
   createMeasurementTiming,
   measurementMinute,
+  runJourneyIteration,
 } from './scenario.js';
 
 const scenarioConfig = loadScenarioConfig(__ENV, 'probe');
@@ -58,22 +58,15 @@ export function setup() {
 
 export default function (timing) {
   const userIndex = exec.vu.idInTest;
-  if (!session) {
-    try {
-      session = oidcClient(timing).login(userIndex, false);
-      harnessFailure.add(false);
-    } catch (error) {
-      harnessFailure.add(true);
-      throw error;
-    }
-  }
-  const measuring = Date.now() >= timing.measurementEpochMs;
-  session = oidcClient(timing).execute(
-    chooseAction(Math.random()),
+  session = runJourneyIteration({
+    oidc: oidcClient(timing),
     session,
     userIndex,
-    measuring,
-  );
+    timing,
+    now: Date.now,
+    actionValue: Math.random(),
+    recordHarnessFailure: (failed) => harnessFailure.add(failed),
+  }).session;
   sleep(1 + Math.random() * 2);
 }
 

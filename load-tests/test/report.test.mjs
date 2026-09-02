@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  deriveBottleneckCandidate,
   normalizeK6Summary,
   normalizeMeasurementEpoch,
   normalizeSoakWindows,
@@ -292,6 +293,239 @@ function completeEnvironment(overrides = {}) {
   };
 }
 
+function evidenceWindow({
+  startedAt = '2026-09-02T01:02:04.004Z',
+  endedAt = '2026-09-02T01:02:09.004Z',
+  authStoppedSamples = 0,
+  authCpu = 70,
+  redisCpu = 20,
+} = {}) {
+  return {
+    startedAt,
+    endedAt,
+    monitorSummary: {
+      sampleCount: 2,
+      services: {
+        'auth-service': {
+          peakCpuPercent: authCpu,
+          peakMemoryUsageBytes: 1_000,
+          peakNetworkInputBytes: 2_000,
+          peakNetworkOutputBytes: 3_000,
+          maxRestartCount: 1,
+          stoppedSamples: authStoppedSamples,
+          missingSamples: 0,
+        },
+        'postgres-load': {
+          peakCpuPercent: 10,
+          peakMemoryUsageBytes: 4_000,
+          peakNetworkInputBytes: 5_000,
+          peakNetworkOutputBytes: 6_000,
+          maxRestartCount: 0,
+          stoppedSamples: 0,
+          missingSamples: 0,
+        },
+        'redis-load': {
+          peakCpuPercent: redisCpu,
+          peakMemoryUsageBytes: 7_000,
+          peakNetworkInputBytes: 8_000,
+          peakNetworkOutputBytes: 9_000,
+          maxRestartCount: 0,
+          stoppedSamples: 0,
+          missingSamples: 0,
+        },
+      },
+      peakPostgresConnections: 12,
+      peakRedisConnectedClients: 13,
+      peakRedisUsedMemoryBytes: 14_000,
+      dependencyErrors: 2,
+    },
+  };
+}
+
+function normalizedMetricsWithEndpointLatency(endpoint, p95Ms, p99Ms) {
+  const metrics = completeMetrics();
+  metrics.load_request_failed = rate(0, 200);
+  metrics[`load_${endpoint}_duration_ms`] = trend(10, p95Ms, p99Ms);
+  return normalizeK6Summary(summary(metrics));
+}
+
+test('deriveBottleneckCandidate selects the earliest failure and correlates its own evidence window', () => {
+  const candidate = deriveBottleneckCandidate({
+    capacity: {
+      probes: [
+        {
+          phase: 'coarse',
+          vus: 10,
+          metrics: normalizedMetricsWithEndpointLatency('login', 100, 200),
+          evaluation: { passed: true },
+          evidence: evidenceWindow({ authCpu: 99 }),
+        },
+        {
+          phase: 'coarse',
+          vus: 25,
+          metrics: normalizedMetricsWithEndpointLatency(
+            'userinfo',
+            1_200,
+            2_500,
+          ),
+          evaluation: { passed: false },
+          evidence: evidenceWindow({ authStoppedSamples: 1, redisCpu: 99 }),
+        },
+        {
+          phase: 'refine',
+          vus: 17,
+          metrics: normalizedMetricsWithEndpointLatency('login', 1_900, 3_000),
+          evaluation: { passed: false },
+          evidence: evidenceWindow({
+            startedAt: '2026-09-02T01:03:04.004Z',
+            endedAt: '2026-09-02T01:03:09.004Z',
+            authCpu: 100,
+          }),
+        },
+      ],
+    },
+    soak: { ran: false, windows: [] },
+  });
+
+  assert.deepEqual(candidate, {
+    status: 'candidate',
+    disclaimer: 'correlation only; not causation',
+    phaseLabel: 'coarse probe at 25 VUs',
+    startedAt: '2026-09-02T01:02:04.004Z',
+    endedAt: '2026-09-02T01:02:09.004Z',
+    endpoint: { name: 'userinfo', p95Ms: 1_200, p99Ms: 2_500 },
+    service: {
+      name: 'auth-service',
+      worstStatus: 'stopped',
+      peakCpuPercent: 70,
+      peakMemoryUsageBytes: 1_000,
+      peakNetworkInputBytes: 2_000,
+      peakNetworkOutputBytes: 3_000,
+      maxRestartCount: 1,
+      stoppedSamples: 1,
+      missingSamples: 0,
+    },
+    dependencies: {
+      peakPostgresConnections: 12,
+      peakRedisConnectedClients: 13,
+      peakRedisUsedMemoryBytes: 14_000,
+      dependencyErrors: 2,
+    },
+  });
+});
+
+test('deriveBottleneckCandidate selects the first failing soak window when every probe passed', () => {
+  const candidate = deriveBottleneckCandidate({
+    capacity: {
+      probes: [
+        {
+          phase: 'coarse',
+          vus: 10,
+          metrics: normalizedMetricsWithEndpointLatency('login', 100, 200),
+          evaluation: { passed: true },
+          evidence: evidenceWindow(),
+        },
+      ],
+    },
+    soak: {
+      ran: true,
+      vus: 10,
+      windows: [
+        {
+          minute: 0,
+          metrics: normalizedMetricsWithEndpointLatency('login', 100, 200),
+          evaluation: { passed: true },
+          evidence: evidenceWindow(),
+        },
+        {
+          minute: 1,
+          metrics: normalizedMetricsWithEndpointLatency(
+            'refresh',
+            1_300,
+            2_600,
+          ),
+          evaluation: { passed: false },
+          evidence: evidenceWindow({
+            startedAt: '2026-09-02T01:03:04.004Z',
+            endedAt: '2026-09-02T01:03:05.004Z',
+          }),
+        },
+      ],
+    },
+  });
+
+  assert.equal(candidate.status, 'candidate');
+  assert.equal(candidate.phaseLabel, 'soak minute 1 at 10 VUs');
+  assert.deepEqual(candidate.endpoint, {
+    name: 'refresh',
+    p95Ms: 1_300,
+    p99Ms: 2_600,
+  });
+  assert.equal(candidate.startedAt, '2026-09-02T01:03:04.004Z');
+  assert.equal(candidate.endedAt, '2026-09-02T01:03:05.004Z');
+});
+
+test('deriveBottleneckCandidate reports insufficient evidence without an observed endpoint or window', () => {
+  const metrics = normalizedMetricsWithEndpointLatency('login', 100, 200);
+  metrics.endpointDurations = Object.fromEntries(
+    Object.keys(metrics.endpointDurations).map((endpoint) => [
+      endpoint,
+      { count: 0, p95Ms: 0, p99Ms: 0 },
+    ]),
+  );
+  assert.deepEqual(
+    deriveBottleneckCandidate({
+      capacity: {
+        probes: [
+          {
+            phase: 'coarse',
+            vus: 1,
+            metrics,
+            evaluation: { passed: false },
+            evidence: null,
+          },
+        ],
+      },
+      soak: { ran: false, windows: [] },
+    }),
+    {
+      status: 'insufficient evidence',
+      disclaimer: 'correlation only; not causation',
+      phaseLabel: 'coarse probe at 1 VUs',
+    },
+  );
+});
+
+test('deriveBottleneckCandidate rejects unsafe phase and timestamp evidence without reflecting it', () => {
+  assert.throws(
+    () =>
+      deriveBottleneckCandidate({
+        capacity: {
+          probes: [
+            {
+              phase: `coarse\n${fixtureSecret}`,
+              vus: 10,
+              metrics: normalizedMetricsWithEndpointLatency(
+                'userinfo',
+                1_200,
+                2_500,
+              ),
+              evaluation: { passed: false },
+              evidence: evidenceWindow({
+                startedAt: `2026-09-02T01:02:04.004Z\n${fixtureSecret}`,
+              }),
+            },
+          ],
+        },
+      }),
+    (error) => {
+      assert.equal(error.message, 'Invalid bottleneck evidence');
+      assert.doesNotMatch(error.message, new RegExp(fixtureSecret));
+      return true;
+    },
+  );
+});
+
 test('sanitizeEnvironment constructs a strict fresh allowlisted object', () => {
   const source = {
     ...completeEnvironment(),
@@ -436,6 +670,11 @@ test('renderSummaryMarkdown includes verdict, duration, SLOs, endpoints, and no 
 });
 
 test('renderSummaryMarkdown derives safe failure names instead of rendering raw failure data', () => {
+  const candidateMetrics = normalizedMetricsWithEndpointLatency(
+    'userinfo',
+    1_200,
+    2_500,
+  );
   const markdown = renderSummaryMarkdown({
     passed: false,
     environment: completeEnvironment({
@@ -478,10 +717,29 @@ test('renderSummaryMarkdown derives safe failure names instead of rendering raw 
       peakRedisUsedMemoryBytes: 0,
       dependencyErrors: 0,
     },
+    capacity: {
+      probes: [
+        {
+          phase: 'coarse',
+          vus: 25,
+          metrics: candidateMetrics,
+          evaluation: { passed: false },
+          evidence: evidenceWindow({ authStoppedSamples: 1 }),
+        },
+      ],
+    },
+    soak: { ran: false, windows: [] },
     violations: [fixtureSecret],
     error: { body: fixtureSecret },
   });
 
   assert.match(markdown, /- request failure rate must be < 0\.01/);
+  assert.match(markdown, /Correlated bottleneck candidate \(not causation\)/);
+  assert.match(markdown, /coarse probe at 25 VUs/);
+  assert.match(markdown, /userinfo \| 1200 \| 2500/);
+  assert.match(
+    markdown,
+    /auth-service \| stopped \| 70 \| 1000 \| 2000 \| 3000 \| 1/,
+  );
   assert.doesNotMatch(markdown, new RegExp(fixtureSecret));
 });

@@ -531,6 +531,30 @@ function monitorSamplesSince(monitor, startIndex) {
   return monitorSnapshot(monitor).slice(startIndex);
 }
 
+function evidenceFromSamples(samples) {
+  if (!Array.isArray(samples)) throw new HarnessError('monitor evidence');
+  if (samples.length === 0) return null;
+  try {
+    const timestamps = samples.map((sample) => {
+      const milliseconds = Date.parse(sample?.timestamp);
+      if (
+        !Number.isFinite(milliseconds) ||
+        new Date(milliseconds).toISOString() !== sample.timestamp
+      ) {
+        throw new TypeError('Invalid evidence timestamp');
+      }
+      return milliseconds;
+    });
+    return {
+      startedAt: new Date(Math.min(...timestamps)).toISOString(),
+      endedAt: new Date(Math.max(...timestamps)).toISOString(),
+      monitorSummary: summarizeMonitorSamples(samples),
+    };
+  } catch {
+    throw new HarnessError('monitor evidence');
+  }
+}
+
 function hasInfrastructureFailure(context) {
   return (
     context.serviceRestarted ||
@@ -538,6 +562,12 @@ function hasInfrastructureFailure(context) {
     EXPECTED_SERVICES.some(
       (service) => context.serviceStatuses[service] !== 'running',
     )
+  );
+}
+
+function hasStoppedOrMissingService(context) {
+  return EXPECTED_SERVICES.some(
+    (service) => context.serviceStatuses[service] !== 'running',
   );
 }
 
@@ -558,18 +588,30 @@ async function runProbe(deps, monitor, resultDirectory, options, vus, phase) {
     preserveFailureSummary: true,
     afterCommand: () => checkpointMonitor(monitor),
   });
-  const context = contextFromSamples(monitorSamplesSince(monitor, sampleIndex));
-  if (exitCode !== 0 && !hasInfrastructureFailure(context)) {
+  const samples = monitorSamplesSince(monitor, sampleIndex);
+  const context = contextFromSamples(samples);
+  const infrastructureFailure = hasInfrastructureFailure(context);
+  if (exitCode !== 0 && !infrastructureFailure) {
     throw new HarnessError('capacity probe', exitCode);
   }
   let metrics;
   try {
-    metrics = normalizeK6Summary(raw, context);
+    metrics = normalizeK6Summary(raw, context, {
+      allowMissingAggregate:
+        exitCode !== 0 && hasStoppedOrMissingService(context),
+    });
   } catch {
     throw new HarnessError('capacity summary parsing');
   }
   const evaluation = evaluateCapacityMetrics(metrics);
-  return { phase, vus, summaryPath, metrics, evaluation };
+  return {
+    phase,
+    vus,
+    summaryPath,
+    metrics,
+    evaluation,
+    evidence: evidenceFromSamples(samples),
+  };
 }
 
 export function bucketMonitorSamples(
@@ -643,10 +685,15 @@ async function runSoak(deps, monitor, resultDirectory, options, vus) {
     bucketCount,
   });
   const windows = normalized.map(({ minute, metrics }) => {
-    const samplesForWindow =
-      minute === bucketCount - 1 && samples.length > 0
-        ? [...monitorBuckets[minute], samples.at(-1)]
-        : monitorBuckets[minute];
+    const samplesForWindow = [...monitorBuckets[minute]];
+    const terminalSample = samples.at(-1);
+    if (
+      minute === bucketCount - 1 &&
+      terminalSample &&
+      !samplesForWindow.includes(terminalSample)
+    ) {
+      samplesForWindow.push(terminalSample);
+    }
     const context = contextFromSamples(samplesForWindow);
     const withContext = {
       ...metrics,
@@ -658,6 +705,7 @@ async function runSoak(deps, monitor, resultDirectory, options, vus) {
       minute,
       metrics: withContext,
       evaluation: evaluateCapacityMetrics(withContext),
+      evidence: evidenceFromSamples(samplesForWindow),
     };
   });
   const firstViolation = windows.find(({ evaluation }) => !evaluation.passed);

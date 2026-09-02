@@ -8,6 +8,7 @@ import {
   buildPkce,
   createOidcSession,
   extractInteractionUid,
+  metricContextForMeasurement,
   oidcTokenProfiles,
   refreshOidcSession,
   resolveAuthorizationCodeWithConsent,
@@ -91,7 +92,7 @@ function responseStatus(
   metricContext,
 ) {
   const accepted = acceptedStatuses.includes(response.status);
-  const context = metricContext();
+  const context = metricContext(measuring);
   metricRecorder.recordResponse({
     response,
     endpoint,
@@ -120,7 +121,7 @@ function requireProtocol(
   const passed = check(null, {
     [`oidc ${endpoint} ${checkName}`]: () => condition,
   });
-  metricRecorder.recordCheck(passed, measuring, metricContext());
+  metricRecorder.recordCheck(passed, measuring, metricContext(measuring));
   if (!passed) throw protocolError(endpoint, response?.status);
 }
 
@@ -184,12 +185,12 @@ export function createOidcClient(
     );
   }
 
-  const metricContext = () => ({
-    runKind: config.runKind,
-    ...(typeof config.measurementMinute === 'function'
-      ? { minute: config.measurementMinute() }
-      : {}),
-  });
+  const metricContext = (measuring) =>
+    metricContextForMeasurement({
+      measuring,
+      runKind: config.runKind,
+      measurementMinute: config.measurementMinute,
+    });
 
   function authorizeTokens(userIndex, measuring, forceLogin, profile) {
     const jar = new http.CookieJar();
@@ -451,7 +452,7 @@ export function createOidcClient(
       forceLogin,
       tokenProfiles.userinfo,
     );
-    metricRecorder.recordCompletedLogin(measuring, metricContext());
+    metricRecorder.recordCompletedLogin(measuring, metricContext(measuring));
     return createOidcSession(resourceTokens, userinfoTokens);
   }
 
