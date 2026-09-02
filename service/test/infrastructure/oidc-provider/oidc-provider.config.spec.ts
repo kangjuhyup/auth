@@ -183,6 +183,11 @@ describe('buildOidcConfiguration', () => {
         } as any,
       ),
     ).resolves.toBe(false);
+    const pathModel = {
+      resource: 'https://api.example.com/orders?status=open',
+    } as any;
+    await expect(useGrantedResource({} as any, pathModel)).resolves.toBe(true);
+    expect(pathModel.resource).toBe('https://api.example.com');
   });
 
   it('skipConsent grant에 provider가 검증한 단일 resource의 requested scope를 보존한다', async () => {
@@ -214,10 +219,10 @@ describe('buildOidcConfiguration', () => {
         },
         params: {
           scope: 'openid orders:read unregistered:write',
-          resource: 'https://api.example.com',
+          resource: 'https://api.example.com/orders?status=open',
         },
         resourceServers: {
-          'https://api.example.com': {
+          'https://api.example.com/orders?status=open': {
             scopes: new Set(['openid', 'orders:read']),
           },
         },
@@ -367,6 +372,24 @@ describe('buildOidcConfiguration', () => {
     expect(info.accessTokenFormat).toBe('jwt');
     expect(info.audience).toBe('https://api.example.com');
     expect(info.scope).toBe('openid profile email orders:read');
+  });
+
+  it('path/query가 포함된 resource도 canonical audience를 반환한다', async () => {
+    const deps = makeDeps();
+    const cfg = buildOidcConfiguration({
+      ...deps,
+      tenantCode: 'acme',
+    });
+    const fn = (cfg.features?.resourceIndicators as any).getResourceServerInfo;
+
+    await expect(
+      fn(
+        makeCtx('tenant-1'),
+        'https://api.example.com/orders?status=open',
+        makeClient('client-1'),
+      ),
+    ).resolves.toMatchObject({ audience: 'https://api.example.com' });
+    expect(deps.clientQuery.getAllowedResources).toHaveBeenCalledTimes(1);
   });
 
   it('findAccount: tenant가 없으면 missing_tenant를 던진다', async () => {

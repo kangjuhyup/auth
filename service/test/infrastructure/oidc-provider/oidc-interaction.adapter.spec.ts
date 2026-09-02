@@ -200,7 +200,7 @@ describe('OidcInteractionAdapter policy resolution', () => {
     );
     expect(provider.grant.addResourceScope).toHaveBeenCalledTimes(2);
     expect(provider.grant.addResourceScope).toHaveBeenCalledWith(
-      'https://resource.example.test/orders',
+      'https://resource.example.test',
       'orders:read orders:write',
     );
     expect(provider.grant.addResourceScope).toHaveBeenCalledWith(

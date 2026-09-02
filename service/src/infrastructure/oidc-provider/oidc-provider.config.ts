@@ -185,7 +185,10 @@ export function buildOidcConfiguration(params: {
           resourceServer.scopes.has(scope),
         );
         if (resourceScopes.length > 0) {
-          grant.addResourceScope(resource, resourceScopes.join(' '));
+          grant.addResourceScope(
+            ResourceOrigin.of(resource).value,
+            resourceScopes.join(' '),
+          );
         }
       }
 
@@ -212,7 +215,13 @@ export function buildOidcConfiguration(params: {
           // Authorization과 token endpoint 사이에 resource를 재전송하지
           // 않는 OIDC 클라이언트에도, provider가 검증·저장한 단일 API
           // resource만 사용한다. 복수 resource는 명시적 선택을 요구한다.
-          return typeof model.resource === 'string';
+          if (typeof model.resource !== 'string') return false;
+          try {
+            model.resource = ResourceOrigin.of(model.resource).value;
+            return true;
+          } catch {
+            return false;
+          }
         },
 
         // ✅ 리소스 서버별 정책(포맷 포함)
@@ -251,7 +260,7 @@ export function buildOidcConfiguration(params: {
             accessTokenFormat: format,
 
             // 리소스 서버의 audience 값
-            audience: resource,
+            audience: origin,
 
             // 리소스 서버별 TTL (선택)
             // accessTokenTTL: 60 * 60,

@@ -1484,6 +1484,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
 
       it('소유 resource의 user access token만 안정적인 introspection metadata를 반환한다', async () => {
         const resource = 'https://resource.example.test/orders';
+        const resourceOrigin = 'https://resource.example.test';
         const adminToken = await loginAsAdmin();
         const tenant = await createTenant(adminToken, 'acme', 'Acme Corp');
         await request(fixture.app.getHttpServer())
@@ -1545,7 +1546,11 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           tokenTypeHint: 'access_token',
         }).expect(200);
 
-        await expectAccessTokenAudience('acme', login.accessToken, resource);
+        await expectAccessTokenAudience(
+          'acme',
+          login.accessToken,
+          resourceOrigin,
+        );
 
         expect(response.body).toMatchObject({
           active: true,
@@ -1555,7 +1560,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           exp: expect.any(Number),
           iat: expect.any(Number),
           iss: 'http://localhost:3000/t/acme/oidc',
-          aud: resource,
+          aud: resourceOrigin,
           scope: 'openid orders:read',
           tenant_id: tenant.id,
         });
@@ -1593,6 +1598,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
 
       it('granted resource를 생략한 refresh_token 교환도 API audience access token을 발급한다', async () => {
         const resource = 'https://resource.example.test/orders';
+        const resourceOrigin = 'https://resource.example.test';
         const adminToken = await loginAsAdmin();
         await createTenant(adminToken, 'acme', 'Acme Corp');
         await request(fixture.app.getHttpServer())
@@ -1658,7 +1664,11 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
         });
 
         expect(login.refreshToken).toEqual(expect.any(String));
-        await expectAccessTokenAudience('acme', login.accessToken, resource);
+        await expectAccessTokenAudience(
+          'acme',
+          login.accessToken,
+          resourceOrigin,
+        );
         const initialIntrospection = await introspectToken({
           tenantCode: 'acme',
           clientId: resourceServer.clientId,
@@ -1668,7 +1678,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
         }).expect(200);
         expect(initialIntrospection.body).toMatchObject({
           active: true,
-          aud: resource,
+          aud: resourceOrigin,
           client_id: userClient.clientId,
         });
 
@@ -1685,7 +1695,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
         await expectAccessTokenAudience(
           'acme',
           refreshResponse.body.access_token as string,
-          resource,
+          resourceOrigin,
         );
 
         const refreshedIntrospection = await introspectToken({
@@ -1697,13 +1707,13 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
         }).expect(200);
         expect(refreshedIntrospection.body).toMatchObject({
           active: true,
-          aud: resource,
+          aud: resourceOrigin,
           client_id: userClient.clientId,
         });
       });
 
       it('client_credentials token은 sub 없이 안정적인 introspection metadata를 반환한다', async () => {
-        const resource = 'https://resource.example.test/orders';
+        const resource = 'https://resource.example.test';
         const adminToken = await loginAsAdmin();
         const tenant = await createTenant(adminToken, 'acme', 'Acme Corp');
         await request(fixture.app.getHttpServer())
@@ -1780,7 +1790,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
       });
 
       it('introspection은 missing, wrong, public client credentials를 invalid_client로 거부한다', async () => {
-        const resource = 'https://resource.example.test/orders';
+        const resource = 'https://resource.example.test';
         const adminToken = await loginAsAdmin();
         const tenant = await createTenant(adminToken, 'acme', 'Acme Corp');
         const resourceServer = await createClient(
@@ -1871,8 +1881,8 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
       });
 
       it('wrong audience, unknown, revoked, cross-tenant, refresh token은 정확히 inactive다', async () => {
-        const resource = 'https://resource.example.test/orders';
-        const otherResource = 'https://other-resource.example.test/orders';
+        const resource = 'https://resource.example.test';
+        const otherResource = 'https://other-resource.example.test';
         const adminToken = await loginAsAdmin();
         await createTenant(adminToken, 'acme', 'Acme Corp');
         await createTenant(adminToken, 'beta', 'Beta Corp');
@@ -2082,7 +2092,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
       jwtIt(
         'JWT resource access token은 tenant JWKS와 issuer/audience/tenant claim으로 검증된다',
         async () => {
-          const resource = 'https://resource.example.test/orders';
+          const resource = 'https://resource.example.test';
           const adminToken = await loginAsAdmin();
           const tenant = await createTenant(adminToken, 'acme', 'Acme Corp');
           await request(fixture.app.getHttpServer())
