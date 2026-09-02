@@ -10,6 +10,7 @@ import {
   rm,
   writeFile,
 } from 'node:fs/promises';
+import { arch, cpus, platform, totalmem } from 'node:os';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 import { parseOptions, resolveLoadTestIdentity } from './lib/config.mjs';
@@ -75,59 +76,110 @@ function childEnvironment(overrides = {}) {
   );
 }
 
-function runCommand(file, args, options = {}) {
-  return new Promise((resolve, reject) => {
-    const stdoutChunks = [];
-    const maximumCapturedBytes = 4 * 1024 * 1024;
-    let capturedBytes = 0;
-    let captureOverflow = false;
-    let settled = false;
-    let child;
-    const startedAtMs = Date.now();
-    try {
-      child = spawn(file, args, {
-        cwd: process.cwd(),
-        env: childEnvironment(options.env),
-        shell: false,
-        signal: options.signal,
-        stdio: ['ignore', 'pipe', 'ignore'],
-      });
-    } catch (error) {
-      reject(error);
-      return;
-    }
-    child.stdout.on('data', (chunk) => {
-      if (!options.captureStdout || captureOverflow) return;
-      capturedBytes += chunk.length;
-      if (capturedBytes > maximumCapturedBytes) {
-        captureOverflow = true;
-        stdoutChunks.length = 0;
+export function createCommandRunner({
+  spawnProcess = spawn,
+  now = Date.now,
+  setTimer = globalThis.setTimeout,
+  clearTimer = globalThis.clearTimeout,
+  currentWorkingDirectory = () => process.cwd(),
+  environmentForChild = childEnvironment,
+} = {}) {
+  return function runCommand(file, args, options = {}) {
+    return new Promise((resolve, reject) => {
+      const stdoutChunks = [];
+      const maximumCapturedBytes = 4 * 1024 * 1024;
+      let capturedBytes = 0;
+      let captureOverflow = false;
+      let terminalError;
+      let abortTimer;
+      let aborted = false;
+      let child;
+      const startedAtMs = now();
+      if (options.signal?.aborted) {
+        reject(new Error('command aborted'));
         return;
       }
-      stdoutChunks.push(chunk);
-    });
-    child.once('error', (error) => {
-      if (settled) return;
-      settled = true;
-      reject(error);
-    });
-    child.once('close', (exitCode) => {
-      if (settled) return;
-      settled = true;
-      if (captureOverflow) {
-        reject(new Error('captured command output exceeded the safe limit'));
+      try {
+        child = spawnProcess(file, args, {
+          cwd: currentWorkingDirectory(),
+          env: environmentForChild(options.env),
+          shell: false,
+          stdio: ['ignore', 'pipe', 'ignore'],
+        });
+      } catch {
+        reject(new Error('command execution failed'));
         return;
       }
-      resolve({
-        exitCode: Number.isSafeInteger(exitCode) ? exitCode : 1,
-        startedAtMs,
-        stdout: options.captureStdout
-          ? stdoutChunks.map((chunk) => chunk.toString('utf8')).join('')
-          : '',
-        stderr: '',
+      const abort = () => {
+        if (aborted) return;
+        aborted = true;
+        terminalError = new Error('command aborted');
+        abortTimer = setTimer(() => {
+          try {
+            child.kill('SIGKILL');
+          } catch {
+            // The close event remains the sole settlement boundary.
+          }
+        }, 5_000);
+        abortTimer?.unref?.();
+        try {
+          child.kill('SIGTERM');
+        } catch {
+          // The close event remains the sole settlement boundary.
+        }
+      };
+      child.stdout.on('data', (chunk) => {
+        if (!options.captureStdout || captureOverflow) return;
+        capturedBytes += chunk.length;
+        if (capturedBytes > maximumCapturedBytes) {
+          captureOverflow = true;
+          stdoutChunks.length = 0;
+          terminalError ??= new Error(
+            'captured command output exceeded the safe limit',
+          );
+          return;
+        }
+        stdoutChunks.push(chunk);
       });
+      child.once('error', () => {
+        terminalError ??= new Error('command execution failed');
+      });
+      child.once('close', (exitCode) => {
+        options.signal?.removeEventListener('abort', abort);
+        if (abortTimer !== undefined) clearTimer(abortTimer);
+        if (terminalError || captureOverflow) {
+          reject(
+            terminalError ??
+              new Error('captured command output exceeded the safe limit'),
+          );
+          return;
+        }
+        resolve({
+          exitCode: Number.isSafeInteger(exitCode) ? exitCode : 1,
+          startedAtMs,
+          stdout: options.captureStdout
+            ? stdoutChunks.map((chunk) => chunk.toString('utf8')).join('')
+            : '',
+          stderr: '',
+        });
+      });
+      options.signal?.addEventListener('abort', abort, { once: true });
+      if (options.signal?.aborted) abort();
     });
-  });
+  };
+}
+
+const runCommand = createCommandRunner();
+
+function systemInfo() {
+  const processors = cpus();
+  return {
+    os: platform(),
+    arch: arch(),
+    cpuModel: processors[0]?.model,
+    cpuCount: processors.length,
+    memoryBytes: totalmem(),
+  };
 }
 
 async function fetchHealth(url, options) {
@@ -144,6 +196,7 @@ export const nodeDependencies = Object.freeze({
   runCommand,
   fetchHealth,
   startMonitor,
+  systemInfo,
   now: () => new Date(),
   randomBytes,
   writeFile,

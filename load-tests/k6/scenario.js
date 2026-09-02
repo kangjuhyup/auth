@@ -2,11 +2,46 @@ import { SAFE_SYSTEM_TAGS } from './system-tags.js';
 
 const SUMMARY_TREND_STATS = Object.freeze([
   'count',
+  'min',
   'avg',
   'max',
   'p(95)',
   'p(99)',
 ]);
+const MAX_EPOCH_MS = 8_640_000_000_000_000;
+const MAX_SOAK_SECONDS = 1_800;
+
+function boundedEpoch(value, name) {
+  if (!Number.isSafeInteger(value) || value < 1 || value > MAX_EPOCH_MS) {
+    throw new RangeError(`${name} must be a bounded integer epoch`);
+  }
+  return value;
+}
+
+export function createMeasurementTiming(nowMs, warmupSeconds) {
+  const now = boundedEpoch(nowMs, 'current time');
+  if (!Number.isSafeInteger(warmupSeconds) || warmupSeconds < 1) {
+    throw new RangeError('warmupSeconds must be a positive safe integer');
+  }
+  const measurementEpochMs = now + warmupSeconds * 1_000;
+  boundedEpoch(measurementEpochMs, 'measurement epoch');
+  return Object.freeze({ measurementEpochMs });
+}
+
+export function measurementMinute(nowMs, measurementEpochMs, soakSeconds) {
+  const now = boundedEpoch(nowMs, 'current time');
+  const epoch = boundedEpoch(measurementEpochMs, 'measurement epoch');
+  if (
+    !Number.isSafeInteger(soakSeconds) ||
+    soakSeconds < 1 ||
+    soakSeconds > MAX_SOAK_SECONDS
+  ) {
+    throw new RangeError('soakSeconds must be an integer between 1 and 1800');
+  }
+  if (now < epoch) throw new RangeError('measurement has not started');
+  const bucketCount = Math.ceil(soakSeconds / 60);
+  return Math.min(bucketCount - 1, Math.floor((now - epoch) / 60_000));
+}
 
 export function createJourneyOptions({ vus, warmupSeconds, measureSeconds }) {
   return {

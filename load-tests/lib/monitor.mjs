@@ -6,6 +6,16 @@ const COMPOSE_ARGS = Object.freeze([
   'docker-compose.load.yml',
 ]);
 const SERVICES = Object.freeze(['auth-service', 'postgres-load', 'redis-load']);
+const COMPOSE_SERVICES = new Set([...SERVICES, 'k6']);
+const CONTAINER_STATES = new Set([
+  'created',
+  'dead',
+  'exited',
+  'paused',
+  'removing',
+  'restarting',
+  'running',
+]);
 const INSPECT_IDENTITY_FORMAT = [
   '{{json .Id}}',
   '{{json .RestartCount}}',
@@ -15,6 +25,7 @@ const INSPECT_IDENTITY_FORMAT = [
 const CSV_HEADER = [
   'timestamp',
   'service',
+  'status',
   'cpu_percent',
   'memory_usage_bytes',
   'memory_limit_bytes',
@@ -279,47 +290,52 @@ function resolveComposeRows(stdout) {
   const rows = parseJsonRecords(stdout, 'dedicated service containers');
   const byService = new Map();
   for (const row of rows) {
-    if (!SERVICES.includes(row.Service)) continue;
     if (
       row.Project !== 'auth-load' ||
-      row.State !== 'running' ||
-      !validContainerId(row.ID)
+      !COMPOSE_SERVICES.has(row.Service) ||
+      !CONTAINER_STATES.has(row.State) ||
+      !validContainerId(row.ID) ||
+      typeof row.Name !== 'string' ||
+      !/^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(row.Name)
     ) {
       throw new Error('Invalid dedicated service containers');
     }
+    if (!SERVICES.includes(row.Service)) continue;
     if (byService.has(row.Service))
       throw new Error('Invalid dedicated service containers');
-    byService.set(row.Service, row);
-  }
-  if (byService.size !== SERVICES.length) {
-    throw new Error('Invalid dedicated service containers');
+    byService.set(row.Service, {
+      ...row,
+      status: row.State === 'running' ? 'running' : 'stopped',
+    });
   }
   return byService;
 }
 
 function resolveQuietIds(stdout, composeRows) {
   const ids = stdout.trim().split(/\r?\n/).filter(Boolean);
+  const expectedIds = SERVICES.flatMap((service) => {
+    const row = composeRows.get(service);
+    return row ? [row.ID] : [];
+  });
   if (
-    ids.length !== SERVICES.length ||
-    new Set(ids).size !== SERVICES.length ||
+    ids.length !== expectedIds.length ||
+    new Set(ids).size !== expectedIds.length ||
     ids.some((id) => !validContainerId(id))
   ) {
     throw new Error('Invalid dedicated service container IDs');
   }
-  const expected = new Set(
-    SERVICES.map((service) => composeRows.get(service).ID),
-  );
+  const expected = new Set(expectedIds);
   if (ids.some((id) => !expected.has(id)))
     throw new Error('Invalid dedicated service container IDs');
-  return SERVICES.map((service) => composeRows.get(service).ID);
+  return expectedIds;
 }
 
-function parseInspectRecords(stdout, expectedIds) {
+function parseInspectRecords(stdout, expectedIds, composeRows) {
   if (typeof stdout !== 'string' || stdout.trim() === '') {
     throw new Error('Invalid Docker inspect response');
   }
   const records = stdout.trim().split(/\r?\n/).map(parseDockerInspectIdentity);
-  if (records.length !== SERVICES.length)
+  if (records.length !== expectedIds.length)
     throw new Error('Invalid Docker inspect response');
   const byService = new Map();
   for (const record of records) {
@@ -328,13 +344,14 @@ function parseInspectRecords(stdout, expectedIds) {
       record.project !== 'auth-load' ||
       !SERVICES.includes(service) ||
       !expectedIds.includes(record.containerId) ||
+      composeRows.get(service)?.ID !== record.containerId ||
       byService.has(service)
     ) {
       throw new Error('Invalid Docker inspect response');
     }
     byService.set(service, record.restartCount);
   }
-  if (byService.size !== SERVICES.length)
+  if (byService.size !== expectedIds.length)
     throw new Error('Invalid Docker inspect response');
   return byService;
 }
@@ -343,7 +360,7 @@ function parseStatsRecords(stdout, ids, composeRows) {
   const records = parseJsonRecords(stdout, 'Docker stats response').map(
     (record) => parseDockerStats(JSON.stringify(record)),
   );
-  if (records.length !== SERVICES.length)
+  if (records.length !== ids.length)
     throw new Error('Invalid Docker stats response');
   const byService = new Map();
   for (const sample of records) {
@@ -362,7 +379,7 @@ function parseStatsRecords(stdout, ids, composeRows) {
     }
     byService.set(service, sample);
   }
-  if (byService.size !== SERVICES.length)
+  if (byService.size !== ids.length)
     throw new Error('Invalid Docker stats response');
   return byService;
 }
@@ -406,53 +423,74 @@ async function collectSample(deps, outputPath, samples, dependencyState) {
   const composeRows = resolveComposeRows(
     await requiredCommand(
       deps,
-      [...COMPOSE_ARGS, 'ps', '--format', 'json'],
+      [...COMPOSE_ARGS, 'ps', '--all', '--format', 'json'],
       'container discovery',
     ),
   );
   const ids = resolveQuietIds(
     await requiredCommand(
       deps,
-      [...COMPOSE_ARGS, 'ps', '-q', ...SERVICES],
+      [...COMPOSE_ARGS, 'ps', '--all', '-q', ...SERVICES],
       'container ID discovery',
     ),
     composeRows,
   );
-  const stats = parseStatsRecords(
-    await requiredCommand(
-      deps,
-      ['stats', '--no-stream', '--format', '{{json .}}', ...ids],
-      'Docker stats',
+  const runningIds = ids.filter((id) =>
+    [...composeRows.values()].some(
+      (row) => row.ID === id && row.status === 'running',
     ),
-    ids,
-    composeRows,
   );
-  const restarts = parseInspectRecords(
-    await requiredCommand(
-      deps,
-      ['inspect', '--format', INSPECT_IDENTITY_FORMAT, ...ids],
-      'Docker inspect',
-    ),
-    ids,
-  );
-  const postgresStdout = await dependencyCommand(
-    deps,
-    [
-      ...COMPOSE_ARGS,
-      'exec',
-      '-T',
-      'postgres-load',
-      'psql',
-      '-U',
-      'postgres',
-      '-d',
-      'auth_load',
-      '-Atc',
-      "select count(*) || '|' || coalesce((select sessions_abandoned + sessions_fatal + sessions_killed from pg_stat_database where datname = 'auth_load'), 0) from pg_stat_activity",
-    ],
-    dependencyState,
-  );
+  const stats =
+    runningIds.length === 0
+      ? new Map()
+      : parseStatsRecords(
+          await requiredCommand(
+            deps,
+            ['stats', '--no-stream', '--format', '{{json .}}', ...runningIds],
+            'Docker stats',
+          ),
+          runningIds,
+          composeRows,
+        );
+  const restarts =
+    ids.length === 0
+      ? new Map()
+      : parseInspectRecords(
+          await requiredCommand(
+            deps,
+            ['inspect', '--format', INSPECT_IDENTITY_FORMAT, ...ids],
+            'Docker inspect',
+          ),
+          ids,
+          composeRows,
+        );
+  const postgresRunning =
+    composeRows.get('postgres-load')?.status === 'running';
+  if (!postgresRunning) {
+    dependencyState.probeFailures += 1;
+    dependencyState.postgresConnections ??= 0;
+  }
+  const postgresStdout = postgresRunning
+    ? await dependencyCommand(
+        deps,
+        [
+          ...COMPOSE_ARGS,
+          'exec',
+          '-T',
+          'postgres-load',
+          'psql',
+          '-U',
+          'postgres',
+          '-d',
+          'auth_load',
+          '-Atc',
+          "select count(*) || '|' || coalesce((select sessions_abandoned + sessions_fatal + sessions_killed from pg_stat_database where datname = 'auth_load'), 0) from pg_stat_activity",
+        ],
+        dependencyState,
+      )
+    : undefined;
   if (
+    postgresRunning &&
     postgresStdout === undefined &&
     dependencyState.postgresPersistentErrorsBaseline === undefined
   ) {
@@ -467,22 +505,34 @@ async function collectSample(deps, outputPath, samples, dependencyState) {
       postgres.persistentErrors,
     );
   }
-  const redisStdout = await dependencyCommand(
-    deps,
-    [
-      ...COMPOSE_ARGS,
-      'exec',
-      '-T',
-      'redis-load',
-      'redis-cli',
-      'INFO',
-      'clients',
-      'memory',
-      'stats',
-    ],
-    dependencyState,
-  );
+  const redisRunning = composeRows.get('redis-load')?.status === 'running';
+  if (!redisRunning) {
+    dependencyState.probeFailures += 1;
+    dependencyState.redis ??= {
+      connectedClients: 0,
+      usedMemoryBytes: 0,
+      rejectedConnections: 0,
+    };
+  }
+  const redisStdout = redisRunning
+    ? await dependencyCommand(
+        deps,
+        [
+          ...COMPOSE_ARGS,
+          'exec',
+          '-T',
+          'redis-load',
+          'redis-cli',
+          'INFO',
+          'clients',
+          'memory',
+          'stats',
+        ],
+        dependencyState,
+      )
+    : undefined;
   if (
+    redisRunning &&
     redisStdout === undefined &&
     dependencyState.redisRejectedConnectionsBaseline === undefined
   ) {
@@ -508,13 +558,24 @@ async function collectSample(deps, outputPath, samples, dependencyState) {
   const services = {};
   const rows = [];
   for (const service of SERVICES) {
-    const serviceStats = stats.get(service);
-    const restartCount = restarts.get(service);
-    services[service] = { ...serviceStats, restartCount };
+    const composeRow = composeRows.get(service);
+    const status = composeRow?.status ?? 'missing';
+    const serviceStats = stats.get(service) ?? {
+      containerId: composeRow?.ID,
+      name: composeRow?.Name,
+      cpuPercent: 0,
+      memoryUsageBytes: 0,
+      memoryLimitBytes: 0,
+      networkInputBytes: 0,
+      networkOutputBytes: 0,
+    };
+    const restartCount = restarts.get(service) ?? 0;
+    services[service] = { status, ...serviceStats, restartCount };
     rows.push(
       [
         timestamp,
         service,
+        status,
         serviceStats.cpuPercent,
         serviceStats.memoryUsageBytes,
         serviceStats.memoryLimitBytes,
@@ -541,6 +602,113 @@ async function collectSample(deps, outputPath, samples, dependencyState) {
   });
   samples.push(sample);
   await deps.appendFile(outputPath, `${rows.join('\n')}\n`);
+}
+
+export function summarizeMonitorSamples(samples) {
+  if (!Array.isArray(samples) || samples.length < 1) {
+    throw new TypeError('Invalid monitor samples');
+  }
+  const services = Object.fromEntries(
+    SERVICES.map((service) => [
+      service,
+      {
+        peakCpuPercent: 0,
+        peakMemoryUsageBytes: 0,
+        peakNetworkInputBytes: 0,
+        peakNetworkOutputBytes: 0,
+        maxRestartCount: 0,
+        stoppedSamples: 0,
+        missingSamples: 0,
+      },
+    ]),
+  );
+  let peakPostgresConnections = 0;
+  let peakRedisConnectedClients = 0;
+  let peakRedisUsedMemoryBytes = 0;
+  let dependencyErrors = 0;
+  for (const sample of samples) {
+    if (!Number.isFinite(Date.parse(sample?.timestamp))) {
+      throw new TypeError('Invalid monitor samples');
+    }
+    for (const service of SERVICES) {
+      const source = sample?.services?.[service];
+      if (
+        !source ||
+        !['running', 'stopped', 'missing'].includes(source.status)
+      ) {
+        throw new TypeError('Invalid monitor samples');
+      }
+      const target = services[service];
+      target.peakCpuPercent = Math.max(
+        target.peakCpuPercent,
+        boundedNumber(source.cpuPercent, 'monitor CPU percentage', {
+          max: 1_000_000,
+        }),
+      );
+      target.peakMemoryUsageBytes = Math.max(
+        target.peakMemoryUsageBytes,
+        boundedNumber(source.memoryUsageBytes, 'monitor memory usage', {
+          integer: true,
+        }),
+      );
+      target.peakNetworkInputBytes = Math.max(
+        target.peakNetworkInputBytes,
+        boundedNumber(source.networkInputBytes, 'monitor network input', {
+          integer: true,
+        }),
+      );
+      target.peakNetworkOutputBytes = Math.max(
+        target.peakNetworkOutputBytes,
+        boundedNumber(source.networkOutputBytes, 'monitor network output', {
+          integer: true,
+        }),
+      );
+      target.maxRestartCount = Math.max(
+        target.maxRestartCount,
+        boundedNumber(source.restartCount, 'monitor restart count', {
+          integer: true,
+        }),
+      );
+      if (source.status === 'stopped') target.stoppedSamples += 1;
+      if (source.status === 'missing') target.missingSamples += 1;
+    }
+    peakPostgresConnections = Math.max(
+      peakPostgresConnections,
+      boundedNumber(
+        sample.postgresConnections,
+        'monitor PostgreSQL connections',
+        {
+          integer: true,
+        },
+      ),
+    );
+    peakRedisConnectedClients = Math.max(
+      peakRedisConnectedClients,
+      boundedNumber(sample?.redis?.connectedClients, 'monitor Redis clients', {
+        integer: true,
+      }),
+    );
+    peakRedisUsedMemoryBytes = Math.max(
+      peakRedisUsedMemoryBytes,
+      boundedNumber(sample?.redis?.usedMemoryBytes, 'monitor Redis memory', {
+        integer: true,
+      }),
+    );
+    dependencyErrors = Math.max(
+      dependencyErrors,
+      boundedNumber(sample.dependencyErrors, 'monitor dependency errors', {
+        integer: true,
+      }),
+    );
+  }
+  return {
+    sampleCount: samples.length,
+    services,
+    peakPostgresConnections,
+    peakRedisConnectedClients,
+    peakRedisUsedMemoryBytes,
+    dependencyErrors,
+  };
 }
 
 export function startMonitor(deps, outputPath) {
@@ -575,15 +743,22 @@ export function startMonitor(deps, outputPath) {
     .then(() => deps.writeFile(outputPath, `${CSV_HEADER}\n`, { mode: 0o600 }))
     .then(() => collectSample(deps, outputPath, samples, dependencyState));
   let pending = initialSample.catch((error) => {
-    failure = error;
+    failure ??= error;
   });
+  function enqueueSample() {
+    pending = pending
+      .then(() => {
+        if (failure) return undefined;
+        return collectSample(deps, outputPath, samples, dependencyState);
+      })
+      .catch((error) => {
+        failure ??= error;
+      });
+    return pending;
+  }
   const interval = schedule(() => {
     if (stopped || failure) return;
-    pending = pending
-      .then(() => collectSample(deps, outputPath, samples, dependencyState))
-      .catch((error) => {
-        failure = error;
-      });
+    enqueueSample();
   }, 5_000);
 
   return Object.freeze({
@@ -593,6 +768,11 @@ export function startMonitor(deps, outputPath) {
     snapshot() {
       if (failure) throw failure;
       return samples.slice();
+    },
+    async checkpoint() {
+      if (stopped) throw new Error('Monitor is stopped');
+      await enqueueSample();
+      if (failure) throw failure;
     },
     async stop() {
       if (!stopped) {

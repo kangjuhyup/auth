@@ -54,6 +54,19 @@ export function evaluateRateLimitResponse(status, rateLimitObserved) {
   };
 }
 
+export function timeToFirstRateLimit(startedAtMs, observedAtMs) {
+  if (
+    !Number.isSafeInteger(startedAtMs) ||
+    startedAtMs < 1 ||
+    !Number.isSafeInteger(observedAtMs) ||
+    observedAtMs < startedAtMs ||
+    observedAtMs - startedAtMs > 300_000
+  ) {
+    throw new RangeError('time to first 429 must be between 0 and 300000 ms');
+  }
+  return observedAtMs - startedAtMs;
+}
+
 export function createRateLimitOptions() {
   return {
     systemTags: [...SAFE_SYSTEM_TAGS],
@@ -63,5 +76,6 @@ export function createRateLimitOptions() {
       security_rate_limited_total: ['count>0'],
       security_unexpected_total: ['count==0'],
     },
+    summaryTrendStats: ['count', 'min', 'avg', 'max', 'p(95)', 'p(99)'],
   };
 }

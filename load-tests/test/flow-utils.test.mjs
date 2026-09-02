@@ -14,12 +14,15 @@ import {
 import { userNameFor } from '../k6/payloads.js';
 import { SAFE_SYSTEM_TAGS } from '../k6/system-tags.js';
 import {
+  createMeasurementTiming,
   createJourneyOptions,
   createSmokeOptions,
+  measurementMinute,
   runDeterministicSmoke,
 } from '../k6/scenario.js';
 
 const serviceOrigin = 'http://auth-service:3000';
+const tenantCode = 'loadtest-acme';
 
 test('buildPkce derives an S256 challenge without retaining the seed', () => {
   const pkce = buildPkce(
@@ -61,6 +64,7 @@ test('extractInteractionUid accepts only a same-origin interaction path', () => 
     extractInteractionUid(
       'http://auth-service:3000/t/loadtest-acme/interaction/AbC-123_~',
       serviceOrigin,
+      tenantCode,
     ),
     'AbC-123_~',
   );
@@ -69,6 +73,7 @@ test('extractInteractionUid accepts only a same-origin interaction path', () => 
       extractInteractionUid(
         'http://attacker.test/t/loadtest-acme/interaction/AbC',
         serviceOrigin,
+        tenantCode,
       ),
     /provider origin/,
   );
@@ -77,6 +82,19 @@ test('extractInteractionUid accepts only a same-origin interaction path', () => 
       extractInteractionUid(
         `${serviceOrigin}/t/loadtest-acme/interaction/AbC/extra`,
         serviceOrigin,
+        tenantCode,
+      ),
+    /interaction path/,
+  );
+});
+
+test('interaction validation rejects a same-origin cross-tenant path', () => {
+  assert.throws(
+    () =>
+      extractInteractionUid(
+        `${serviceOrigin}/t/other-tenant/interaction/AbC`,
+        serviceOrigin,
+        tenantCode,
       ),
     /interaction path/,
   );
@@ -87,12 +105,17 @@ test('assertProviderResumePath accepts only a same-origin provider resume path',
     assertProviderResumePath(
       '/t/loadtest-acme/oidc/auth/AbC?resume=1',
       serviceOrigin,
+      tenantCode,
     ),
     `${serviceOrigin}/t/loadtest-acme/oidc/auth/AbC?resume=1`,
   );
   assert.throws(
     () =>
-      assertProviderResumePath('https://attacker.test/resume', serviceOrigin),
+      assertProviderResumePath(
+        'https://attacker.test/resume',
+        serviceOrigin,
+        tenantCode,
+      ),
     /provider origin/,
   );
   assert.throws(
@@ -100,6 +123,19 @@ test('assertProviderResumePath accepts only a same-origin provider resume path',
       assertProviderResumePath(
         '/t/loadtest-acme/interaction/AbC',
         serviceOrigin,
+        tenantCode,
+      ),
+    /provider resume path/,
+  );
+});
+
+test('resume validation rejects a same-origin cross-tenant path', () => {
+  assert.throws(
+    () =>
+      assertProviderResumePath(
+        '/t/other-tenant/oidc/auth/AbC?resume=1',
+        serviceOrigin,
+        tenantCode,
       ),
     /provider resume path/,
   );
@@ -174,6 +210,7 @@ test('redirect parsing does not depend on a browser-only URL global in k6', () =
       extractInteractionUid(
         '/t/loadtest-acme/interaction/AbC-123_~',
         serviceOrigin,
+        tenantCode,
       ),
       'AbC-123_~',
     );
@@ -181,6 +218,7 @@ test('redirect parsing does not depend on a browser-only URL global in k6', () =
       assertProviderResumePath(
         '/t/loadtest-acme/oidc/auth/AbC?resume=1',
         serviceOrigin,
+        tenantCode,
       ),
       `${serviceOrigin}/t/loadtest-acme/oidc/auth/AbC?resume=1`,
     );
@@ -204,6 +242,7 @@ test('authorization continuation returns a direct callback without consent', () 
     resolveAuthorizationCodeWithConsent(
       'http://localhost:18080/callback?code=direct-code&state=direct-state',
       serviceOrigin,
+      tenantCode,
       {
         readConsentDetails: failIfCalled,
         submitConsent: failIfCalled,
@@ -219,6 +258,7 @@ test('authorization continuation completes exactly one consent interaction', () 
     resolveAuthorizationCodeWithConsent(
       '/t/loadtest-acme/interaction/Consent-1',
       serviceOrigin,
+      tenantCode,
       {
         readConsentDetails: (uid) => ({ uid, prompt: 'consent' }),
         submitConsent: () => ({
@@ -278,7 +318,12 @@ test('authorization continuation fails closed for invalid consent transitions', 
   for (const { location, handlers } of cases) {
     assert.throws(
       () =>
-        resolveAuthorizationCodeWithConsent(location, serviceOrigin, handlers),
+        resolveAuthorizationCodeWithConsent(
+          location,
+          serviceOrigin,
+          tenantCode,
+          handlers,
+        ),
       /^Error: authorization continuation failed$/,
     );
   }
@@ -291,6 +336,7 @@ test('authorization continuation errors never expose callback or token-like inpu
       resolveAuthorizationCodeWithConsent(
         `http://localhost:18080/callback?code=${sensitive}`,
         serviceOrigin,
+        tenantCode,
         {
           readConsentDetails: () => ({}),
           submitConsent: () => ({}),
@@ -376,7 +422,7 @@ test('createJourneyOptions uses one constant-VU scenario and preserves host-owne
           gracefulStop: '30s',
         },
       },
-      summaryTrendStats: ['count', 'avg', 'max', 'p(95)', 'p(99)'],
+      summaryTrendStats: ['count', 'min', 'avg', 'max', 'p(95)', 'p(99)'],
       thresholds: {
         load_harness_failure: [{ threshold: 'rate==0', abortOnFail: true }],
       },
@@ -392,6 +438,53 @@ test('createJourneyOptions cannot expose a deliberately impossible threshold', (
   );
 });
 
+test('one setup timing gives every VU the same bounded soak minute boundaries', () => {
+  const timing = createMeasurementTiming(
+    Date.parse('2026-09-02T01:02:03.004Z'),
+    60,
+  );
+  const epoch = Date.parse('2026-09-02T01:03:03.004Z');
+
+  assert.deepEqual(timing, { measurementEpochMs: epoch });
+  for (const simulatedVu of [1, 2, 1_000]) {
+    assert.equal(
+      measurementMinute(epoch, timing.measurementEpochMs, 61),
+      0,
+      `VU ${simulatedVu} starts in minute zero`,
+    );
+    assert.equal(
+      measurementMinute(epoch + 59_999, timing.measurementEpochMs, 61),
+      0,
+    );
+    assert.equal(
+      measurementMinute(epoch + 60_000, timing.measurementEpochMs, 61),
+      1,
+    );
+    assert.equal(
+      measurementMinute(epoch + 61_000, timing.measurementEpochMs, 61),
+      1,
+      'the exact final edge remains in the final bucket',
+    );
+  }
+});
+
+test('soak minute calculation supports every bounded duration and rejects invalid epochs', () => {
+  const epoch = 1_700_000_000_000;
+  for (const [seconds, expectedLastMinute] of [
+    [1, 0],
+    [60, 0],
+    [61, 1],
+    [1_800, 29],
+  ]) {
+    assert.equal(
+      measurementMinute(epoch + seconds * 1_000, epoch, seconds),
+      expectedLastMinute,
+    );
+  }
+  assert.throws(() => measurementMinute(epoch - 1, epoch, 61), /measurement/);
+  assert.throws(() => measurementMinute(epoch, 1.5, 61), /epoch/);
+});
+
 test('createSmokeOptions uses a single deterministic VU and requires every check to pass', () => {
   assert.deepEqual(createSmokeOptions(), {
     systemTags: ['status', 'method'],
@@ -401,7 +494,7 @@ test('createSmokeOptions uses a single deterministic VU and requires every check
       checks: ['rate==1'],
       load_harness_failure: ['rate==0'],
     },
-    summaryTrendStats: ['count', 'avg', 'max', 'p(95)', 'p(99)'],
+    summaryTrendStats: ['count', 'min', 'avg', 'max', 'p(95)', 'p(99)'],
   });
 });
 

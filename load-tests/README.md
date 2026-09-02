@@ -50,7 +50,8 @@ Every measured probe and soak window must satisfy all of these conditions:
 - overall and endpoint p95 latency is strictly less than 1,000 ms;
 - overall and endpoint p99 latency is strictly less than 2,000 ms;
 - normal-flow check failures are zero;
-- `auth-service` restarts are zero; and
+- the expected auth, PostgreSQL, and Redis containers remain present and
+  running, with zero restarts; and
 - PostgreSQL and Redis connection errors are zero.
 
 The default full run includes image build and provisioning, the security check,
@@ -107,8 +108,10 @@ a shared or production environment by copying an operator example.
 Generated artifacts are written beneath the gitignored
 `load-tests/results/<timestamp>/` directory. A full capacity run produces:
 
-- `summary.md`: the human-readable conclusion, SLO table, endpoint observations,
-  search bracket, soak outcome, and evidence for likely bottlenecks;
+- `summary.md`: the human-readable conclusion, allowlisted host/image context,
+  configured traffic mix, bounded rate-limit evidence, per-probe VU/RPS and
+  latency/failure/endpoint counts, search bracket, soak outcome, and aggregate
+  container/dependency bottleneck evidence;
 - `capacity.json`: each coarse and refinement probe, its SLO evaluation, the last
   passing VU level, and the first failing VU level;
 - `soak.json`: bounded soak windows, their evaluations, and the first violation
@@ -124,6 +127,14 @@ restart samples in `docker-stats.csv`. Treat a reported maximum as the maximum
 **observed** passing level within this run and search bracket. If every probe up
 to `MAX_VUS` passes, the result is only “at least N VUs” at the configured search
 cap, not proof that N is the service's absolute maximum.
+
+For soak runs, k6 `setup()` establishes one measurement epoch shared by every
+VU and emits it exactly once in the k6 summary. After k6 exits, the host monitor
+drains pending collection, takes a terminal sample, validates that single epoch,
+and uses it as the sole anchor for minute buckets. Samples on the exact final
+measurement edge belong to the final bucket; stopped or missing expected
+containers remain explicit SLO failures rather than being discarded as generic
+command output.
 
 Smoke mode writes its deterministic k6 smoke summary only. It verifies coverage
 of login/token exchange, introspection, UserInfo, refresh, discovery, JWKS, and

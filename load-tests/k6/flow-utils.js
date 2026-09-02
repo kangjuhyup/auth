@@ -99,21 +99,36 @@ export function buildPkce(seed, sha256) {
   return { verifier, challenge };
 }
 
-export function extractInteractionUid(location, serviceOrigin) {
+function configuredTenantPrefix(tenantCode) {
+  if (
+    typeof tenantCode !== 'string' ||
+    !/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(tenantCode)
+  ) {
+    throw new Error('configured tenant is invalid');
+  }
+  return `/t/${tenantCode}`;
+}
+
+export function extractInteractionUid(location, serviceOrigin, tenantCode) {
   const url = providerUrl(location, serviceOrigin);
   if (url.search || url.hash)
     throw new Error('redirect must use an exact interaction path');
-  const match = /^\/t\/[^/]+\/interaction\/([A-Za-z0-9._~-]+)$/.exec(
-    url.pathname,
+  const prefix = `${configuredTenantPrefix(tenantCode)}/interaction/`;
+  const match = /^([A-Za-z0-9._~-]+)$/.exec(
+    url.pathname.startsWith(prefix) ? url.pathname.slice(prefix.length) : '',
   );
   if (!match) throw new Error('redirect must use an exact interaction path');
   return match[1];
 }
 
-export function assertProviderResumePath(location, serviceOrigin) {
+export function assertProviderResumePath(location, serviceOrigin, tenantCode) {
   const url = providerUrl(location, serviceOrigin);
+  const authorizationPath = `${configuredTenantPrefix(tenantCode)}/oidc/auth`;
+  const suffix = url.pathname.startsWith(authorizationPath)
+    ? url.pathname.slice(authorizationPath.length)
+    : undefined;
   if (
-    !/^\/t\/[^/]+\/oidc\/auth(?:\/[A-Za-z0-9._~-]+)?$/.test(url.pathname) ||
+    (suffix !== '' && !/^\/[A-Za-z0-9._~-]+$/.test(suffix ?? '')) ||
     url.hash
   ) {
     throw new Error('redirect must use an exact provider resume path');
@@ -148,6 +163,7 @@ function authorizationContinuationError() {
 export function resolveAuthorizationCodeWithConsent(
   location,
   serviceOrigin,
+  tenantCode,
   handlers,
 ) {
   if (
@@ -168,7 +184,11 @@ export function resolveAuthorizationCodeWithConsent(
     if (remainingConsentSteps < 1) throw authorizationContinuationError();
 
     try {
-      const uid = extractInteractionUid(currentLocation, serviceOrigin);
+      const uid = extractInteractionUid(
+        currentLocation,
+        serviceOrigin,
+        tenantCode,
+      );
       const details = handlers.readConsentDetails(uid);
       if (
         !details ||
@@ -193,6 +213,7 @@ export function resolveAuthorizationCodeWithConsent(
       const resumeUrl = assertProviderResumePath(
         consent.redirectTo,
         serviceOrigin,
+        tenantCode,
       );
       const nextLocation = handlers.resumeProvider(resumeUrl);
       if (typeof nextLocation !== 'string' || nextLocation.length === 0) {

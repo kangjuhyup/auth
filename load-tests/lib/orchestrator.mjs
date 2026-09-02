@@ -5,9 +5,14 @@ import {
   nextRefinementLevel,
 } from './capacity.mjs';
 import { assertLocalTarget, createRuntimeEnvironment } from './config.mjs';
+import { summarizeMonitorSamples } from './monitor.mjs';
 import {
   normalizeK6Summary,
+  normalizeMeasurementEpoch,
   normalizeSoakWindows,
+  parseDockerComposeVersion,
+  parseDockerServerVersion,
+  parseServiceImageRecord,
   renderSummaryMarkdown,
   sanitizeEnvironment,
 } from './report.mjs';
@@ -27,6 +32,26 @@ const CLEANUP_ARGS = Object.freeze([
 ]);
 const RUNTIME_ENV_PATH = 'load-tests/.runtime.env';
 const HEALTH_URL = 'http://127.0.0.1:13000/health';
+const K6_IMAGE = 'grafana/k6:2.2.0';
+const EXPECTED_SERVICES = Object.freeze([
+  'auth-service',
+  'postgres-load',
+  'redis-load',
+]);
+const TRAFFIC_MIX = Object.freeze({
+  introspection: 45,
+  userinfo: 25,
+  refresh: 12,
+  discovery: 8,
+  jwks: 5,
+  relogin: 5,
+});
+const SERVICE_IMAGE_FORMAT = [
+  '{{json .Id}}',
+  '{{json .Image}}',
+  '{{json (index .Config.Labels "com.docker.compose.project")}}',
+  '{{json (index .Config.Labels "com.docker.compose.service")}}',
+].join('\t');
 const CAPACITY_PROFILE = Object.freeze({
   LOAD_HTTP_THROTTLE_LIMIT: '1000000',
   LOAD_LOGIN_RATE_LIMIT_IP_MAX: '100000',
@@ -46,6 +71,23 @@ class HarnessError extends Error {
     this.name = 'HarnessError';
     this.phase = phase;
     this.status = status;
+  }
+}
+
+class CleanupHarnessError extends Error {
+  constructor(phases) {
+    super(`cleanup failed (${phases.join('; ')})`);
+    this.name = 'CleanupHarnessError';
+    this.phases = Object.freeze([...phases]);
+  }
+}
+
+class CombinedHarnessError extends Error {
+  constructor(primary, cleanup) {
+    super(`${primary.message}; ${cleanup.message}`);
+    this.name = 'CombinedHarnessError';
+    this.primary = primary;
+    this.cleanup = cleanup;
   }
 }
 
@@ -73,6 +115,7 @@ function validateOptions(options) {
 function validateDependencies(deps) {
   for (const name of [
     'runCommand',
+    'systemInfo',
     'fetchHealth',
     'startMonitor',
     'now',
@@ -133,6 +176,69 @@ async function cleanupCommand(deps) {
       'dedicated cleanup',
       Number.isSafeInteger(result?.exitCode) ? result.exitCode : undefined,
     );
+  }
+}
+
+async function capturedCommand(deps, args, phase) {
+  const result = await runCommand(deps, args, phase, {
+    captureStdout: true,
+    signal: deps.signal,
+  });
+  if (typeof result.stdout !== 'string') throw new HarnessError(phase);
+  return result.stdout;
+}
+
+async function collectEnvironment(deps, runtimeSafe) {
+  let host;
+  try {
+    host = deps.systemInfo();
+  } catch {
+    throw new HarnessError('host metadata');
+  }
+  const dockerVersionOutput = await capturedCommand(
+    deps,
+    ['version', '--format', '{{json .Server.Version}}'],
+    'Docker metadata',
+  );
+  const composeVersionOutput = await capturedCommand(
+    deps,
+    [...COMPOSE_BASE, 'version', '--short'],
+    'Compose metadata',
+  );
+  const containerOutput = await capturedCommand(
+    deps,
+    [...composeWithRuntime(), 'ps', '--all', '-q', 'auth-service'],
+    'service image metadata',
+  );
+  if (
+    !/^[a-f0-9]{64}\r?\n?$/.test(containerOutput) ||
+    containerOutput.trim().length !== 64
+  ) {
+    throw new HarnessError('service image metadata');
+  }
+  const containerId = containerOutput.trim();
+  const imageOutput = await capturedCommand(
+    deps,
+    ['inspect', '--format', SERVICE_IMAGE_FORMAT, containerId],
+    'service image metadata',
+  );
+  try {
+    const image = parseServiceImageRecord(imageOutput);
+    if (image.containerId !== containerId)
+      throw new TypeError('container identity mismatch');
+    return sanitizeEnvironment({
+      ...runtimeSafe,
+      target: 'http://auth-service:3000',
+      host,
+      docker: {
+        version: parseDockerServerVersion(dockerVersionOutput),
+        composeVersion: parseDockerComposeVersion(composeVersionOutput),
+      },
+      k6Image: K6_IMAGE,
+      serviceImage: image.serviceImage,
+    });
+  } catch {
+    throw new HarnessError('environment metadata');
   }
 }
 
@@ -201,6 +307,8 @@ async function runK6(
     phase,
     profile = CAPACITY_PROFILE,
     summaryRequired = true,
+    preserveFailureSummary = false,
+    afterCommand,
   },
 ) {
   const summaryPath = summaryName
@@ -235,8 +343,16 @@ async function runK6(
   );
   let raw;
   if (summaryRequired) raw = await readJson(deps, summaryPath, phase);
-  if (result.exitCode !== 0) throw new HarnessError(phase, result.exitCode);
-  return { raw, summaryPath, startedAtMs: result.startedAtMs };
+  if (afterCommand) await afterCommand();
+  throwIfAborted(deps.signal);
+  if (result.exitCode !== 0 && !preserveFailureSummary)
+    throw new HarnessError(phase, result.exitCode);
+  return {
+    raw,
+    summaryPath,
+    startedAtMs: result.startedAtMs,
+    exitCode: result.exitCode,
+  };
 }
 
 function thresholdPassed(metric, expression) {
@@ -289,10 +405,39 @@ function boundedRateMetric(raw, name, phase) {
   return metric;
 }
 
+function boundedSingleTrendMetric(raw, name, phase, maximum) {
+  const metric = raw?.metrics?.[name];
+  const values = metric?.values;
+  if (
+    metric?.type !== 'trend' ||
+    metric.contains !== 'default' ||
+    !values ||
+    values.count !== 1
+  ) {
+    throw new HarnessError(phase);
+  }
+  const value = values.min;
+  if (
+    !Number.isSafeInteger(value) ||
+    value < 0 ||
+    value > maximum ||
+    ['max', 'avg', 'p(95)', 'p(99)'].some((key) => values[key] !== value)
+  ) {
+    throw new HarnessError(phase);
+  }
+  return value;
+}
+
 function requireSecurityGate(raw) {
   const rejected = boundedCounterMetric(raw, 'security_auth_rejected_total');
   const limited = boundedCounterMetric(raw, 'security_rate_limited_total');
   const unexpected = boundedCounterMetric(raw, 'security_unexpected_total');
+  const timeToFirst429Ms = boundedSingleTrendMetric(
+    raw,
+    'security_time_to_first_429_ms',
+    'security gate',
+    300_000,
+  );
   if (
     rejected.values.count < 0 ||
     !Number.isFinite(limited?.values?.count) ||
@@ -304,6 +449,13 @@ function requireSecurityGate(raw) {
   ) {
     throw new HarnessError('security gate');
   }
+  return Object.freeze({
+    path: '/admin/session',
+    timeToFirst429Ms,
+    authRejectedCount: rejected.values.count,
+    rateLimitedCount: limited.values.count,
+    unexpectedCount: unexpected.values.count,
+  });
 }
 
 function requireSmokeGate(raw) {
@@ -329,34 +481,70 @@ function monitorSnapshot(monitor) {
   return samples;
 }
 
+async function checkpointMonitor(monitor) {
+  if (!monitor || typeof monitor.checkpoint !== 'function') {
+    throw new HarnessError('monitor checkpoint');
+  }
+  try {
+    const checkpoint = monitor.checkpoint();
+    if (!checkpoint || typeof checkpoint.then !== 'function') throw new Error();
+    await checkpoint;
+  } catch {
+    throw new HarnessError('monitor checkpoint');
+  }
+}
+
 function contextFromSamples(samples) {
   let serviceRestarted = false;
   let dependencyErrors = 0;
+  const serviceStatuses = Object.fromEntries(
+    EXPECTED_SERVICES.map((service) => [service, 'running']),
+  );
+  const statusSeverity = { running: 0, stopped: 1, missing: 2 };
   for (const sample of samples) {
-    const restartCount = sample?.services?.['auth-service']?.restartCount;
-    if (
-      restartCount !== undefined &&
-      (!Number.isSafeInteger(restartCount) || restartCount < 0)
-    ) {
-      throw new HarnessError('monitor snapshot');
+    for (const service of EXPECTED_SERVICES) {
+      const state = sample?.services?.[service];
+      if (
+        !state ||
+        !Object.hasOwn(statusSeverity, state.status) ||
+        !Number.isSafeInteger(state.restartCount) ||
+        state.restartCount < 0
+      ) {
+        throw new HarnessError('monitor snapshot');
+      }
+      if (
+        statusSeverity[state.status] > statusSeverity[serviceStatuses[service]]
+      ) {
+        serviceStatuses[service] = state.status;
+      }
+      if (state.restartCount > 0) serviceRestarted = true;
     }
-    if (restartCount > 0) serviceRestarted = true;
     const errors = sample?.dependencyErrors ?? 0;
     if (!Number.isSafeInteger(errors) || errors < 0)
       throw new HarnessError('monitor snapshot');
     dependencyErrors = Math.max(dependencyErrors, errors);
   }
-  return { serviceRestarted, dependencyErrors };
+  return { serviceStatuses, serviceRestarted, dependencyErrors };
 }
 
 function monitorSamplesSince(monitor, startIndex) {
   return monitorSnapshot(monitor).slice(startIndex);
 }
 
+function hasInfrastructureFailure(context) {
+  return (
+    context.serviceRestarted ||
+    context.dependencyErrors > 0 ||
+    EXPECTED_SERVICES.some(
+      (service) => context.serviceStatuses[service] !== 'running',
+    )
+  );
+}
+
 async function runProbe(deps, monitor, resultDirectory, options, vus, phase) {
   const sampleIndex = monitorSnapshot(monitor).length;
   const fileName = `${phase}-${vus}.json`;
-  const { raw, summaryPath } = await runK6(deps, resultDirectory, {
+  const { raw, summaryPath, exitCode } = await runK6(deps, resultDirectory, {
     script: '/scripts/journey.js',
     summaryName: fileName,
     controls: {
@@ -367,13 +555,16 @@ async function runProbe(deps, monitor, resultDirectory, options, vus, phase) {
       RUN_KIND: 'probe',
     },
     phase: 'capacity probe',
+    preserveFailureSummary: true,
+    afterCommand: () => checkpointMonitor(monitor),
   });
+  const context = contextFromSamples(monitorSamplesSince(monitor, sampleIndex));
+  if (exitCode !== 0 && !hasInfrastructureFailure(context)) {
+    throw new HarnessError('capacity probe', exitCode);
+  }
   let metrics;
   try {
-    metrics = normalizeK6Summary(
-      raw,
-      contextFromSamples(monitorSamplesSince(monitor, sampleIndex)),
-    );
+    metrics = normalizeK6Summary(raw, context);
   } catch {
     throw new HarnessError('capacity summary parsing');
   }
@@ -416,7 +607,7 @@ export function bucketMonitorSamples(
 async function runSoak(deps, monitor, resultDirectory, options, vus) {
   const sampleIndex = monitorSnapshot(monitor).length;
   const measurementDurationMs = options.soakSeconds * 1_000;
-  const { raw, summaryPath, startedAtMs } = await runK6(deps, resultDirectory, {
+  const { raw, summaryPath, exitCode } = await runK6(deps, resultDirectory, {
     script: '/scripts/journey.js',
     summaryName: 'soak-raw.json',
     controls: {
@@ -427,28 +618,39 @@ async function runSoak(deps, monitor, resultDirectory, options, vus) {
       RUN_KIND: 'soak',
     },
     phase: 'soak run',
+    preserveFailureSummary: true,
+    afterCommand: () => checkpointMonitor(monitor),
   });
-  if (!Number.isSafeInteger(startedAtMs)) throw new HarnessError('soak timing');
-  const measurementStartMs = startedAtMs + options.warmupSeconds * 1_000;
-  if (!Number.isSafeInteger(measurementStartMs))
-    throw new HarnessError('soak timing');
-  const bucketCount = Math.ceil(options.soakSeconds / 60);
-  const monitorBuckets = bucketMonitorSamples(
-    monitorSamplesSince(monitor, sampleIndex),
-    { measurementStartMs, measurementDurationMs, bucketCount },
-  );
+  let measurementStartMs;
   let normalized;
   try {
+    measurementStartMs = normalizeMeasurementEpoch(raw);
     normalized = normalizeSoakWindows(raw, {
       soakSeconds: options.soakSeconds,
     });
   } catch {
     throw new HarnessError('soak summary parsing');
   }
+  const bucketCount = Math.ceil(options.soakSeconds / 60);
+  const samples = monitorSamplesSince(monitor, sampleIndex);
+  const overallContext = contextFromSamples(samples);
+  if (exitCode !== 0 && !hasInfrastructureFailure(overallContext)) {
+    throw new HarnessError('soak run', exitCode);
+  }
+  const monitorBuckets = bucketMonitorSamples(samples, {
+    measurementStartMs,
+    measurementDurationMs,
+    bucketCount,
+  });
   const windows = normalized.map(({ minute, metrics }) => {
-    const context = contextFromSamples(monitorBuckets[minute]);
+    const samplesForWindow =
+      minute === bucketCount - 1 && samples.length > 0
+        ? [...monitorBuckets[minute], samples.at(-1)]
+        : monitorBuckets[minute];
+    const context = contextFromSamples(samplesForWindow);
     const withContext = {
       ...metrics,
+      serviceStatuses: context.serviceStatuses,
       serviceRestarted: context.serviceRestarted,
       dependencyErrors: context.dependencyErrors,
     };
@@ -485,10 +687,12 @@ function renderCapacitySection(capacity, soak, soakSeconds) {
     capacity.firstFailingVus === null
       ? 'not observed'
       : `${capacity.firstFailingVus} VUs`;
-  const rows = capacity.probes.map(
-    ({ phase, vus, evaluation }) =>
-      `| ${phase} | ${vus} | ${evaluation.passed ? 'PASS' : 'FAIL'} |`,
-  );
+  const rows = capacity.probes.map(({ phase, vus, metrics, evaluation }) => {
+    const endpointCounts = Object.entries(metrics.endpointDurations)
+      .map(([endpoint, values]) => `${endpoint}=${values.count}`)
+      .join(', ');
+    return `| ${phase} | ${vus} | ${metrics.rps} | ${metrics.p95Ms} | ${metrics.p99Ms} | ${metrics.requestFailureRate} | ${metrics.checkFailureRate} | ${endpointCounts} | ${evaluation.passed ? 'PASS' : 'FAIL'} |`;
+  });
   const soakConclusion = soak.ran
     ? `Soak endurance: ${soak.passed ? 'PASS' : 'FAIL'} at ${soak.vus} VUs for ${soakSeconds} seconds`
     : 'Soak endurance: NOT RUN (no probe-passing VU)';
@@ -499,8 +703,8 @@ function renderCapacitySection(capacity, soak, soakSeconds) {
     `First failing level: ${firstFailure}`,
     soakConclusion,
     '',
-    '| Phase | VUs | SLO |',
-    '| --- | ---: | --- |',
+    '| Phase | VUs | RPS | Overall p95 (ms) | Overall p99 (ms) | Request failure | Check failure | Endpoint counts | SLO |',
+    '| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |',
     ...rows,
     '',
   ].join('\n');
@@ -514,15 +718,6 @@ async function executeWorkflow(options, deps, resultDirectory, environment) {
     flag: 'wx',
   });
   await deps.chmod(RUNTIME_ENV_PATH, 0o600);
-  const safeEnvironment = sanitizeEnvironment({
-    ...runtime.safe,
-    target: 'http://auth-service:3000',
-  });
-  await deps.writeFile(
-    `${resultDirectory}/environment.json`,
-    json(safeEnvironment),
-    { mode: 0o600 },
-  );
 
   await runCommand(
     deps,
@@ -537,6 +732,12 @@ async function executeWorkflow(options, deps, resultDirectory, environment) {
     ],
     'capacity stack startup',
     { env: { ...CAPACITY_PROFILE }, signal: deps.signal },
+  );
+  const safeEnvironment = await collectEnvironment(deps, runtime.safe);
+  await deps.writeFile(
+    `${resultDirectory}/environment.json`,
+    json(safeEnvironment),
+    { mode: 0o600 },
   );
   await waitForHealth(deps);
   await runK6(deps, resultDirectory, {
@@ -567,7 +768,7 @@ async function executeWorkflow(options, deps, resultDirectory, environment) {
     phase: 'security gate',
     profile: SECURITY_PROFILE,
   });
-  requireSecurityGate(security.raw);
+  const securityGate = requireSecurityGate(security.raw);
 
   await runCommand(
     deps,
@@ -614,6 +815,7 @@ async function executeWorkflow(options, deps, resultDirectory, environment) {
     !monitor ||
     typeof monitor.ready !== 'function' ||
     typeof monitor.snapshot !== 'function' ||
+    typeof monitor.checkpoint !== 'function' ||
     typeof monitor.stop !== 'function'
   ) {
     throw new HarnessError('monitor readiness');
@@ -686,12 +888,21 @@ async function executeWorkflow(options, deps, resultDirectory, environment) {
     soak.windows.find(({ evaluation }) => !evaluation.passed)?.metrics ??
     soak.windows.at(-1)?.metrics ??
     probes.at(-1)?.metrics;
+  let monitorSummary;
+  try {
+    monitorSummary = summarizeMonitorSamples(monitorSnapshot(monitor));
+  } catch {
+    throw new HarnessError('monitor summary');
+  }
   const report = {
     mode: 'capacity',
     environment: safeEnvironment,
     slo: DEFAULT_SLO,
     passed,
     metrics: representativeMetrics,
+    trafficMix: TRAFFIC_MIX,
+    securityGate,
+    monitorSummary,
     firstViolationMinute: soak.firstViolationMinute,
     capacity,
     soak,
@@ -713,7 +924,6 @@ async function executeWorkflow(options, deps, resultDirectory, environment) {
 
 export async function runCapacityWorkflow(options, deps) {
   let workflowError;
-  let cleanupError;
   let report;
   const state = { monitor: undefined };
   try {
@@ -725,33 +935,54 @@ export async function runCapacityWorkflow(options, deps) {
     report = await executeWorkflow(options, deps, resultDirectory, state);
   } catch (error) {
     workflowError =
-      error instanceof HarnessError ? error : new HarnessError('workflow');
+      error instanceof HarnessError ||
+      error instanceof CleanupHarnessError ||
+      error instanceof CombinedHarnessError
+        ? error
+        : new HarnessError('workflow');
   } finally {
+    const cleanupFailures = [];
     if (state.monitor) {
       try {
         await state.monitor.stop();
       } catch {
-        cleanupError = new HarnessError('monitor shutdown');
+        cleanupFailures.push('monitor shutdown failed');
       }
     }
     try {
       await deps?.rm?.(RUNTIME_ENV_PATH, { force: true });
     } catch {
-      cleanupError ??= new HarnessError('runtime cleanup');
+      cleanupFailures.push('runtime cleanup failed');
     }
     try {
       if (typeof deps?.runCommand === 'function') await cleanupCommand(deps);
     } catch (error) {
-      cleanupError ??= error;
+      cleanupFailures.push(
+        error instanceof HarnessError
+          ? error.message
+          : 'dedicated cleanup failed',
+      );
     }
+    state.cleanupError =
+      cleanupFailures.length > 0
+        ? new CleanupHarnessError(cleanupFailures)
+        : undefined;
   }
+  if (workflowError && state.cleanupError)
+    throw new CombinedHarnessError(workflowError, state.cleanupError);
   if (workflowError) throw workflowError;
-  if (cleanupError) throw cleanupError;
+  if (state.cleanupError) throw state.cleanupError;
   return report;
 }
 
 export function safeErrorMessage(error) {
-  if (error instanceof HarnessError) return error.message;
+  if (
+    error instanceof HarnessError ||
+    error instanceof CleanupHarnessError ||
+    error instanceof CombinedHarnessError
+  ) {
+    return error.message;
+  }
   if (error instanceof TypeError || error instanceof RangeError)
     return 'configuration failed';
   return 'unexpected load-test harness error';

@@ -1,12 +1,13 @@
 import http from 'k6/http';
 import exec from 'k6/execution';
-import { Counter } from 'k6/metrics';
+import { Counter, Trend } from 'k6/metrics';
 import { loadConfig, loadScenarioConfig } from './config.js';
 import { handleK6Summary } from './metrics.js';
 import {
   createRateLimitOptions,
   evaluateRateLimitResponse,
   rateLimitProbeUsername,
+  timeToFirstRateLimit,
 } from './rate-limit-classifier.js';
 
 const scenarioConfig = loadScenarioConfig(__ENV, 'probe');
@@ -19,10 +20,15 @@ const RATE_LIMIT_TAGS = Object.freeze({
 const authRejected = new Counter('security_auth_rejected_total');
 const rateLimited = new Counter('security_rate_limited_total');
 const unexpected = new Counter('security_unexpected_total');
+const firstRateLimitDuration = new Trend('security_time_to_first_429_ms');
 let rateLimitObserved = false;
 let config;
 
 export const options = createRateLimitOptions();
+
+export function setup() {
+  return { startedAtMs: Date.now() };
+}
 
 function rateLimitConfig() {
   return (config ??= loadConfig(__ENV));
@@ -32,7 +38,7 @@ function failClosed() {
   throw new Error('rate-limit probe received an unexpected response');
 }
 
-export default function () {
+export default function (timing) {
   const runtimeConfig = rateLimitConfig();
   let response;
   try {
@@ -60,6 +66,15 @@ export default function () {
     response.status,
     rateLimitObserved,
   );
+  if (
+    decision.classification === 'rate-limited' &&
+    rateLimitObserved === false
+  ) {
+    firstRateLimitDuration.add(
+      timeToFirstRateLimit(timing.startedAtMs, Date.now()),
+      RATE_LIMIT_TAGS,
+    );
+  }
   rateLimitObserved = decision.rateLimitObserved;
   if (decision.metric === 'security_rate_limited_total') {
     rateLimited.add(1, RATE_LIMIT_TAGS);

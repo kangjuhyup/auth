@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
+import { EventEmitter } from 'node:events';
 import process from 'node:process';
 import test from 'node:test';
 import { parseOptions } from '../lib/config.mjs';
@@ -8,12 +9,23 @@ import {
   runCapacityWorkflow,
   safeErrorMessage,
 } from '../lib/orchestrator.mjs';
-import { createChildEnvironment, nodeDependencies } from '../run-capacity.mjs';
+import {
+  createChildEnvironment,
+  createCommandRunner,
+  nodeDependencies,
+} from '../run-capacity.mjs';
 
 const SECRET_FRAGMENT = '07070707';
+const MEASUREMENT_EPOCH_MS = Date.parse('2026-09-02T01:02:04.004Z');
+const SERVICE_CONTAINER_ID = 'a'.repeat(64);
+const SERVICE_IMAGE_ID = `sha256:${'d'.repeat(64)}`;
 
 function trend(count = 1, p95 = 100, p99 = 200) {
-  return { values: { count, 'p(95)': p95, 'p(99)': p99 } };
+  return {
+    type: 'trend',
+    contains: 'default',
+    values: { count, 'p(95)': p95, 'p(99)': p99 },
+  };
 }
 
 function rate(trueCount, falseCount) {
@@ -36,7 +48,66 @@ function counter(count, rateValue = count) {
   };
 }
 
-function capacitySummary({ passed = true, soakSeconds, failingMinute } = {}) {
+function singleTrend(value) {
+  return {
+    type: 'trend',
+    contains: 'default',
+    values: {
+      count: 1,
+      min: value,
+      max: value,
+      avg: value,
+      'p(95)': value,
+      'p(99)': value,
+    },
+  };
+}
+
+function service(status = 'running', restartCount = 0) {
+  return {
+    status,
+    cpuPercent: 1,
+    memoryUsageBytes: 1_000,
+    memoryLimitBytes: 2_000,
+    networkInputBytes: 3_000,
+    networkOutputBytes: 4_000,
+    restartCount,
+  };
+}
+
+function monitorSample({
+  timestamp = '2026-09-02T01:02:04.004Z',
+  statuses = {},
+  authRestartCount = 0,
+  dependencyErrors = 0,
+} = {}) {
+  return {
+    timestamp,
+    services: Object.fromEntries(
+      ['auth-service', 'postgres-load', 'redis-load'].map((name) => [
+        name,
+        service(
+          statuses[name] ?? 'running',
+          name === 'auth-service' ? authRestartCount : 0,
+        ),
+      ]),
+    ),
+    postgresConnections: 5,
+    redis: {
+      connectedClients: 6,
+      usedMemoryBytes: 7_000,
+      rejectedConnections: 0,
+    },
+    dependencyErrors,
+  };
+}
+
+function capacitySummary({
+  passed = true,
+  soakSeconds,
+  failingMinute,
+  measurementEpochMs = MEASUREMENT_EPOCH_MS,
+} = {}) {
   const endpointNames = [
     'login',
     'introspection',
@@ -47,7 +118,9 @@ function capacitySummary({ passed = true, soakSeconds, failingMinute } = {}) {
     'revoke',
   ];
   if (soakSeconds !== undefined) {
-    const metrics = {};
+    const metrics = {
+      load_measurement_epoch_ms: singleTrend(measurementEpochMs),
+    };
     for (let minute = 0; minute < Math.ceil(soakSeconds / 60); minute += 1) {
       metrics[`load_request_failed{minute:${minute}}`] = {
         ...rate(passed ? 0 : 2, passed ? 100 : 98),
@@ -59,6 +132,7 @@ function capacitySummary({ passed = true, soakSeconds, failingMinute } = {}) {
         p95,
         p95,
       );
+      metrics[`load_requests{minute:${minute}}`] = counter(100, 10);
       for (const endpoint of endpointNames)
         metrics[`load_${endpoint}_duration_ms{minute:${minute}}`] = trend(
           1,
@@ -73,6 +147,7 @@ function capacitySummary({ passed = true, soakSeconds, failingMinute } = {}) {
       load_request_failed: rate(passed ? 0 : 2, passed ? 100 : 98),
       load_check_failed: rate(0, 100),
       load_http_req_duration_ms: trend(),
+      load_requests: counter(100, 10),
       ...Object.fromEntries(
         endpointNames.map((endpoint) => [
           `load_${endpoint}_duration_ms`,
@@ -94,6 +169,7 @@ const SECURITY_SUMMARY = Object.freeze({
       ...counter(0, 0),
       thresholds: { 'count==0': { ok: true } },
     },
+    security_time_to_first_429_ms: singleTrend(123),
   },
 });
 
@@ -128,6 +204,7 @@ function deferred() {
 function createHarness({
   probePasses = () => true,
   probeSummary,
+  probeExitCode = () => 0,
   securitySummary = SECURITY_SUMMARY,
   smokeSummary = SMOKE_SUMMARY,
   soakSummary,
@@ -135,7 +212,13 @@ function createHarness({
   abortOnFirstProbe,
   soakMonitorSamples = [],
   k6StartedAtMs = Date.parse('2026-09-02T01:02:03.004Z'),
+  checkpointSamples = [],
+  checkpointBarrier,
   monitorReady = Promise.resolve(),
+  cleanupExitCodes = [0, 0],
+  failFinalRuntimeCleanup = false,
+  monitorStopError = false,
+  startupError = false,
   signal,
 } = {}) {
   const commands = [];
@@ -144,8 +227,13 @@ function createHarness({
   let resultDirectory;
   let monitorStarts = 0;
   let monitorStops = 0;
+  let monitorCheckpoints = 0;
   let probeCount = 0;
-  const monitorSamples = [];
+  let cleanupCount = 0;
+  let runtimeCleanupCount = 0;
+  const monitorSamples = [
+    monitorSample({ timestamp: '2026-09-02T01:02:03.000Z' }),
+  ];
 
   const deps = {
     signal,
@@ -153,6 +241,29 @@ function createHarness({
       commands.push({ file, args: [...args], options });
       events.push({ kind: 'command', file, args: [...args], options });
       const script = args.at(-1);
+      if (args.includes('down')) {
+        const exitCode = cleanupExitCodes[cleanupCount] ?? 0;
+        cleanupCount += 1;
+        return { exitCode, stdout: '', stderr: 'untrusted cleanup output' };
+      }
+      if (startupError && args.includes('up'))
+        return { exitCode: 17, stdout: '', stderr: 'untrusted startup output' };
+      if (args[0] === 'version') {
+        return { exitCode: 0, stdout: '"28.3.3"\n', stderr: '' };
+      }
+      if (args.includes('version') && args.at(-1) === '--short') {
+        return { exitCode: 0, stdout: '2.39.2\n', stderr: '' };
+      }
+      if (args.includes('ps') && args.includes('auth-service')) {
+        return { exitCode: 0, stdout: `${SERVICE_CONTAINER_ID}\n`, stderr: '' };
+      }
+      if (args[0] === 'inspect') {
+        return {
+          exitCode: 0,
+          stdout: `${JSON.stringify(SERVICE_CONTAINER_ID)}\t${JSON.stringify(SERVICE_IMAGE_ID)}\t"auth-load"\t"auth-service"\n`,
+          stderr: '',
+        };
+      }
       if (script === '/scripts/provision.js')
         return { exitCode: 0, stdout: '', stderr: '' };
       if (script?.startsWith('/scripts/')) {
@@ -181,13 +292,28 @@ function createHarness({
         }
         files.set(`${resultDirectory}/${summaryName}`, JSON.stringify(raw));
         return {
-          exitCode: 0,
+          exitCode:
+            script === '/scripts/journey.js'
+              ? probeExitCode({
+                  runKind: envValue(args, 'RUN_KIND'),
+                  vus: Number(envValue(args, 'VUS')),
+                })
+              : 0,
           stdout: '',
           stderr: '',
           startedAtMs: k6StartedAtMs,
         };
       }
       return { exitCode: 0, stdout: '', stderr: '' };
+    },
+    systemInfo() {
+      return {
+        os: 'darwin',
+        arch: 'arm64',
+        cpuModel: 'Apple M3 Pro',
+        cpuCount: 12,
+        memoryBytes: 36_000_000_000,
+      };
     },
     async fetchHealth() {
       return true;
@@ -198,9 +324,18 @@ function createHarness({
       return {
         ready: () => monitorReady,
         snapshot: () => monitorSamples.slice(),
+        async checkpoint() {
+          monitorCheckpoints += 1;
+          events.push({ kind: 'monitor-checkpoint' });
+          if (checkpointBarrier) await checkpointBarrier.promise;
+          monitorSamples.push(
+            checkpointSamples[monitorCheckpoints - 1] ?? monitorSample(),
+          );
+        },
         async stop() {
           monitorStops += 1;
           events.push({ kind: 'monitor-stop' });
+          if (monitorStopError) throw new Error('untrusted monitor stop error');
         },
       };
     },
@@ -222,11 +357,17 @@ function createHarness({
     },
     async mkdir(path) {
       events.push({ kind: 'mkdir', path });
+      if (path.startsWith('load-tests/results/')) resultDirectory = path;
     },
     async chmod(path, mode) {
       events.push({ kind: 'chmod', path, mode });
     },
     async rm(path) {
+      if (path === 'load-tests/.runtime.env') {
+        runtimeCleanupCount += 1;
+        if (failFinalRuntimeCleanup && runtimeCleanupCount >= 2)
+          throw new Error('untrusted runtime cleanup error');
+      }
       files.delete(path);
       events.push({ kind: 'rm', path });
     },
@@ -239,6 +380,7 @@ function createHarness({
     events,
     files,
     monitorCounts: () => ({ starts: monitorStarts, stops: monitorStops }),
+    checkpointCount: () => monitorCheckpoints,
   };
 }
 
@@ -324,6 +466,32 @@ test('workflow securely prepares runtime state and switches guard profiles in or
   );
   assert.equal(report.summaryPath.endsWith('/summary.md'), true);
   assert.deepEqual(harness.monitorCounts(), { starts: 1, stops: 1 });
+  assert.deepEqual(report.environment, {
+    maxVus: 40,
+    warmupSeconds: 1,
+    measureSeconds: 1,
+    soakSeconds: 61,
+    mode: 'capacity',
+    target: 'http://auth-service:3000',
+    host: {
+      os: 'darwin',
+      arch: 'arm64',
+      cpuModel: 'Apple M3 Pro',
+      cpuCount: 12,
+      memoryBytes: 36_000_000_000,
+    },
+    docker: { version: '28.3.3', composeVersion: '2.39.2' },
+    k6Image: 'grafana/k6:2.2.0',
+    serviceImage: SERVICE_IMAGE_ID,
+  });
+  const markdown = harness.files.get(report.summaryPath);
+  assert.match(markdown, /## Environment/);
+  assert.match(markdown, /## Traffic mix/);
+  assert.match(markdown, /## Security gate/);
+  assert.match(markdown, /Time to first 429/);
+  assert.match(markdown, /## Monitor bottleneck evidence/);
+  assert.match(markdown, /\| Phase \| VUs \| RPS \| Overall p95/);
+  assert.match(markdown, /Endpoint counts/);
   for (const [path, value] of harness.files) {
     assert.notEqual(path, 'load-tests/.runtime.env');
     assert.doesNotMatch(value, new RegExp(SECRET_FRAGMENT));
@@ -362,6 +530,7 @@ test('workflow stops coarse search at failure, refines the bracket, and soaks la
   );
   assert.equal(report.soak.vus, 17);
   assert.equal(report.soak.windows.length, 2);
+  assert.equal(harness.checkpointCount(), journeys.length);
 });
 
 test('capacity probes wait for the initial monitor baseline sample', async () => {
@@ -376,6 +545,32 @@ test('capacity probes wait for the initial monitor baseline sample', async () =>
   readiness.resolve();
   await workflow;
   assert.ok(k6Calls(harness.commands, '/scripts/journey.js').length > 0);
+});
+
+test('probe evaluation awaits the terminal checkpoint and includes its violation', async () => {
+  const checkpointBarrier = deferred();
+  const harness = createHarness({
+    checkpointBarrier,
+    checkpointSamples: [
+      monitorSample({ statuses: { 'auth-service': 'stopped' } }),
+    ],
+  });
+  const workflow = runCapacityWorkflow(options({ maxVus: 5 }), harness.deps);
+
+  await new Promise((resolve) => globalThis.setImmediate(resolve));
+  assert.equal(harness.checkpointCount(), 1);
+  assert.equal(
+    harness.commands.filter(({ args }) => args.includes('down')).length,
+    1,
+  );
+
+  checkpointBarrier.resolve();
+  const report = await workflow;
+  assert.equal(report.capacity.probes[0].evaluation.passed, false);
+  assert.match(
+    report.capacity.probes[0].evaluation.violations.join('\n'),
+    /auth-service stopped/,
+  );
 });
 
 test('monitor readiness rejection aborts before probes and still cleans up', async () => {
@@ -414,11 +609,37 @@ test('all coarse levels passing reports an observed lower bound', async () => {
   assert.equal(report.capacity.lastPassingVus, 25);
   assert.equal(report.capacity.firstFailingVus, null);
   assert.equal(report.capacity.atLeast, true);
-  assert.equal(report.soak.measurementStartedAt, '2026-09-02T01:02:08.500Z');
-  assert.equal(report.soak.measurementEndedAt, '2026-09-02T01:03:09.500Z');
+  assert.equal(report.soak.measurementStartedAt, '2026-09-02T01:02:04.004Z');
+  assert.equal(report.soak.measurementEndedAt, '2026-09-02T01:03:05.004Z');
   const markdown = harness.files.get(report.summaryPath);
   assert.match(markdown, /Highest probe-passing level: at least 25 VUs/);
   assert.match(markdown, /Soak endurance: PASS at 25 VUs for 61 seconds/);
+});
+
+test('soak monitoring uses the summary epoch and not the host process timestamp', async () => {
+  const measurementEpochMs = Date.parse('2026-09-02T05:06:07.008Z');
+  const harness = createHarness({
+    k6StartedAtMs: 1,
+    soakSummary: capacitySummary({ soakSeconds: 61, measurementEpochMs }),
+    soakMonitorSamples: [
+      monitorSample({
+        timestamp: '2026-09-02T05:07:07.008Z',
+        statuses: { 'redis-load': 'stopped' },
+      }),
+    ],
+  });
+  const report = await runCapacityWorkflow(
+    options({ maxVus: 10 }),
+    harness.deps,
+  );
+
+  assert.equal(report.soak.measurementStartedAt, '2026-09-02T05:06:07.008Z');
+  assert.equal(report.soak.measurementEndedAt, '2026-09-02T05:07:08.008Z');
+  assert.equal(report.soak.firstViolationMinute, 1);
+  assert.match(
+    report.soak.windows[1].evaluation.violations.join('\n'),
+    /redis-load stopped/,
+  );
 });
 
 test('a valid failed SLO is capacity data and not a harness exception', async () => {
@@ -439,14 +660,45 @@ test('a valid failed SLO is capacity data and not a harness exception', async ()
   assert.doesNotMatch(markdown, /FAIL at 0 VUs/);
 });
 
+test('nonzero k6 exits preserve stopped and missing target state as SLO data', async (t) => {
+  for (const [target, status] of [
+    ['auth-service', 'stopped'],
+    ['postgres-load', 'stopped'],
+    ['redis-load', 'stopped'],
+    ['auth-service', 'missing'],
+  ]) {
+    await t.test(`${target} ${status}`, async () => {
+      const harness = createHarness({
+        probeExitCode: () => 99,
+        checkpointSamples: [monitorSample({ statuses: { [target]: status } })],
+      });
+      const report = await runCapacityWorkflow(
+        options({ maxVus: 5 }),
+        harness.deps,
+      );
+      assert.equal(report.capacity.firstFailingVus, 5);
+      assert.match(
+        report.capacity.probes[0].evaluation.violations.join('\n'),
+        new RegExp(`${target} ${status}`),
+      );
+      assert.match(harness.files.get(report.summaryPath), /Result: \[FAIL\]/);
+      assert.ok(
+        harness.files.has(
+          report.summaryPath.replace('summary.md', 'capacity.json'),
+        ),
+      );
+    });
+  }
+});
+
 test('soak reports the first minute with an exact auth-service restart sample', async () => {
   const harness = createHarness({
     soakMonitorSamples: [
-      {
+      monitorSample({
         timestamp: '2026-09-02T01:03:04.004Z',
-        services: { 'auth-service': { restartCount: 1 } },
+        authRestartCount: 1,
         dependencyErrors: 0,
-      },
+      }),
     ],
   });
   const report = await runCapacityWorkflow(
@@ -458,6 +710,27 @@ test('soak reports the first minute with an exact auth-service restart sample', 
   assert.match(
     report.soak.windows[1].evaluation.violations.join('\n'),
     /service restarted/,
+  );
+});
+
+test('soak evaluation includes the forced terminal sample after the final edge', async () => {
+  const harness = createHarness({
+    checkpointSamples: [
+      monitorSample(),
+      monitorSample({
+        timestamp: '2026-09-02T01:03:05.100Z',
+        statuses: { 'auth-service': 'stopped' },
+      }),
+    ],
+  });
+  const report = await runCapacityWorkflow(
+    options({ maxVus: 10 }),
+    harness.deps,
+  );
+  assert.equal(report.soak.firstViolationMinute, 1);
+  assert.match(
+    report.soak.windows[1].evaluation.violations.join('\n'),
+    /auth-service stopped/,
   );
 });
 
@@ -485,11 +758,13 @@ test('monitor soak buckets exclude warmup and retain exact measurement edges', (
   );
 });
 
-test('soak fails closed without an explicit k6 process start boundary', async () => {
-  const harness = createHarness({ k6StartedAtMs: null });
+test('soak fails closed without a single authoritative measurement epoch', async () => {
+  const raw = capacitySummary({ soakSeconds: 61 });
+  delete raw.metrics.load_measurement_epoch_ms;
+  const harness = createHarness({ soakSummary: raw, k6StartedAtMs: null });
   await assert.rejects(
     runCapacityWorkflow(options({ maxVus: 10 }), harness.deps),
-    /soak timing failed/,
+    /soak summary parsing failed/,
   );
   assert.deepEqual(harness.commands.at(-1).args, CLEANUP_ARGS);
 });
@@ -498,11 +773,11 @@ test('failed soak reports probe capacity separately and renders earliest violati
   const harness = createHarness({
     soakSummary: capacitySummary({ soakSeconds: 61, failingMinute: 0 }),
     soakMonitorSamples: [
-      {
+      monitorSample({
         timestamp: '2026-09-02T01:02:04.004Z',
-        services: { 'auth-service': { restartCount: 1 } },
+        authRestartCount: 1,
         dependencyErrors: 7,
-      },
+      }),
     ],
   });
   const report = await runCapacityWorkflow(
@@ -533,11 +808,10 @@ test('failed soak reports probe capacity separately and renders earliest violati
 test('persistent dependency errors reach soak evaluation and sanitized reports', async () => {
   const harness = createHarness({
     soakMonitorSamples: [
-      {
+      monitorSample({
         timestamp: '2026-09-02T01:02:04.004Z',
-        services: { 'auth-service': { restartCount: 0 } },
         dependencyErrors: 7,
-      },
+      }),
     ],
   });
   const report = await runCapacityWorkflow(
@@ -605,6 +879,31 @@ test('security profile must prove a 429 before capacity traffic starts', async (
   );
   assert.equal(k6Calls(harness.commands, '/scripts/journey.js').length, 0);
   assert.deepEqual(harness.commands.at(-1).args, CLEANUP_ARGS);
+});
+
+test('security gate requires one bounded time-to-first-429 observation', async () => {
+  for (const metric of [
+    undefined,
+    singleTrend(300_001),
+    {
+      ...singleTrend(123),
+      values: { ...singleTrend(123).values, count: 2 },
+    },
+    {
+      ...singleTrend(123),
+      values: { ...singleTrend(123).values, max: 124 },
+    },
+  ]) {
+    const securitySummary = globalThis.structuredClone(SECURITY_SUMMARY);
+    if (metric === undefined)
+      delete securitySummary.metrics.security_time_to_first_429_ms;
+    else securitySummary.metrics.security_time_to_first_429_ms = metric;
+    const harness = createHarness({ securitySummary });
+    await assert.rejects(
+      runCapacityWorkflow(options(), harness.deps),
+      /security gate failed/,
+    );
+  }
 });
 
 test('security and smoke gates reject truncated or inconsistent metric structures', async () => {
@@ -732,6 +1031,49 @@ test('a malformed capacity summary fails closed and still stops monitoring', asy
   assert.deepEqual(harness.commands.at(-1).args, CLEANUP_ARGS);
 });
 
+test('workflow and cleanup failures are both surfaced with safe fixed phases', async () => {
+  const harness = createHarness({
+    startupError: true,
+    failFinalRuntimeCleanup: true,
+    cleanupExitCodes: [0, 31],
+  });
+  await assert.rejects(
+    runCapacityWorkflow(options(), harness.deps),
+    (error) => {
+      assert.match(
+        error.message,
+        /capacity stack startup failed \(status 17\)/,
+      );
+      assert.match(error.message, /runtime cleanup/);
+      assert.match(error.message, /dedicated cleanup/);
+      assert.doesNotMatch(error.message, /untrusted/);
+      assert.equal(safeErrorMessage(error), error.message);
+      return true;
+    },
+  );
+});
+
+test('cleanup-only failures are surfaced and all cleanup phases are attempted', async () => {
+  const harness = createHarness({
+    failFinalRuntimeCleanup: true,
+    cleanupExitCodes: [0, 29],
+  });
+  await assert.rejects(
+    runCapacityWorkflow(options({ mode: 'smoke', maxVus: 1 }), harness.deps),
+    (error) => {
+      assert.match(error.message, /cleanup failed/);
+      assert.match(error.message, /runtime cleanup/);
+      assert.match(error.message, /dedicated cleanup/);
+      assert.doesNotMatch(error.message, /untrusted/);
+      return true;
+    },
+  );
+  assert.equal(
+    harness.commands.filter(({ args }) => args.includes('down')).length,
+    2,
+  );
+});
+
 test('safeErrorMessage never exposes arbitrary error content', () => {
   const secret = 'secret-message-that-must-not-escape';
   assert.equal(safeErrorMessage(new TypeError(secret)), 'configuration failed');
@@ -758,6 +1100,60 @@ test('the real command runner captures bounded stdout only when requested', asyn
   assert.ok(captured.startedAtMs >= earliestStart);
   assert.ok(captured.startedAtMs <= Date.now());
   assert.equal(discarded.stdout, '');
+});
+
+test('abort signals wait for child close and escalate to SIGKILL without leaking the reason', async () => {
+  const child = new EventEmitter();
+  child.stdout = new EventEmitter();
+  const killedWith = [];
+  child.kill = (signal) => {
+    killedWith.push(signal);
+    return true;
+  };
+  let timerCallback;
+  let clearedTimer;
+  const timerToken = Object.freeze({ timer: true });
+  const runCommand = createCommandRunner({
+    spawnProcess: () => child,
+    now: () => 123,
+    setTimer(callback, delay) {
+      assert.equal(delay, 5_000);
+      timerCallback = callback;
+      return timerToken;
+    },
+    clearTimer(token) {
+      clearedTimer = token;
+    },
+    currentWorkingDirectory: () => '/safe/workspace',
+    environmentForChild: () => ({}),
+  });
+  const controller = new globalThis.AbortController();
+  let cleanupStarted = false;
+  const execution = runCommand('synthetic-command', [], {
+    signal: controller.signal,
+  });
+  const observed = execution.finally(() => {
+    cleanupStarted = true;
+  });
+
+  controller.abort(new Error(`untrusted abort ${SECRET_FRAGMENT}`));
+  await new Promise((resolve) => globalThis.setImmediate(resolve));
+  assert.deepEqual(killedWith, ['SIGTERM']);
+  assert.equal(cleanupStarted, false);
+
+  timerCallback();
+  assert.deepEqual(killedWith, ['SIGTERM', 'SIGKILL']);
+  child.emit('error', new Error(`untrusted child ${SECRET_FRAGMENT}`));
+  assert.equal(cleanupStarted, false);
+  child.emit('close', null);
+
+  await assert.rejects(observed, (error) => {
+    assert.equal(error.message, 'command aborted');
+    assert.doesNotMatch(error.message, new RegExp(SECRET_FRAGMENT));
+    return true;
+  });
+  assert.equal(cleanupStarted, true);
+  assert.equal(clearedTimer, timerToken);
 });
 
 test('the real command runner scrubs malicious host runtime-secret precedence', async () => {

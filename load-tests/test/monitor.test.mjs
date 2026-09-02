@@ -8,6 +8,7 @@ import {
   parseRedisInfo,
   parseRedisStatus,
   startMonitor,
+  summarizeMonitorSamples,
 } from '../lib/monitor.mjs';
 
 const IDS = Object.freeze({
@@ -15,6 +16,16 @@ const IDS = Object.freeze({
   'postgres-load': 'b'.repeat(64),
   'redis-load': 'c'.repeat(64),
 });
+
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
 
 test('parseDockerStats converts bounded Docker units to numeric fields', () => {
   assert.deepEqual(
@@ -116,6 +127,9 @@ function monitorDependencies({
   duplicateAuth = false,
   extraK6 = false,
   missingService,
+  wrongProjectService,
+  swappedInspectIdentity = false,
+  deferStatsCall,
   postgresFailures = 0,
   redisFailures = 0,
   postgresFailureCalls = [],
@@ -131,30 +145,63 @@ function monitorDependencies({
   let intervalMilliseconds;
   let postgresCalls = 0;
   let redisCalls = 0;
-  const composeRows = Object.entries(IDS)
-    .filter(([service]) => service !== missingService)
-    .map(([service, id]) => ({
-      ID: id,
-      Name: `auth-load-${service}-1`,
-      Project: 'auth-load',
-      Service: service,
-      State: 'running',
-    }));
-  if (duplicateAuth) {
-    composeRows.push({
-      ...composeRows[0],
-      ID: 'd'.repeat(64),
-      Name: 'auth-load-auth-service-2',
-    });
+  let statsCalls = 0;
+  let currentMissingService = missingService;
+  const serviceStates = Object.fromEntries(
+    Object.keys(IDS).map((service) => [service, 'running']),
+  );
+  const delayedStats = deferred();
+
+  function composeRows() {
+    const rows = Object.entries(IDS)
+      .filter(([service]) => service !== currentMissingService)
+      .map(([service, id]) => ({
+        ID: id,
+        Name: `auth-load-${service}-1`,
+        Project:
+          service === wrongProjectService ? 'wrong-project' : 'auth-load',
+        Service: service,
+        State: serviceStates[service],
+      }));
+    if (duplicateAuth) {
+      rows.push({
+        ...rows.find(({ Service }) => Service === 'auth-service'),
+        ID: 'd'.repeat(64),
+        Name: 'auth-load-auth-service-2',
+      });
+    }
+    if (extraK6) {
+      rows.push({
+        ID: 'e'.repeat(64),
+        Name: 'auth-load-k6-run-123',
+        Project: 'auth-load',
+        Service: 'k6',
+        State: 'running',
+      });
+    }
+    return rows;
   }
-  if (extraK6) {
-    composeRows.push({
-      ID: 'e'.repeat(64),
-      Name: 'auth-load-k6-run-123',
-      Project: 'untrusted-nontarget-project',
-      Service: 'k6',
-      State: 'running',
-    });
+
+  function statsResult(rows) {
+    return {
+      exitCode: 0,
+      stdout: rows
+        .filter(
+          ({ Service, State }) =>
+            Object.hasOwn(IDS, Service) && State === 'running',
+        )
+        .map(({ Service: service, ID: id }, index) =>
+          JSON.stringify({
+            ID: id.slice(0, 12),
+            Name: `auth-load-${service}-1`,
+            CPUPerc: `${index + 1}%`,
+            MemUsage: `${index + 1}MiB / 2GiB`,
+            NetIO: `${index + 1}kB / ${index + 2}kB`,
+          }),
+        )
+        .join('\n'),
+      stderr: '',
+    };
   }
 
   return {
@@ -164,32 +211,30 @@ function monitorDependencies({
       async runCommand(file, args) {
         commands.push([file, args]);
         if (file === 'docker' && args[0] === 'stats') {
-          return {
-            exitCode: 0,
-            stdout: Object.entries(IDS)
-              .map(([service, id], index) =>
-                JSON.stringify({
-                  ID: id.slice(0, 12),
-                  Name: `auth-load-${service}-1`,
-                  CPUPerc: `${index + 1}%`,
-                  MemUsage: `${index + 1}MiB / 2GiB`,
-                  NetIO: `${index + 1}kB / ${index + 2}kB`,
-                }),
-              )
-              .join('\n'),
-            stderr: '',
-          };
+          statsCalls += 1;
+          const result = statsResult(composeRows());
+          if (statsCalls === deferStatsCall) {
+            await delayedStats.promise;
+          }
+          return result;
         }
         if (file === 'docker' && args[0] === 'inspect') {
           return {
             exitCode: 0,
-            stdout: Object.entries(IDS)
-              .map(([service, id]) =>
+            stdout: composeRows()
+              .filter(({ Service }) => Object.hasOwn(IDS, Service))
+              .map(({ Service: service, ID: id }) =>
                 [
                   JSON.stringify(id),
                   service === 'auth-service' ? '1' : '0',
                   '"auth-load"',
-                  JSON.stringify(service),
+                  JSON.stringify(
+                    swappedInspectIdentity && service === 'auth-service'
+                      ? 'postgres-load'
+                      : swappedInspectIdentity && service === 'postgres-load'
+                        ? 'auth-service'
+                        : service,
+                  ),
                 ].join('\t'),
               )
               .join('\n'),
@@ -199,13 +244,17 @@ function monitorDependencies({
         if (args.includes('--format') && args.includes('json')) {
           return {
             exitCode: 0,
-            stdout: JSON.stringify(composeRows),
+            stdout: JSON.stringify(composeRows()),
             stderr: '',
           };
         }
         if (args.includes('ps') && args.includes('-q')) {
-          const ids = composeRows
-            .filter(({ Service }) => Object.hasOwn(IDS, Service))
+          const ids = composeRows()
+            .filter(
+              ({ Service, State }) =>
+                Object.hasOwn(IDS, Service) &&
+                (args.includes('--all') || State === 'running'),
+            )
             .map(({ ID }) => ID);
           return { exitCode: 0, stdout: `${ids.join('\n')}\n`, stderr: '' };
         }
@@ -260,6 +309,15 @@ function monitorDependencies({
     tick() {
       intervalCallback();
     },
+    setServiceState(service, state) {
+      serviceStates[service] = state;
+    },
+    setMissingService(service) {
+      currentMissingService = service;
+    },
+    releaseStats() {
+      delayedStats.resolve();
+    },
     intervalMilliseconds: () => intervalMilliseconds,
   };
 }
@@ -294,9 +352,41 @@ test('startMonitor resolves exact dedicated containers before sampling only thei
   assert.equal(writes[0].options.mode, 0o600);
   assert.match(
     writes.map(({ value }) => value).join(''),
-    /auth-service,1,1048576,2147483648/,
+    /auth-service,running,1,1048576,2147483648/,
   );
   assert.equal(intervalMilliseconds(), 5_000);
+  const composePs = commands.find(
+    ([, args]) => args.includes('ps') && args.includes('--format'),
+  );
+  assert.equal(composePs[1].includes('--all'), true);
+});
+
+test('checkpoint awaits an in-flight interval sample and forces a terminal sample', async () => {
+  const harness = monitorDependencies({ deferStatsCall: 2 });
+  const monitor = startMonitor(
+    harness.deps,
+    'load-tests/results/run/docker-stats.csv',
+  );
+  await monitor.ready();
+  harness.tick();
+  await new Promise((resolve) => globalThis.setImmediate(resolve));
+
+  let settled = false;
+  const checkpoint = monitor.checkpoint().then(() => {
+    settled = true;
+  });
+  harness.setServiceState('auth-service', 'exited');
+  await new Promise((resolve) => globalThis.setImmediate(resolve));
+  assert.equal(settled, false);
+
+  harness.releaseStats();
+  await checkpoint;
+  assert.equal(monitor.snapshot().length, 3);
+  assert.equal(
+    monitor.snapshot().at(-1).services['auth-service'].status,
+    'stopped',
+  );
+  await monitor.stop();
 });
 
 test('startMonitor fails closed when a dedicated service container is duplicated', async () => {
@@ -306,7 +396,7 @@ test('startMonitor fails closed when a dedicated service container is duplicated
   await assert.rejects(monitor.stop(), /dedicated service containers/);
 });
 
-test('startMonitor ignores an active k6 one-off but rejects a missing target service', async () => {
+test('startMonitor ignores an active scoped k6 one-off and preserves a missing target service', async () => {
   const withK6 = monitorDependencies({ extraK6: true });
   await startMonitor(
     withK6.deps,
@@ -320,8 +410,51 @@ test('startMonitor ignores an active k6 one-off but rejects a missing target ser
     missing.deps,
     'load-tests/results/run/docker-stats.csv',
   );
-  await assert.rejects(missingMonitor.ready(), /dedicated service containers/);
-  await assert.rejects(missingMonitor.stop(), /dedicated service containers/);
+  await missingMonitor.ready();
+  assert.equal(
+    missingMonitor.snapshot()[0].services['redis-load'].status,
+    'missing',
+  );
+  await missingMonitor.stop();
+});
+
+test('startMonitor preserves stopped state for every expected load target', async () => {
+  for (const service of Object.keys(IDS)) {
+    const harness = monitorDependencies();
+    const monitor = startMonitor(
+      harness.deps,
+      'load-tests/results/run/docker-stats.csv',
+    );
+    await monitor.ready();
+    harness.setServiceState(service, 'exited');
+    await monitor.checkpoint();
+    const finalSample = monitor.snapshot().at(-1);
+    assert.equal(finalSample.services[service].status, 'stopped');
+    if (service !== 'auth-service') {
+      assert.ok(finalSample.dependencyErrors > 0);
+    }
+    await monitor.stop();
+  }
+});
+
+test('startMonitor still aborts on wrong-project target identity', async () => {
+  const harness = monitorDependencies({ wrongProjectService: 'auth-service' });
+  const monitor = startMonitor(
+    harness.deps,
+    'load-tests/results/run/docker-stats.csv',
+  );
+  await assert.rejects(monitor.ready(), /dedicated service containers/);
+  await assert.rejects(monitor.stop(), /dedicated service containers/);
+});
+
+test('startMonitor aborts when inspect labels do not match discovered container IDs', async () => {
+  const harness = monitorDependencies({ swappedInspectIdentity: true });
+  const monitor = startMonitor(
+    harness.deps,
+    'load-tests/results/run/docker-stats.csv',
+  );
+  await assert.rejects(monitor.ready(), /Docker inspect response/);
+  await assert.rejects(monitor.stop(), /Docker inspect response/);
 });
 
 test('startMonitor treats nonzero lifetime counters on its first sample as the baseline', async () => {
@@ -416,4 +549,84 @@ test('startMonitor fails closed when a persistent dependency counter resets', as
   await new Promise((resolve) => globalThis.setImmediate(resolve));
   harness.tick();
   await assert.rejects(monitor.stop(), /dependency counter reset/);
+});
+
+test('summarizeMonitorSamples returns strict aggregate bottleneck peaks', () => {
+  const service = (
+    status,
+    cpu,
+    memory,
+    networkIn,
+    networkOut,
+    restartCount,
+  ) => ({
+    status,
+    cpuPercent: cpu,
+    memoryUsageBytes: memory,
+    memoryLimitBytes: 10_000,
+    networkInputBytes: networkIn,
+    networkOutputBytes: networkOut,
+    restartCount,
+  });
+  const summary = summarizeMonitorSamples([
+    {
+      timestamp: '2026-09-02T01:02:03.000Z',
+      services: {
+        'auth-service': service('running', 10, 100, 1_000, 2_000, 0),
+        'postgres-load': service('running', 20, 200, 2_000, 3_000, 0),
+        'redis-load': service('running', 30, 300, 3_000, 4_000, 0),
+      },
+      postgresConnections: 8,
+      redis: { connectedClients: 9, usedMemoryBytes: 900 },
+      dependencyErrors: 0,
+    },
+    {
+      timestamp: '2026-09-02T01:02:08.000Z',
+      services: {
+        'auth-service': service('stopped', 0, 0, 0, 0, 1),
+        'postgres-load': service('missing', 0, 0, 0, 0, 0),
+        'redis-load': service('running', 35, 350, 3_500, 4_500, 0),
+      },
+      postgresConnections: 8,
+      redis: { connectedClients: 10, usedMemoryBytes: 1_000 },
+      dependencyErrors: 2,
+    },
+  ]);
+
+  assert.deepEqual(summary, {
+    sampleCount: 2,
+    services: {
+      'auth-service': {
+        peakCpuPercent: 10,
+        peakMemoryUsageBytes: 100,
+        peakNetworkInputBytes: 1_000,
+        peakNetworkOutputBytes: 2_000,
+        maxRestartCount: 1,
+        stoppedSamples: 1,
+        missingSamples: 0,
+      },
+      'postgres-load': {
+        peakCpuPercent: 20,
+        peakMemoryUsageBytes: 200,
+        peakNetworkInputBytes: 2_000,
+        peakNetworkOutputBytes: 3_000,
+        maxRestartCount: 0,
+        stoppedSamples: 0,
+        missingSamples: 1,
+      },
+      'redis-load': {
+        peakCpuPercent: 35,
+        peakMemoryUsageBytes: 350,
+        peakNetworkInputBytes: 3_500,
+        peakNetworkOutputBytes: 4_500,
+        maxRestartCount: 0,
+        stoppedSamples: 0,
+        missingSamples: 0,
+      },
+    },
+    peakPostgresConnections: 8,
+    peakRedisConnectedClients: 10,
+    peakRedisUsedMemoryBytes: 1_000,
+    dependencyErrors: 2,
+  });
 });

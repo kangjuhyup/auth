@@ -6,6 +6,7 @@ import {
   createRateLimitOptions,
   evaluateRateLimitResponse,
   rateLimitProbeUsername,
+  timeToFirstRateLimit,
 } from '../k6/rate-limit-classifier.js';
 
 test('classifies only intended authentication rejection and throttling statuses', () => {
@@ -28,7 +29,18 @@ test('creates a fixed one-VU rate-limit profile without URL or name system tags'
       security_rate_limited_total: ['count>0'],
       security_unexpected_total: ['count==0'],
     },
+    summaryTrendStats: ['count', 'min', 'avg', 'max', 'p(95)', 'p(99)'],
   });
+});
+
+test('time to first 429 is a bounded monotonic duration', () => {
+  assert.equal(timeToFirstRateLimit(1_000, 1_123), 123);
+  assert.equal(timeToFirstRateLimit(1_000, 1_000), 0);
+  assert.throws(() => timeToFirstRateLimit(1_001, 1_000), /time to first 429/);
+  assert.throws(
+    () => timeToFirstRateLimit(1_000, 301_001),
+    /time to first 429/,
+  );
 });
 
 test('creates a bounded unique non-provisioned username for each VU iteration', () => {

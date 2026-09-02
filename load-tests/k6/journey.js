@@ -3,9 +3,17 @@ import exec from 'k6/execution';
 import { Rate } from 'k6/metrics';
 import { loadConfig, loadScenarioConfig } from './config.js';
 import { chooseAction } from './flow-utils.js';
-import { handleK6Summary, soakSubmetricThresholds } from './metrics.js';
+import {
+  handleK6Summary,
+  recordMeasurementEpoch,
+  soakSubmetricThresholds,
+} from './metrics.js';
 import { createOidcClient } from './oidc.js';
-import { createJourneyOptions } from './scenario.js';
+import {
+  createJourneyOptions,
+  createMeasurementTiming,
+  measurementMinute,
+} from './scenario.js';
 
 const scenarioConfig = loadScenarioConfig(__ENV, 'probe');
 const harnessFailure = new Rate('load_harness_failure');
@@ -22,30 +30,45 @@ export const options = {
   },
 };
 
-function oidcClient() {
+function oidcClient(timing) {
   return (oidc ??= createOidcClient({
     ...loadConfig(__ENV),
     runKind: scenarioConfig.runKind,
+    ...(scenarioConfig.runKind === 'soak'
+      ? {
+          measurementMinute: () =>
+            measurementMinute(
+              Date.now(),
+              timing.measurementEpochMs,
+              scenarioConfig.soakSeconds,
+            ),
+        }
+      : {}),
   }));
 }
 
 export function setup() {
-  return { measureAfterMs: Date.now() + scenarioConfig.warmupSeconds * 1000 };
+  const timing = createMeasurementTiming(
+    Date.now(),
+    scenarioConfig.warmupSeconds,
+  );
+  recordMeasurementEpoch(timing.measurementEpochMs);
+  return timing;
 }
 
 export default function (timing) {
   const userIndex = exec.vu.idInTest;
   if (!session) {
     try {
-      session = oidcClient().login(userIndex, false);
+      session = oidcClient(timing).login(userIndex, false);
       harnessFailure.add(false);
     } catch (error) {
       harnessFailure.add(true);
       throw error;
     }
   }
-  const measuring = Date.now() >= timing.measureAfterMs;
-  session = oidcClient().execute(
+  const measuring = Date.now() >= timing.measurementEpochMs;
+  session = oidcClient(timing).execute(
     chooseAction(Math.random()),
     session,
     userIndex,

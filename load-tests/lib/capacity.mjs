@@ -18,6 +18,11 @@ const ENDPOINT_NAMES = Object.freeze([
   'jwks',
   'revoke',
 ]);
+const EXPECTED_SERVICES = Object.freeze([
+  'auth-service',
+  'postgres-load',
+  'redis-load',
+]);
 
 export function buildCoarseLevels(maxVus) {
   if (!Number.isSafeInteger(maxVus) || maxVus < 1) {
@@ -53,6 +58,16 @@ export function evaluateCapacityMetrics(metrics, slo = DEFAULT_SLO) {
       `check failure rate must be <= ${limits.maxCheckFailureRate}`,
     );
   }
+  if (!Number.isSafeInteger(metrics.requestCount) || metrics.requestCount < 1) {
+    violations.push('request count must contain observations');
+  }
+  if (
+    typeof metrics.rps !== 'number' ||
+    !Number.isFinite(metrics.rps) ||
+    metrics.rps < 0
+  ) {
+    violations.push('request rate must be a non-negative number');
+  }
   if (metrics.p95Ms >= limits.maxP95MsExclusive) {
     violations.push(`p95 latency must be < ${limits.maxP95MsExclusive} ms`);
   }
@@ -79,6 +94,15 @@ export function evaluateCapacityMetrics(metrics, slo = DEFAULT_SLO) {
       violations.push(
         `endpoint ${endpoint} p99 latency must be < ${limits.maxP99MsExclusive} ms`,
       );
+    }
+  }
+
+  for (const service of EXPECTED_SERVICES) {
+    const status = metrics.serviceStatuses?.[service];
+    if (status === 'stopped' || status === 'missing') {
+      violations.push(`${service} ${status}`);
+    } else if (status !== 'running') {
+      violations.push(`${service} has invalid status`);
     }
   }
 

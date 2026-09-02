@@ -230,6 +230,7 @@ export function createOidcClient(
       uid = extractInteractionUid(
         authorization.headers.Location,
         config.baseUrl,
+        config.tenantCode,
       );
     } catch {
       throw protocolError('login', authorization.status);
@@ -300,7 +301,11 @@ export function createOidcClient(
 
       let resumeUrl;
       try {
-        resumeUrl = assertProviderResumePath(redirectTo, config.baseUrl);
+        resumeUrl = assertProviderResumePath(
+          redirectTo,
+          config.baseUrl,
+          config.tenantCode,
+        );
       } catch {
         throw protocolError('login', loginResponse.status);
       }
@@ -318,6 +323,7 @@ export function createOidcClient(
     const callback = resolveAuthorizationCodeWithConsent(
       continuationLocation,
       config.baseUrl,
+      config.tenantCode,
       {
         readConsentDetails: (consentUid) => {
           if (cachedConsentDetails?.uid === consentUid) {

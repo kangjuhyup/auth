@@ -1,4 +1,3 @@
-import { URL } from 'node:url';
 import { evaluateCapacityMetrics } from './capacity.mjs';
 
 export const ENDPOINT_METRICS = Object.freeze({
@@ -11,21 +10,50 @@ export const ENDPOINT_METRICS = Object.freeze({
   revoke: 'load_revoke_duration_ms',
 });
 
-const SAFE_ENVIRONMENT_FIELDS = Object.freeze([
-  'maxVus',
-  'warmupSeconds',
-  'measureSeconds',
-  'soakSeconds',
-  'mode',
-  'target',
-  'targetUrl',
-]);
-
 const REQUIRED_AGGREGATE_METRICS = Object.freeze([
   'load_request_failed',
   'load_check_failed',
   'load_http_req_duration_ms',
+  'load_requests',
 ]);
+const MEASUREMENT_EPOCH_METRIC = 'load_measurement_epoch_ms';
+const MAX_EPOCH_MS = 8_640_000_000_000_000;
+const K6_IMAGE = 'grafana/k6:2.2.0';
+const SERVICE_IMAGE_PATTERN = /^sha256:[a-f0-9]{64}$/;
+const CONTAINER_ID_PATTERN = /^[a-f0-9]{64}$/;
+const VERSION_PATTERN = /^v?\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z.-]+)?$/;
+const HOST_OS = new Set([
+  'aix',
+  'android',
+  'darwin',
+  'freebsd',
+  'haiku',
+  'linux',
+  'netbsd',
+  'openbsd',
+  'sunos',
+  'win32',
+]);
+const HOST_ARCH = new Set([
+  'arm',
+  'arm64',
+  'ia32',
+  'loong64',
+  'mips',
+  'mipsel',
+  'ppc',
+  'ppc64',
+  'riscv64',
+  's390',
+  's390x',
+  'x64',
+]);
+const EXPECTED_SERVICES = Object.freeze([
+  'auth-service',
+  'postgres-load',
+  'redis-load',
+]);
+const SERVICE_STATUSES = new Set(['running', 'stopped', 'missing']);
 
 function validFiniteNumber(
   value,
@@ -85,10 +113,14 @@ function durationMetric(
   name,
   { required = false, allowMissing = false, positiveCount = false } = {},
 ) {
+  const metric = raw?.metrics?.[name];
   const values = metricValues(raw, name, {
     allowMissing: !required || allowMissing,
   });
   if (values === undefined) return { count: 0, p95Ms: 0, p99Ms: 0 };
+  if (metric.type !== 'trend' || metric.contains !== 'default') {
+    throw new TypeError(`Invalid ${name} trend structure`);
+  }
   return {
     count: metricNumber(values, 'count', `${name} count`, {
       integer: true,
@@ -130,6 +162,25 @@ function rateMetric(
   return rate;
 }
 
+function counterMetric(
+  raw,
+  name,
+  { required = false, allowMissing = false } = {},
+) {
+  const metric = raw?.metrics?.[name];
+  const values = metricValues(raw, name, {
+    allowMissing: !required || allowMissing,
+  });
+  if (values === undefined) return { count: 0, rate: 0 };
+  if (metric.type !== 'counter' || metric.contains !== 'default') {
+    throw new TypeError(`Invalid ${name} counter structure`);
+  }
+  return {
+    count: metricNumber(values, 'count', `${name} count`, { integer: true }),
+    rate: metricNumber(values, 'rate', `${name} rate`),
+  };
+}
+
 function normalizedContext(context) {
   if (!context || typeof context !== 'object')
     throw new TypeError('context must be an object');
@@ -140,7 +191,28 @@ function normalizedContext(context) {
   if (!Number.isSafeInteger(dependencyErrors) || dependencyErrors < 0) {
     throw new TypeError('dependencyErrors must be a non-negative safe integer');
   }
+  const rawStatuses = context.serviceStatuses;
+  const serviceStatuses = Object.fromEntries(
+    EXPECTED_SERVICES.map((service) => [service, 'running']),
+  );
+  if (rawStatuses !== undefined) {
+    if (
+      !rawStatuses ||
+      typeof rawStatuses !== 'object' ||
+      Array.isArray(rawStatuses) ||
+      Object.keys(rawStatuses).length !== EXPECTED_SERVICES.length
+    ) {
+      throw new TypeError('serviceStatuses must contain every target service');
+    }
+    for (const service of EXPECTED_SERVICES) {
+      if (!SERVICE_STATUSES.has(rawStatuses[service])) {
+        throw new TypeError('serviceStatuses contains an invalid status');
+      }
+      serviceStatuses[service] = rawStatuses[service];
+    }
+  }
   return {
+    serviceStatuses,
     serviceRestarted,
     dependencyErrors,
   };
@@ -161,6 +233,45 @@ function boundedSoakSeconds(soakSeconds) {
   return soakSeconds;
 }
 
+export function normalizeMeasurementEpoch(raw) {
+  const metric = raw?.metrics?.[MEASUREMENT_EPOCH_METRIC];
+  let values;
+  try {
+    values = metricValues(raw, MEASUREMENT_EPOCH_METRIC);
+  } catch {
+    throw new TypeError('Invalid measurement epoch metric');
+  }
+  const keys = ['min', 'max', 'avg', 'p(95)', 'p(99)'];
+  if (
+    metric?.type !== 'trend' ||
+    metric.contains !== 'default' ||
+    metricNumber(values, 'count', 'measurement epoch metric count', {
+      integer: true,
+      min: 1,
+      max: 1,
+    }) !== 1
+  ) {
+    throw new TypeError('Invalid measurement epoch metric');
+  }
+  const epoch = metricNumber(values, 'min', 'measurement epoch metric', {
+    integer: true,
+    min: 1,
+    max: MAX_EPOCH_MS,
+  });
+  for (const key of keys.slice(1)) {
+    if (
+      metricNumber(values, key, 'measurement epoch metric', {
+        integer: true,
+        min: 1,
+        max: MAX_EPOCH_MS,
+      }) !== epoch
+    ) {
+      throw new TypeError('Invalid measurement epoch metric');
+    }
+  }
+  return epoch;
+}
+
 function taggedMetricName(metricName, minute) {
   return `${metricName}{minute:${minute}}`;
 }
@@ -171,6 +282,7 @@ function taggedSummary(raw, minute) {
     'load_request_failed',
     'load_check_failed',
     'load_http_req_duration_ms',
+    'load_requests',
     ...Object.values(ENDPOINT_METRICS),
   ]) {
     const candidate = raw?.metrics?.[taggedMetricName(metricName, minute)];
@@ -200,25 +312,68 @@ function validateSoakMetricTags(raw, bucketCount) {
   }
 }
 
-function safeTargetUrl(value) {
-  if (typeof value !== 'string') return undefined;
-  try {
-    const url = new URL(value);
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined;
-    const path =
-      /^\/[A-Za-z0-9._~/-]*$/.test(url.pathname) && url.pathname !== '/'
-        ? url.pathname
-        : '';
-    return `${url.origin}${path}`;
-  } catch {
-    return undefined;
-  }
-}
-
 function safePositiveInteger(value, { max = Number.MAX_SAFE_INTEGER } = {}) {
   return Number.isSafeInteger(value) && value >= 1 && value <= max
     ? value
     : undefined;
+}
+
+function requiredPositiveInteger(value, label, options) {
+  const normalized = safePositiveInteger(value, options);
+  if (normalized === undefined) throw new TypeError(`Invalid ${label}`);
+  return normalized;
+}
+
+function normalizedVersion(value, label) {
+  if (typeof value !== 'string' || !VERSION_PATTERN.test(value)) {
+    throw new TypeError(`Invalid ${label}`);
+  }
+  return value;
+}
+
+export function parseDockerServerVersion(stdout) {
+  let value;
+  try {
+    value = JSON.parse(stdout);
+  } catch {
+    throw new TypeError('Invalid Docker server version');
+  }
+  return normalizedVersion(value, 'Docker server version');
+}
+
+export function parseDockerComposeVersion(stdout) {
+  if (
+    typeof stdout !== 'string' ||
+    !/^v?\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z.-]+)?(?:\r?\n)?$/.test(stdout)
+  ) {
+    throw new TypeError('Invalid Docker Compose version');
+  }
+  return normalizedVersion(stdout.trim(), 'Docker Compose version');
+}
+
+export function parseServiceImageRecord(stdout) {
+  if (typeof stdout !== 'string')
+    throw new TypeError('Invalid service image record');
+  const fields = stdout.replace(/\n$/, '').split('\t');
+  if (fields.length !== 4) throw new TypeError('Invalid service image record');
+  let values;
+  try {
+    values = fields.map((field) => JSON.parse(field));
+  } catch {
+    throw new TypeError('Invalid service image record');
+  }
+  const [containerId, serviceImage, project, service] = values;
+  if (
+    typeof containerId !== 'string' ||
+    !CONTAINER_ID_PATTERN.test(containerId) ||
+    typeof serviceImage !== 'string' ||
+    !SERVICE_IMAGE_PATTERN.test(serviceImage) ||
+    project !== 'auth-load' ||
+    service !== 'auth-service'
+  ) {
+    throw new TypeError('Invalid service image record');
+  }
+  return { containerId, serviceImage };
 }
 
 function safeSloValue(value, { max = Number.POSITIVE_INFINITY } = {}) {
@@ -260,6 +415,8 @@ function safeCapacityMetrics(input) {
     checkFailureRate: validFiniteNumber(input?.checkFailureRate, { max: 1 })
       ? input.checkFailureRate
       : 0,
+    requestCount: nonNegativeSafeInteger(input?.requestCount),
+    rps: nonNegativeNumber(input?.rps),
     p95Ms: nonNegativeNumber(input?.p95Ms),
     p99Ms: nonNegativeNumber(input?.p99Ms),
     endpointDurations: Object.fromEntries(
@@ -276,6 +433,14 @@ function safeCapacityMetrics(input) {
       }),
     ),
     serviceRestarted: input?.serviceRestarted === true,
+    serviceStatuses: Object.fromEntries(
+      EXPECTED_SERVICES.map((service) => [
+        service,
+        SERVICE_STATUSES.has(input?.serviceStatuses?.[service])
+          ? input.serviceStatuses[service]
+          : 'missing',
+      ]),
+    ),
     dependencyErrors: nonNegativeSafeInteger(input?.dependencyErrors),
   };
 }
@@ -287,6 +452,9 @@ function emptyCapacityMetrics() {
         endpoint,
         { count: 0, p95Ms: 0, p99Ms: 0 },
       ]),
+    ),
+    serviceStatuses: Object.fromEntries(
+      EXPECTED_SERVICES.map((service) => [service, 'missing']),
     ),
   };
 }
@@ -304,6 +472,10 @@ export function normalizeK6Summary(raw, context = {}, internal = {}) {
     allowMissing: allowMissingAggregate,
     positiveCount: !allowMissingAggregate,
   });
+  const requests = counterMetric(raw, 'load_requests', {
+    required: true,
+    allowMissing: allowMissingAggregate,
+  });
   const normalized = normalizedContext(context);
 
   return {
@@ -315,9 +487,12 @@ export function normalizeK6Summary(raw, context = {}, internal = {}) {
       required: true,
       allowMissing: allowMissingAggregate,
     }),
+    requestCount: requests.count,
+    rps: requests.rate,
     p95Ms: total.p95Ms,
     p99Ms: total.p99Ms,
     endpointDurations,
+    serviceStatuses: normalized.serviceStatuses,
     serviceRestarted: normalized.serviceRestarted,
     dependencyErrors: normalized.dependencyErrors,
   };
@@ -328,6 +503,7 @@ export function normalizeSoakWindows(
   { soakSeconds = 1800, context = {} } = {},
 ) {
   const bucketCount = Math.ceil(boundedSoakSeconds(soakSeconds) / 60);
+  normalizeMeasurementEpoch(raw);
   validateSoakMetricTags(raw, bucketCount);
   return Array.from({ length: bucketCount }, (_, minute) => ({
     minute,
@@ -342,39 +518,217 @@ export function normalizeSoakWindows(
 }
 
 export function sanitizeEnvironment(input) {
-  const safe = {};
-  for (const field of SAFE_ENVIRONMENT_FIELDS) {
-    if (Object.hasOwn(input ?? {}, field)) {
-      const value = input[field];
-      if (field === 'target' || field === 'targetUrl') {
-        const target = safeTargetUrl(value);
-        if (target !== undefined) safe[field] = target;
-        continue;
-      }
-      if (field === 'mode' && (value === 'capacity' || value === 'smoke')) {
-        safe[field] = value;
-        continue;
-      }
-      const maximum = field === 'soakSeconds' ? 1800 : Number.MAX_SAFE_INTEGER;
-      const integer = safePositiveInteger(value, { max: maximum });
-      if (integer !== undefined) {
-        safe[field] = integer;
-      }
-    }
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new TypeError('Invalid environment metadata');
   }
-  return safe;
+  const mode = input.mode;
+  const host = input.host;
+  const docker = input.docker;
+  if (
+    (mode !== 'capacity' && mode !== 'smoke') ||
+    input.target !== 'http://auth-service:3000' ||
+    !host ||
+    typeof host !== 'object' ||
+    !HOST_OS.has(host.os) ||
+    !HOST_ARCH.has(host.arch) ||
+    typeof host.cpuModel !== 'string' ||
+    !/^[A-Za-z0-9][A-Za-z0-9 ._()+@/-]{0,159}$/.test(host.cpuModel) ||
+    !docker ||
+    typeof docker !== 'object' ||
+    input.k6Image !== K6_IMAGE ||
+    typeof input.serviceImage !== 'string' ||
+    !SERVICE_IMAGE_PATTERN.test(input.serviceImage)
+  ) {
+    throw new TypeError('Invalid environment metadata');
+  }
+  return {
+    maxVus: requiredPositiveInteger(input.maxVus, 'maxVus'),
+    warmupSeconds: requiredPositiveInteger(
+      input.warmupSeconds,
+      'warmupSeconds',
+    ),
+    measureSeconds: requiredPositiveInteger(
+      input.measureSeconds,
+      'measureSeconds',
+    ),
+    soakSeconds: requiredPositiveInteger(input.soakSeconds, 'soakSeconds', {
+      max: 1_800,
+    }),
+    mode,
+    target: 'http://auth-service:3000',
+    host: {
+      os: host.os,
+      arch: host.arch,
+      cpuModel: host.cpuModel,
+      cpuCount: requiredPositiveInteger(host.cpuCount, 'host CPU count', {
+        max: 65_536,
+      }),
+      memoryBytes: requiredPositiveInteger(
+        host.memoryBytes,
+        'host memory bytes',
+      ),
+    },
+    docker: {
+      version: normalizedVersion(docker.version, 'Docker server version'),
+      composeVersion: normalizedVersion(
+        docker.composeVersion,
+        'Docker Compose version',
+      ),
+    },
+    k6Image: K6_IMAGE,
+    serviceImage: input.serviceImage,
+  };
+}
+
+function requiredNonNegativeNumber(value, label) {
+  if (!validFiniteNumber(value)) throw new TypeError(`Invalid ${label}`);
+  return value;
+}
+
+function requiredNonNegativeInteger(
+  value,
+  label,
+  { max = Number.MAX_SAFE_INTEGER } = {},
+) {
+  if (!Number.isSafeInteger(value) || value < 0 || value > max)
+    throw new TypeError(`Invalid ${label}`);
+  return value;
+}
+
+function normalizedTrafficMix(input) {
+  const configured = Object.freeze({
+    introspection: 45,
+    userinfo: 25,
+    refresh: 12,
+    discovery: 8,
+    jwks: 5,
+    relogin: 5,
+  });
+  if (
+    !input ||
+    typeof input !== 'object' ||
+    Object.entries(configured).some(([name, share]) => input[name] !== share)
+  ) {
+    throw new TypeError('Invalid traffic mix');
+  }
+  return configured;
+}
+
+function normalizedSecurityGate(input) {
+  if (!input || typeof input !== 'object' || input.path !== '/admin/session') {
+    throw new TypeError('Invalid security gate report');
+  }
+  return {
+    path: '/admin/session',
+    timeToFirst429Ms: requiredNonNegativeInteger(
+      input.timeToFirst429Ms,
+      'security time to first 429',
+      { max: 300_000 },
+    ),
+    authRejectedCount: requiredNonNegativeInteger(
+      input.authRejectedCount,
+      'security rejected count',
+    ),
+    rateLimitedCount: requiredNonNegativeInteger(
+      input.rateLimitedCount,
+      'security rate-limited count',
+    ),
+    unexpectedCount: requiredNonNegativeInteger(
+      input.unexpectedCount,
+      'security unexpected count',
+    ),
+  };
+}
+
+function normalizedMonitorSummary(input) {
+  if (!input || typeof input !== 'object' || !input.services) {
+    throw new TypeError('Invalid monitor summary');
+  }
+  const services = {};
+  for (const service of ['auth-service', 'postgres-load', 'redis-load']) {
+    const value = input.services[service];
+    if (!value || typeof value !== 'object')
+      throw new TypeError('Invalid monitor summary');
+    services[service] = {
+      peakCpuPercent: requiredNonNegativeNumber(
+        value.peakCpuPercent,
+        'monitor CPU peak',
+      ),
+      peakMemoryUsageBytes: requiredNonNegativeInteger(
+        value.peakMemoryUsageBytes,
+        'monitor memory peak',
+      ),
+      peakNetworkInputBytes: requiredNonNegativeInteger(
+        value.peakNetworkInputBytes,
+        'monitor network input peak',
+      ),
+      peakNetworkOutputBytes: requiredNonNegativeInteger(
+        value.peakNetworkOutputBytes,
+        'monitor network output peak',
+      ),
+      maxRestartCount: requiredNonNegativeInteger(
+        value.maxRestartCount,
+        'monitor restart peak',
+      ),
+      stoppedSamples: requiredNonNegativeInteger(
+        value.stoppedSamples,
+        'monitor stopped samples',
+      ),
+      missingSamples: requiredNonNegativeInteger(
+        value.missingSamples,
+        'monitor missing samples',
+      ),
+    };
+  }
+  return {
+    sampleCount: requiredPositiveInteger(input.sampleCount, 'monitor samples'),
+    services,
+    peakPostgresConnections: requiredNonNegativeInteger(
+      input.peakPostgresConnections,
+      'PostgreSQL connection peak',
+    ),
+    peakRedisConnectedClients: requiredNonNegativeInteger(
+      input.peakRedisConnectedClients,
+      'Redis client peak',
+    ),
+    peakRedisUsedMemoryBytes: requiredNonNegativeInteger(
+      input.peakRedisUsedMemoryBytes,
+      'Redis memory peak',
+    ),
+    dependencyErrors: requiredNonNegativeInteger(
+      input.dependencyErrors,
+      'monitor dependency errors',
+    ),
+  };
 }
 
 export function renderSummaryMarkdown(report) {
   const environment = sanitizeEnvironment(report?.environment);
+  const trafficMix = normalizedTrafficMix(report?.trafficMix);
+  const securityGate = normalizedSecurityGate(report?.securityGate);
+  const monitorSummary = normalizedMonitorSummary(report?.monitorSummary);
   const metrics = safeCapacityMetrics(
     report?.metrics ?? emptyCapacityMetrics(),
   );
   const slo = safeSlo(report?.slo);
   const verdict = report?.passed === true ? 'PASS' : 'FAIL';
-  const environmentRows = Object.entries(environment)
-    .map(([key, value]) => `| ${key} | ${value} |`)
-    .join('\n');
+  const environmentRows = [
+    ['maxVus', environment.maxVus],
+    ['warmupSeconds', environment.warmupSeconds],
+    ['measureSeconds', environment.measureSeconds],
+    ['soakSeconds', environment.soakSeconds],
+    ['mode', environment.mode],
+    ['target', environment.target],
+    ['host OS', environment.host.os],
+    ['host architecture', environment.host.arch],
+    ['host CPU', environment.host.cpuModel],
+    ['host CPU count', environment.host.cpuCount],
+    ['host memory bytes', environment.host.memoryBytes],
+    ['Docker version', environment.docker.version],
+    ['Compose version', environment.docker.composeVersion],
+    ['k6 image', environment.k6Image],
+    ['service image', environment.serviceImage],
+  ].map(([key, value]) => `| ${key} | ${value} |`);
   const endpointRows = Object.entries(ENDPOINT_METRICS)
     .map(([endpoint]) => {
       const duration = metrics.endpointDurations?.[endpoint] ?? {};
@@ -388,6 +742,13 @@ export function renderSummaryMarkdown(report) {
     verdict === 'PASS'
       ? []
       : evaluateCapacityMetrics(metrics, evaluationSlo(report?.slo)).violations;
+  const trafficRows = Object.entries(trafficMix).map(
+    ([action, share]) => `| ${action} | ${share}% |`,
+  );
+  const monitorRows = Object.entries(monitorSummary.services).map(
+    ([service, values]) =>
+      `| ${service} | ${values.peakCpuPercent} | ${values.peakMemoryUsageBytes} | ${values.peakNetworkInputBytes} | ${values.peakNetworkOutputBytes} | ${values.maxRestartCount} | ${values.stoppedSamples} | ${values.missingSamples} |`,
+  );
 
   return [
     '# Local capacity test summary',
@@ -400,7 +761,19 @@ export function renderSummaryMarkdown(report) {
     '',
     '| Field | Value |',
     '| --- | --- |',
-    environmentRows || '| none | |',
+    ...environmentRows,
+    '',
+    '## Traffic mix',
+    '',
+    '| Action | Share |',
+    '| --- | ---: |',
+    ...trafficRows,
+    '',
+    '## Security gate',
+    '',
+    '| Path | Time to first 429 (ms) | Rejected | Rate limited | Unexpected |',
+    '| --- | ---: | ---: | ---: | ---: |',
+    `| ${securityGate.path} | ${securityGate.timeToFirst429Ms} | ${securityGate.authRejectedCount} | ${securityGate.rateLimitedCount} | ${securityGate.unexpectedCount} |`,
     '',
     '## SLO',
     '',
@@ -417,8 +790,14 @@ export function renderSummaryMarkdown(report) {
     '| --- | ---: |',
     `| Request failure rate | ${metrics.requestFailureRate} |`,
     `| Check failure rate | ${metrics.checkFailureRate} |`,
+    `| Request count | ${metrics.requestCount} |`,
+    `| RPS | ${metrics.rps} |`,
     `| Overall p95 (ms) | ${metrics.p95Ms} |`,
     `| Overall p99 (ms) | ${metrics.p99Ms} |`,
+    ...EXPECTED_SERVICES.map(
+      (service) =>
+        `| ${service} status | ${metrics.serviceStatuses[service]} |`,
+    ),
     `| Service restarted | ${metrics.serviceRestarted ? 'yes' : 'no'} |`,
     `| Dependency errors | ${metrics.dependencyErrors} |`,
     '',
@@ -427,6 +806,21 @@ export function renderSummaryMarkdown(report) {
     '| Endpoint | Count | p95 (ms) | p99 (ms) |',
     '| --- | ---: | ---: | ---: |',
     endpointRows,
+    '',
+    '## Monitor bottleneck evidence',
+    '',
+    `Samples: ${monitorSummary.sampleCount}`,
+    '',
+    '| Service | Peak CPU (%) | Peak memory (bytes) | Peak network in (bytes) | Peak network out (bytes) | Max restarts | Stopped samples | Missing samples |',
+    '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
+    ...monitorRows,
+    '',
+    '| Dependency evidence | Peak/count |',
+    '| --- | ---: |',
+    `| PostgreSQL connections | ${monitorSummary.peakPostgresConnections} |`,
+    `| Redis connected clients | ${monitorSummary.peakRedisConnectedClients} |`,
+    `| Redis used memory (bytes) | ${monitorSummary.peakRedisUsedMemoryBytes} |`,
+    `| Dependency errors | ${monitorSummary.dependencyErrors} |`,
     '',
     '## Violations',
     '',

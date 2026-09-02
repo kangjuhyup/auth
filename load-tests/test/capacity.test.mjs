@@ -22,9 +22,16 @@ function passingMetrics(overrides = {}) {
   return {
     requestFailureRate: 0,
     checkFailureRate: 0,
+    requestCount: 100,
+    rps: 10,
     p95Ms: 999,
     p99Ms: 1999,
     endpointDurations: completeEndpoints,
+    serviceStatuses: {
+      'auth-service': 'running',
+      'postgres-load': 'running',
+      'redis-load': 'running',
+    },
     serviceRestarted: false,
     dependencyErrors: 0,
     ...overrides,
@@ -81,6 +88,18 @@ test('evaluateCapacityMetrics rejects the strict one-percent boundary', () => {
   );
   assert.equal(result.passed, false);
   assert.match(result.violations.join('\n'), /request failure rate/);
+});
+
+test('evaluateCapacityMetrics requires a positive request count and bounded RPS', () => {
+  for (const overrides of [
+    { requestCount: 0 },
+    { requestCount: undefined },
+    { rps: -1 },
+    { rps: Number.NaN },
+  ]) {
+    const result = evaluateCapacityMetrics(passingMetrics(overrides));
+    assert.equal(result.passed, false);
+  }
 });
 
 test('evaluateCapacityMetrics rejects check failures and exclusive latency boundaries', () => {
@@ -156,6 +175,26 @@ test('evaluateCapacityMetrics reports restart and dependency errors last in stab
     'service restarted',
     'dependency connection errors: 2',
   ]);
+});
+
+test('evaluateCapacityMetrics preserves stopped and missing target context', () => {
+  for (const service of ['auth-service', 'postgres-load', 'redis-load']) {
+    for (const status of ['stopped', 'missing']) {
+      const result = evaluateCapacityMetrics(
+        passingMetrics({
+          serviceStatuses: {
+            ...passingMetrics().serviceStatuses,
+            [service]: status,
+          },
+        }),
+      );
+      assert.equal(result.passed, false);
+      assert.match(
+        result.violations.join('\n'),
+        new RegExp(`${service} ${status}`),
+      );
+    }
+  }
 });
 
 test('evaluateCapacityMetrics accepts custom SLO values', () => {
