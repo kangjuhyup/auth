@@ -76,6 +76,12 @@ const sidebars = {
     },
     {
       type: 'category',
+      label: '운영',
+      collapsed: false,
+      items: ['operations/load-test-2026-09-02'],
+    },
+    {
+      type: 'category',
       label: 'API',
       collapsed: false,
       items: ['api/redoc'],

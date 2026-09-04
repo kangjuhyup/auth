@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="640" viewBox="0 0 960 640" role="img" aria-labelledby="title desc">
+  <title id="title">200 VU 30분 내구성 시험의 분당 처리량과 전체 요청 지연시간</title>
+  <desc id="desc">30개 1분 구간 모두 통과했다. 처리량은 164.82에서 183.82 RPS였고, 가장 높은 전체 요청 p95와 p99는 18분의 105.91과 179.53 밀리초였다.</desc>
+  <rect width="960" height="640" rx="18" fill="#f8fafc"/>
+  <text x="48" y="45" font-family="system-ui, sans-serif" font-size="24" font-weight="700" fill="#0f172a">200 VU · 30분 내구성 추이</text>
+  <text x="48" y="70" font-family="system-ui, sans-serif" font-size="14" fill="#475569">각 점은 60초 평가 구간 · 30/30 구간 PASS · 실패율 0%</text>
+  <text x="70" y="103" font-family="system-ui, sans-serif" font-size="15" font-weight="700" fill="#334155">처리량 (RPS)</text>
+  <g stroke="#cbd5e1" stroke-width="1">
+    <rect x="70" y="80" width="812" height="180" fill="#ffffff"/>
+    <line x1="70" y1="260" x2="882" y2="260"/><line x1="70" y1="188" x2="882" y2="188" stroke-dasharray="4 5"/><line x1="70" y1="116" x2="882" y2="116" stroke-dasharray="4 5"/>
+  </g>
+  <g font-family="system-ui, sans-serif" font-size="11" fill="#64748b" text-anchor="end"><text x="62" y="264">160</text><text x="62" y="192">170</text><text x="62" y="120">180</text></g>
+  <path d="M70.0,135.6 L98.0,156.3 L126.0,168.7 L154.0,88.5 L182.0,129.4 L210.0,164.5 L238.0,149.8 L266.0,211.0 L294.0,123.1 L322.0,172.4 L350.0,146.2 L378.0,169.9 L406.0,157.4 L434.0,225.3 L462.0,116.2 L490.0,165.6 L518.0,113.1 L546.0,170.0 L574.0,107.2 L602.0,190.8 L630.0,113.7 L658.0,163.6 L686.0,148.3 L714.0,146.1 L742.0,96.1 L770.0,127.4 L798.0,142.4 L826.0,127.2 L854.0,120.1 L882.0,180.3" fill="none" stroke="#2563eb" stroke-width="3" stroke-linejoin="round"/>
+  <g fill="#2563eb"><circle cx="154" cy="88.5" r="5"/><circle cx="434" cy="225.3" r="5"/></g>
+  <g font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#1e3a8a"><text x="164" y="96">최대 183.82</text><text x="444" y="242">최소 164.82</text></g>
+  <text x="70" y="315" font-family="system-ui, sans-serif" font-size="15" font-weight="700" fill="#334155">전체 요청 지연시간 (ms)</text>
+  <g stroke="#cbd5e1" stroke-width="1">
+    <rect x="70" y="330" width="812" height="220" fill="#ffffff"/>
+    <line x1="70" y1="550" x2="882" y2="550"/><line x1="70" y1="495" x2="882" y2="495" stroke-dasharray="4 5"/><line x1="70" y1="440" x2="882" y2="440" stroke-dasharray="4 5"/><line x1="70" y1="385" x2="882" y2="385" stroke-dasharray="4 5"/><line x1="70" y1="330" x2="882" y2="330" stroke-dasharray="4 5"/>
+  </g>
+  <g font-family="system-ui, sans-serif" font-size="11" fill="#64748b" text-anchor="end"><text x="62" y="554">0</text><text x="62" y="499">50</text><text x="62" y="444">100</text><text x="62" y="389">150</text><text x="62" y="334">200</text></g>
+  <path d="M70.0,493.0 L98.0,496.5 L126.0,498.2 L154.0,479.8 L182.0,489.2 L210.0,491.9 L238.0,492.3 L266.0,501.6 L294.0,477.1 L322.0,496.0 L350.0,489.2 L378.0,492.6 L406.0,491.6 L434.0,502.9 L462.0,476.7 L490.0,465.4 L518.0,476.5 L546.0,462.0 L574.0,433.5 L602.0,457.7 L630.0,461.5 L658.0,479.3 L686.0,475.3 L714.0,484.2 L742.0,491.9 L770.0,490.3 L798.0,492.5 L826.0,499.0 L854.0,498.5 L882.0,503.3" fill="none" stroke="#2563eb" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M70.0,454.3 L98.0,454.6 L126.0,464.9 L154.0,437.9 L182.0,440.5 L210.0,446.9 L238.0,457.7 L266.0,465.9 L294.0,422.6 L322.0,455.6 L350.0,441.4 L378.0,444.6 L406.0,435.2 L434.0,467.3 L462.0,416.6 L490.0,405.4 L518.0,412.6 L546.0,392.5 L574.0,352.5 L602.0,388.9 L630.0,392.3 L658.0,424.1 L686.0,404.3 L714.0,440.7 L742.0,445.4 L770.0,441.4 L798.0,438.1 L826.0,463.2 L854.0,462.7 L882.0,463.5" fill="none" stroke="#ea580c" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="574" cy="433.5" r="5" fill="#2563eb"/><circle cx="574" cy="352.5" r="5" fill="#ea580c"/>
+  <g font-family="system-ui, sans-serif" font-size="12" font-weight="700"><text x="584" y="428" fill="#1e3a8a">p95 105.91ms</text><text x="584" y="347" fill="#9a3412">p99 179.53ms</text></g>
+  <g font-family="system-ui, sans-serif" font-size="11" fill="#64748b" text-anchor="middle"><text x="70" y="574">0</text><text x="210" y="574">5</text><text x="350" y="574">10</text><text x="490" y="574">15</text><text x="630" y="574">20</text><text x="770" y="574">25</text><text x="882" y="574">29</text><text x="476" y="605" font-size="13">경과 시간 (분)</text></g>
+  <g font-family="system-ui, sans-serif" font-size="12" font-weight="700"><line x1="680" y1="307" x2="708" y2="307" stroke="#2563eb" stroke-width="3"/><text x="716" y="311" fill="#1e3a8a">전체 p95</text><line x1="800" y1="307" x2="828" y2="307" stroke="#ea580c" stroke-width="3"/><text x="836" y="311" fill="#9a3412">전체 p99</text></g>
+</svg>
