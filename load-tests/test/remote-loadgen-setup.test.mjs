@@ -75,6 +75,7 @@ printf '%s\\n' "$*" >> "$DOCKER_LOG"
 case "$1" in
   --version) printf '%s\\n' 'Docker version 28.0.0' ;;
   compose)
+    [ "\${DOCKER_COMPOSE:-available}" = available ] || exit 1
     [ "$2" = version ] || exit 1
     if [ "$3" = --short ]; then
       printf '%s\\n' "\${DOCKER_COMPOSE_VERSION:-v2.30.0}"
@@ -310,7 +311,7 @@ test('rejects an existing checkout with a mismatched origin', () => {
   });
 });
 
-test('rejects unsupported host architecture, Compose v1, and stopped Docker', () => {
+test('rejects unsupported host architecture and stopped Docker', () => {
   withFixture((fixture) => {
     assert.notEqual(
       runSetup(fixture, setupArgs(fixture), { FAKE_UNAME_S: 'Linux' }).status,
@@ -321,12 +322,6 @@ test('rejects unsupported host architecture, Compose v1, and stopped Docker', ()
       0,
     );
     assert.notEqual(
-      runSetup(fixture, setupArgs(fixture), {
-        DOCKER_COMPOSE_VERSION: 'v1.29.2',
-      }).status,
-      0,
-    );
-    assert.notEqual(
       runSetup(fixture, setupArgs(fixture), { DOCKER_DAEMON: 'stopped' })
         .status,
       0,
@@ -334,10 +329,10 @@ test('rejects unsupported host architecture, Compose v1, and stopped Docker', ()
   });
 });
 
-test('accepts the current Docker Compose plugin major version', () => {
+test('succeeds without Docker Compose on the k6-only generator', () => {
   withFixture((fixture) => {
     const result = runSetup(fixture, setupArgs(fixture), {
-      DOCKER_COMPOSE_VERSION: '5.0.0',
+      DOCKER_COMPOSE: 'unavailable',
     });
     assert.equal(result.status, 0, result.stderr);
   });

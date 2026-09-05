@@ -156,7 +156,6 @@ uname -s
 uname -m
 git --version
 docker --version
-docker compose version
 docker info
 git -C "$PWD/auth-loadgen" remote get-url origin
 git -C "$PWD/auth-loadgen" status --short
@@ -164,9 +163,9 @@ docker image inspect --format '{{.Architecture}}' grafana/k6:2.2.0
 docker run --rm grafana/k6:2.2.0 version
 ```
 
-Expected platform values are `Darwin`, `arm64`, and Docker Compose plugin v2 or
-newer. The
-bootstrap itself also requires a reachable Docker daemon, verifies the exact
+Expected platform values are `Darwin` and `arm64`. The bootstrap requires a
+reachable Docker daemon but does not require Docker Compose because the M1 is a
+k6-only generator. It also verifies the exact
 repository origin and clean state, checks required load-test assets, confirms
 the pulled image is `arm64`, and creates the gitignored
 `load-tests/results/remote/` directory with mode `0700`.

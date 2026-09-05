@@ -43,7 +43,8 @@ Unknown options, missing values, an empty directory, `/`, and the current user's
 The script performs these operations in order:
 
 1. Require macOS on Apple Silicon (`Darwin` and `arm64`).
-2. Require `git`, `docker`, and Docker Compose plugin v2 or newer.
+2. Require `git`, `docker`, and a reachable Docker daemon. Docker Compose is not
+   required because this machine runs k6 only.
 3. Require the Docker daemon to be running.
 4. Clone the selected branch when the destination does not exist.
 5. When the destination already exists:
