@@ -6,7 +6,7 @@
 
 **Architecture:** A defensive Bash entrypoint owns argument parsing, repository synchronization, platform checks, and Docker/k6 validation. Node's built-in test runner drives the real script against temporary Git repositories while replacing only host boundaries (`uname` and `docker`) through `PATH`. The existing local capacity orchestrator and Auth service remain unchanged.
 
-**Tech Stack:** Bash 3.2-compatible shell, Git, Docker Desktop/Compose v2, `grafana/k6:2.2.0`, Node.js built-in test runner.
+**Tech Stack:** Bash 3.2-compatible shell, Git, Docker Desktop/Compose plugin v2 or newer, `grafana/k6:2.2.0`, Node.js built-in test runner.
 
 **Spec:** `docs/superpowers/specs/2026-09-05-m1-remote-load-generator-bootstrap-design.md`
 
@@ -89,7 +89,7 @@ Expected: FAIL because `scripts/setup-remote-loadgen.sh` does not exist.
 
 - [ ] **Step 3: Implement strict argument and platform validation**
 
-Implement Bash 3.2-compatible parsing with `set -euo pipefail`, quoted arrays, `fail()` and `usage()` helpers. Require `Darwin`, `arm64`, Git, Docker, Compose v2, a running daemon, and an explicit safe directory. Never use `eval`, glob-derived targets, recursive deletion, or secret environment variables.
+Implement Bash 3.2-compatible parsing with `set -euo pipefail`, quoted arrays, `fail()` and `usage()` helpers. Require `Darwin`, `arm64`, Git, Docker, Compose plugin v2 or newer, a running daemon, and an explicit safe directory. Never use `eval`, glob-derived targets, recursive deletion, or secret environment variables.
 
 ```bash
 K6_IMAGE='grafana/k6:2.2.0'

@@ -69,11 +69,14 @@ command -v git >/dev/null 2>&1 || fail 'git is required'
 command -v docker >/dev/null 2>&1 || fail 'Docker CLI is required'
 docker --version >/dev/null 2>&1 || fail 'Docker CLI is unavailable'
 compose_version="$(docker compose version --short 2>/dev/null)" || \
-  fail 'Docker Compose v2 is required'
-case "$compose_version" in
-  v2.*|2.*) ;;
-  *) fail 'Docker Compose v2 is required' ;;
+  fail 'Docker Compose plugin version 2 or newer is required'
+compose_major="${compose_version#v}"
+compose_major="${compose_major%%.*}"
+case "$compose_major" in
+  ''|*[!0-9]*) fail 'Docker Compose plugin version 2 or newer is required' ;;
 esac
+[ "$compose_major" -ge 2 ] || \
+  fail 'Docker Compose plugin version 2 or newer is required'
 docker info >/dev/null 2>&1 || fail 'Docker daemon is not reachable'
 
 if [ -e "$directory" ]; then

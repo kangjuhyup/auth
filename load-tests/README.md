@@ -9,7 +9,7 @@ not use or modify the normal development stack or its data.
 ## Prerequisites
 
 - Node.js 24 or newer and the repository's Yarn 4 installation
-- Docker Desktop, or Docker Engine with Docker Compose v2
+- Docker Desktop, or Docker Engine with the Docker Compose plugin v2 or newer
 - Enough free CPU, memory, and disk space to build the service and run the
   service, PostgreSQL, Redis, and k6 containers concurrently
 
@@ -164,7 +164,8 @@ docker image inspect --format '{{.Architecture}}' grafana/k6:2.2.0
 docker run --rm grafana/k6:2.2.0 version
 ```
 
-Expected platform values are `Darwin`, `arm64`, and Docker Compose v2. The
+Expected platform values are `Darwin`, `arm64`, and Docker Compose plugin v2 or
+newer. The
 bootstrap itself also requires a reachable Docker daemon, verifies the exact
 repository origin and clean state, checks required load-test assets, confirms
 the pulled image is `arm64`, and creates the gitignored

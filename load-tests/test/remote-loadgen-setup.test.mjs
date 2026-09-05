@@ -334,6 +334,15 @@ test('rejects unsupported host architecture, Compose v1, and stopped Docker', ()
   });
 });
 
+test('accepts the current Docker Compose plugin major version', () => {
+  withFixture((fixture) => {
+    const result = runSetup(fixture, setupArgs(fixture), {
+      DOCKER_COMPOSE_VERSION: '5.0.0',
+    });
+    assert.equal(result.status, 0, result.stderr);
+  });
+});
+
 test('rejects result-path symlinks without changing external directories', () => {
   for (const kind of ['parent', 'final']) {
     withFixture((fixture) => {
