@@ -14,7 +14,7 @@
 
 - M1 Mini is load-generation-only; Auth PC runs Auth, PostgreSQL, Redis, and gateway. Remote target monitoring and remote report/chart CLI automation are deferred by user scope ruling; retain raw JSON for later reporting.
 - External issuer and k6 base URL are exactly `https://auth-service:13443`.
-- Gateway binds exactly `${LOAD_GATEWAY_BIND_IP}:13443`; the documented value is `192.168.0.18`, never `0.0.0.0`.
+- The overlay hardcodes the gateway bind as `192.168.0.18:13443` and the Auth issuer as `https://auth-service:13443`; parent environment variables cannot override either value.
 - Auth upstream stays private at `http://auth-service:3000`; the existing loopback health port remains `127.0.0.1:13000`.
 - No router port forwarding, SSH load tunnel, TLS verification bypass, or plaintext remote endpoint is allowed.
 - CA and server private keys never leave the Auth PC; generated private keys are mode `0600` beneath gitignored paths.
@@ -117,13 +117,13 @@ git commit -m "feat(load): add remote mTLS certificate setup"
 
 **Interfaces:**
 
-- Consumes: `LOAD_GATEWAY_BIND_IP`, `LOAD_OIDC_ISSUER`, and Task 1 files under `load-tests/.remote-tls/`.
-- Produces: Compose service `load-gateway` at `${LOAD_GATEWAY_BIND_IP}:13443`, proxying privately to `auth-service:3000` and requiring the generated client CA.
+- Consumes: Task 1 files under `load-tests/.remote-tls/`.
+- Produces: Compose service `load-gateway` at the hardcoded `192.168.0.18:13443`, a hardcoded Auth issuer of `https://auth-service:13443`, and a private proxy to `auth-service:3000` requiring the generated client CA.
 
 - [ ] **Step 1: Write failing Compose overlay assertions**
 
-Render both Compose files with synthetic secrets and
-`LOAD_GATEWAY_BIND_IP=192.168.0.18`. Assert the gateway image is exactly
+Render both Compose files with synthetic secrets and hostile parent values for
+the former bind and issuer variables. Assert the gateway image is exactly
 `nginx:1.28.0-alpine`, the published host IP and port are exact, all certificate
 mounts are read-only, the upstream has no LAN-published port, and the Auth issuer
 is `https://auth-service:13443`.
@@ -137,8 +137,8 @@ do not exist.
 
 - [ ] **Step 3: Implement the overlay and gateway configuration**
 
-Parameterize the base Auth issuer with the unchanged local default. Add the
-overlay service with exact bind interpolation, read-only config/certificate
+Keep the base Auth issuer's unchanged local default. Add the overlay service
+with a hardcoded exact bind and issuer, read-only config/certificate
 mounts, private `auth-load` networking, TLS 1.2/1.3, mandatory client
 verification, bounded proxy timeouts, and a log format that excludes query
 strings, request bodies, headers, cookies, and certificate data.
@@ -162,6 +162,7 @@ git commit -m "feat(load): add LAN-bound mTLS gateway"
 **Files:**
 
 - Create: `load-tests/k6/tls.js`
+- Create: `load-tests/k6/remote-health.js`
 - Create: `scripts/run-remote-loadgen.sh`
 - Create: `load-tests/test/remote-loadgen-runner.test.mjs`
 - Modify: `load-tests/k6/provision.js`
@@ -180,7 +181,9 @@ git commit -m "feat(load): add LAN-bound mTLS gateway"
 Add pure tests that local mode produces no `tlsAuth`, remote mode rejects HTTP
 or another host, and valid remote mode returns the fixed domains and TLS range.
 Drive the runner with fake `docker`, `uname`, and file fixtures. Assert
-`verify`, `probe`, and `soak` construct expected k6 commands; default probe is
+`verify`, `probe`, and `soak` construct expected k6 commands; `verify` uses the
+tracked health module through the existing k6 mount without a `/tmp` mount;
+default probe is
 300 VUs with 60/180-second windows; default soak is 300 VUs for 1,800 seconds;
 and no command contains `insecure-skip-tls-verify`.
 
@@ -209,9 +212,14 @@ target IPv4, exact base URL, mode-`0600` or stricter secret/key files, and safe
 non-symlink result paths. Mount scripts/results/client files read-only where
 appropriate, mount `client/ca.crt` at the container CA bundle path, pass only
 the named required environment values, and use
-`--add-host auth-service:${target_ip}`. `verify` first performs a one-request
-health script and then runs `smoke.js`; `probe` runs `journey.js` with probe
-controls; `soak` runs it with `RUN_KIND=soak` and the bounded duration.
+`--add-host auth-service:${target_ip}`. `verify` first executes the tracked
+`/scripts/remote-health.js` module from the existing k6 mount with shared TLS
+options, one VU/iteration, exactly one check, redirects disabled, no response
+body, and a 10-second timeout, then runs `smoke.js`; `probe` runs `journey.js`
+with probe controls; `soak` runs it with `RUN_KIND=soak` and the bounded
+duration. If a workload exits nonzero after producing a safe owned summary,
+secure it to mode `0600` before returning a fixed failure; fail closed if no
+safe summary exists.
 
 - [ ] **Step 5: Verify GREEN**
 
@@ -254,7 +262,7 @@ Run:
 node --test load-tests/test/*.test.mjs
 bash -n scripts/setup-remote-mtls.sh scripts/run-remote-loadgen.sh scripts/setup-remote-loadgen.sh
 docker compose --project-name auth-load -f docker-compose.load.yml --env-file load-tests/.env.load.example config --quiet
-LOAD_GATEWAY_BIND_IP=192.168.0.18 LOAD_OIDC_ISSUER=https://auth-service:13443 docker compose --project-name auth-load -f docker-compose.load.yml -f docker-compose.remote-load.yml --env-file load-tests/.env.load.example config --quiet
+docker compose --project-name auth-load -f docker-compose.load.yml -f docker-compose.remote-load.yml --env-file load-tests/.env.load.example config --quiet
 yarn eslint load-tests/k6 load-tests/test
 yarn prettier --check load-tests/README.md docs/docs/operations/load-test-2026-09-02.md docs/superpowers/specs/2026-09-05-mtls-remote-load-path-design.md docs/superpowers/plans/2026-09-05-mtls-remote-load-path.md
 git diff --check

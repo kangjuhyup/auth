@@ -122,6 +122,7 @@ fi
 
 for expected_asset in \
   'load-tests/k6/journey.js' \
+  'load-tests/k6/remote-health.js' \
   'load-tests/run-capacity.mjs'; do
   [ -f "$directory/$expected_asset" ] || \
     fail "expected load-test asset is missing: $expected_asset"

@@ -1,9 +1,13 @@
 services:
+  auth-service:
+    environment:
+      OIDC_ISSUER: https://auth-service:13443
+
   load-gateway:
     image: nginx:1.28.0-alpine
     restart: 'no'
     ports:
-      - '${LOAD_GATEWAY_BIND_IP:?LOAD_GATEWAY_BIND_IP must be set}:13443:13443'
+      - '192.168.0.18:13443:13443'
     volumes:
       - ./load-tests/gateway/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./load-tests/.remote-tls/server/server.crt:/etc/nginx/tls/server.crt:ro

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
+  copyFileSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -47,9 +48,16 @@ function createFixture() {
   });
   run('git', ['config', 'user.name', 'Load test'], { cwd: source });
   writeFileSync(join(source, 'version.txt'), 'v1\n');
-  writeFileSync(join(source, '.gitignore'), '/load-tests/results/\n');
+  copyFileSync(
+    fileURLToPath(new URL('../../.gitignore', import.meta.url)),
+    join(source, '.gitignore'),
+  );
   mkdirSync(join(source, 'load-tests', 'k6'), { recursive: true });
   writeFileSync(join(source, 'load-tests', 'k6', 'journey.js'), '// fixture\n');
+  writeFileSync(
+    join(source, 'load-tests', 'k6', 'remote-health.js'),
+    '// fixture\n',
+  );
   writeFileSync(join(source, 'load-tests', 'run-capacity.mjs'), '// fixture\n');
   run('git', ['add', '.gitignore', 'version.txt', 'load-tests'], {
     cwd: source,
@@ -416,6 +424,32 @@ test('reruns safely with an unchanged clean checkout', () => {
       statSync(join(fixture.checkout, 'load-tests/results/remote')).mode &
         0o777,
       0o700,
+    );
+  });
+});
+
+test('remote runtime environment stays ignored across a clean bootstrap rerun', () => {
+  withFixture((fixture) => {
+    assert.equal(runSetup(fixture, setupArgs(fixture)).status, 0);
+    const environmentPath = join(fixture.checkout, 'load-tests/.remote-k6.env');
+    writeFileSync(environmentPath, 'fixture runtime secret\n');
+
+    const ignored = spawnSync(
+      'git',
+      ['check-ignore', '--quiet', 'load-tests/.remote-k6.env'],
+      { cwd: fixture.checkout },
+    );
+    assert.equal(
+      ignored.status,
+      0,
+      'remote runtime environment must be ignored',
+    );
+
+    const rerun = runSetup(fixture, setupArgs(fixture));
+    assert.equal(rerun.status, 0, rerun.stderr);
+    assert.equal(
+      readFileSync(environmentPath, 'utf8'),
+      'fixture runtime secret\n',
     );
   });
 });

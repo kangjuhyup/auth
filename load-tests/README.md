@@ -144,8 +144,6 @@ not assume that `verify` creates test data.
   [ "$runtime_mode" = 600 ]
 
   scripts/setup-remote-mtls.sh --target-ip 192.168.0.18
-  LOAD_GATEWAY_BIND_IP=192.168.0.18 \
-  LOAD_OIDC_ISSUER=https://auth-service:13443 \
   docker compose --project-name auth-load \
     -f "$auth_root/docker-compose.load.yml" \
     -f "$auth_root/docker-compose.remote-load.yml" \
@@ -186,9 +184,10 @@ the client key, tokens, or passwords.
 
 Run these commands as `jhkang` on the M1, from `$HOME/auth-loadgen`. The
 bootstrap script prepares that checkout; its help is available with
-`scripts/setup-remote-loadgen.sh --help`. `verify` makes a one-request mTLS
-health check and then a deterministic OIDC smoke run. It must pass before the
-probe.
+`scripts/setup-remote-loadgen.sh --help`. `verify` runs the tracked
+`load-tests/k6/remote-health.js` module from the existing read-only k6 mount
+for one mTLS health request, then runs a deterministic OIDC smoke. It must pass
+before the probe.
 
 ```sh
 cd "$HOME/auth-loadgen"
@@ -236,9 +235,13 @@ JSON result.
 ### Exact cleanup after evidence is copied
 
 After required result files have been returned, run this guarded Auth-PC
-subshell from the repository root. It resolves the checkout, checks the known
-runtime environment and exact PKI path, then stops only the literal `auth-load`
-project and removes only that PKI directory.
+subshell from the repository root. It resolves the checkout and checks the
+known runtime environment and exact PKI path before stopping only the literal
+`auth-load` project. The `down --volumes` operation destroys **all dedicated
+`auth-load` volumes**, including the PostgreSQL and Redis data and the current
+300-user dataset. A future fresh campaign must start those volumes again and
+provision the load dataset before `verify`. The final command also removes the
+exact test PKI directory.
 
 ```sh
 (
@@ -251,8 +254,6 @@ project and removes only that PKI directory.
   runtime_mode="$(stat -f '%Lp' "$runtime_env" 2>/dev/null || stat -c '%a' "$runtime_env")"
   [ "$runtime_mode" = 600 ]
   [ -d "$tls_root" ] && [ ! -L "$tls_root" ]
-  LOAD_GATEWAY_BIND_IP=192.168.0.18 \
-  LOAD_OIDC_ISSUER=https://auth-service:13443 \
   docker compose --project-name auth-load \
     -f "$auth_root/docker-compose.load.yml" \
     -f "$auth_root/docker-compose.remote-load.yml" \
@@ -351,7 +352,8 @@ Expected platform values are `Darwin` and `arm64`. The bootstrap requires a
 reachable Docker daemon but does not require Docker Compose because the M1 is a
 k6-only generator. It also verifies the exact
 repository origin and clean state, checks required load-test assets, confirms
-the pulled image is `arm64`, and creates the gitignored
+the pulled image is `arm64`, requires the tracked remote health module, and
+creates the gitignored
 `load-tests/results/remote/` directory with mode `0700`.
 
 ## Results and interpretation

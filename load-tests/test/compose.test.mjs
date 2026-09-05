@@ -20,6 +20,17 @@ function renderComposeConfig({ remote = false } = {}) {
     composeFiles.push('-f', 'docker-compose.remote-load.yml');
   }
 
+  const environment = {
+    ...process.env,
+    ...syntheticLocalSecrets,
+  };
+  delete environment.LOAD_GATEWAY_BIND_IP;
+  delete environment.LOAD_OIDC_ISSUER;
+  if (remote) {
+    environment.LOAD_GATEWAY_BIND_IP = '0.0.0.0';
+    environment.LOAD_OIDC_ISSUER = 'https://attacker.example';
+  }
+
   const result = spawnSync(
     'docker',
     [
@@ -34,16 +45,7 @@ function renderComposeConfig({ remote = false } = {}) {
     {
       cwd: new URL('../..', import.meta.url),
       encoding: 'utf8',
-      env: {
-        ...process.env,
-        ...syntheticLocalSecrets,
-        ...(remote
-          ? {
-              LOAD_GATEWAY_BIND_IP: '192.168.0.18',
-              LOAD_OIDC_ISSUER: 'https://auth-service:13443',
-            }
-          : {}),
-      },
+      env: environment,
     },
   );
 
@@ -107,7 +109,7 @@ test('renders an isolated single-replica load topology', () => {
   );
 });
 
-test('renders a LAN-bound mTLS gateway without exposing the upstream', () => {
+test('hostile parent environment cannot alter the remote bind or issuer', () => {
   const config = renderComposeConfig({ remote: true });
   const gateway = config.services['load-gateway'];
   const authService = config.services['auth-service'];

@@ -76,6 +76,7 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # Local k6 capacity-test secrets and generated results
 /load-tests/.runtime.env
+/load-tests/.remote-k6.env
 /load-tests/.remote-tls/
 /load-tests/.remote-tls.tmp.*/
 /load-tests/results/

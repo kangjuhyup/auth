@@ -271,7 +271,7 @@ for protected_path in \
   assert_no_symlink_components "$protected_path"
 done
 
-for required_script in tls.js smoke.js journey.js; do
+for required_script in tls.js smoke.js journey.js remote-health.js; do
   [ -f "$k6_directory/$required_script" ] && [ ! -L "$k6_directory/$required_script" ] || \
     fail 'a required k6 script is missing or unsafe'
 done
@@ -346,61 +346,8 @@ workload_environment=(
   --env SUMMARY_PATH
 )
 
-health_directory=''
-health_script=''
-cleanup() {
-  if [ -n "$health_script" ]; then
-    case "$health_script" in
-      "$health_directory"/remote-health.js) rm -f -- "$health_script" 2>/dev/null || true ;;
-    esac
-  fi
-  if [ -n "$health_directory" ]; then
-    case "$health_directory" in
-      /tmp/auth-remote-health.*) rmdir -- "$health_directory" 2>/dev/null || true ;;
-    esac
-  fi
-}
-trap cleanup EXIT HUP INT TERM
-
 if [ "$mode" = 'verify' ]; then
-  health_directory="$(mktemp -d '/tmp/auth-remote-health.XXXXXX')" || \
-    fail 'could not create the health verification directory'
-  [ -d "$health_directory" ] && [ ! -L "$health_directory" ] || \
-    fail 'health verification directory is unsafe'
-  chmod 0700 "$health_directory" || \
-    fail 'could not secure the health verification directory'
-  health_script="$health_directory/remote-health.js"
-  : > "$health_script" || fail 'could not create the health verification script'
-  chmod 0600 "$health_script" || fail 'could not secure the health verification script'
-  cat > "$health_script" <<'EOF'
-import { check } from 'k6';
-import http from 'k6/http';
-import { loadTlsOptions } from './tls.js';
-
-export const options = {
-  ...loadTlsOptions(__ENV),
-  vus: 1,
-  iterations: 1,
-  thresholds: { checks: ['rate==1'] },
-};
-
-export default function () {
-  const response = http.get(`${__ENV.BASE_URL}/health`, {
-    redirects: 0,
-    responseType: 'none',
-    tags: { endpoint: 'remote-mtls-health' },
-    timeout: '10s',
-  });
-  check(response, { 'remote mTLS health accepted': (result) => result.status === 200 });
-}
-EOF
-  docker "${docker_arguments[@]}" \
-    --volume "$health_script:/scripts/remote-health.js:ro" \
-    "$K6_IMAGE" run /scripts/remote-health.js
-  rm -f -- "$health_script" || fail 'could not remove the health verification script'
-  health_script=''
-  rmdir -- "$health_directory" || fail 'could not remove the health verification directory'
-  health_directory=''
+  docker "${docker_arguments[@]}" "$K6_IMAGE" run /scripts/remote-health.js
 fi
 
 timestamp="$(date -u '+%Y-%m-%dT%H-%M-%SZ')" || fail 'could not create result timestamp'
@@ -415,8 +362,12 @@ case "$mode" in
   verify) workload_script='/scripts/smoke.js' ;;
   probe|soak) workload_script='/scripts/journey.js' ;;
 esac
-docker "${docker_arguments[@]}" "${workload_environment[@]}" \
-  "$K6_IMAGE" run "$workload_script"
+if docker "${docker_arguments[@]}" "${workload_environment[@]}" \
+  "$K6_IMAGE" run "$workload_script"; then
+  workload_status='0'
+else
+  workload_status="$?"
+fi
 
 [ -f "$summary_host_path" ] && [ ! -L "$summary_host_path" ] || \
   fail 'k6 did not create a safe timestamped summary'
@@ -426,4 +377,5 @@ summary_owner="$(file_owner "$summary_host_path")" || \
   fail 'timestamped summary is not owned by the invoking user'
 chmod 0600 "$summary_host_path" || fail 'could not secure timestamped summary'
 validate_existing_results
+[ "$workload_status" -eq 0 ] || fail 'k6 workload failed'
 printf 'Remote load result: load-tests/results/remote/%s\n' "$summary_name"

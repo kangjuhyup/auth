@@ -21,7 +21,9 @@ No router port forwarding or public Internet exposure is part of this design.
 
 A separate Compose overlay adds an Nginx mTLS gateway to the existing
 `auth-load` project. The gateway publishes only port `13443` on the explicitly
-configured Auth PC LAN address. It forwards accepted requests over the private
+hardcoded Auth PC LAN address `192.168.0.18`. The overlay also hardcodes the
+Auth issuer as `https://auth-service:13443`; parent environment variables
+cannot change either boundary. It forwards accepted requests over the private
 Compose network to `http://auth-service:3000`. The existing loopback mapping
 `127.0.0.1:13000` remains available for target-side health checks and the Auth
 application port is never rebound to a LAN wildcard.
@@ -51,8 +53,9 @@ connection:
 - M1 client private key.
 
 The M1 keeps them beneath its gitignored checkout path with the same restrictive
-permissions. Runtime Auth credentials remain in the existing mode-`0600`
-`.remote-k6.env` file and are never printed by the scripts.
+permissions. Runtime Auth credentials remain in the mode-`0600`, exactly
+gitignored `load-tests/.remote-k6.env` file and are never printed by the
+scripts. Keeping that file ignored also preserves clean bootstrap reruns.
 
 The client certificate has the extended key usage `clientAuth`; the server
 certificate has `serverAuth`. The gateway validates the client chain against
@@ -94,6 +97,8 @@ The runner validates that:
 
 - it is executing from the expected Git checkout;
 - the Docker daemon and pinned `grafana/k6:2.2.0` image are available;
+- the tracked `load-tests/k6/remote-health.js` module is present as a regular
+  file inside the existing read-only k6 script mount;
 - the target is exactly `https://auth-service:13443`;
 - the destination mapping is a private IPv4 address and defaults to
   `192.168.0.18`;
@@ -106,7 +111,10 @@ The k6 scripts enable `tlsAuth` only when the explicit remote-mTLS mode is
 selected. They load the certificate and key from fixed read-only container
 paths and scope them to `auth-service`. The runner mounts the CA public
 certificate as the container trust bundle and never enables
-`insecureSkipTLSVerify`.
+`insecureSkipTLSVerify`. `verify` executes the tracked health module directly;
+it does not generate or separately mount a host `/tmp` module. The module uses
+the shared TLS options, one VU and one iteration, requires exactly one passing
+check, disables redirects and response storage, and uses a 10-second timeout.
 
 ## Test sequence and artifacts
 
@@ -134,22 +142,25 @@ mode, missing certificate, failed certificate verification, target mismatch, or
 Docker failure. It does not use `eval`, print environment contents, weaken TLS,
 or recursively delete an unresolved path.
 
-The gateway can be stopped independently with the remote-load Compose overlay.
-The client bundle on the M1 is removed by an explicit cleanup command after the
-test campaign. PKI removal on the Auth PC is also explicit so operators cannot
-accidentally destroy keys needed to reproduce a still-running test.
+The guarded Auth-PC cleanup stops the literal `auth-load` project with
+`down --volumes`. This intentionally destroys all dedicated `auth-load`
+PostgreSQL and Redis volumes, including the provisioned 300-user dataset, so a
+future fresh campaign must provision again. The client bundle on the M1 is
+removed by an explicit cleanup command after the test campaign. PKI removal on
+the Auth PC is also explicit so operators cannot accidentally destroy keys
+needed to reproduce a still-running test.
 
 ## Tests
 
 Automated tests cover:
 
-1. Compose overlay rendering, exact LAN bind, private upstream, issuer, and
-   read-only certificate mounts.
+1. Compose overlay rendering under hostile parent environment values, exact
+   LAN bind, private upstream, issuer, and read-only certificate mounts.
 2. PKI setup argument/path validation, generated permissions, certificate
    purposes/SANs, and secret-free logs using an isolated temporary directory.
-3. Remote runner command construction, strict target/address validation,
-   permission checks, timestamped result confinement, and absence of TLS bypass
-   flags.
+3. Remote runner command construction, tracked health-module execution, strict
+   target/address validation, permission checks, timestamped result confinement,
+   failed-workload summary hardening, and absence of TLS bypass flags.
 4. k6 configuration behavior: remote mode requires HTTPS, the fixed host and
    certificate paths, while local mode remains unchanged.
 5. A live mTLS integration check: no certificate and an untrusted certificate

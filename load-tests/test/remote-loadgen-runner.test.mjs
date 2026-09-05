@@ -46,7 +46,12 @@ function createFixture() {
   chmodSync(clientDirectory, 0o700);
   chmodSync(resultsDirectory, 0o700);
 
-  for (const script of ['tls.js', 'smoke.js', 'journey.js']) {
+  for (const script of [
+    'tls.js',
+    'smoke.js',
+    'journey.js',
+    'remote-health.js',
+  ]) {
     writeFileSync(join(k6Directory, script), '// fixture k6 script\n');
   }
   copyFileSync(
@@ -114,7 +119,7 @@ case "$1" in
         "\${WARMUP_SECONDS:-}" "\${MEASURE_SECONDS:-}" \
         "\${RUN_KIND:-}" "\${SOAK_SECONDS:-}" "\${SUMMARY_PATH:-}"
     } >> "$DOCKER_LOG"
-    if [ -n "\${SUMMARY_PATH:-}" ]; then
+    if [ -n "\${SUMMARY_PATH:-}" ] && [ "\${DOCKER_SKIP_SUMMARY:-false}" != 'true' ]; then
       result_host=''
       previous=''
       for argument in "$@"; do
@@ -131,7 +136,11 @@ case "$1" in
         ''|/*|*..*) exit 1 ;;
       esac
       printf '%s\\n' '{}' > "$result_host/$relative_summary"
+      if [ -n "\${DOCKER_SUMMARY_MODE:-}" ]; then
+        chmod "\${DOCKER_SUMMARY_MODE}" "$result_host/$relative_summary"
+      fi
     fi
+    exit "\${DOCKER_RUN_EXIT:-0}"
     ;;
   *) exit 1 ;;
 esac
@@ -228,6 +237,11 @@ test('verify performs one mTLS health request before deterministic OIDC smoke', 
     const runs = log.split('\n').filter((line) => line.startsWith('RUN'));
     assert.equal(runs.length, 2);
     assert.match(runs[0], /<run> <\/scripts\/remote-health\.js>$/);
+    assert.doesNotMatch(runs[0], /<[^>]*\/tmp\/[^>]*remote-health\.js:/);
+    assert.doesNotMatch(
+      runs[0],
+      /<--volume> <[^>]*remote-health\.js:\/scripts\/remote-health\.js:ro>/,
+    );
     assert.match(runs[1], /<run> <\/scripts\/smoke\.js>$/);
     assertCommonRemoteBoundary(log);
     assert.match(log, /BASE_URL=<https:\/\/auth-service:13443>/);
@@ -242,6 +256,21 @@ test('verify performs one mTLS health request before deterministic OIDC smoke', 
       lstatSync(join(fixture.resultsDirectory, files[0])).isFile(),
       true,
     );
+  });
+});
+
+test('runner requires the tracked health module before verify starts Docker', () => {
+  withFixture((fixture) => {
+    rmSync(join(fixture.checkout, 'load-tests/k6/remote-health.js'));
+    const result = runRunner(fixture, [
+      'verify',
+      '--target-ip',
+      '192.168.0.18',
+    ]);
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /required k6 script is missing or unsafe/);
+    assert.equal(dockerLog(fixture), '');
   });
 });
 
@@ -479,5 +508,44 @@ test('runner diagnostics and Docker arguments never disclose runtime secrets', (
     ]) {
       assert.equal(output.includes(secret), false);
     }
+  });
+});
+
+test('nonzero k6 exit still secures a produced summary before failing', () => {
+  withFixture((fixture) => {
+    const result = runRunner(
+      fixture,
+      ['probe', '--target-ip', '192.168.0.18'],
+      { DOCKER_RUN_EXIT: '23', DOCKER_SUMMARY_MODE: '0644' },
+    );
+
+    assert.notEqual(result.status, 0);
+    assert.equal(
+      result.stderr,
+      'Remote load generation failed: k6 workload failed\n',
+    );
+    const files = summaries(fixture);
+    assert.equal(files.length, 1);
+    assert.equal(
+      lstatSync(join(fixture.resultsDirectory, files[0])).mode & 0o777,
+      0o600,
+    );
+  });
+});
+
+test('nonzero k6 exit without a safe summary fails closed', () => {
+  withFixture((fixture) => {
+    const result = runRunner(
+      fixture,
+      ['probe', '--target-ip', '192.168.0.18'],
+      { DOCKER_RUN_EXIT: '23', DOCKER_SKIP_SUMMARY: 'true' },
+    );
+
+    assert.notEqual(result.status, 0);
+    assert.equal(
+      result.stderr,
+      'Remote load generation failed: k6 did not create a safe timestamped summary\n',
+    );
+    assert.deepEqual(summaries(fixture), []);
   });
 });
