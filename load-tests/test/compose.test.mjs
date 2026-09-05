@@ -14,13 +14,17 @@ const syntheticLocalSecrets = {
   LOAD_TEST_GID: '23456',
 };
 
-function renderComposeConfig() {
+function renderComposeConfig({ remote = false } = {}) {
+  const composeFiles = ['-f', 'docker-compose.load.yml'];
+  if (remote) {
+    composeFiles.push('-f', 'docker-compose.remote-load.yml');
+  }
+
   const result = spawnSync(
     'docker',
     [
       'compose',
-      '-f',
-      'docker-compose.load.yml',
+      ...composeFiles,
       '--env-file',
       'load-tests/.env.load.example',
       'config',
@@ -30,7 +34,16 @@ function renderComposeConfig() {
     {
       cwd: new URL('../..', import.meta.url),
       encoding: 'utf8',
-      env: { ...process.env, ...syntheticLocalSecrets },
+      env: {
+        ...process.env,
+        ...syntheticLocalSecrets,
+        ...(remote
+          ? {
+              LOAD_GATEWAY_BIND_IP: '192.168.0.18',
+              LOAD_OIDC_ISSUER: 'https://auth-service:13443',
+            }
+          : {}),
+      },
     },
   );
 
@@ -62,6 +75,10 @@ test('renders an isolated single-replica load topology', () => {
   );
   assert.equal(config.services.k6.image, 'grafana/k6:2.2.0');
   assert.equal(config.services.k6.user, '12345:23456');
+  assert.equal(
+    config.services['auth-service'].environment.OIDC_ISSUER,
+    'http://auth-service:3000',
+  );
   assert.match(JSON.stringify(config.services), /auth-load/);
 
   assert.deepEqual(Object.keys(config.volumes).sort(), [
@@ -87,5 +104,56 @@ test('renders an isolated single-replica load topology', () => {
     storageMounts.some(({ type }) => type === 'bind'),
     false,
     'load storage must not bind mount the repository normal PostgreSQL or Redis data',
+  );
+});
+
+test('renders a LAN-bound mTLS gateway without exposing the upstream', () => {
+  const config = renderComposeConfig({ remote: true });
+  const gateway = config.services['load-gateway'];
+  const authService = config.services['auth-service'];
+
+  assert.equal(gateway.image, 'nginx:1.28.0-alpine');
+  assert.deepEqual(gateway.ports, [
+    {
+      mode: 'ingress',
+      host_ip: '192.168.0.18',
+      target: 13443,
+      published: '13443',
+      protocol: 'tcp',
+    },
+  ]);
+
+  const certificateMounts = gateway.volumes.filter(({ target }) =>
+    target.startsWith('/etc/nginx/tls/'),
+  );
+  assert.deepEqual(certificateMounts.map(({ target }) => target).sort(), [
+    '/etc/nginx/tls/client-ca.crt',
+    '/etc/nginx/tls/server.crt',
+    '/etc/nginx/tls/server.key',
+  ]);
+  assert.equal(
+    certificateMounts.every(({ read_only: readOnly }) => readOnly === true),
+    true,
+    'every gateway certificate mount must be read-only',
+  );
+  assert.equal(
+    gateway.volumes.find(({ target }) => target === '/etc/nginx/nginx.conf')
+      .read_only,
+    true,
+    'the gateway configuration mount must be read-only',
+  );
+
+  assert.deepEqual(authService.ports, [
+    {
+      mode: 'ingress',
+      host_ip: '127.0.0.1',
+      target: 3000,
+      published: '13000',
+      protocol: 'tcp',
+    },
+  ]);
+  assert.equal(
+    authService.environment.OIDC_ISSUER,
+    'https://auth-service:13443',
   );
 });

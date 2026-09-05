@@ -1,0 +1,14 @@
+services:
+  load-gateway:
+    image: nginx:1.28.0-alpine
+    restart: 'no'
+    ports:
+      - '${LOAD_GATEWAY_BIND_IP:?LOAD_GATEWAY_BIND_IP must be set}:13443:13443'
+    volumes:
+      - ./load-tests/gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./load-tests/.remote-tls/server/server.crt:/etc/nginx/tls/server.crt:ro
+      - ./load-tests/.remote-tls/server/server.key:/etc/nginx/tls/server.key:ro
+      - ./load-tests/.remote-tls/ca/ca.crt:/etc/nginx/tls/client-ca.crt:ro
+    depends_on:
+      auth-service: { condition: service_healthy }
+    networks: [auth-load]

@@ -44,7 +44,7 @@ services:
       DB_USER: postgres
       DB_PASSWORD: ${DB_PASSWORD}
       REDIS_URL: redis://redis-load:6379
-      OIDC_ISSUER: http://auth-service:3000
+      OIDC_ISSUER: ${LOAD_OIDC_ISSUER:-http://auth-service:3000}
       OIDC_ACCESS_TOKEN_FORMAT: opaque
       OIDC_ADAPTER_DRIVER: hybrid
       OIDC_COOKIE_KEYS: ${OIDC_COOKIE_KEYS}
