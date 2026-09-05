@@ -103,6 +103,150 @@ targets by default. It refuses a non-local or remote target. This guide
 intentionally provides no bypass command: capacity traffic must not be aimed at
 a shared or production environment by copying an operator example.
 
+## Two-machine mTLS runbook (Auth PC + M1)
+
+This is a test-only LAN procedure for the fixed machines below. It is **not** a
+production exposure procedure: do not add router port forwarding, an SSH load
+tunnel, a wildcard bind, plaintext HTTP, or a TLS-verification bypass.
+
+| Role                                         | Account      | Fixed address / checkout                 |
+| -------------------------------------------- | ------------ | ---------------------------------------- |
+| Auth PC (target, PostgreSQL, Redis, gateway) | `kangjuhyup` | `192.168.0.18`, this repository checkout |
+| M1 Mini (k6 only)                            | `jhkang`     | `$HOME/auth-loadgen`                     |
+
+### LAN gate
+
+The direct M1-to-Auth-PC LAN route is still pending. Do **not** treat this
+guide as evidence that it works. Before issuing any load, an operator must
+establish the approved direct route and confirm that the Auth PC can use
+`192.168.0.18` without changing the fixed bind. `verify` below is mandatory;
+do not run `probe` or `soak` until it succeeds. A failed `verify` is a harness
+failure, not a capacity result.
+
+### Auth PC: generate the test PKI and start the LAN-bound gateway
+
+Run from the Auth-PC repository root. The setup script creates the CA, server
+certificate, and M1 client bundle only beneath
+`load-tests/.remote-tls/`; rerunning it requires that destination to be absent
+or empty.
+
+```sh
+scripts/setup-remote-mtls.sh --target-ip 192.168.0.18
+
+LOAD_GATEWAY_BIND_IP=192.168.0.18 \
+LOAD_OIDC_ISSUER=https://auth-service:13443 \
+docker compose --project-name auth-load \
+  -f docker-compose.load.yml -f docker-compose.remote-load.yml \
+  --env-file load-tests/.env.load.example up --build -d
+```
+
+The overlay exposes only `192.168.0.18:13443`; `auth-service:3000` remains
+private to the Compose network and its host mapping remains loopback-only. The
+issuer is fixed to `https://auth-service:13443`. Do not substitute an IP URL,
+`0.0.0.0`, a different issuer, or an SSH forwarding address.
+
+Copy _only_ the public CA certificate plus the M1 client certificate and key.
+The CA private key and server private key stay on the Auth PC. The copy
+direction below is explicit Auth PC → M1; replace `M1_LAN_ADDRESS` only with
+the approved M1 LAN address, never a reverse-SSH address.
+
+```sh
+ssh jhkang@M1_LAN_ADDRESS 'install -d -m 700 "$HOME/auth-loadgen/load-tests/.remote-tls/client"'
+scp -p \
+  load-tests/.remote-tls/client/ca.crt \
+  load-tests/.remote-tls/client/client.crt \
+  load-tests/.remote-tls/client/client.key \
+  jhkang@M1_LAN_ADDRESS:/Users/jhkang/auth-loadgen/load-tests/.remote-tls/client/
+ssh jhkang@M1_LAN_ADDRESS 'chmod 700 "$HOME/auth-loadgen/load-tests/.remote-tls" "$HOME/auth-loadgen/load-tests/.remote-tls/client" && chmod 600 "$HOME/auth-loadgen/load-tests/.remote-tls/client/ca.crt" "$HOME/auth-loadgen/load-tests/.remote-tls/client/client.crt" "$HOME/auth-loadgen/load-tests/.remote-tls/client/client.key"'
+```
+
+Create the M1's mode-`0600` `$HOME/auth-loadgen/load-tests/.remote-k6.env`
+using an approved secret-delivery process. It must contain the required
+`BASE_URL` (exactly `https://auth-service:13443`), `ADMIN_USERNAME`,
+`ADMIN_PASSWORD`, `LOAD_USER_PASSWORD`, and `SERVICE_CLIENT_SECRET` entries.
+Never use `cat`, `echo`, shell tracing, or diagnostics that print this file,
+the client key, tokens, or passwords.
+
+### M1: required verify, probe, then soak
+
+Run these commands as `jhkang` on the M1, from `$HOME/auth-loadgen`. The
+bootstrap script prepares that checkout; its help is available with
+`scripts/setup-remote-loadgen.sh --help`. `verify` makes a one-request mTLS
+health check and then a deterministic OIDC smoke run. It must pass before the
+probe.
+
+```sh
+cd "$HOME/auth-loadgen"
+scripts/run-remote-loadgen.sh verify --target-ip 192.168.0.18
+scripts/run-remote-loadgen.sh probe --target-ip 192.168.0.18 --vus 300 --warmup-seconds 60 --measure-seconds 180
+scripts/run-remote-loadgen.sh soak --target-ip 192.168.0.18 --vus 300 --warmup-seconds 60 --soak-seconds 1800
+```
+
+The probe must meet the existing failure-rate, latency, normal-flow, container,
+and dependency SLOs before the soak is meaningful. A failed probe is **invalid
+for capacity conclusions**: record it as a failed remote test and do not claim
+that 300 VUs is a capacity limit or start the soak from that result. The runner
+writes only timestamped JSON summaries to
+`$HOME/auth-loadgen/load-tests/results/remote/`.
+
+### Monitoring, result return, and reporting boundary
+
+The current source has no Auth-PC command that independently collects remote
+gateway/target monitor samples, and no supported remote-summary report or chart
+generator. `yarn load:test:capacity` starts its monitor only while it runs its
+own **local** k6 workload; it must not be run alongside this remote procedure
+as a substitute. Preserve the M1 JSON result, but do not label it a correlated
+capacity report or generate charts from it with an invented command.
+
+After a run, return an explicitly named result file over the approved M1 →
+Auth-PC SSH route. On the Auth PC, first create the exact destination:
+
+```sh
+install -d -m 700 /Users/kangjuhyup/auth-load-results
+```
+
+Then on the M1, replace `TIMESTAMP-MODE` with the filename printed by the
+runner (for example, a `...-probe.json` or `...-soak.json` file):
+
+```sh
+scp -p "load-tests/results/remote/TIMESTAMP-MODE.json" \
+  kangjuhyup@192.168.0.18:/Users/kangjuhyup/auth-load-results/
+```
+
+Keep the copied summary as raw evidence. Remote target monitoring and remote
+report/chart rendering require a future supported implementation; until then,
+no remote capacity or endurance conclusion is valid beyond the runner's own
+JSON result.
+
+### Exact cleanup after evidence is copied
+
+Run the Auth-PC commands from its repository root only after the required
+result files have been returned. They stop only the literal `auth-load` project
+and remove only its dedicated volumes and the known test PKI directory.
+
+```sh
+LOAD_GATEWAY_BIND_IP=192.168.0.18 \
+LOAD_OIDC_ISSUER=https://auth-service:13443 \
+docker compose --project-name auth-load \
+  -f docker-compose.load.yml -f docker-compose.remote-load.yml \
+  --env-file load-tests/.env.load.example down --volumes --remove-orphans
+rm -rf -- load-tests/.remote-tls
+```
+
+On the M1, after copying any evidence to retain, remove only the known
+client-bundle, secret-environment, and remote-result paths in its dedicated
+checkout:
+
+```sh
+cd "$HOME/auth-loadgen"
+rm -rf -- load-tests/.remote-tls
+rm -f -- load-tests/.remote-k6.env
+rm -rf -- load-tests/results/remote
+```
+
+Do not use a home-directory-wide cleanup, globbed deletion, or deletion of the
+checkout itself.
+
 ## M1 remote load-generator bootstrap
 
 The current PC at `192.168.0.18` continues to run Auth, PostgreSQL, Redis, and
