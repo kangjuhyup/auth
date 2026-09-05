@@ -377,5 +377,8 @@ summary_owner="$(file_owner "$summary_host_path")" || \
   fail 'timestamped summary is not owned by the invoking user'
 chmod 0600 "$summary_host_path" || fail 'could not secure timestamped summary'
 validate_existing_results
-[ "$workload_status" -eq 0 ] || fail 'k6 workload failed'
+if [ "$workload_status" -ne 0 ]; then
+  printf 'Remote load generation failed: k6 workload failed\n' >&2
+  exit "$workload_status"
+fi
 printf 'Remote load result: load-tests/results/remote/%s\n' "$summary_name"

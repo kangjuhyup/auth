@@ -519,7 +519,7 @@ test('nonzero k6 exit still secures a produced summary before failing', () => {
       { DOCKER_RUN_EXIT: '23', DOCKER_SUMMARY_MODE: '0644' },
     );
 
-    assert.notEqual(result.status, 0);
+    assert.equal(result.status, 23);
     assert.equal(
       result.stderr,
       'Remote load generation failed: k6 workload failed\n',
