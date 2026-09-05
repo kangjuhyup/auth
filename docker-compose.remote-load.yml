@@ -2,6 +2,8 @@ services:
   auth-service:
     environment:
       OIDC_ISSUER: https://auth-service:13443
+      OIDC_TRUST_PROXY: 'true'
+      HTTP_TRUST_PROXY_HOPS: '1'
 
   load-gateway:
     image: nginx:1.28.0-alpine

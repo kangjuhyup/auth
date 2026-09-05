@@ -26,9 +26,11 @@ function renderComposeConfig({ remote = false } = {}) {
   };
   delete environment.LOAD_GATEWAY_BIND_IP;
   delete environment.LOAD_OIDC_ISSUER;
+  delete environment.OIDC_TRUST_PROXY;
   if (remote) {
     environment.LOAD_GATEWAY_BIND_IP = '0.0.0.0';
     environment.LOAD_OIDC_ISSUER = 'https://attacker.example';
+    environment.OIDC_TRUST_PROXY = 'false';
   }
 
   const result = spawnSync(
@@ -158,4 +160,6 @@ test('hostile parent environment cannot alter the remote bind or issuer', () => 
     authService.environment.OIDC_ISSUER,
     'https://auth-service:13443',
   );
+  assert.equal(authService.environment.HTTP_TRUST_PROXY_HOPS, '1');
+  assert.equal(authService.environment.OIDC_TRUST_PROXY, 'true');
 });

@@ -116,12 +116,10 @@ tunnel, a wildcard bind, plaintext HTTP, or a TLS-verification bypass.
 
 ### LAN gate
 
-The direct M1-to-Auth-PC LAN route is still pending. Do **not** treat this
-guide as evidence that it works. Before issuing any load, an operator must
-establish the approved direct route and confirm that the Auth PC can use
-`192.168.0.18` without changing the fixed bind. `verify` below is mandatory;
-do not run `probe` or `soak` until it succeeds. A failed `verify` is a harness
-failure, not a capacity result.
+The direct M1-to-Auth-PC LAN and mTLS route was verified on 2026-09-05. This is
+connectivity evidence only, not a capacity result. `verify` below remains
+mandatory for every campaign; do not run `probe` or `soak` until it succeeds.
+A failed `verify` is a harness failure, not a capacity result.
 
 ### Auth PC: generate the test PKI and start the LAN-bound gateway
 
@@ -132,6 +130,18 @@ or empty. The current dedicated `auth-load` volume already has 300 load users
 provisioned. Reuse that volume for this path. A fresh volume must be provisioned
 before `verify`; the remote runner deliberately has no provision mode, so do
 not assume that `verify` creates test data.
+
+Colima must replicate the Auth PC's host addresses into its VM so Docker can
+bind the exact LAN address. Confirm `network.hostAddresses: true` in
+`$HOME/.colima/default/colima.yaml`. If it is false, enabling it requires a
+full Colima restart and temporarily stops every container in that profile; do
+this only in a maintenance window, then restore the previously running
+containers:
+
+```sh
+colima stop
+colima start --network-host-addresses
+```
 
 ```sh
 (
@@ -153,8 +163,10 @@ not assume that `verify` creates test data.
 
 The overlay exposes only `192.168.0.18:13443`; `auth-service:3000` remains
 private to the Compose network and its host mapping remains loopback-only. The
-issuer is fixed to `https://auth-service:13443`. Do not substitute an IP URL,
-`0.0.0.0`, a different issuer, or an SSH forwarding address.
+issuer is fixed to `https://auth-service:13443`. The overlay trusts exactly one
+HTTP proxy hop and enables node-oidc-provider proxy handling so its resume URLs
+and secure cookies retain the external HTTPS origin. Do not substitute an IP
+URL, `0.0.0.0`, a different issuer, or an SSH forwarding address.
 
 Copy _only_ the public CA certificate plus the M1 client certificate and key.
 The CA private key and server private key stay on the Auth PC. The copy
