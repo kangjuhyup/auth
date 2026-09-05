@@ -92,15 +92,25 @@ if [ ! -e "$directory" ]; then
 else
   git -C "$directory" rev-parse --is-inside-work-tree >/dev/null 2>&1 || \
     fail 'existing destination is not a Git checkout'
+  checkout_top_level="$(git -C "$directory" rev-parse --show-toplevel 2>/dev/null)" || \
+    fail 'could not resolve existing Git checkout root'
+  resolved_checkout_top_level="$(cd "$checkout_top_level" && pwd -P)" || \
+    fail 'could not resolve existing Git checkout root'
+  [ "$resolved_checkout_top_level" = "$resolved_directory" ] || \
+    fail 'existing destination is not the Git checkout root'
   actual_origin="$(git -C "$directory" remote get-url origin 2>/dev/null)" || \
     fail 'existing checkout has no origin remote'
   [ "$actual_origin" = "$repo" ] || fail 'existing checkout origin does not exactly match --repo'
   [ -z "$(git -C "$directory" status --porcelain)" ] || \
     fail 'existing checkout has uncommitted or untracked changes'
-  git -C "$directory" fetch origin "$branch" >/dev/null 2>&1 || \
+  git -C "$directory" check-ref-format --branch "$branch" >/dev/null 2>&1 || \
+    fail 'selected branch name is invalid'
+  git -C "$directory" fetch origin "refs/heads/$branch:refs/remotes/origin/$branch" >/dev/null 2>&1 || \
     fail 'could not fetch the selected branch'
+  git -C "$directory" show-ref --verify --quiet "refs/remotes/origin/$branch" || \
+    fail 'selected branch remote reference is unavailable'
   if ! git -C "$directory" checkout "$branch" >/dev/null 2>&1; then
-    git -C "$directory" checkout --track "origin/$branch" >/dev/null 2>&1 || \
+    git -C "$directory" checkout -b "$branch" "refs/remotes/origin/$branch" >/dev/null 2>&1 || \
       fail 'could not check out the selected branch'
   fi
   git -C "$directory" merge --ff-only "origin/$branch" >/dev/null 2>&1 || \
@@ -114,6 +124,17 @@ for expected_asset in \
     fail "expected load-test asset is missing: $expected_asset"
 done
 
+results_directory="$resolved_directory/load-tests/results/remote"
+for results_component in \
+  "$resolved_directory/load-tests" \
+  "$resolved_directory/load-tests/results" \
+  "$results_directory"; do
+  [ ! -L "$results_component" ] || \
+    fail 'remote results path must not contain a symbolic link'
+done
+git -C "$resolved_directory" check-ignore -q --no-index 'load-tests/results/remote' || \
+  fail 'remote results directory must be gitignored'
+
 docker pull "$K6_IMAGE" >/dev/null 2>&1 || fail "could not pull $K6_IMAGE"
 image_architecture="$(docker image inspect --format '{{.Architecture}}' "$K6_IMAGE" 2>/dev/null)" || \
   fail "could not inspect $K6_IMAGE"
@@ -122,10 +143,20 @@ image_architecture="$(docker image inspect --format '{{.Architecture}}' "$K6_IMA
 docker run --rm "$K6_IMAGE" version >/dev/null 2>&1 || \
   fail 'k6 version command failed'
 
-results_directory="$directory/load-tests/results/remote"
-git -C "$directory" check-ignore -q 'load-tests/results/remote' || \
-  fail 'remote results directory must be gitignored'
 mkdir -p "$results_directory" || fail 'could not create remote results directory'
+for results_component in \
+  "$resolved_directory/load-tests" \
+  "$resolved_directory/load-tests/results" \
+  "$results_directory"; do
+  [ ! -L "$results_component" ] || \
+    fail 'remote results path must not contain a symbolic link'
+done
+resolved_results_directory="$(cd "$results_directory" && pwd -P)" || \
+  fail 'could not resolve remote results directory'
+case "$resolved_results_directory" in
+  "$resolved_directory"/*) ;;
+  *) fail 'remote results directory must remain inside the Git checkout' ;;
+esac
 chmod 0700 "$results_directory" || fail 'could not secure remote results directory'
 
 printf 'Repository: %s\n' "$resolved_directory"

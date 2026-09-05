@@ -134,6 +134,42 @@ function setupArgs(fixture) {
   ];
 }
 
+function branchArgs(fixture, branch) {
+  return [
+    '--repo',
+    fixture.remote,
+    '--branch',
+    branch,
+    '--directory',
+    fixture.checkout,
+  ];
+}
+
+function addResultSymlink(fixture, kind) {
+  const externalDirectory = join(fixture.root, `external-${kind}`);
+  const resultsDirectory = join(fixture.source, 'load-tests', 'results');
+  mkdirSync(externalDirectory);
+  chmodSync(externalDirectory, 0o755);
+
+  if (kind === 'parent') {
+    symlinkSync(externalDirectory, resultsDirectory);
+    run('git', ['add', '--force', 'load-tests/results'], {
+      cwd: fixture.source,
+    });
+  } else {
+    mkdirSync(resultsDirectory);
+    symlinkSync(externalDirectory, join(resultsDirectory, 'remote'));
+    run('git', ['add', '--force', 'load-tests/results/remote'], {
+      cwd: fixture.source,
+    });
+  }
+  run('git', ['commit', '-m', `add ${kind} result link`], {
+    cwd: fixture.source,
+  });
+  run('git', ['push', 'origin', 'main'], { cwd: fixture.source });
+  return externalDirectory;
+}
+
 function withFixture(callback) {
   const fixture = createFixture();
   try {
@@ -223,6 +259,10 @@ test('rejects an existing checkout with a mismatched origin', () => {
 test('rejects unsupported host architecture, Compose v1, and stopped Docker', () => {
   withFixture((fixture) => {
     assert.notEqual(
+      runSetup(fixture, setupArgs(fixture), { FAKE_UNAME_S: 'Linux' }).status,
+      0,
+    );
+    assert.notEqual(
       runSetup(fixture, setupArgs(fixture), { FAKE_UNAME_M: 'x86_64' }).status,
       0,
     );
@@ -236,6 +276,52 @@ test('rejects unsupported host architecture, Compose v1, and stopped Docker', ()
       runSetup(fixture, setupArgs(fixture), { DOCKER_DAEMON: 'stopped' })
         .status,
       0,
+    );
+  });
+});
+
+test('rejects result-path symlinks without changing external directories', () => {
+  for (const kind of ['parent', 'final']) {
+    withFixture((fixture) => {
+      const externalDirectory = addResultSymlink(fixture, kind);
+      const beforeMode = statSync(externalDirectory).mode & 0o777;
+      const result = runSetup(fixture, setupArgs(fixture));
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /symbolic link/);
+      assert.equal(statSync(externalDirectory).mode & 0o777, beforeMode);
+    });
+  }
+});
+
+test('rejects a repository subdirectory before Git update operations', () => {
+  withFixture((fixture) => {
+    assert.equal(runSetup(fixture, setupArgs(fixture)).status, 0);
+    const result = runSetup(
+      fixture,
+      branchArgs(fixture, 'main').map((argument) =>
+        argument === fixture.checkout
+          ? join(fixture.checkout, 'load-tests')
+          : argument,
+      ),
+    );
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Git checkout root/);
+  });
+});
+
+test('updates a main-only clone to a later remote branch', () => {
+  withFixture((fixture) => {
+    assert.equal(runSetup(fixture, setupArgs(fixture)).status, 0);
+    run('git', ['checkout', '-b', 'release'], { cwd: fixture.source });
+    writeFileSync(join(fixture.source, 'version.txt'), 'release\n');
+    run('git', ['add', 'version.txt'], { cwd: fixture.source });
+    run('git', ['commit', '-m', 'release'], { cwd: fixture.source });
+    run('git', ['push', 'origin', 'release'], { cwd: fixture.source });
+    const result = runSetup(fixture, branchArgs(fixture, 'release'));
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(
+      readFileSync(join(fixture.checkout, 'version.txt'), 'utf8'),
+      'release\n',
     );
   });
 });
