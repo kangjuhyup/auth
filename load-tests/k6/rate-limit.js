@@ -9,6 +9,7 @@ import {
   rateLimitProbeUsername,
   timeToFirstRateLimit,
 } from './rate-limit-classifier.js';
+import { loadTlsOptions } from './tls.js';
 
 const scenarioConfig = loadScenarioConfig(__ENV, 'probe');
 const jsonHeaders = Object.freeze({ 'Content-Type': 'application/json' });
@@ -24,7 +25,10 @@ const firstRateLimitDuration = new Trend('security_time_to_first_429_ms');
 let rateLimitObserved = false;
 let config;
 
-export const options = createRateLimitOptions();
+export const options = {
+  ...createRateLimitOptions(),
+  ...loadTlsOptions(__ENV),
+};
 
 export function setup() {
   return { startedAtMs: Date.now() };

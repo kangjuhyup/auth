@@ -14,6 +14,7 @@ import {
 } from '../k6/flow-utils.js';
 import { userNameFor } from '../k6/payloads.js';
 import { SAFE_SYSTEM_TAGS } from '../k6/system-tags.js';
+import { loadTlsOptions } from '../k6/tls.js';
 import {
   createMeasurementTiming,
   createJourneyOptions,
@@ -25,6 +26,67 @@ import {
 
 const serviceOrigin = 'http://auth-service:3000';
 const tenantCode = 'loadtest-acme';
+
+test('local k6 mode does not read or configure client certificates', () => {
+  const options = loadTlsOptions({}, () => {
+    throw new Error('local mode must not read certificate files');
+  });
+
+  assert.deepEqual(options, {});
+  assert.equal(Object.isFrozen(options), true);
+});
+
+test('remote mTLS mode accepts only the canonical HTTPS service origin', () => {
+  const unread = () => {
+    throw new Error('invalid targets must fail before reading certificates');
+  };
+
+  for (const baseUrl of [
+    'http://auth-service:13443',
+    'https://auth-service:13443/',
+    'https://other-service:13443',
+    'https://auth-service:443',
+  ]) {
+    assert.throws(
+      () => loadTlsOptions({ REMOTE_MTLS: 'true', BASE_URL: baseUrl }, unread),
+      /exactly https:\/\/auth-service:13443/,
+    );
+  }
+});
+
+test('remote mTLS mode reads fixed client files and enforces TLS 1.2 through 1.3', () => {
+  const reads = [];
+  const options = loadTlsOptions(
+    {
+      REMOTE_MTLS: 'true',
+      BASE_URL: 'https://auth-service:13443',
+    },
+    (path) => {
+      reads.push(path);
+      return path.endsWith('.crt') ? 'fixture-certificate' : 'fixture-key';
+    },
+  );
+
+  assert.deepEqual(reads, ['/certs/client.crt', '/certs/client.key']);
+  assert.deepEqual(options, {
+    tlsAuth: [
+      {
+        domains: ['auth-service'],
+        cert: 'fixture-certificate',
+        key: 'fixture-key',
+      },
+    ],
+    tlsVersion: {
+      min: 'tls1.2',
+      max: 'tls1.3',
+    },
+  });
+  assert.equal(Object.isFrozen(options), true);
+  assert.equal(Object.isFrozen(options.tlsAuth), true);
+  assert.equal(Object.isFrozen(options.tlsAuth[0]), true);
+  assert.equal(Object.isFrozen(options.tlsAuth[0].domains), true);
+  assert.equal(Object.isFrozen(options.tlsVersion), true);
+});
 
 test('buildPkce derives an S256 challenge without retaining the seed', () => {
   const pkce = buildPkce(

@@ -3,6 +3,7 @@ import { check } from 'k6';
 import exec from 'k6/execution';
 import { loadConfig } from './config.js';
 import { SAFE_SYSTEM_TAGS } from './system-tags.js';
+import { loadTlsOptions } from './tls.js';
 import {
   offlineAccessScopePayload,
   publicClientPayload,
@@ -15,6 +16,7 @@ const config = loadConfig(__ENV);
 const jsonHeaders = { 'Content-Type': 'application/json' };
 
 export const options = {
+  ...loadTlsOptions(__ENV),
   systemTags: SAFE_SYSTEM_TAGS,
   scenarios: {
     provisionUsers: {

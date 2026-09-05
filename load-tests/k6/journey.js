@@ -14,6 +14,7 @@ import {
   measurementMinute,
   runJourneyIteration,
 } from './scenario.js';
+import { loadTlsOptions } from './tls.js';
 
 const scenarioConfig = loadScenarioConfig(__ENV, 'probe');
 const harnessFailure = new Rate('load_harness_failure');
@@ -24,6 +25,7 @@ const journeyOptions = createJourneyOptions(scenarioConfig);
 
 export const options = {
   ...journeyOptions,
+  ...loadTlsOptions(__ENV),
   thresholds: {
     ...journeyOptions.thresholds,
     ...soakSubmetricThresholds,
