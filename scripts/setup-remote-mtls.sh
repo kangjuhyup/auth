@@ -106,7 +106,7 @@ lock_directory=''
 cleanup() {
   if [ -n "$staging_directory" ]; then
     case "$staging_directory" in
-      "$destination_parent"/.remote-mtls.tmp.*)
+      "$destination_parent"/.remote-tls.tmp.*)
         rm -rf -- "$staging_directory"
         ;;
     esac
@@ -178,9 +178,10 @@ destination_name="${resolved_output##*/}"
 ensure_secure_parent "$destination_parent"
 assert_no_symlink_components "$resolved_output"
 
-lock_directory="$destination_parent/.${destination_name}.remote-mtls.lock"
-mkdir -- "$lock_directory" 2>/dev/null || \
+candidate_lock_directory="$destination_parent/.${destination_name}.remote-mtls.lock"
+mkdir -- "$candidate_lock_directory" 2>/dev/null || \
   fail 'another setup is using the output directory'
+lock_directory="$candidate_lock_directory"
 chmod 0700 "$lock_directory" || fail 'could not secure setup lock'
 
 if [ -e "$resolved_output" ]; then
@@ -190,7 +191,7 @@ if [ -e "$resolved_output" ]; then
     fail 'output destination must be absent or empty'
 fi
 
-staging_directory="$(mktemp -d "$destination_parent/.remote-mtls.tmp.XXXXXX")" || \
+staging_directory="$(mktemp -d "$destination_parent/.remote-tls.tmp.XXXXXX")" || \
   fail 'could not create staging directory'
 chmod 0700 "$staging_directory" || fail 'could not secure staging directory'
 mkdir -- \

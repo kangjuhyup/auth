@@ -14,7 +14,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -40,7 +40,10 @@ function createFixture() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'remote-mtls-')));
   const checkout = join(root, 'checkout');
   mkdirSync(join(checkout, 'load-tests'), { recursive: true });
-  writeFileSync(join(checkout, '.gitignore'), '/load-tests/.remote-tls/\n');
+  writeFileSync(
+    join(checkout, '.gitignore'),
+    readFileSync(new URL('../../.gitignore', import.meta.url), 'utf8'),
+  );
   run('git', ['init', '--initial-branch=main'], { cwd: checkout });
   run('git', ['config', 'user.email', 'load-test@example.invalid'], {
     cwd: checkout,
@@ -64,10 +67,11 @@ function outputPath(fixture, name = 'generated') {
   return join(fixture.checkout, 'load-tests', '.remote-tls', name);
 }
 
-function runSetup(fixture, args) {
+function runSetup(fixture, args, environment = {}) {
   return spawnSync('bash', [scriptPath, ...args], {
     cwd: fixture.checkout,
     encoding: 'utf8',
+    env: { ...process.env, ...environment },
   });
 }
 
@@ -140,22 +144,22 @@ test('creates a purpose-limited CA, server, and M1 client bundle', () => {
       'client/client.key',
     ]) {
       assert.equal(statSync(join(output, privateKey)).mode & 0o777, 0o600);
-      assert.match(
-        run('openssl', [
-          'pkey',
-          '-in',
-          join(output, privateKey),
-          '-noout',
-          '-text',
-        ]),
-        /Private-Key: \(3072 bit/,
-      );
     }
 
     const caText = opensslText(join(output, 'ca/ca.crt'));
     const serverText = opensslText(join(output, 'server/server.crt'));
     const clientText = opensslText(join(output, 'client/client.crt'));
-    assert.match(caText, /CA:TRUE/);
+    for (const certificateText of [caText, serverText, clientText]) {
+      assert.match(certificateText, /Public-Key: \(3072 bit\)/);
+      assert.match(
+        certificateText,
+        /Signature Algorithm: sha256WithRSAEncryption/,
+      );
+    }
+    assert.match(caText, /X509v3 Basic Constraints: critical/);
+    assert.match(caText, /CA:TRUE, pathlen:0/);
+    assert.match(caText, /X509v3 Key Usage: critical/);
+    assert.match(caText, /Certificate Sign, CRL Sign/);
     assert.match(serverText, /DNS:auth-service/);
     assert.match(serverText, /IP Address:192\.168\.0\.18/);
     assert.match(serverText, /TLS Web Server Authentication/);
@@ -166,6 +170,22 @@ test('creates a purpose-limited CA, server, and M1 client bundle', () => {
       readFileSync(join(output, 'client/ca.crt'), 'utf8'),
       readFileSync(join(output, 'ca/ca.crt'), 'utf8'),
     );
+    const serials = [
+      join(output, 'ca/ca.crt'),
+      join(output, 'server/server.crt'),
+      join(output, 'client/client.crt'),
+    ].map((certificate) => {
+      const serial = run('openssl', [
+        'x509',
+        '-in',
+        certificate,
+        '-noout',
+        '-serial',
+      ]).trim();
+      assert.match(serial, /^serial=[0-9A-F]{32}$/);
+      return serial;
+    });
+    assert.equal(new Set(serials).size, 3);
     run('openssl', [
       'verify',
       '-purpose',
@@ -197,6 +217,69 @@ test('supports the default gitignored output and an existing empty destination',
     assert.equal(result.status, 0, result.stderr);
     assert.equal(existsSync(join(output, 'client/client.key')), true);
     assert.equal(statSync(output).mode & 0o777, 0o700);
+    assertSecretFree(result);
+  });
+});
+
+test('the real default staging private-key path is gitignored', () => {
+  withFixture((fixture) => {
+    const fakeBin = join(fixture.root, 'bin');
+    const outputLog = join(fixture.root, 'openssl-output.log');
+    mkdirSync(fakeBin);
+    writeFileSync(
+      join(fakeBin, 'openssl'),
+      `#!/bin/sh
+output=''
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = '-out' ] && [ "$#" -ge 2 ]; then
+    output="$2"
+    break
+  fi
+  shift
+done
+printf '%s\\n' "$output" > "$OPENSSL_OUTPUT_LOG"
+exit 1
+`,
+    );
+    chmodSync(join(fakeBin, 'openssl'), 0o755);
+
+    const result = runSetup(fixture, ['--target-ip', '192.168.0.18'], {
+      PATH: `${fakeBin}:${process.env.PATH}`,
+      OPENSSL_OUTPUT_LOG: outputLog,
+    });
+
+    assert.notEqual(result.status, 0);
+    const stagedPrivateKey = readFileSync(outputLog, 'utf8').trim();
+    const relativePrivateKey = relative(fixture.checkout, stagedPrivateKey);
+    const ignored = spawnSync(
+      'git',
+      ['check-ignore', '-q', '--no-index', relativePrivateKey],
+      { cwd: fixture.checkout },
+    );
+    assert.equal(ignored.status, 0, `${relativePrivateKey} is not gitignored`);
+    assert.equal(existsSync(dirname(dirname(stagedPrivateKey))), false);
+    assertSecretFree(result);
+  });
+});
+
+test('an occupied setup lock survives rejection without creating output', () => {
+  withFixture((fixture) => {
+    const tlsRoot = join(fixture.checkout, 'load-tests', '.remote-tls');
+    const output = outputPath(fixture);
+    const occupiedLock = join(tlsRoot, '.generated.remote-mtls.lock');
+    mkdirSync(occupiedLock, { recursive: true });
+
+    const result = runSetup(fixture, [
+      '--target-ip',
+      '192.168.0.18',
+      '--output-directory',
+      output,
+    ]);
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /another setup/);
+    assert.equal(existsSync(occupiedLock), true);
+    assert.equal(existsSync(output), false);
     assertSecretFree(result);
   });
 });
