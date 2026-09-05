@@ -41,6 +41,7 @@ function createFixture() {
   mkdirSync(resultsDirectory, { recursive: true });
   mkdirSync(scriptsDirectory);
   mkdirSync(k6Directory, { recursive: true });
+  writeFileSync(join(checkout, 'package.json'), '{"type":"module"}\n');
   chmodSync(join(checkout, 'load-tests/.remote-tls'), 0o700);
   chmodSync(clientDirectory, 0o700);
   chmodSync(resultsDirectory, 0o700);
@@ -48,6 +49,10 @@ function createFixture() {
   for (const script of ['tls.js', 'smoke.js', 'journey.js']) {
     writeFileSync(join(k6Directory, script), '// fixture k6 script\n');
   }
+  copyFileSync(
+    join(repositoryRoot, 'load-tests/k6/config.js'),
+    join(k6Directory, 'config.js'),
+  );
   for (const certificate of ['ca.crt', 'client.crt', 'client.key']) {
     writeFileSync(
       join(clientDirectory, certificate),
@@ -92,6 +97,14 @@ case "$1" in
     printf '%s\\n' "\${K6_ARCH:-arm64}"
     ;;
   run)
+    if [ "\${CHECK_SMOKE_CONFIG:-}" = 'true' ]; then
+      for argument in "$@"; do
+        if [ "$argument" = '/scripts/smoke.js' ]; then
+          node --input-type=module --eval \
+            "import { pathToFileURL } from 'node:url'; const config = await import(pathToFileURL(process.env.CONFIG_MODULE_PATH).href); config.loadScenarioConfig(process.env, 'smoke');" || exit 1
+        fi
+      done
+    fi
     {
       printf '%s' 'RUN'
       for argument in "$@"; do printf ' <%s>' "$argument"; done
@@ -143,6 +156,7 @@ esac
       ...process.env,
       PATH: `${fakeBin}:${process.env.PATH}`,
       DOCKER_LOG: dockerLog,
+      CONFIG_MODULE_PATH: join(k6Directory, 'config.js'),
     },
   };
 }
@@ -227,6 +241,24 @@ test('verify performs one mTLS health request before deterministic OIDC smoke', 
     assert.equal(
       lstatSync(join(fixture.resultsDirectory, files[0])).isFile(),
       true,
+    );
+  });
+});
+
+test('verify initializes the real smoke configuration contract and retains a verify summary', () => {
+  withFixture((fixture) => {
+    const result = runRunner(
+      fixture,
+      ['verify', '--target-ip', '192.168.0.18'],
+      { CHECK_SMOKE_CONFIG: 'true' },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    const files = summaries(fixture);
+    assert.equal(files.length, 1);
+    assert.match(
+      files[0],
+      /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z-verify\.json$/,
     );
   });
 });
@@ -406,6 +438,32 @@ test('runner rejects symlinked certificate and result paths', () => {
     assert.equal(dockerLog(fixture), '');
     assert.deepEqual(readdirSync(externalResults), []);
   });
+});
+
+test('runner rejects hidden files, directories, and symlinks in remote results', () => {
+  for (const kind of ['file', 'directory', 'symlink']) {
+    withFixture((fixture) => {
+      const hiddenPath = join(fixture.resultsDirectory, `.unexpected-${kind}`);
+      if (kind === 'file') {
+        writeFileSync(hiddenPath, 'unexpected result artifact\n');
+      } else if (kind === 'directory') {
+        mkdirSync(hiddenPath);
+      } else {
+        const target = join(fixture.root, 'external-result-target');
+        writeFileSync(target, 'keep\n');
+        symlinkSync(target, hiddenPath);
+      }
+
+      const result = runRunner(fixture, [
+        'probe',
+        '--target-ip',
+        '192.168.0.18',
+      ]);
+      assert.notEqual(result.status, 0);
+      assert.equal(dockerLog(fixture), '');
+      assert.equal(lstatSync(hiddenPath).isSymbolicLink(), kind === 'symlink');
+    });
+  }
 });
 
 test('runner diagnostics and Docker arguments never disclose runtime secrets', () => {

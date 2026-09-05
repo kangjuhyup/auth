@@ -135,6 +135,7 @@ read_environment_value() {
 validate_existing_results() {
   local path name owner
 
+  shopt -s dotglob
   for path in "$results_directory"/*; do
     [ -e "$path" ] || [ -L "$path" ] || continue
     [ -f "$path" ] && [ ! -L "$path" ] || \
@@ -145,6 +146,7 @@ validate_existing_results() {
     owner="$(file_owner "$path")" || fail 'could not inspect result ownership'
     [ "$owner" = "$invoking_uid" ] || fail 'remote result is not owned by the invoking user'
   done
+  shopt -u dotglob
 }
 
 mode=''
@@ -301,7 +303,10 @@ ADMIN_PASSWORD="$(read_environment_value 'ADMIN_PASSWORD')"
 LOAD_USER_PASSWORD="$(read_environment_value 'LOAD_USER_PASSWORD')"
 SERVICE_CLIENT_SECRET="$(read_environment_value 'SERVICE_CLIENT_SECRET')"
 REMOTE_MTLS='true'
-RUN_KIND="$mode"
+case "$mode" in
+  verify) RUN_KIND='smoke' ;;
+  probe|soak) RUN_KIND="$mode" ;;
+esac
 VUS="$vus"
 WARMUP_SECONDS="$warmup_seconds"
 MEASURE_SECONDS="$measure_seconds"
@@ -341,19 +346,31 @@ workload_environment=(
   --env SUMMARY_PATH
 )
 
+health_directory=''
 health_script=''
 cleanup() {
   if [ -n "$health_script" ]; then
     case "$health_script" in
-      "$results_directory"/.remote-health.*) rm -f -- "$health_script" ;;
+      "$health_directory"/remote-health.js) rm -f -- "$health_script" 2>/dev/null || true ;;
+    esac
+  fi
+  if [ -n "$health_directory" ]; then
+    case "$health_directory" in
+      /tmp/auth-remote-health.*) rmdir -- "$health_directory" 2>/dev/null || true ;;
     esac
   fi
 }
 trap cleanup EXIT HUP INT TERM
 
 if [ "$mode" = 'verify' ]; then
-  health_script="$(mktemp "$results_directory/.remote-health.XXXXXX")" || \
-    fail 'could not create the health verification script'
+  health_directory="$(mktemp -d '/tmp/auth-remote-health.XXXXXX')" || \
+    fail 'could not create the health verification directory'
+  [ -d "$health_directory" ] && [ ! -L "$health_directory" ] || \
+    fail 'health verification directory is unsafe'
+  chmod 0700 "$health_directory" || \
+    fail 'could not secure the health verification directory'
+  health_script="$health_directory/remote-health.js"
+  : > "$health_script" || fail 'could not create the health verification script'
   chmod 0600 "$health_script" || fail 'could not secure the health verification script'
   cat > "$health_script" <<'EOF'
 import { check } from 'k6';
@@ -380,6 +397,10 @@ EOF
   docker "${docker_arguments[@]}" \
     --volume "$health_script:/scripts/remote-health.js:ro" \
     "$K6_IMAGE" run /scripts/remote-health.js
+  rm -f -- "$health_script" || fail 'could not remove the health verification script'
+  health_script=''
+  rmdir -- "$health_directory" || fail 'could not remove the health verification directory'
+  health_directory=''
 fi
 
 timestamp="$(date -u '+%Y-%m-%dT%H-%M-%SZ')" || fail 'could not create result timestamp'
