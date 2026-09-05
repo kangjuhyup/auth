@@ -103,6 +103,73 @@ targets by default. It refuses a non-local or remote target. This guide
 intentionally provides no bypass command: capacity traffic must not be aimed at
 a shared or production environment by copying an operator example.
 
+## M1 remote load-generator bootstrap
+
+The current PC at `192.168.0.18` continues to run Auth, PostgreSQL, Redis, and
+monitoring. The M1 Mini is a load-generator-only machine, and this bootstrap
+only prepares Docker-based k6 on it. It does not expose ports on the current PC,
+transfer secrets, start the Auth stack, or send capacity traffic.
+
+Before any remote OIDC load is sent in a later, separately authorized step, the
+target must use production-equivalent TLS, the remote runner must be explicitly
+allowlisted, and required secrets must be transferred ephemerally. Do not
+disable the harness's target guards, TLS verification, or authentication
+controls to make a remote run work.
+
+On the M1 Mini, download the bootstrap script to a file from the selected
+branch. The raw URL works only after the script exists on that remote branch;
+for the default flow, that means the script must already be published on
+`main`.
+
+```sh
+curl --proto '=https' --tlsv1.2 --fail --location \
+  --output setup-remote-loadgen.sh \
+  https://raw.githubusercontent.com/kangjuhyup/auth/main/scripts/setup-remote-loadgen.sh
+```
+
+Inspect the downloaded file before granting execute permission. Never pipe the
+download into a shell.
+
+```sh
+sed -n '1,260p' setup-remote-loadgen.sh
+chmod 700 setup-remote-loadgen.sh
+./setup-remote-loadgen.sh --branch main --directory "$PWD/auth-loadgen"
+```
+
+The defaults are repository `https://github.com/kangjuhyup/auth.git`, branch
+`main`, and k6 image `grafana/k6:2.2.0`. The explicit `--branch main` above makes
+the selected revision visible at the call site.
+
+The same execution command is safe to rerun when `auth-loadgen` is a clean
+checkout with that exact origin. The script fetches the selected branch and
+updates it only by fast-forward. If the checkout is dirty, has untracked files,
+has a different origin, is not the checkout root, or cannot fast-forward, the
+script rejects it without discarding or overwriting the existing repository.
+Resolve the repository state deliberately, or choose a new destination; do not
+delete local work just to make the bootstrap pass.
+
+For a rejected setup, inspect the M1 prerequisites and destination without
+printing environment variables or secret material:
+
+```sh
+uname -s
+uname -m
+git --version
+docker --version
+docker compose version
+docker info
+git -C "$PWD/auth-loadgen" remote get-url origin
+git -C "$PWD/auth-loadgen" status --short
+docker image inspect --format '{{.Architecture}}' grafana/k6:2.2.0
+docker run --rm grafana/k6:2.2.0 version
+```
+
+Expected platform values are `Darwin`, `arm64`, and Docker Compose v2. The
+bootstrap itself also requires a reachable Docker daemon, verifies the exact
+repository origin and clean state, checks required load-test assets, confirms
+the pulled image is `arm64`, and creates the gitignored
+`load-tests/results/remote/` directory with mode `0700`.
+
 ## Results and interpretation
 
 Generated artifacts are written beneath the gitignored
