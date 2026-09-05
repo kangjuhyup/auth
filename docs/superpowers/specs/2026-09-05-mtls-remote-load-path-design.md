@@ -121,11 +121,11 @@ The safe sequence is:
 7. If the probe satisfies the existing thresholds, run 300 VUs for 30 minutes.
 
 Each M1 run writes a timestamped k6 JSON summary under
-`load-tests/results/remote/`. The Auth PC monitor is started separately before
-the probe or soak and writes target CPU, memory, restart, and health samples.
-The existing report generator consumes the copied k6 summary and target monitor
-data to render the final Markdown report and charts. A failed mTLS or OIDC
-verification is a harness failure, not a capacity result.
+`load-tests/results/remote/`. By user scope ruling, remote Auth-PC monitoring
+and remote report/chart CLI automation are deferred; raw JSON is retained for
+the later report after real probe/soak artifacts exist. The local report
+generator does not consume remote evidence. A failed mTLS or OIDC verification
+is a harness failure, not a capacity result.
 
 ## Failure and cleanup behavior
 

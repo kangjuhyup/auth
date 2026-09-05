@@ -128,16 +128,29 @@ failure, not a capacity result.
 Run from the Auth-PC repository root. The setup script creates the CA, server
 certificate, and M1 client bundle only beneath
 `load-tests/.remote-tls/`; rerunning it requires that destination to be absent
-or empty.
+or empty. The current dedicated `auth-load` volume already has 300 load users
+provisioned. Reuse that volume for this path. A fresh volume must be provisioned
+before `verify`; the remote runner deliberately has no provision mode, so do
+not assume that `verify` creates test data.
 
 ```sh
-scripts/setup-remote-mtls.sh --target-ip 192.168.0.18
+(
+  set -eu
+  auth_root="$(git rev-parse --show-toplevel)"
+  [ "$auth_root" = "$(pwd -P)" ]
+  runtime_env="$auth_root/load-tests/.runtime.env"
+  [ -f "$runtime_env" ] && [ ! -L "$runtime_env" ]
+  runtime_mode="$(stat -f '%Lp' "$runtime_env" 2>/dev/null || stat -c '%a' "$runtime_env")"
+  [ "$runtime_mode" = 600 ]
 
-LOAD_GATEWAY_BIND_IP=192.168.0.18 \
-LOAD_OIDC_ISSUER=https://auth-service:13443 \
-docker compose --project-name auth-load \
-  -f docker-compose.load.yml -f docker-compose.remote-load.yml \
-  --env-file load-tests/.env.load.example up --build -d
+  scripts/setup-remote-mtls.sh --target-ip 192.168.0.18
+  LOAD_GATEWAY_BIND_IP=192.168.0.18 \
+  LOAD_OIDC_ISSUER=https://auth-service:13443 \
+  docker compose --project-name auth-load \
+    -f "$auth_root/docker-compose.load.yml" \
+    -f "$auth_root/docker-compose.remote-load.yml" \
+    --env-file "$runtime_env" up --build -d
+)
 ```
 
 The overlay exposes only `192.168.0.18:13443`; `auth-service:3000` remains
@@ -147,17 +160,19 @@ issuer is fixed to `https://auth-service:13443`. Do not substitute an IP URL,
 
 Copy _only_ the public CA certificate plus the M1 client certificate and key.
 The CA private key and server private key stay on the Auth PC. The copy
-direction below is explicit Auth PC → M1; replace `M1_LAN_ADDRESS` only with
-the approved M1 LAN address, never a reverse-SSH address.
+direction below is explicit Auth PC → M1. The last observed M1 LAN address was
+`192.168.0.17`; verify the approved SSH route still reaches that machine before
+copying, and never substitute a reverse-SSH address.
 
 ```sh
-ssh jhkang@M1_LAN_ADDRESS 'install -d -m 700 "$HOME/auth-loadgen/load-tests/.remote-tls/client"'
+ssh jhkang@192.168.0.17 'exit 0'
+ssh jhkang@192.168.0.17 'install -d -m 700 "$HOME/auth-loadgen/load-tests/.remote-tls/client"'
 scp -p \
   load-tests/.remote-tls/client/ca.crt \
   load-tests/.remote-tls/client/client.crt \
   load-tests/.remote-tls/client/client.key \
-  jhkang@M1_LAN_ADDRESS:/Users/jhkang/auth-loadgen/load-tests/.remote-tls/client/
-ssh jhkang@M1_LAN_ADDRESS 'chmod 700 "$HOME/auth-loadgen/load-tests/.remote-tls" "$HOME/auth-loadgen/load-tests/.remote-tls/client" && chmod 600 "$HOME/auth-loadgen/load-tests/.remote-tls/client/ca.crt" "$HOME/auth-loadgen/load-tests/.remote-tls/client/client.crt" "$HOME/auth-loadgen/load-tests/.remote-tls/client/client.key"'
+  jhkang@192.168.0.17:/Users/jhkang/auth-loadgen/load-tests/.remote-tls/client/
+ssh jhkang@192.168.0.17 'chmod 700 "$HOME/auth-loadgen/load-tests/.remote-tls" "$HOME/auth-loadgen/load-tests/.remote-tls/client" && chmod 600 "$HOME/auth-loadgen/load-tests/.remote-tls/client/ca.crt" "$HOME/auth-loadgen/load-tests/.remote-tls/client/client.crt" "$HOME/auth-loadgen/load-tests/.remote-tls/client/client.key"'
 ```
 
 Create the M1's mode-`0600` `$HOME/auth-loadgen/load-tests/.remote-k6.env`
@@ -220,28 +235,52 @@ JSON result.
 
 ### Exact cleanup after evidence is copied
 
-Run the Auth-PC commands from its repository root only after the required
-result files have been returned. They stop only the literal `auth-load` project
-and remove only its dedicated volumes and the known test PKI directory.
+After required result files have been returned, run this guarded Auth-PC
+subshell from the repository root. It resolves the checkout, checks the known
+runtime environment and exact PKI path, then stops only the literal `auth-load`
+project and removes only that PKI directory.
 
 ```sh
-LOAD_GATEWAY_BIND_IP=192.168.0.18 \
-LOAD_OIDC_ISSUER=https://auth-service:13443 \
-docker compose --project-name auth-load \
-  -f docker-compose.load.yml -f docker-compose.remote-load.yml \
-  --env-file load-tests/.env.load.example down --volumes --remove-orphans
-rm -rf -- load-tests/.remote-tls
+(
+  set -eu
+  auth_root="$(git rev-parse --show-toplevel)"
+  [ "$auth_root" = "$(pwd -P)" ]
+  runtime_env="$auth_root/load-tests/.runtime.env"
+  tls_root="$auth_root/load-tests/.remote-tls"
+  [ -f "$runtime_env" ] && [ ! -L "$runtime_env" ]
+  runtime_mode="$(stat -f '%Lp' "$runtime_env" 2>/dev/null || stat -c '%a' "$runtime_env")"
+  [ "$runtime_mode" = 600 ]
+  [ -d "$tls_root" ] && [ ! -L "$tls_root" ]
+  LOAD_GATEWAY_BIND_IP=192.168.0.18 \
+  LOAD_OIDC_ISSUER=https://auth-service:13443 \
+  docker compose --project-name auth-load \
+    -f "$auth_root/docker-compose.load.yml" \
+    -f "$auth_root/docker-compose.remote-load.yml" \
+    --env-file "$runtime_env" down --volumes --remove-orphans
+  rm -rf -- "$tls_root"
+)
 ```
 
-On the M1, after copying any evidence to retain, remove only the known
-client-bundle, secret-environment, and remote-result paths in its dedicated
-checkout:
+On the M1, after copying any evidence to retain, run this guarded subshell. It
+requires the exact `$HOME/auth-loadgen` Git checkout and removes only its known
+client-bundle, secret-environment, and remote-result paths:
 
 ```sh
-cd "$HOME/auth-loadgen"
-rm -rf -- load-tests/.remote-tls
-rm -f -- load-tests/.remote-k6.env
-rm -rf -- load-tests/results/remote
+(
+  set -eu
+  m1_root="$(cd "$HOME/auth-loadgen" && pwd -P)"
+  git_root="$(git -C "$m1_root" rev-parse --show-toplevel)"
+  [ "$git_root" = "$m1_root" ]
+  tls_root="$m1_root/load-tests/.remote-tls"
+  env_file="$m1_root/load-tests/.remote-k6.env"
+  results_root="$m1_root/load-tests/results/remote"
+  [ -d "$tls_root" ] && [ ! -L "$tls_root" ]
+  [ -f "$env_file" ] && [ ! -L "$env_file" ]
+  [ -d "$results_root" ] && [ ! -L "$results_root" ]
+  rm -rf -- "$tls_root"
+  rm -f -- "$env_file"
+  rm -rf -- "$results_root"
+)
 ```
 
 Do not use a home-directory-wide cleanup, globbed deletion, or deletion of the
@@ -249,10 +288,11 @@ checkout itself.
 
 ## M1 remote load-generator bootstrap
 
-The current PC at `192.168.0.18` continues to run Auth, PostgreSQL, Redis, and
-monitoring. The M1 Mini is a load-generator-only machine, and this bootstrap
-only prepares Docker-based k6 on it. It does not expose ports on the current PC,
-transfer secrets, start the Auth stack, or send capacity traffic.
+The current PC at `192.168.0.18` continues to run Auth, PostgreSQL, and Redis.
+The M1 Mini is a load-generator-only machine, and this bootstrap only prepares
+Docker-based k6 on it. It does not expose ports on the current PC, transfer
+secrets, start the Auth stack, collect target monitoring, or send capacity
+traffic.
 
 Before any remote OIDC load is sent in a later, separately authorized step, the
 target must use production-equivalent TLS, the remote runner must be explicitly

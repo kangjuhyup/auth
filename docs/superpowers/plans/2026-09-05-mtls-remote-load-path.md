@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- M1 Mini is load-generation-only; Auth PC runs Auth, PostgreSQL, Redis, gateway, and monitoring.
+- M1 Mini is load-generation-only; Auth PC runs Auth, PostgreSQL, Redis, and gateway. Remote target monitoring and remote report/chart CLI automation are deferred by user scope ruling; retain raw JSON for later reporting.
 - External issuer and k6 base URL are exactly `https://auth-service:13443`.
 - Gateway binds exactly `${LOAD_GATEWAY_BIND_IP}:13443`; the documented value is `192.168.0.18`, never `0.0.0.0`.
 - Auth upstream stays private at `http://auth-service:3000`; the existing loopback health port remains `127.0.0.1:13000`.
@@ -235,15 +235,16 @@ git commit -m "feat(load): run remote k6 through mTLS"
 
 **Interfaces:**
 
-- Consumes: Tasks 1-3 scripts, fixed machine roles/addresses, and the existing report workflow.
-- Produces: copyable Auth-PC/M1 setup, verification, probe, soak, result-copy, report, and explicit cleanup commands.
+- Consumes: Tasks 1-3 scripts and fixed machine roles/addresses.
+- Produces: copyable Auth-PC/M1 setup, verification, probe, soak, raw-result copy-back, and explicit cleanup commands.
 
 - [ ] **Step 1: Document the exact two-machine runbook**
 
 Add commands for PKI generation, overlay startup, certificate-only SCP,
-M1 `verify`, 300-VU probe, 300-VU 30-minute soak, Auth monitor collection,
-result copy-back, report generation, and both-machine cleanup. Label a failed
-probe as invalid for capacity conclusions.
+M1 `verify`, 300-VU probe, 300-VU 30-minute soak, raw-result copy-back, and
+both-machine cleanup. Remote monitoring/report automation is deferred; retain
+raw JSON for later reporting. Label a failed probe as invalid for capacity
+conclusions.
 
 - [ ] **Step 2: Run complete verification**
 
@@ -255,7 +256,7 @@ bash -n scripts/setup-remote-mtls.sh scripts/run-remote-loadgen.sh scripts/setup
 docker compose --project-name auth-load -f docker-compose.load.yml --env-file load-tests/.env.load.example config --quiet
 LOAD_GATEWAY_BIND_IP=192.168.0.18 LOAD_OIDC_ISSUER=https://auth-service:13443 docker compose --project-name auth-load -f docker-compose.load.yml -f docker-compose.remote-load.yml --env-file load-tests/.env.load.example config --quiet
 yarn eslint load-tests/k6 load-tests/test
-yarn prettier --check .gitignore docker-compose.load.yml docker-compose.remote-load.yml load-tests docs/superpowers/specs/2026-09-05-mtls-remote-load-path-design.md docs/superpowers/plans/2026-09-05-mtls-remote-load-path.md
+yarn prettier --check load-tests/README.md docs/docs/operations/load-test-2026-09-02.md docs/superpowers/specs/2026-09-05-mtls-remote-load-path-design.md docs/superpowers/plans/2026-09-05-mtls-remote-load-path.md
 git diff --check
 git diff --name-only -- service ui
 ```
