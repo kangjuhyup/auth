@@ -123,26 +123,8 @@ The safe sequence is:
 Each M1 run writes a timestamped k6 JSON summary under
 `load-tests/results/remote/`. The Auth PC monitor is started separately before
 the probe or soak and writes target CPU, memory, restart, and health samples.
-An Auth-PC-only foreground campaign command persists both CSV and structured
-monitor samples beneath `load-tests/results/remote/<campaign-id>/`. It prints
-the generated campaign ID only after the first target sample succeeds and
-finishes with a forced terminal sample on `SIGINT` or `SIGTERM`.
-
-After the M1 summary is copied into that exact campaign directory, a report
-command validates the declared kind, VUs, timings, filenames, file ownership,
-permissions, completion marker, and measurement coverage. It uses the k6
-measurement epoch—not the filename or copy time—to exclude probe warm-up and
-to correlate soak minute buckets with target samples. Missing coverage, clock
-skew, malformed inputs, or monitor gaps produce `INCONCLUSIVE`, never an
-assumed passing state.
-
-The remote renderer produces a dedicated Markdown report and fixed-label,
-numeric-only SVG charts. A probe report includes endpoint latency and target
-resource timelines; a soak report additionally includes per-minute RPS and
-latency. Network counters are labelled as cumulative container I/O. A single
-imported summary is described only as a single remote probe or soak
-observation: it cannot establish a capacity limit, prove a prior passing probe,
-or reproduce the local security-gate evidence. A failed mTLS or OIDC
+The existing report generator consumes the copied k6 summary and target monitor
+data to render the final Markdown report and charts. A failed mTLS or OIDC
 verification is a harness failure, not a capacity result.
 
 ## Failure and cleanup behavior
@@ -172,10 +154,5 @@ Automated tests cover:
    certificate paths, while local mode remains unchanged.
 5. A live mTLS integration check: no certificate and an untrusted certificate
    are rejected; the generated M1 certificate succeeds.
-6. Foreground monitor lifecycle, structured sample persistence, signal-driven
-   checkpoint/stop behavior, and exclusive safe campaign paths.
-7. Imported-summary validation, warm-up exclusion, soak epoch/minute
-   correlation, incomplete coverage classification, safe Markdown, and SVG
-   chart rendering.
-8. The existing complete load-test unit suite, shell syntax, formatting,
-   Compose configuration, and diff hygiene.
+6. The existing complete load-test unit suite, shell syntax, formatting, Compose
+   configuration, and diff hygiene.
