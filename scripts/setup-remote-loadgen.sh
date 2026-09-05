@@ -20,6 +20,15 @@ fail() {
   exit 1
 }
 
+require_clean_checkout() {
+  local checkout_status
+
+  checkout_status="$(git -C "$1" status --porcelain=v1 --untracked-files=all 2>/dev/null)" || \
+    fail 'could not inspect existing checkout status'
+  [ -z "$checkout_status" ] || \
+    fail 'existing checkout has uncommitted or untracked changes'
+}
+
 repo="$DEFAULT_REPO"
 branch="$DEFAULT_BRANCH"
 directory=''
@@ -101,8 +110,7 @@ else
   actual_origin="$(git -C "$directory" remote get-url origin 2>/dev/null)" || \
     fail 'existing checkout has no origin remote'
   [ "$actual_origin" = "$repo" ] || fail 'existing checkout origin does not exactly match --repo'
-  [ -z "$(git -C "$directory" status --porcelain)" ] || \
-    fail 'existing checkout has uncommitted or untracked changes'
+  require_clean_checkout "$directory"
   git -C "$directory" check-ref-format --branch "$branch" >/dev/null 2>&1 || \
     fail 'selected branch name is invalid'
   git -C "$directory" fetch origin "refs/heads/$branch:refs/remotes/origin/$branch" >/dev/null 2>&1 || \
@@ -115,6 +123,7 @@ else
   fi
   git -C "$directory" merge --ff-only "origin/$branch" >/dev/null 2>&1 || \
     fail 'selected branch cannot be fast-forwarded safely'
+  require_clean_checkout "$directory"
 fi
 
 for expected_asset in \

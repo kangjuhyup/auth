@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -170,6 +171,13 @@ function addResultSymlink(fixture, kind) {
   return externalDirectory;
 }
 
+function allFiles(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    return entry.isDirectory() ? allFiles(path) : [path];
+  });
+}
+
 function withFixture(callback) {
   const fixture = createFixture();
   try {
@@ -209,6 +217,52 @@ test('dirty existing checkout is rejected without changing user files', () => {
       readFileSync(join(fixture.checkout, 'local-change.txt'), 'utf8'),
       'keep\n',
     );
+  });
+});
+
+test('rejects untracked files even when Git configuration hides them', () => {
+  withFixture((fixture) => {
+    assert.equal(runSetup(fixture, setupArgs(fixture)).status, 0);
+    writeFileSync(join(fixture.checkout, 'hidden-untracked.txt'), 'keep\n');
+    run('git', ['config', 'status.showUntrackedFiles', 'no'], {
+      cwd: fixture.checkout,
+    });
+    const result = runSetup(fixture, setupArgs(fixture));
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /uncommitted or untracked changes/);
+    assert.equal(
+      readFileSync(join(fixture.checkout, 'hidden-untracked.txt'), 'utf8'),
+      'keep\n',
+    );
+  });
+});
+
+test('fails closed when Git cannot read checkout status', () => {
+  withFixture((fixture) => {
+    assert.equal(runSetup(fixture, setupArgs(fixture)).status, 0);
+    writeFileSync(join(fixture.checkout, '.git', 'index'), 'corrupt\n');
+    const result = runSetup(fixture, setupArgs(fixture));
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /could not inspect existing checkout status/);
+  });
+});
+
+test('does not disclose setup environment secrets', () => {
+  withFixture((fixture) => {
+    const sentinelSecret = 'remote-loadgen-sentinel-secret';
+    const result = runSetup(fixture, setupArgs(fixture), {
+      BOOTSTRAP_SENTINEL_SECRET: sentinelSecret,
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.includes(sentinelSecret), false);
+    assert.equal(result.stderr.includes(sentinelSecret), false);
+    assert.equal(
+      readFileSync(fixture.dockerLog, 'utf8').includes(sentinelSecret),
+      false,
+    );
+    for (const file of allFiles(fixture.checkout)) {
+      assert.equal(readFileSync(file, 'utf8').includes(sentinelSecret), false);
+    }
   });
 });
 
