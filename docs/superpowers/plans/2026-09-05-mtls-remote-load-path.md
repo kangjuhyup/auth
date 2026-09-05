@@ -269,3 +269,145 @@ the final scope command prints nothing.
 git add load-tests/README.md docs/docs/operations/load-test-2026-09-02.md
 git commit -m "docs(load): add remote mTLS test runbook"
 ```
+
+### Task 5: Independent Auth-PC campaign monitor
+
+**Files:**
+
+- Create: `load-tests/lib/remote-campaign.mjs`
+- Create: `load-tests/run-remote-campaign.mjs`
+- Create: `load-tests/test/remote-campaign.test.mjs`
+- Modify: `load-tests/lib/monitor.mjs`
+- Modify: `load-tests/test/monitor.test.mjs`
+
+**Interfaces:**
+
+- Consumes: `run-remote-campaign.mjs monitor --kind probe|soak --vus N --warmup-seconds N --measurement-seconds N`, exact Compose project `auth-load`, and the existing `startMonitor()` Docker boundary.
+- Produces: generated direct-child campaign directory `load-tests/results/remote/<campaign-id>/`, mode-`0600` `manifest.json`, `docker-stats.csv`, incremental `monitor-samples.ndjson`, and `monitor-complete.json` after a terminal checkpoint.
+
+- [ ] **Step 1: Write failing monitor persistence and CLI tests**
+
+Extend the real monitor test harness to require exclusive CSV/NDJSON creation,
+one canonical NDJSON object for every CSV sample, mode `0600`, and propagation
+of structured-append failures. Add CLI tests with injected dependencies that
+assert the campaign ID is printed only after `ready()`, SIGINT/SIGTERM force a
+checkpoint before stop, completion is written only after a clean stop, and
+duplicate/unknown/invalid controls fail without echoing input.
+
+- [ ] **Step 2: Verify RED**
+
+Run:
+
+```sh
+node --test load-tests/test/monitor.test.mjs load-tests/test/remote-campaign.test.mjs
+```
+
+Expected: FAIL because structured monitor persistence and the campaign CLI do
+not exist.
+
+- [ ] **Step 3: Implement safe campaign creation and structured monitoring**
+
+Generate campaign IDs internally as canonical UTC timestamps plus kind. Anchor
+the result root to the physical Git checkout and require every path component
+to be a non-symlink. Create the root/campaign exclusively with mode `0700` and
+artifacts with mode `0600`; reject pre-existing output. Write only validated
+kind, VUs, warm-up, measurement seconds, and creation time to the manifest.
+
+Extend `startMonitor()` with an optional structured output path. Create both
+outputs exclusively and append the exact validated in-memory sample as one
+bounded JSON line alongside each CSV sample. Preserve the existing local caller
+when the option is absent.
+
+Implement the foreground monitor command so the first sample is the readiness
+gate. On `SIGINT`/`SIGTERM`, await a terminal checkpoint, stop scheduling,
+persist a fixed completion marker, secure files, and exit. Fixed diagnostics
+must not reflect arbitrary input or Docker output.
+
+- [ ] **Step 4: Verify GREEN**
+
+Run the targeted tests, `bash`-independent Node syntax/lint/format checks, and a
+short real monitor session against the existing `auth-load` stack. Assert the
+CSV and NDJSON counts agree and every artifact remains confined to the campaign
+directory at the required modes.
+
+- [ ] **Step 5: Commit Task 5**
+
+```sh
+git add load-tests/lib/monitor.mjs load-tests/lib/remote-campaign.mjs load-tests/run-remote-campaign.mjs load-tests/test/monitor.test.mjs load-tests/test/remote-campaign.test.mjs
+git commit -m "feat(load): capture remote target campaigns"
+```
+
+### Task 6: Correlated remote report and SVG charts
+
+**Files:**
+
+- Create: `load-tests/lib/charts.mjs`
+- Modify: `load-tests/lib/remote-campaign.mjs`
+- Modify: `load-tests/run-remote-campaign.mjs`
+- Modify: `load-tests/test/remote-campaign.test.mjs`
+
+**Interfaces:**
+
+- Consumes: `run-remote-campaign.mjs report --campaign ID --summary YYYY-MM-DDTHH-MM-SSZ-probe|soak.json`, completed Task 5 campaign artifacts, one copied M1 k6 summary, existing `normalizeMeasurementEpoch()`, `normalizeK6Summary()`, `normalizeSoakWindows()`, `bucketMonitorSamples()`, `summarizeMonitorSamples()`, and `evaluateCapacityMetrics()`.
+- Produces: mode-`0600` `remote-report.json`, `summary.md`, `latency.svg`, `resources.svg`, and for soak `soak-trend.svg`, all inside the selected campaign.
+
+- [ ] **Step 1: Write failing import, correlation, report, and chart tests**
+
+Use literal summary and monitor fixtures to cover absolute/traversal/nested
+campaigns, symlink and ownership/mode violations, missing completion, input
+size/count limits, malformed JSON/NDJSON, filename/kind mismatch, and output
+collisions. Assert probe samples before the measurement epoch are excluded;
+soak uses the authoritative epoch and exact minute buckets; missing boundary
+coverage or gaps yields `INCONCLUSIVE`; passing/failing SLOs yield `PASS` or
+`FAIL` only with complete target evidence.
+
+Assert Markdown never claims a capacity maximum, prior security gate, or prior
+passing probe. Assert SVGs use only fixed escaped labels and validated numeric
+values, label network data as cumulative I/O, contain the expected endpoint and
+service series, and never render unknown fixture fields or secret sentinels.
+
+- [ ] **Step 2: Verify RED**
+
+Run `node --test load-tests/test/remote-campaign.test.mjs`.
+
+Expected: FAIL because report import, correlation, remote Markdown, and charts
+do not exist.
+
+- [ ] **Step 3: Implement strict import and correlation**
+
+Accept only a direct child campaign ID and a direct-child summary filename
+matching the M1 runner contract. Require regular, invoking-user-owned,
+non-group/world-readable bounded files and a valid completion marker. Parse
+NDJSON with maximum byte/sample limits and validate every sample through the
+same monitor summary boundary.
+
+Derive both probe and soak measurement start from
+`normalizeMeasurementEpoch()`. Require monitor coverage on both measurement
+boundaries and reject excessive gaps as `INCONCLUSIVE`. For probe, normalize
+the aggregate summary with the declared measurement seconds and only the
+measurement-window target context. For soak, combine existing minute metrics
+with `bucketMonitorSamples()` and evaluate each minute with its matching target
+context.
+
+- [ ] **Step 4: Implement remote Markdown and charts**
+
+Render a strict schema-versioned report whose conclusion scope is `single
+remote probe observation` or `single remote soak observation`. Include SLO
+verdict, endpoint latency, RPS/failure metrics, target lifecycle/dependency
+evidence, monitoring coverage, clock-synchronization warning, and explicit
+limitations. Generate viewBox-based SVGs using fixed palette/labels and finite
+validated numbers only; charts must remain readable when every value is zero.
+
+- [ ] **Step 5: Verify GREEN**
+
+Run the focused suite, full load-test suite, ESLint/Prettier, `git diff
+--check`, and render one synthetic probe plus one synthetic soak campaign.
+Verify every produced file is within its campaign, mode `0600`, contains no
+secret sentinel, and each SVG parses as XML.
+
+- [ ] **Step 6: Commit Task 6**
+
+```sh
+git add load-tests/lib/charts.mjs load-tests/lib/remote-campaign.mjs load-tests/run-remote-campaign.mjs load-tests/test/remote-campaign.test.mjs
+git commit -m "feat(load): render correlated remote reports"
+```
