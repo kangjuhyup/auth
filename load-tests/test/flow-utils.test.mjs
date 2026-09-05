@@ -470,7 +470,7 @@ test('chooseAction implements the approved cumulative weights', () => {
   assert.throws(() => chooseAction(1), /between 0 and 1/);
 });
 
-test('createJourneyOptions uses one constant-VU scenario and preserves host-owned SLO classification', () => {
+test('createJourneyOptions ramps from zero during warmup and holds target VUs during measurement', () => {
   assert.deepEqual(
     createJourneyOptions(
       { vus: 7, warmupSeconds: 2, measureSeconds: 3 },
@@ -480,9 +480,12 @@ test('createJourneyOptions uses one constant-VU scenario and preserves host-owne
       systemTags: ['status', 'method'],
       scenarios: {
         users: {
-          executor: 'constant-vus',
-          vus: 7,
-          duration: '5s',
+          executor: 'ramping-vus',
+          startVUs: 0,
+          stages: [
+            { duration: '2s', target: 7 },
+            { duration: '3s', target: 7 },
+          ],
           gracefulStop: '30s',
         },
       },

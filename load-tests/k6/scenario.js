@@ -49,9 +49,12 @@ export function createJourneyOptions({ vus, warmupSeconds, measureSeconds }) {
     systemTags: SAFE_SYSTEM_TAGS,
     scenarios: {
       users: {
-        executor: 'constant-vus',
-        vus,
-        duration: `${warmupSeconds + measureSeconds}s`,
+        executor: 'ramping-vus',
+        startVUs: 0,
+        stages: [
+          { duration: `${warmupSeconds}s`, target: vus },
+          { duration: `${measureSeconds}s`, target: vus },
+        ],
         gracefulStop: '30s',
       },
     },

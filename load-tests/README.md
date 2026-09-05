@@ -56,7 +56,8 @@ Every measured probe and soak window must satisfy all of these conditions:
 
 The default full run includes image build and provisioning, the security check,
 a deterministic 1-VU smoke, coarse probes, refinement probes, and a 30-minute
-soak. Each capacity probe has a 60-second warm-up and 180-second measurement.
+soak. Each capacity probe ramps from zero to the target VUs during a 60-second
+warm-up, then holds the target for a 180-second measurement.
 At the default 1,000-VU ceiling, the longest search path is approximately 40
 minutes of probe windows, followed by the 30-minute soak. Allow additional time
 for the image build, provisioning, service recreations, security check, smoke,
@@ -140,7 +141,7 @@ containers:
 
 ```sh
 colima stop
-colima start --network-host-addresses
+colima start --network-host-addresses --port-forwarder grpc --save-config
 ```
 
 ```sh
@@ -212,8 +213,9 @@ The probe must meet the existing failure-rate, latency, normal-flow, container,
 and dependency SLOs before the soak is meaningful. A failed probe is **invalid
 for capacity conclusions**: record it as a failed remote test and do not claim
 that 300 VUs is a capacity limit or start the soak from that result. The runner
-writes only timestamped JSON summaries to
-`$HOME/auth-loadgen/load-tests/results/remote/`.
+uses `--warmup-seconds` as a zero-to-target VU ramp and holds the requested VU
+count only after that ramp completes. It writes only timestamped JSON summaries
+to `$HOME/auth-loadgen/load-tests/results/remote/`.
 
 ### Monitoring, result return, and reporting boundary
 
