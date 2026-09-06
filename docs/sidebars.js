@@ -78,7 +78,10 @@ const sidebars = {
       type: 'category',
       label: '운영',
       collapsed: false,
-      items: ['operations/load-test-2026-09-02'],
+      items: [
+        'operations/load-test-2026-09-02',
+        'operations/remote-load-test-2026-09-06',
+      ],
     },
     {
       type: 'category',
