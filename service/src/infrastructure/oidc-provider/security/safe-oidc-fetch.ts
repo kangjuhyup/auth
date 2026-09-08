@@ -1,6 +1,12 @@
 import { lookup as dnsLookup } from 'node:dns/promises';
 import ipaddr from 'ipaddr.js';
-import { Agent } from 'undici';
+import {
+  Agent,
+  fetch as undiciFetch,
+  type RequestInfo as UndiciRequestInfo,
+  type RequestInit as UndiciRequestInit,
+} from 'undici';
+import type { Configuration } from 'oidc-provider';
 
 const DEFAULT_TIMEOUT_MS = 2_500;
 
@@ -27,13 +33,11 @@ export type ValidatedLookup = (
   callback: LookupCallback,
 ) => void;
 
-type ProviderFetch = typeof globalThis.fetch;
-type FetchInput = Parameters<ProviderFetch>[0];
-type FetchInit = NonNullable<Parameters<ProviderFetch>[1]>;
-type FetchResponse = ReturnType<ProviderFetch>;
-type TransportInit = Omit<FetchInit, 'dispatcher'> & {
-  dispatcher?: unknown;
-};
+type ProviderFetch = NonNullable<Configuration['fetch']>;
+type FetchInput = UndiciRequestInfo;
+type FetchInit = UndiciRequestInit;
+type FetchResponse = ReturnType<typeof undiciFetch>;
+type TransportInit = FetchInit;
 type FetchTransport = (
   input: FetchInput,
   init?: TransportInit,
@@ -100,7 +104,7 @@ export function createSafeOidcFetch(
   });
   const transport = options.transport ?? runtimeFetch;
 
-  return async (input, init = {}) => {
+  const safeFetch: FetchTransport = async (input, init = {}) => {
     const url = parseSafeUrl(input);
     assertSafeDestination(url);
 
@@ -117,12 +121,20 @@ export function createSafeOidcFetch(
     };
     return transport(input, dispatchingInit);
   };
+
+  // @types/oidc-provider and npm undici currently use separate copies of the
+  // same Fetch API declarations. Runtime values are interoperable in Node 24.
+  return safeFetch as unknown as ProviderFetch;
 }
 
 const runtimeFetch: FetchTransport = (input, init) => {
-  // Node's global fetch and npm undici use the same runtime dispatcher API,
-  // but their separately versioned declaration packages are not assignable.
-  return globalThis.fetch(input, init as FetchInit);
+  // oidc-provider uses Node's undici-types declarations while this service uses
+  // the npm undici package to inject a validated dispatcher. Keep the cast at
+  // this single transport boundary so the provider-facing signature stays exact.
+  return undiciFetch(
+    input as unknown as UndiciRequestInfo,
+    init as UndiciRequestInit,
+  ) as unknown as FetchResponse;
 };
 
 function combineAbortSignals(

@@ -12,7 +12,7 @@ describe('OIDC resource indicator normalization middleware', () => {
     };
     registerOidcResourceIndicatorNormalization(provider as any);
     const next = jest.fn().mockResolvedValue(undefined);
-    const ctx = {
+    const ctx: any = {
       method: 'GET',
       path: '/auth',
       query: {
@@ -37,7 +37,7 @@ describe('OIDC resource indicator normalization middleware', () => {
     const provider = { use: jest.fn((candidate) => (middleware = candidate)) };
     registerOidcResourceIndicatorNormalization(provider as any);
     const next = jest.fn().mockResolvedValue(undefined);
-    const ctx = {
+    const ctx: any = {
       method: 'GET',
       path: '/auth',
       query: {

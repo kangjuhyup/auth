@@ -3,6 +3,7 @@ import {
   createValidatedLookup,
 } from '@infrastructure/oidc-provider/security/safe-oidc-fetch';
 import type { Configuration } from 'oidc-provider';
+import { Request, Response, type RequestInit } from 'undici';
 
 describe('safe OIDC fetch', () => {
   it('Node 24 provider fetch 계약과 global Request를 그대로 지원한다', async () => {
@@ -94,7 +95,7 @@ describe('safe OIDC fetch', () => {
 
   it('public HTTPS 요청에는 제한된 timeout signal을 전달한다', async () => {
     const transport = jest.fn().mockImplementation(
-      (_url: string | URL, init?: RequestInit) =>
+      (_url: unknown, init?: RequestInit) =>
         new Promise<Response>((_resolve, reject) => {
           init?.signal?.addEventListener('abort', () => {
             reject(init.signal?.reason);
