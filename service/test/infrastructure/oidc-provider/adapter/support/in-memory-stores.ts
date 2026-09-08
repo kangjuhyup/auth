@@ -1,3 +1,4 @@
+import { RawQueryFragment } from '@mikro-orm/core';
 import { OidcModelOrmEntity } from '@infrastructure/mikro-orm/entities/oidc-model';
 import { OidcSessionIndexOrmEntity } from '@infrastructure/mikro-orm/entities/oidc-session-index';
 
@@ -263,13 +264,40 @@ type Where = Record<string, unknown>;
 function matchesWhere(
   entity: OidcModelOrmEntity | OidcSessionIndexOrmEntity,
   where: Where,
+  oidcModels: OidcModelOrmEntity[] = [],
 ): boolean {
   return Object.entries(where).every(([key, value]) => {
     if (key === '$or' && Array.isArray(value)) {
-      return value.some((candidate) => matchesWhere(entity, candidate));
+      return value.some((candidate) =>
+        matchesWhere(entity, candidate, oidcModels),
+      );
     }
 
+    const fragment = RawQueryFragment.getKnownFragment(key);
+    if (fragment) {
+      // This fake supports only the adapter's grant-conflict predicate.
+      // SQL compilation/execution is covered separately from this store.
+      if (
+        !fragment.sql.startsWith('not exists (select 1 from ?? as conflict ')
+      ) {
+        throw new Error('Unsupported raw predicate in in-memory store');
+      }
+      const [, tenantId, kind] = fragment.params;
+      const grantId = (entity as OidcModelOrmEntity).grantId;
+      return (
+        grantId == null ||
+        !oidcModels.some(
+          (row) =>
+            row.tenantId === tenantId &&
+            row.kind === kind &&
+            row.id === grantId,
+        )
+      );
+    }
     const actual = (entity as unknown as Record<string, unknown>)[key];
+    if (isRecord(value) && '$ne' in value) {
+      return value.$ne === null ? actual != null : actual !== value.$ne;
+    }
     if (isRecord(value) && '$in' in value && Array.isArray(value.$in)) {
       return value.$in.includes(actual);
     }
@@ -289,6 +317,7 @@ class LightweightRdbStore {
 }
 
 export class LightweightEntityManager {
+  readonly config = { get: () => undefined };
   constructor(private readonly store = new LightweightRdbStore()) {}
 
   fork(): LightweightEntityManager {
@@ -309,7 +338,23 @@ export class LightweightEntityManager {
     entity: typeof OidcModelOrmEntity | typeof OidcSessionIndexOrmEntity,
     where: Where,
   ): Promise<OidcModelOrmEntity | OidcSessionIndexOrmEntity | null> {
-    return this.rowsFor(entity).find((row) => matchesWhere(row, where)) ?? null;
+    try {
+      return (
+        this.rowsFor(entity).find((row) =>
+          matchesWhere(row, where, this.store.oidcModels),
+        ) ?? null
+      );
+    } finally {
+      // The real ORM releases serialized raw fragments after compiling SQL.
+      const release = (filter: Where): void => {
+        for (const [key, value] of Object.entries(filter)) {
+          if (RawQueryFragment.isKnownFragment(key))
+            RawQueryFragment.remove(key);
+          if (key === '$or' && Array.isArray(value)) value.forEach(release);
+        }
+      };
+      release(where);
+    }
   }
 
   async find(
@@ -317,7 +362,9 @@ export class LightweightEntityManager {
     where: Where,
     options?: { orderBy?: Record<string, 'ASC' | 'DESC'> },
   ): Promise<Array<OidcModelOrmEntity | OidcSessionIndexOrmEntity>> {
-    const rows = this.rowsFor(entity).filter((row) => matchesWhere(row, where));
+    const rows = this.rowsFor(entity).filter((row) =>
+      matchesWhere(row, where, this.store.oidcModels),
+    );
     const [orderKey, direction] =
       Object.entries(options?.orderBy ?? {})[0] ?? [];
     if (orderKey) {
@@ -384,7 +431,9 @@ export class LightweightEntityManager {
   ): Promise<number> {
     const rows = this.rowsFor(entity);
     const before = rows.length;
-    const nextRows = rows.filter((row) => !matchesWhere(row, where));
+    const nextRows = rows.filter(
+      (row) => !matchesWhere(row, where, this.store.oidcModels),
+    );
     if (entity === OidcSessionIndexOrmEntity) {
       this.store.sessionIndexes = nextRows as OidcSessionIndexOrmEntity[];
     } else {
@@ -398,7 +447,9 @@ export class LightweightEntityManager {
     where: Where,
     data: Where,
   ): Promise<number> {
-    const rows = this.rowsFor(entity).filter((row) => matchesWhere(row, where));
+    const rows = this.rowsFor(entity).filter((row) =>
+      matchesWhere(row, where, this.store.oidcModels),
+    );
     for (const row of rows) {
       Object.assign(row, data);
     }

@@ -29,7 +29,10 @@
     "migration:down": "mikro-orm migration:rollback",
     "migration:create": "mikro-orm migration:create",
     "migration:status": "mikro-orm migration:check",
-    "schema:fresh": "mikro-orm schema:drop --run --drop-migrations-table && mikro-orm migration:up"
+    "schema:fresh": "mikro-orm schema:drop --run --drop-migrations-table && mikro-orm migration:up",
+    "start:worker": "nest start --entryFile worker",
+    "start:worker:dev": "node --watch -r ts-node/register -r tsconfig-paths/register src/worker.ts",
+    "start:worker:prod": "node dist/worker.js"
   },
   "dependencies": {
     "@kangjuhyup/rvlog": "^0.2.0",

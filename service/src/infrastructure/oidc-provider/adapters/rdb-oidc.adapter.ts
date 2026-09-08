@@ -1,4 +1,9 @@
-import { EntityManager, LockMode } from '@mikro-orm/core';
+import {
+  EntityManager,
+  LockMode,
+  raw,
+  type FilterQuery,
+} from '@mikro-orm/core';
 import type { Adapter, AdapterPayload } from 'oidc-provider';
 import { OidcModelOrmEntity } from '../../mikro-orm/entities/oidc-model';
 import type { OidcSessionIndexStore } from '../session/oidc-session-index.store';
@@ -81,11 +86,29 @@ export class RdbOidcAdapter implements Adapter {
 
   async find(id: string): Promise<AdapterPayload | undefined> {
     const em = this.em.fork();
-    const model = await em.findOne(OidcModelOrmEntity, {
+    const where: FilterQuery<OidcModelOrmEntity> = {
       tenantId: this.tenantId,
       id,
       kind: this.kind,
-    });
+    };
+    if (OIDC_GRANT_BOUND_KINDS.includes(this.kind as any)) {
+      const schema = em.schema ?? em.config.get('schema');
+      const table = schema ? `${schema}.oidc_model` : 'oidc_model';
+      const noGrantConflict: FilterQuery<OidcModelOrmEntity> = {
+        [raw(
+          (alias) =>
+            `not exists (select 1 from ?? as conflict where conflict.tenant_id = ? and conflict.kind = ? and conflict.id = ${alias}.grant_id)`,
+          [table, this.tenantId, REFRESH_TOKEN_REUSE_GRANT_CONFLICT_KIND],
+        )]: [],
+      };
+      // A consumed refresh token must still reach reuse detection below, even
+      // when its grant is already fenced. Other tokens are filtered in SQL.
+      where.$or =
+        this.kind === 'RefreshToken'
+          ? [{ consumedAt: { $ne: null } }, noGrantConflict]
+          : [noGrantConflict];
+    }
+    const model = await em.findOne(OidcModelOrmEntity, where);
 
     if (!model || this.isExpired(model)) {
       return undefined;
@@ -93,16 +116,6 @@ export class RdbOidcAdapter implements Adapter {
 
     if (this.kind === 'RefreshToken' && model.consumedAt) {
       await this.persistConflictMarkers(model.id, model.grantId ?? null);
-    } else if (
-      typeof model.grantId === 'string' &&
-      OIDC_GRANT_BOUND_KINDS.includes(this.kind as any) &&
-      (await em.findOne(OidcModelOrmEntity, {
-        tenantId: this.tenantId,
-        kind: REFRESH_TOKEN_REUSE_GRANT_CONFLICT_KIND,
-        id: model.grantId,
-      }))
-    ) {
-      return undefined;
     }
 
     return {
