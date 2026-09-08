@@ -76,9 +76,16 @@ const sidebars = {
     },
     {
       type: 'category',
+      label: 'SDK',
+      collapsed: false,
+      items: ['sdks/flutter'],
+    },
+    {
+      type: 'category',
       label: '운영',
       collapsed: false,
       items: [
+        'operations/account-registration',
         'operations/load-test-2026-09-02',
         'operations/remote-load-test-2026-09-06',
       ],

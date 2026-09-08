@@ -7,6 +7,11 @@ export const DEFAULT_SLO = Object.freeze({
   maxCheckFailureRate: 0,
   maxP95MsExclusive: 1000,
   maxP99MsExclusive: 2000,
+  endpointLatency: Object.freeze({
+    introspection: Object.freeze({ maxP95Ms: 200, maxP99Ms: 500 }),
+    userinfo: Object.freeze({ maxP95Ms: 200, maxP99Ms: 500 }),
+    refresh: Object.freeze({ maxP95Ms: 300, maxP99Ms: 1000 }),
+  }),
 });
 
 const ENDPOINT_NAMES = Object.freeze([
@@ -77,22 +82,30 @@ export function evaluateCapacityMetrics(metrics, slo = DEFAULT_SLO) {
 
   for (const endpoint of ENDPOINT_NAMES) {
     const duration = metrics.endpointDurations?.[endpoint];
+    const endpointLimit = limits.endpointLatency?.[endpoint];
+    const p95Limit = endpointLimit?.maxP95Ms ?? limits.maxP95MsExclusive;
+    const p99Limit = endpointLimit?.maxP99Ms ?? limits.maxP99MsExclusive;
+    const comparison = endpointLimit ? '<=' : '<';
     if (!Number.isSafeInteger(duration?.count) || duration.count < 1) {
       violations.push(`endpoint ${endpoint} has no observations`);
       continue;
     }
     if (!Number.isFinite(duration.p95Ms) || duration.p95Ms < 0) {
       violations.push(`endpoint ${endpoint} has invalid p95 latency`);
-    } else if (duration.p95Ms >= limits.maxP95MsExclusive) {
+    } else if (
+      endpointLimit ? duration.p95Ms > p95Limit : duration.p95Ms >= p95Limit
+    ) {
       violations.push(
-        `endpoint ${endpoint} p95 latency must be < ${limits.maxP95MsExclusive} ms`,
+        `endpoint ${endpoint} p95 latency must be ${comparison} ${p95Limit} ms`,
       );
     }
     if (!Number.isFinite(duration.p99Ms) || duration.p99Ms < 0) {
       violations.push(`endpoint ${endpoint} has invalid p99 latency`);
-    } else if (duration.p99Ms >= limits.maxP99MsExclusive) {
+    } else if (
+      endpointLimit ? duration.p99Ms > p99Limit : duration.p99Ms >= p99Limit
+    ) {
       violations.push(
-        `endpoint ${endpoint} p99 latency must be < ${limits.maxP99MsExclusive} ms`,
+        `endpoint ${endpoint} p99 latency must be ${comparison} ${p99Limit} ms`,
       );
     }
   }
