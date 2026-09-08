@@ -1,0 +1,23 @@
+# Optional local Docker worker using the same built Auth image.
+# Run migrations before starting it; this command intentionally bypasses the API entrypoint.
+services:
+  oidc-cleanup-worker:
+    image: ${AUTH_SERVICE_IMAGE:-auth-service:local}
+    restart: unless-stopped
+    init: true
+    entrypoint: ['node', 'dist/worker.js']
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_DRIVER: postgresql
+      DB_HOST: postgres
+      DB_PORT: '5432'
+      DB_NAME: auth
+      DB_USER: postgres
+      DB_PASSWORD: secret
+      OIDC_CLEANUP_INTERVAL_MS: ${OIDC_CLEANUP_INTERVAL_MS:-60000}
+      OIDC_CLEANUP_GRACE_MS: ${OIDC_CLEANUP_GRACE_MS:-300000}
+      OIDC_CLEANUP_BATCH_SIZE: ${OIDC_CLEANUP_BATCH_SIZE:-500}
+      OIDC_CLEANUP_MAX_BATCHES: ${OIDC_CLEANUP_MAX_BATCHES:-10}
+      OIDC_CLEANUP_MAX_RUN_MS: ${OIDC_CLEANUP_MAX_RUN_MS:-5000}

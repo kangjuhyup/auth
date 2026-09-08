@@ -46,6 +46,61 @@ describe('RdbOidcAdapter integration', () => {
     });
   });
 
+  it('grant-bound token 조회와 conflict 검사를 한 번의 조회로 처리한다', async () => {
+    await adapter.upsert('token-1', { grantId: 'grant-1', sub: 'user-1' }, 60);
+    const findOne = jest.spyOn(LightweightEntityManager.prototype, 'findOne');
+    try {
+      await expect(adapter.find('token-1')).resolves.toMatchObject({
+        sub: 'user-1',
+      });
+      expect(findOne).toHaveBeenCalledTimes(1);
+    } finally {
+      findOne.mockRestore();
+    }
+  });
+
+  it('다른 테넌트의 conflict는 같은 grant ID의 토큰을 차단하지 않는다', async () => {
+    await adapter.upsert('token-1', { grantId: 'shared-grant' }, 60);
+    em.create(OidcModelOrmEntity, {
+      tenantId: 'tenant-b',
+      kind: 'RefreshTokenReuseGrantConflict',
+      id: 'shared-grant',
+      payload: {},
+    });
+    await expect(adapter.find('token-1')).resolves.toMatchObject({
+      grantId: 'shared-grant',
+    });
+    em.create(OidcModelOrmEntity, {
+      tenantId: 'tenant-a',
+      kind: 'RefreshTokenReuseGrantConflict',
+      id: 'shared-grant',
+      payload: {},
+    });
+    await expect(adapter.find('token-1')).resolves.toBeUndefined();
+  });
+
+  it('이미 사용된 refresh token은 conflict가 있어도 재사용 마커를 기록한다', async () => {
+    const refresh = new RdbOidcAdapter('tenant-a', 'RefreshToken', em as any);
+    await refresh.upsert('used-refresh', { grantId: 'grant-1' }, 60);
+    await refresh.consume('used-refresh');
+    em.create(OidcModelOrmEntity, {
+      tenantId: 'tenant-a',
+      kind: 'RefreshTokenReuseGrantConflict',
+      id: 'grant-1',
+      payload: {},
+    });
+    await expect(refresh.find('used-refresh')).resolves.toMatchObject({
+      consumed: true,
+    });
+    await expect(
+      em.findOne(OidcModelOrmEntity, {
+        tenantId: 'tenant-a',
+        kind: 'RefreshTokenReuseConflict',
+        id: 'used-refresh',
+      }),
+    ).resolves.toMatchObject({ payload: { grantId: 'grant-1' } });
+  });
+
   it('같은 id로 다시 upsert하면 메타데이터를 갱신한다', async () => {
     await adapter.upsert(
       'token-1',

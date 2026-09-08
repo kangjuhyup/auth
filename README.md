@@ -27,7 +27,10 @@ service/src/
 ├── domain/           # 도메인 모델, 레포지토리 인터페이스, 도메인 이벤트
 ├── application/      # 커맨드/쿼리 핸들러, DTO, 포트(인터페이스)
 ├── infrastructure/   # DB(MikroORM), Redis, OIDC Provider, IdP/MFA 어댑터
-└── presentation/     # REST 컨트롤러, HTTP 미들웨어
+├── presentation/     # REST 컨트롤러, HTTP 미들웨어
+├── main.ts           # HTTP API 진입점
+├── worker.ts         # 독립 OIDC 정리 워커 진입점
+└── worker.module.ts  # DB와 정리 작업만 구성
 ```
 
 ### `ui` — 관리자 콘솔
@@ -126,13 +129,16 @@ yarn interaction-ui:build
 ### 6. 개발 서버 실행
 
 ```bash
-# 백엔드 + 관리 UI 동시 (백그라운드 프로세스 2개)
+# API + OIDC 정리 워커 + 관리 UI를 독립 프로세스로 실행
 yarn dev
 
 # 개별 실행
 yarn service:dev    # API·OIDC — http://localhost:3000
+yarn worker:dev     # 만료된 OIDC 데이터 정리 (HTTP 포트 없음)
 yarn ui:dev         # 관리 콘솔 — http://localhost:5173 (기본)
 ```
+
+`yarn dev` 로그는 `[api]`, `[worker]`, `[ui]`로 구분되며 종료 시 세 프로세스를 함께 정리합니다. API 단독 실행은 워커를 생성하지 않습니다. 운영에서도 API와 워커를 별도 실행 단위로 관리합니다. [정리 워커 운영 안내](docs/docs/operations/oidc-cleanup-worker.md)를 참고하세요.
 
 Interaction 화면을 수정한 뒤에는 다시 `yarn interaction-ui:build` 하고 Nest를 재시작하는 것이 안전합니다.
 

@@ -87,6 +87,7 @@ function createParams(): CreateOidcProviderParams & {
     userQuery: {} as any,
     clientQuery: {} as any,
     configService: {
+      get: jest.fn().mockReturnValue(undefined),
       getOrThrow: jest.fn().mockReturnValue('hybrid'),
     } as any,
     tenantCode: 'acme',
@@ -173,6 +174,7 @@ describe('createOidcProvider', () => {
       const provider = Object.assign(new EventEmitter(), {
         issuer,
         configuration,
+        app: { proxy: false },
         use: jest.fn(),
       });
       provider.on = jest.fn(provider.on.bind(provider));
@@ -258,11 +260,23 @@ describe('createOidcProvider', () => {
     expect(provider).toMatchObject({
       issuer: 'https://auth.example.com/t/acme/oidc',
       configuration: providerConfiguration,
+      app: { proxy: false },
     });
     expect((provider as any).on).toHaveBeenCalledWith(
       'grant.revoked',
       expect.any(Function),
     );
+  });
+
+  it('명시적으로 활성화된 경우에만 provider가 TLS 종료 프록시를 신뢰한다', async () => {
+    const params = createParams();
+    (params.configService.get as jest.Mock).mockImplementation((key) =>
+      key === 'OIDC_TRUST_PROXY' ? 'true' : undefined,
+    );
+
+    const provider = await createOidcProvider(params);
+
+    expect(provider.app.proxy).toBe(true);
   });
 
   it('활성 키가 없으면 새 키를 생성하고 저장한 뒤 Provider를 만든다', async () => {

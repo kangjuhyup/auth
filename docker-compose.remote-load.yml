@@ -1,0 +1,20 @@
+services:
+  auth-service:
+    environment:
+      OIDC_ISSUER: https://auth-service:13443
+      OIDC_TRUST_PROXY: 'true'
+      HTTP_TRUST_PROXY_HOPS: '1'
+
+  load-gateway:
+    image: nginx:1.28.0-alpine
+    restart: 'no'
+    ports:
+      - '192.168.0.18:13443:13443'
+    volumes:
+      - ./load-tests/gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./load-tests/.remote-tls/server/server.crt:/etc/nginx/tls/server.crt:ro
+      - ./load-tests/.remote-tls/server/server.key:/etc/nginx/tls/server.key:ro
+      - ./load-tests/.remote-tls/ca/ca.crt:/etc/nginx/tls/client-ca.crt:ro
+    depends_on:
+      auth-service: { condition: service_healthy }
+    networks: [auth-load]

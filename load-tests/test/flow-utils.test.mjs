@@ -1,0 +1,728 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+  assertProviderResumePath,
+  buildPkce,
+  chooseAction,
+  createOidcSession,
+  extractAuthorizationCode,
+  extractInteractionUid,
+  metricContextForMeasurement,
+  oidcTokenProfiles,
+  refreshOidcSession,
+  resolveAuthorizationCodeWithConsent,
+} from '../k6/flow-utils.js';
+import { userNameFor } from '../k6/payloads.js';
+import { SAFE_SYSTEM_TAGS } from '../k6/system-tags.js';
+import { loadTlsOptions } from '../k6/tls.js';
+import {
+  createMeasurementTiming,
+  createJourneyOptions,
+  createSmokeOptions,
+  measurementMinute,
+  runDeterministicSmoke,
+  runJourneyIteration,
+} from '../k6/scenario.js';
+
+const serviceOrigin = 'http://auth-service:3000';
+const tenantCode = 'loadtest-acme';
+
+test('local k6 mode does not read or configure client certificates', () => {
+  const options = loadTlsOptions({}, () => {
+    throw new Error('local mode must not read certificate files');
+  });
+
+  assert.deepEqual(options, {});
+  assert.equal(Object.isFrozen(options), true);
+});
+
+test('remote mTLS mode accepts only the canonical HTTPS service origin', () => {
+  const unread = () => {
+    throw new Error('invalid targets must fail before reading certificates');
+  };
+
+  for (const baseUrl of [
+    'http://auth-service:13443',
+    'https://auth-service:13443/',
+    'https://other-service:13443',
+    'https://auth-service:443',
+  ]) {
+    assert.throws(
+      () => loadTlsOptions({ REMOTE_MTLS: 'true', BASE_URL: baseUrl }, unread),
+      /exactly https:\/\/auth-service:13443/,
+    );
+  }
+});
+
+test('remote mTLS mode reads fixed client files and enforces TLS 1.2 through 1.3', () => {
+  const reads = [];
+  const options = loadTlsOptions(
+    {
+      REMOTE_MTLS: 'true',
+      BASE_URL: 'https://auth-service:13443',
+    },
+    (path) => {
+      reads.push(path);
+      return path.endsWith('.crt') ? 'fixture-certificate' : 'fixture-key';
+    },
+  );
+
+  assert.deepEqual(reads, ['/certs/client.crt', '/certs/client.key']);
+  assert.deepEqual(options, {
+    tlsAuth: [
+      {
+        domains: ['auth-service'],
+        cert: 'fixture-certificate',
+        key: 'fixture-key',
+      },
+    ],
+    tlsVersion: {
+      min: 'tls1.2',
+      max: 'tls1.3',
+    },
+  });
+  assert.equal(Object.isFrozen(options), true);
+  assert.equal(Object.isFrozen(options.tlsAuth), true);
+  assert.equal(Object.isFrozen(options.tlsAuth[0]), true);
+  assert.equal(Object.isFrozen(options.tlsAuth[0].domains), true);
+  assert.equal(Object.isFrozen(options.tlsVersion), true);
+});
+
+test('buildPkce derives an S256 challenge without retaining the seed', () => {
+  const pkce = buildPkce(
+    'vu=1;iteration=2;random=abcdefghi',
+    (value) => `hash:${value}`,
+  );
+
+  assert.deepEqual(pkce, {
+    verifier: 'dnU9MTtpdGVyYXRpb249MjtyYW5kb209YWJjZGVmZ2hp',
+    challenge: 'hash:dnU9MTtpdGVyYXRpb249MjtyYW5kb209YWJjZGVmZ2hp',
+  });
+  assert.equal(
+    Object.values(pkce).some((value) => value.includes('random=abcdefghi')),
+    false,
+  );
+});
+
+test('buildPkce does not depend on browser-only base64 globals in k6', () => {
+  const originalBtoa = globalThis.btoa;
+  try {
+    globalThis.btoa = undefined;
+    assert.deepEqual(
+      buildPkce(
+        'vu=1;iteration=2;random=abcdefghi',
+        (value) => `hash:${value}`,
+      ),
+      {
+        verifier: 'dnU9MTtpdGVyYXRpb249MjtyYW5kb209YWJjZGVmZ2hp',
+        challenge: 'hash:dnU9MTtpdGVyYXRpb249MjtyYW5kb209YWJjZGVmZ2hp',
+      },
+    );
+  } finally {
+    globalThis.btoa = originalBtoa;
+  }
+});
+
+test('extractInteractionUid accepts only a same-origin interaction path', () => {
+  assert.equal(
+    extractInteractionUid(
+      'http://auth-service:3000/t/loadtest-acme/interaction/AbC-123_~',
+      serviceOrigin,
+      tenantCode,
+    ),
+    'AbC-123_~',
+  );
+  assert.throws(
+    () =>
+      extractInteractionUid(
+        'http://attacker.test/t/loadtest-acme/interaction/AbC',
+        serviceOrigin,
+        tenantCode,
+      ),
+    /provider origin/,
+  );
+  assert.throws(
+    () =>
+      extractInteractionUid(
+        `${serviceOrigin}/t/loadtest-acme/interaction/AbC/extra`,
+        serviceOrigin,
+        tenantCode,
+      ),
+    /interaction path/,
+  );
+});
+
+test('interaction validation rejects a same-origin cross-tenant path', () => {
+  assert.throws(
+    () =>
+      extractInteractionUid(
+        `${serviceOrigin}/t/other-tenant/interaction/AbC`,
+        serviceOrigin,
+        tenantCode,
+      ),
+    /interaction path/,
+  );
+});
+
+test('assertProviderResumePath accepts only a same-origin provider resume path', () => {
+  assert.equal(
+    assertProviderResumePath(
+      '/t/loadtest-acme/oidc/auth/AbC?resume=1',
+      serviceOrigin,
+      tenantCode,
+    ),
+    `${serviceOrigin}/t/loadtest-acme/oidc/auth/AbC?resume=1`,
+  );
+  assert.throws(
+    () =>
+      assertProviderResumePath(
+        'https://attacker.test/resume',
+        serviceOrigin,
+        tenantCode,
+      ),
+    /provider origin/,
+  );
+  assert.throws(
+    () =>
+      assertProviderResumePath(
+        '/t/loadtest-acme/interaction/AbC',
+        serviceOrigin,
+        tenantCode,
+      ),
+    /provider resume path/,
+  );
+});
+
+test('resume validation rejects a same-origin cross-tenant path', () => {
+  assert.throws(
+    () =>
+      assertProviderResumePath(
+        '/t/other-tenant/oidc/auth/AbC?resume=1',
+        serviceOrigin,
+        tenantCode,
+      ),
+    /provider resume path/,
+  );
+});
+
+test('extractAuthorizationCode accepts only the exact RP callback and requires a code', () => {
+  assert.deepEqual(
+    extractAuthorizationCode(
+      'http://localhost:18080/callback?code=opaque-code&state=state-1',
+    ),
+    { code: 'opaque-code', state: 'state-1' },
+  );
+  assert.throws(
+    () =>
+      extractAuthorizationCode(
+        'http://localhost:18080/callback?error=access_denied',
+      ),
+    /authorization code/,
+  );
+  assert.throws(
+    () =>
+      extractAuthorizationCode('http://localhost:18080/other?code=opaque-code'),
+    /redirect URI/,
+  );
+  assert.throws(
+    () =>
+      extractAuthorizationCode(
+        'http://attacker.test/callback?code=opaque-code',
+      ),
+    /redirect URI/,
+  );
+  assert.throws(
+    () =>
+      extractAuthorizationCode(
+        'http://localhost:18080/callback?code=first&code=second&state=state-1',
+      ),
+    /exactly one authorization code/,
+  );
+  assert.throws(
+    () =>
+      extractAuthorizationCode(
+        'http://localhost:18080/callback?code=opaque-code&state=first&state=second',
+      ),
+    /exactly one state/,
+  );
+
+  assert.deepEqual(
+    refreshOidcSession(
+      {
+        accessToken: 'resource-access',
+        refreshToken: 'resource-refresh',
+        userinfoAccessToken: 'userinfo-access',
+      },
+      {
+        accessToken: 'next-resource-access',
+        refreshToken: 'next-resource-refresh',
+      },
+    ),
+    {
+      accessToken: 'next-resource-access',
+      refreshToken: 'next-resource-refresh',
+      userinfoAccessToken: 'userinfo-access',
+    },
+  );
+});
+
+test('redirect parsing does not depend on a browser-only URL global in k6', () => {
+  const originalUrl = globalThis.URL;
+  try {
+    globalThis.URL = undefined;
+    assert.equal(
+      extractInteractionUid(
+        '/t/loadtest-acme/interaction/AbC-123_~',
+        serviceOrigin,
+        tenantCode,
+      ),
+      'AbC-123_~',
+    );
+    assert.equal(
+      assertProviderResumePath(
+        '/t/loadtest-acme/oidc/auth/AbC?resume=1',
+        serviceOrigin,
+        tenantCode,
+      ),
+      `${serviceOrigin}/t/loadtest-acme/oidc/auth/AbC?resume=1`,
+    );
+    assert.deepEqual(
+      extractAuthorizationCode(
+        'http://localhost:18080/callback?code=opaque-code&state=state-1',
+      ),
+      { code: 'opaque-code', state: 'state-1' },
+    );
+  } finally {
+    globalThis.URL = originalUrl;
+  }
+});
+
+test('authorization continuation returns a direct callback without consent', () => {
+  const failIfCalled = () => {
+    throw new Error('consent handler must not run');
+  };
+
+  assert.deepEqual(
+    resolveAuthorizationCodeWithConsent(
+      'http://localhost:18080/callback?code=direct-code&state=direct-state',
+      serviceOrigin,
+      tenantCode,
+      {
+        readConsentDetails: failIfCalled,
+        submitConsent: failIfCalled,
+        resumeProvider: failIfCalled,
+      },
+    ),
+    { code: 'direct-code', state: 'direct-state' },
+  );
+});
+
+test('authorization continuation completes exactly one consent interaction', () => {
+  assert.deepEqual(
+    resolveAuthorizationCodeWithConsent(
+      '/t/loadtest-acme/interaction/Consent-1',
+      serviceOrigin,
+      tenantCode,
+      {
+        readConsentDetails: (uid) => ({ uid, prompt: 'consent' }),
+        submitConsent: () => ({
+          success: true,
+          redirectTo: '/t/loadtest-acme/oidc/auth/Resume-1',
+        }),
+        resumeProvider: () =>
+          'http://localhost:18080/callback?code=consented-code&state=consented-state',
+      },
+    ),
+    { code: 'consented-code', state: 'consented-state' },
+  );
+});
+
+test('authorization continuation fails closed for invalid consent transitions', () => {
+  const validHandlers = {
+    readConsentDetails: (uid) => ({ uid, prompt: 'consent' }),
+    submitConsent: () => ({
+      success: true,
+      redirectTo: '/t/loadtest-acme/oidc/auth/Resume-1',
+    }),
+    resumeProvider: () =>
+      'http://localhost:18080/callback?code=consented-code&state=consented-state',
+  };
+  const cases = [
+    {
+      location: 'http://attacker.test/t/loadtest-acme/interaction/Consent-1',
+      handlers: validHandlers,
+    },
+    {
+      location: '/not-an-interaction',
+      handlers: validHandlers,
+    },
+    {
+      location: '/t/loadtest-acme/interaction/Consent-1',
+      handlers: {
+        ...validHandlers,
+        readConsentDetails: (uid) => ({ uid, prompt: 'login' }),
+      },
+    },
+    {
+      location: '/t/loadtest-acme/interaction/Consent-1',
+      handlers: {
+        ...validHandlers,
+        submitConsent: () => ({ success: true }),
+      },
+    },
+    {
+      location: '/t/loadtest-acme/interaction/Consent-1',
+      handlers: {
+        ...validHandlers,
+        resumeProvider: () => '/t/loadtest-acme/interaction/Consent-2',
+      },
+    },
+  ];
+
+  for (const { location, handlers } of cases) {
+    assert.throws(
+      () =>
+        resolveAuthorizationCodeWithConsent(
+          location,
+          serviceOrigin,
+          tenantCode,
+          handlers,
+        ),
+      /^Error: authorization continuation failed$/,
+    );
+  }
+});
+
+test('authorization continuation errors never expose callback or token-like input', () => {
+  const sensitive = 'sensitive-code-material';
+  assert.throws(
+    () =>
+      resolveAuthorizationCodeWithConsent(
+        `http://localhost:18080/callback?code=${sensitive}`,
+        serviceOrigin,
+        tenantCode,
+        {
+          readConsentDetails: () => ({}),
+          submitConsent: () => ({}),
+          resumeProvider: () => '',
+        },
+      ),
+    (error) => {
+      assert.equal(error.message, 'authorization continuation failed');
+      assert.doesNotMatch(error.message, new RegExp(sensitive));
+      assert.doesNotMatch(error.message, /localhost|callback|code=/);
+      return true;
+    },
+  );
+});
+
+test('OIDC session separates resource and UserInfo token audiences', () => {
+  assert.deepEqual(oidcTokenProfiles('https://resource.example.test'), {
+    resource: {
+      resource: 'https://resource.example.test',
+      scope: 'openid profile email offline_access',
+      requiresRefreshToken: true,
+    },
+    userinfo: {
+      scope: 'openid profile email',
+      requiresRefreshToken: false,
+    },
+  });
+
+  assert.deepEqual(
+    createOidcSession(
+      { accessToken: 'resource-access', refreshToken: 'resource-refresh' },
+      { accessToken: 'userinfo-access' },
+    ),
+    {
+      accessToken: 'resource-access',
+      refreshToken: 'resource-refresh',
+      userinfoAccessToken: 'userinfo-access',
+    },
+  );
+});
+
+test('safe k6 system tags keep only fixed status and method dimensions', () => {
+  assert.deepEqual(SAFE_SYSTEM_TAGS, ['status', 'method']);
+  assert.equal(SAFE_SYSTEM_TAGS.includes('url'), false);
+  assert.equal(SAFE_SYSTEM_TAGS.includes('name'), false);
+});
+
+test('userNameFor enforces positive safe user-index boundaries', () => {
+  assert.equal(userNameFor(1), 'loadtest-user-0001');
+  assert.equal(userNameFor(10_000), 'loadtest-user-10000');
+  assert.throws(() => userNameFor(0), /positive safe integer/);
+  assert.throws(
+    () => userNameFor(Number.MAX_SAFE_INTEGER + 1),
+    /positive safe integer/,
+  );
+});
+
+test('chooseAction implements the approved cumulative weights', () => {
+  assert.equal(chooseAction(0.0), 'introspection');
+  assert.equal(chooseAction(0.449999), 'introspection');
+  assert.equal(chooseAction(0.45), 'userinfo');
+  assert.equal(chooseAction(0.7), 'refresh');
+  assert.equal(chooseAction(0.82), 'discovery');
+  assert.equal(chooseAction(0.9), 'jwks');
+  assert.equal(chooseAction(0.95), 'relogin');
+  assert.throws(() => chooseAction(-0.001), /between 0 and 1/);
+  assert.throws(() => chooseAction(1), /between 0 and 1/);
+});
+
+test('createJourneyOptions ramps from zero during warmup and holds target VUs during measurement', () => {
+  assert.deepEqual(
+    createJourneyOptions(
+      { vus: 7, warmupSeconds: 2, measureSeconds: 3 },
+      false,
+    ),
+    {
+      systemTags: ['status', 'method'],
+      scenarios: {
+        users: {
+          executor: 'ramping-vus',
+          startVUs: 0,
+          stages: [
+            { duration: '2s', target: 7 },
+            { duration: '3s', target: 7 },
+          ],
+          gracefulStop: '30s',
+        },
+      },
+      summaryTrendStats: ['count', 'min', 'avg', 'max', 'p(95)', 'p(99)'],
+      thresholds: {
+        load_harness_failure: [{ threshold: 'rate==0', abortOnFail: true }],
+      },
+    },
+  );
+});
+
+test('createJourneyOptions cannot expose a deliberately impossible threshold', () => {
+  assert.deepEqual(
+    createJourneyOptions({ vus: 1, warmupSeconds: 1, measureSeconds: 1 }, true)
+      .thresholds,
+    { load_harness_failure: [{ threshold: 'rate==0', abortOnFail: true }] },
+  );
+});
+
+test('one setup timing gives every VU the same bounded soak minute boundaries', () => {
+  const timing = createMeasurementTiming(
+    Date.parse('2026-09-02T01:02:03.004Z'),
+    60,
+  );
+  const epoch = Date.parse('2026-09-02T01:03:03.004Z');
+
+  assert.deepEqual(timing, { measurementEpochMs: epoch });
+  for (const simulatedVu of [1, 2, 1_000]) {
+    assert.equal(
+      measurementMinute(epoch, timing.measurementEpochMs, 61),
+      0,
+      `VU ${simulatedVu} starts in minute zero`,
+    );
+    assert.equal(
+      measurementMinute(epoch + 59_999, timing.measurementEpochMs, 61),
+      0,
+    );
+    assert.equal(
+      measurementMinute(epoch + 60_000, timing.measurementEpochMs, 61),
+      1,
+    );
+    assert.equal(
+      measurementMinute(epoch + 61_000, timing.measurementEpochMs, 61),
+      1,
+      'the exact final edge remains in the final bucket',
+    );
+  }
+});
+
+test('soak minute calculation supports every bounded duration and rejects invalid epochs', () => {
+  const epoch = 1_700_000_000_000;
+  for (const [seconds, expectedLastMinute] of [
+    [1, 0],
+    [60, 0],
+    [61, 1],
+    [1_800, 29],
+  ]) {
+    assert.equal(
+      measurementMinute(epoch + seconds * 1_000, epoch, seconds),
+      expectedLastMinute,
+    );
+  }
+  assert.throws(() => measurementMinute(epoch - 1, epoch, 61), /measurement/);
+  assert.throws(() => measurementMinute(epoch, 1.5, 61), /epoch/);
+});
+
+test('unmeasured warmup metric context never resolves a soak minute', () => {
+  let minuteCalls = 0;
+  const context = metricContextForMeasurement({
+    measuring: false,
+    runKind: 'soak',
+    measurementMinute: () => {
+      minuteCalls += 1;
+      throw new Error('pre-epoch minute must not be resolved');
+    },
+  });
+
+  assert.deepEqual(context, { runKind: 'soak' });
+  assert.equal(minuteCalls, 0);
+});
+
+test('measured soak metric context resolves exactly one minute and fails before the epoch', () => {
+  let minuteCalls = 0;
+  assert.deepEqual(
+    metricContextForMeasurement({
+      measuring: true,
+      runKind: 'soak',
+      measurementMinute: () => {
+        minuteCalls += 1;
+        return 1;
+      },
+    }),
+    { runKind: 'soak', minute: 1 },
+  );
+  assert.equal(minuteCalls, 1);
+
+  const epoch = 1_700_000_000_000;
+  assert.throws(
+    () =>
+      metricContextForMeasurement({
+        measuring: true,
+        runKind: 'soak',
+        measurementMinute: () => measurementMinute(epoch - 1, epoch, 61),
+      }),
+    /measurement has not started/,
+  );
+});
+
+test('journey iteration completes a pre-epoch soak login without custom SLO samples', () => {
+  const startedAt = 1_700_000_000_000;
+  const timing = createMeasurementTiming(startedAt, 15);
+  let minuteCalls = 0;
+  let customSamples = 0;
+  const measurementContext = (measuring) => {
+    const context = metricContextForMeasurement({
+      measuring,
+      runKind: 'soak',
+      measurementMinute: () => {
+        minuteCalls += 1;
+        return measurementMinute(
+          startedAt + 1_000,
+          timing.measurementEpochMs,
+          61,
+        );
+      },
+    });
+    if (measuring) customSamples += 1;
+    return context;
+  };
+  const oidc = {
+    login(_userIndex, measuring) {
+      measurementContext(measuring);
+      return { session: 'warmup' };
+    },
+    execute(_action, session, _userIndex, measuring) {
+      measurementContext(measuring);
+      return session;
+    },
+  };
+
+  const result = runJourneyIteration({
+    oidc,
+    session: undefined,
+    userIndex: 1,
+    timing,
+    now: () => startedAt + 1_000,
+    actionValue: 0,
+  });
+
+  assert.deepEqual(result, {
+    session: { session: 'warmup' },
+    initialized: true,
+    measuring: false,
+  });
+  assert.equal(minuteCalls, 0);
+  assert.equal(customSamples, 0);
+});
+
+test('journey iteration samples the measurement clock after an initial login completes', () => {
+  const events = [];
+  const timing = createMeasurementTiming(1_700_000_000_000, 1);
+  runJourneyIteration({
+    oidc: {
+      login() {
+        events.push('login');
+        return { session: 'ready' };
+      },
+      execute(_action, session, _userIndex, measuring) {
+        events.push(`execute:${measuring}`);
+        return session;
+      },
+    },
+    session: undefined,
+    userIndex: 1,
+    timing,
+    now: () => {
+      events.push('clock');
+      return timing.measurementEpochMs;
+    },
+    actionValue: 0,
+  });
+
+  assert.deepEqual(events, ['login', 'clock', 'execute:true']);
+});
+
+test('createSmokeOptions uses a single deterministic VU and requires every check to pass', () => {
+  assert.deepEqual(createSmokeOptions(), {
+    systemTags: ['status', 'method'],
+    vus: 1,
+    iterations: 1,
+    thresholds: {
+      checks: ['rate==1'],
+      load_harness_failure: ['rate==0'],
+    },
+    summaryTrendStats: ['count', 'min', 'avg', 'max', 'p(95)', 'p(99)'],
+  });
+});
+
+test('runDeterministicSmoke covers every OIDC action in the required protocol order', () => {
+  const calls = [];
+  const initialSession = {
+    accessToken: 'opaque-access',
+    refreshToken: 'opaque-refresh',
+  };
+  const refreshedSession = {
+    accessToken: 'next-access',
+    refreshToken: 'next-refresh',
+  };
+  const oidc = {
+    login: (userIndex, measuring) => {
+      calls.push(['login', userIndex, measuring]);
+      return initialSession;
+    },
+    introspect: (session, measuring) =>
+      calls.push(['introspect', session, measuring]),
+    userinfo: (session, measuring) =>
+      calls.push(['userinfo', session, measuring]),
+    refresh: (session, measuring) => {
+      calls.push(['refresh', session, measuring]);
+      return refreshedSession;
+    },
+    discovery: (measuring) => calls.push(['discovery', measuring]),
+    jwks: (measuring) => calls.push(['jwks', measuring]),
+    revokeAndRelogin: (session, userIndex, measuring) => {
+      calls.push(['revokeAndRelogin', session, userIndex, measuring]);
+    },
+  };
+
+  runDeterministicSmoke(oidc);
+
+  assert.deepEqual(calls, [
+    ['login', 1, false],
+    ['introspect', initialSession, true],
+    ['userinfo', initialSession, true],
+    ['refresh', initialSession, true],
+    ['discovery', true],
+    ['jwks', true],
+    ['revokeAndRelogin', refreshedSession, 1, true],
+  ]);
+});

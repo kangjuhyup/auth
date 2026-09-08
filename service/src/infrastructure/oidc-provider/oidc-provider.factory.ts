@@ -127,6 +127,8 @@ export async function createOidcProvider(
   const Provider = await loadOidcProviderConstructor();
 
   const provider = new Provider(params.issuer, configuration);
+  provider.app.proxy =
+    params.configService.get<string>('OIDC_TRUST_PROXY') === 'true';
   registerOidcResourceIndicatorNormalization(provider);
   const refreshTokenReuseStore = new RefreshTokenReuseStore(
     tenant.id,

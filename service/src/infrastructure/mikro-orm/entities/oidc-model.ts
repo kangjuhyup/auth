@@ -1,6 +1,7 @@
 import { Entity, PrimaryKey, Property, Index } from '@mikro-orm/core';
 
 @Entity({ tableName: 'oidc_model' })
+@Index({ properties: ['expiresAt'], name: 'idx_oidc_model_expires_at' })
 @Index({
   properties: ['tenantId', 'kind', 'uid'],
   name: 'idx_oidc_model_tenant_kind_uid',
@@ -45,10 +46,10 @@ export class OidcModelOrmEntity {
   })
   userCode?: string | null;
 
-  @Property({ fieldName: 'consumed_at', nullable: true })
+  @Property({ fieldName: 'consumed_at', type: 'datetime', nullable: true })
   consumedAt?: Date | null;
 
-  @Property({ fieldName: 'expires_at', nullable: true })
+  @Property({ fieldName: 'expires_at', type: 'datetime', nullable: true })
   expiresAt?: Date | null;
 
   @Property({ fieldName: 'created_at', onCreate: () => new Date() })

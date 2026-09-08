@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="440" viewBox="0 0 960 440" role="img" aria-labelledby="title desc">
+  <title id="title">실제 사용 패턴 기반 트래픽 구성</title>
+  <desc id="desc">Introspection 45퍼센트, UserInfo 25퍼센트, refresh 12퍼센트, discovery 8퍼센트, JWKS 5퍼센트, revoke logout 및 relogin 5퍼센트로 구성됐다.</desc>
+  <rect width="960" height="440" rx="18" fill="#f8fafc"/>
+  <text x="48" y="48" font-family="system-ui, sans-serif" font-size="24" font-weight="700" fill="#0f172a">실제 사용 패턴 기반 트래픽</text>
+  <text x="48" y="75" font-family="system-ui, sans-serif" font-size="14" fill="#475569">각 VU의 최초 OIDC 로그인 이후 steady-state 요청 비율</text>
+  <defs><clipPath id="bar"><rect x="80" y="115" width="800" height="76" rx="12"/></clipPath></defs>
+  <g clip-path="url(#bar)">
+    <rect x="80" y="115" width="360" height="76" fill="#1d4ed8"/>
+    <rect x="440" y="115" width="200" height="76" fill="#0f766e"/>
+    <rect x="640" y="115" width="96" height="76" fill="#7c3aed"/>
+    <rect x="736" y="115" width="64" height="76" fill="#d97706"/>
+    <rect x="800" y="115" width="40" height="76" fill="#db2777"/>
+    <rect x="840" y="115" width="40" height="76" fill="#475569"/>
+  </g>
+  <g font-family="system-ui, sans-serif" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">
+    <text x="260" y="150">Introspection</text><text x="260" y="172">45%</text>
+    <text x="540" y="150">UserInfo</text><text x="540" y="172">25%</text>
+    <text x="688" y="150">Refresh</text><text x="688" y="172">12%</text>
+    <text x="768" y="159">8%</text>
+  </g>
+  <g font-family="system-ui, sans-serif" font-size="14" fill="#334155">
+    <rect x="95" y="236" width="14" height="14" rx="3" fill="#1d4ed8"/><text x="120" y="248">Introspection · 45%</text>
+    <rect x="95" y="276" width="14" height="14" rx="3" fill="#0f766e"/><text x="120" y="288">UserInfo · 25%</text>
+    <rect x="95" y="316" width="14" height="14" rx="3" fill="#7c3aed"/><text x="120" y="328">Refresh token rotation · 12%</text>
+    <rect x="500" y="236" width="14" height="14" rx="3" fill="#d97706"/><text x="525" y="248">Discovery · 8%</text>
+    <rect x="500" y="276" width="14" height="14" rx="3" fill="#db2777"/><text x="525" y="288">JWKS · 5%</text>
+    <rect x="500" y="316" width="14" height="14" rx="3" fill="#475569"/><text x="525" y="328">Revoke/logout + relogin · 5%</text>
+  </g>
+  <line x1="80" y1="370" x2="880" y2="370" stroke="#cbd5e1"/>
+  <text x="480" y="404" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" fill="#475569">로그인 · token exchange · introspection · UserInfo · refresh · discovery · JWKS · revoke/relogin 전체 흐름 검증</text>
+</svg>

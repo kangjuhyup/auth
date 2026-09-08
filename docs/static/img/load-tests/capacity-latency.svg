@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="480" viewBox="0 0 960 480" role="img" aria-labelledby="title desc">
+  <title id="title">동시 VU별 전체 요청 p95와 p99 지연시간</title>
+  <desc id="desc">10에서 200 VU까지 전체 요청 p95는 29.79에서 56.19 밀리초, 전체 요청 p99는 38.73에서 105.89 밀리초 범위로 관측됐다.</desc>
+  <rect width="960" height="480" rx="18" fill="#f8fafc"/>
+  <text x="48" y="45" font-family="system-ui, sans-serif" font-size="24" font-weight="700" fill="#0f172a">VU별 전체 요청 지연시간</text>
+  <text x="48" y="70" font-family="system-ui, sans-serif" font-size="14" fill="#475569">표시 범위 0–120ms · SLO는 p95 1,000ms / p99 2,000ms 미만</text>
+  <g stroke="#cbd5e1" stroke-width="1">
+    <line x1="90" y1="380" x2="910" y2="380"/>
+    <line x1="90" y1="305" x2="910" y2="305" stroke-dasharray="4 5"/>
+    <line x1="90" y1="230" x2="910" y2="230" stroke-dasharray="4 5"/>
+    <line x1="90" y1="155" x2="910" y2="155" stroke-dasharray="4 5"/>
+    <line x1="90" y1="80" x2="910" y2="80" stroke-dasharray="4 5"/>
+  </g>
+  <g font-family="system-ui, sans-serif" font-size="12" fill="#64748b" text-anchor="end">
+    <text x="80" y="384">0</text><text x="80" y="309">30</text><text x="80" y="234">60</text><text x="80" y="159">90</text><text x="80" y="84">120</text>
+  </g>
+  <text x="25" y="235" transform="rotate(-90 25 235)" font-family="system-ui, sans-serif" font-size="13" fill="#475569">지연시간 (ms)</text>
+  <path d="M120 302.9 L310 305.5 L500 305.5 L690 301.6 L880 239.5" fill="none" stroke="#2563eb" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M120 282.8 L310 283.2 L500 275.2 L690 260.7 L880 115.3" fill="none" stroke="#ea580c" stroke-width="4" stroke-linejoin="round"/>
+  <g fill="#2563eb"><circle cx="120" cy="302.9" r="5"/><circle cx="310" cy="305.5" r="5"/><circle cx="500" cy="305.5" r="5"/><circle cx="690" cy="301.6" r="5"/><circle cx="880" cy="239.5" r="6"/></g>
+  <g fill="#ea580c"><circle cx="120" cy="282.8" r="5"/><circle cx="310" cy="283.2" r="5"/><circle cx="500" cy="275.2" r="5"/><circle cx="690" cy="260.7" r="5"/><circle cx="880" cy="115.3" r="6"/></g>
+  <g font-family="system-ui, sans-serif" font-size="13" fill="#334155" text-anchor="middle">
+    <text x="120" y="407">10</text><text x="310" y="407">25</text><text x="500" y="407">50</text><text x="690" y="407">100</text><text x="880" y="407">200</text><text x="500" y="439">동시 VU</text>
+  </g>
+  <g font-family="system-ui, sans-serif" font-size="13" font-weight="700">
+    <circle cx="690" cy="40" r="5" fill="#2563eb"/><text x="702" y="45" fill="#1e3a8a">전체 p95</text>
+    <circle cx="790" cy="40" r="5" fill="#ea580c"/><text x="802" y="45" fill="#9a3412">전체 p99</text>
+    <text x="865" y="226" text-anchor="end" fill="#1e3a8a">56.19ms</text>
+    <text x="865" y="103" text-anchor="end" fill="#9a3412">105.89ms</text>
+  </g>
+</svg>

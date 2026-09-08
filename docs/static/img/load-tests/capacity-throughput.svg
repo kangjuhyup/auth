@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="480" viewBox="0 0 960 480" role="img" aria-labelledby="title desc">
+  <title id="title">동시 VU 증가에 따른 처리량</title>
+  <desc id="desc">10 VU에서 8.72 RPS, 25 VU에서 23.31 RPS, 50 VU에서 42.53 RPS, 100 VU에서 89.47 RPS, 200 VU에서 177.46 RPS를 기록했고 모두 통과했다.</desc>
+  <rect width="960" height="480" rx="18" fill="#f8fafc"/>
+  <text x="48" y="45" font-family="system-ui, sans-serif" font-size="24" font-weight="700" fill="#0f172a">용량 증가에 따른 처리량</text>
+  <text x="48" y="70" font-family="system-ui, sans-serif" font-size="14" fill="#475569">60초 워밍업 + 180초 측정 · 모든 단계 SLO PASS</text>
+  <g stroke="#cbd5e1" stroke-width="1">
+    <line x1="90" y1="380" x2="910" y2="380"/>
+    <line x1="90" y1="305" x2="910" y2="305" stroke-dasharray="4 5"/>
+    <line x1="90" y1="230" x2="910" y2="230" stroke-dasharray="4 5"/>
+    <line x1="90" y1="155" x2="910" y2="155" stroke-dasharray="4 5"/>
+    <line x1="90" y1="80" x2="910" y2="80" stroke-dasharray="4 5"/>
+  </g>
+  <g font-family="system-ui, sans-serif" font-size="12" fill="#64748b" text-anchor="end">
+    <text x="80" y="384">0</text><text x="80" y="309">50</text><text x="80" y="234">100</text><text x="80" y="159">150</text><text x="80" y="84">200</text>
+  </g>
+  <text x="25" y="235" transform="rotate(-90 25 235)" font-family="system-ui, sans-serif" font-size="13" fill="#475569">처리량 (RPS)</text>
+  <g fill="#2563eb">
+    <rect x="125" y="367" width="100" height="13" rx="5"/><rect x="285" y="345" width="100" height="35" rx="5"/><rect x="445" y="316" width="100" height="64" rx="5"/><rect x="605" y="246" width="100" height="134" rx="5"/><rect x="765" y="114" width="100" height="266" rx="5"/>
+  </g>
+  <g font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="#1e3a8a" text-anchor="middle">
+    <text x="175" y="357">8.72</text><text x="335" y="335">23.31</text><text x="495" y="306">42.53</text><text x="655" y="236">89.47</text><text x="815" y="104">177.46</text>
+  </g>
+  <g font-family="system-ui, sans-serif" font-size="13" fill="#334155" text-anchor="middle">
+    <text x="175" y="407">10 VU</text><text x="335" y="407">25 VU</text><text x="495" y="407">50 VU</text><text x="655" y="407">100 VU</text><text x="815" y="407">200 VU</text>
+  </g>
+  <g font-family="system-ui, sans-serif" font-size="12" fill="#15803d" text-anchor="middle">
+    <text x="175" y="431">PASS</text><text x="335" y="431">PASS</text><text x="495" y="431">PASS</text><text x="655" y="431">PASS</text><text x="815" y="431">PASS</text>
+  </g>
+</svg>

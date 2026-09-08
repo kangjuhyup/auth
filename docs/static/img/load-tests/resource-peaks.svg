@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="500" viewBox="0 0 960 500" role="img" aria-labelledby="title desc">
+  <title id="title">전체 부하 테스트 실행의 컨테이너별 최대 CPU와 메모리 사용량</title>
+  <desc id="desc">용량 탐색과 30분 soak를 합친 전체 실행에서 Auth 서비스는 CPU 163.88퍼센트와 메모리 414 메비바이트, PostgreSQL은 29.51퍼센트와 125 메비바이트, Redis는 4.41퍼센트와 71.1 메비바이트를 기록했다.</desc>
+  <rect width="960" height="500" rx="18" fill="#f8fafc"/>
+  <text x="48" y="45" font-family="system-ui, sans-serif" font-size="24" font-weight="700" fill="#0f172a">전체 실행 자원 피크</text>
+  <text x="48" y="70" font-family="system-ui, sans-serif" font-size="14" fill="#475569">용량 탐색 + 30분 soak · 626개 모니터 샘플 · 재시작/중단/누락 없음</text>
+  <text x="250" y="110" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" font-weight="700" fill="#334155">최대 CPU (%)</text>
+  <text x="710" y="110" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" font-weight="700" fill="#334155">최대 메모리 (MiB)</text>
+  <g stroke="#cbd5e1" stroke-width="1">
+    <line x1="70" y1="400" x2="440" y2="400"/><line x1="520" y1="400" x2="900" y2="400"/>
+    <line x1="70" y1="250" x2="440" y2="250" stroke-dasharray="4 5"/><line x1="520" y1="250" x2="900" y2="250" stroke-dasharray="4 5"/>
+    <line x1="70" y1="100" x2="440" y2="100" stroke-dasharray="4 5"/><line x1="520" y1="100" x2="900" y2="100" stroke-dasharray="4 5"/>
+  </g>
+  <g fill="#2563eb"><rect x="95" y="127" width="80" height="273" rx="6"/><rect x="215" y="351" width="80" height="49" rx="6"/><rect x="335" y="393" width="80" height="7" rx="4"/></g>
+  <g fill="#0f766e"><rect x="545" y="124" width="80" height="276" rx="6"/><rect x="665" y="317" width="80" height="83" rx="6"/><rect x="785" y="353" width="80" height="47" rx="6"/></g>
+  <g font-family="system-ui, sans-serif" font-size="13" font-weight="700" text-anchor="middle">
+    <text x="135" y="117" fill="#1e3a8a">163.88%</text><text x="255" y="341" fill="#1e3a8a">29.51%</text><text x="375" y="383" fill="#1e3a8a">4.41%</text>
+    <text x="585" y="114" fill="#115e59">414.0</text><text x="705" y="307" fill="#115e59">125.0</text><text x="825" y="343" fill="#115e59">71.1</text>
+  </g>
+  <g font-family="system-ui, sans-serif" font-size="12" fill="#334155" text-anchor="middle">
+    <text x="135" y="425">Auth</text><text x="255" y="425">PostgreSQL</text><text x="375" y="425">Redis</text>
+    <text x="585" y="425">Auth</text><text x="705" y="425">PostgreSQL</text><text x="825" y="425">Redis</text>
+  </g>
+  <text x="480" y="470" text-anchor="middle" font-family="system-ui, sans-serif" font-size="13" fill="#15803d">모든 대상: restart 0 · stopped 0 · missing 0 · dependency error 0</text>
+</svg>
