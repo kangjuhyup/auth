@@ -7,14 +7,16 @@ import {
 import { UserQueryPort } from '@application/queries/ports/user-query.port';
 import { LoginAttemptPolicyPort } from '@application/ports/login-attempt-policy.port';
 import { OperationalMetricsPort } from '@application/ports/operational-metrics.port';
-import type { TenantContext } from '@application/dto';
+import { SignupDto, type TenantContext } from '@application/dto';
 import { AuditRecorder } from '@application/services/audit-recorder';
 import { AuthCommandPort } from '../ports/auth-command.port';
+import { RegistrationEligibilityPort } from '@application/ports/registration-eligibility.port';
 
 type PendingMfaSession = Readonly<{
   userId: string;
   tenantId: string;
   expiresAt: number;
+  completion: 'login' | 'signup';
 }>;
 
 type PendingPasswordChangeSession = Readonly<{
@@ -45,6 +47,7 @@ export class InteractionCommandHandler
     private readonly loginAttemptPolicy: LoginAttemptPolicyPort,
     private readonly metrics: OperationalMetricsPort,
     private readonly authCommand: AuthCommandPort,
+    private readonly registrationEligibility: RegistrationEligibilityPort,
     private readonly auditRecorder?: AuditRecorder,
   ) {
     super();
@@ -194,6 +197,130 @@ export class InteractionCommandHandler
       mfaEnabled: result.mfaEnabled,
       req: params.req,
       res: params.res,
+      completion: 'login',
+    });
+  }
+
+  async submitSignup(params: {
+    tenantCode: string;
+    uid: string;
+    username: string;
+    password: string;
+    handoffId: string;
+    email?: string;
+    phone?: string;
+    ipAddress?: string;
+    userAgent?: string;
+    correlationId?: string;
+    req: unknown;
+    res: unknown;
+    tenant?: TenantContext;
+  }): Promise<InteractionResponse> {
+    if (!params.tenant) {
+      return { status: 400, body: { error: 'tenant_not_found' } };
+    }
+
+    const details = await this.oidcInteraction.getDetails({
+      tenantCode: params.tenantCode,
+      uid: params.uid,
+      req: params.req,
+      res: params.res,
+      tenant: params.tenant,
+    });
+    if (details.prompt !== 'login' && details.prompt !== 'create') {
+      return {
+        status: 400,
+        body: { error: 'signup_interaction_required' },
+      };
+    }
+    if (!details.signupAllowed) {
+      return { status: 403, body: { error: 'signup_not_allowed' } };
+    }
+
+    if (!params.handoffId.trim()) {
+      return {
+        status: 400,
+        body: { error: 'registration_handoff_required' },
+      };
+    }
+
+    const attemptId = `${params.tenant.id}:${params.uid}`;
+    let registrationId: string;
+    let userId: string;
+    try {
+      const resumed = await this.authCommand.resumeRegistrationAttempt(
+        params.tenant.id,
+        attemptId,
+      );
+      if (resumed) {
+        registrationId = resumed.registrationId;
+        userId = resumed.userId;
+      } else {
+        const eligibility = await this.registrationEligibility.claim({
+          handoffId: params.handoffId.trim(),
+          tenantId: params.tenant.id,
+          clientId: details.clientId,
+          attemptId,
+        });
+        const created = await this.authCommand.createPendingRegistration(
+          params.tenant.id,
+          SignupDto.of({
+            username: params.username,
+            password: params.password,
+            email: params.email,
+            phone: params.phone,
+          }),
+          {
+            registrationId: eligibility.registrationId,
+            attemptId: eligibility.attemptId,
+          },
+        );
+        registrationId = eligibility.registrationId;
+        userId = created.userId;
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message === 'SignupNotAllowed') {
+        return { status: 403, body: { error: 'signup_not_allowed' } };
+      }
+      if (
+        error instanceof Error &&
+        error.message === 'RegistrationResumeNotAllowed'
+      ) {
+        return { status: 409, body: { error: 'registration_state_conflict' } };
+      }
+      if (this.isRegistrationFailure(error)) {
+        return this.registrationFailure(error);
+      }
+      throw error;
+    }
+
+    try {
+      await this.registrationEligibility.complete({
+        registrationId,
+        attemptId,
+        issuer: details.issuer,
+        subject: userId,
+      });
+      await this.authCommand.activatePendingRegistration(
+        params.tenant.id,
+        userId,
+      );
+    } catch (error) {
+      if (this.isRegistrationFailure(error)) {
+        return this.registrationFailure(error);
+      }
+      throw error;
+    }
+
+    return this.continueAuthenticatedLogin({
+      tenantCode: params.tenantCode,
+      uid: params.uid,
+      tenant: params.tenant,
+      userId,
+      mfaEnabled: false,
+      req: params.req,
+      res: params.res,
+      completion: 'signup',
     });
   }
 
@@ -237,6 +364,7 @@ export class InteractionCommandHandler
       mfaEnabled: pending.mfaEnabled,
       req: params.req,
       res: params.res,
+      completion: 'login',
     });
   }
 
@@ -300,12 +428,13 @@ export class InteractionCommandHandler
       });
     }
 
-    const loginResult = await this.oidcInteraction.completeLogin({
+    const loginResult = await this.completeInteraction({
       tenantCode: params.tenantCode,
       req: params.req,
       res: params.res,
       userId: pending.userId,
       tenant: params.tenant,
+      completion: pending.completion,
     });
     if ('body' in loginResult) return loginResult;
 
@@ -375,12 +504,13 @@ export class InteractionCommandHandler
 
     this.mfaPendingSessions.delete(params.uid);
 
-    const loginResult = await this.oidcInteraction.completeLogin({
+    const loginResult = await this.completeInteraction({
       tenantCode: params.tenantCode,
       req: params.req,
       res: params.res,
       userId: pending.userId,
       tenant: params.tenant,
+      completion: pending.completion,
     });
     if ('body' in loginResult) return loginResult;
 
@@ -473,6 +603,7 @@ export class InteractionCommandHandler
     mfaEnabled: boolean;
     req: unknown;
     res: unknown;
+    completion: 'login' | 'signup';
   }): Promise<InteractionResponse> {
     const details = await this.oidcInteraction.getDetails({
       tenantCode: params.tenantCode,
@@ -498,6 +629,7 @@ export class InteractionCommandHandler
           userId: params.userId,
           tenantId: params.tenant.id,
           expiresAt: Date.now() + this.mfaSessionTtlMs,
+          completion: params.completion,
         });
         return {
           body: {
@@ -512,6 +644,7 @@ export class InteractionCommandHandler
         userId: params.userId,
         tenantId: params.tenant.id,
         expiresAt: Date.now() + this.mfaSessionTtlMs,
+        completion: params.completion,
       });
 
       return {
@@ -523,12 +656,13 @@ export class InteractionCommandHandler
       };
     }
 
-    const loginResult = await this.oidcInteraction.completeLogin({
+    const loginResult = await this.completeInteraction({
       tenantCode: params.tenantCode,
       req: params.req,
       res: params.res,
       userId: params.userId,
       tenant: params.tenant,
+      completion: params.completion,
     });
     if ('body' in loginResult) return loginResult;
 
@@ -539,6 +673,26 @@ export class InteractionCommandHandler
         redirectTo: loginResult.redirectTo,
       },
     };
+  }
+
+  private completeInteraction(params: {
+    tenantCode: string;
+    req: unknown;
+    res: unknown;
+    userId: string;
+    tenant?: TenantContext;
+    completion: 'login' | 'signup';
+  }) {
+    const completionParams = {
+      tenantCode: params.tenantCode,
+      req: params.req,
+      res: params.res,
+      userId: params.userId,
+      tenant: params.tenant,
+    };
+    return params.completion === 'signup'
+      ? this.oidcInteraction.completeSignup(completionParams)
+      : this.oidcInteraction.completeLogin(completionParams);
   }
 
   private getPendingSession(uid: string): PendingMfaSession | null {
@@ -573,6 +727,34 @@ export class InteractionCommandHandler
         this.passwordChangePendingSessions.delete(uid);
       }
     }
+  }
+
+  private isRegistrationFailure(error: unknown): boolean {
+    if (!error || typeof error !== 'object') return false;
+    const code = (error as { code?: unknown }).code;
+    return (
+      code === 'binding_conflict' ||
+      code === 'expired' ||
+      code === 'unavailable' ||
+      code === 'invalid_response'
+    );
+  }
+
+  private registrationFailure(error: unknown): InteractionResponse {
+    const code =
+      error && typeof error === 'object'
+        ? (error as { code?: unknown }).code
+        : undefined;
+    if (code === 'expired') {
+      return { status: 410, body: { error: 'registration_handoff_expired' } };
+    }
+    if (code === 'binding_conflict') {
+      return { status: 409, body: { error: 'registration_binding_conflict' } };
+    }
+    return {
+      status: 503,
+      body: { error: 'registration_service_unavailable' },
+    };
   }
 
   private async recordSuspiciousLoginAudit(params: {

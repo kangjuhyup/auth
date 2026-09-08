@@ -16,11 +16,20 @@ import { UserIdentityOrmEntity } from './user-identity';
 import { UserCredentialOrmEntity } from './user-credential';
 import { ulid } from 'ulid';
 
-export type UserStatus = 'ACTIVE' | 'LOCKED' | 'DISABLED' | 'WITHDRAWN';
+export type UserStatus =
+  | 'PENDING_REGISTRATION'
+  | 'ACTIVE'
+  | 'LOCKED'
+  | 'DISABLED'
+  | 'WITHDRAWN';
 
 @Entity({ tableName: 'user' })
 @Unique({ properties: ['tenant', 'username'], name: 'uk_user_tenant_username' })
 @Unique({ properties: ['tenant', 'email'], name: 'uk_user_tenant_email' })
+@Unique({
+  properties: ['tenant', 'registrationAttemptId'],
+  name: 'uk_user_tenant_registration_attempt',
+})
 export class UserOrmEntity extends BaseEntity {
   @PrimaryKey({ type: 'char', length: 26 })
   id: string = ulid();
@@ -52,6 +61,22 @@ export class UserOrmEntity extends BaseEntity {
 
   @Property({ fieldName: 'mfa_enabled', type: 'boolean', default: false })
   mfaEnabled!: boolean;
+
+  @Property({
+    fieldName: 'account_registration_id',
+    type: 'varchar',
+    length: 191,
+    nullable: true,
+  })
+  accountRegistrationId?: string | null;
+
+  @Property({
+    fieldName: 'registration_attempt_id',
+    type: 'varchar',
+    length: 191,
+    nullable: true,
+  })
+  registrationAttemptId?: string | null;
 
   @OneToMany(() => UserCredentialOrmEntity, (uc) => uc.user)
   credentials = new Collection<UserCredentialOrmEntity>(this);

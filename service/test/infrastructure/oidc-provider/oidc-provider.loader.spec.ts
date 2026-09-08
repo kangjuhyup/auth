@@ -71,4 +71,17 @@ describe('loadOidcProviderConstructor', () => {
       error_detail: 'token already consumed',
     });
   });
+
+  it('interaction policy runtime을 같은 ESM import에서 제공한다', async () => {
+    const runtime = { base: jest.fn(), Prompt: jest.fn() };
+    const importFn = jest.fn().mockResolvedValue({
+      default: jest.fn(),
+      interactionPolicy: runtime,
+    });
+    (globalThis as any).Function = jest.fn().mockImplementation(() => importFn);
+
+    const { loadOidcInteractionPolicy } = (await loadModule()) as any;
+
+    await expect(loadOidcInteractionPolicy()).resolves.toBe(runtime);
+  });
 });

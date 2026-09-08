@@ -15,6 +15,12 @@ export async function loadOidcProviderConstructor(): Promise<typeof Provider> {
   return (await loadOidcProviderModule()).default;
 }
 
+export async function loadOidcInteractionPolicy(): Promise<
+  OidcProviderModule['interactionPolicy']
+> {
+  return (await loadOidcProviderModule()).interactionPolicy;
+}
+
 export async function createOidcInvalidGrantError(detail: string) {
   const { errors } = await loadOidcProviderModule();
   return new errors.InvalidGrant(detail);

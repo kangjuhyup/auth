@@ -4,8 +4,10 @@ export type InteractionDetailsResult = Readonly<{
   uid: string;
   prompt: string;
   clientId: string;
+  issuer: string;
   missingScopes: string[];
   mfaRequired: boolean;
+  signupAllowed: boolean;
   idpList: ReadonlyArray<{
     provider: string;
     name: string;
@@ -51,6 +53,14 @@ export abstract class OidcInteractionPort {
   }): Promise<InteractionDetailsResult>;
 
   abstract completeLogin(params: {
+    tenantCode: string;
+    req: unknown;
+    res: unknown;
+    userId: string;
+    tenant?: TenantContext;
+  }): Promise<InteractionLoginResult>;
+
+  abstract completeSignup(params: {
     tenantCode: string;
     req: unknown;
     res: unknown;

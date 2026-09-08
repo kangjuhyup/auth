@@ -220,6 +220,7 @@ describe('AdminBootstrapProcessManager', () => {
     const userRepository = {
       findById: jest.fn(),
       findByUsername: jest.fn(async () => user),
+      findByRegistrationAttemptId: jest.fn(),
       findByContact: jest.fn(),
       list: jest.fn(),
       save: jest.fn(),

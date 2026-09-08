@@ -2,6 +2,8 @@ import { createHash, createHmac, createPublicKey, verify } from 'node:crypto';
 import request from 'supertest';
 import { ConsentModel } from '@domain/models/consent';
 import { UserIdentityModel } from '@domain/models/user-identity';
+import { CreateUserDto } from '@application/dto';
+import { UserCommandPort } from '@application/commands/ports/user-command.port';
 import { RedisAdapter } from '@infrastructure/oidc-provider/adapters/redis-oidc.adapter';
 import { RefreshTokenReuseStore } from '@infrastructure/oidc-provider/refresh-token-reuse.store';
 import { EventRepositoryImpl } from '@infrastructure/repositories/event.repository.impl';
@@ -27,7 +29,8 @@ jest.setTimeout(180_000);
  *    - 인증 실패, 입력 검증 실패, 중복 생성, 잘못된 관계 요청의 실패 응답을 검증한다.
  *
  * 3. 일반 유저 셀프서비스
- *    - 특정 테넌트에 회원가입한다.
+ *    - 내부 관리자 command로 특정 테넌트에 ACTIVE 테스트 사용자를 준비한다.
+ *    - Account 가입자격 없는 public signup이 비활성화됐는지 검증한다.
  *    - 실제 OIDC authorize → interaction login → token 교환으로 로그인한다.
  *    - 발급된 access token으로 프로필 조회/수정/비밀번호 변경/회원탈퇴를 수행한다.
  *    - 동의 목록 조회와 철회를 수행한다.
@@ -358,20 +361,25 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
     ): Promise<{ userId: string; username: string; password: string }> {
       const username = params?.username ?? 'alice';
       const password = params?.password ?? 'Password123!';
-
-      const response = await request(fixture.app.getHttpServer())
-        .post('/auth/signup')
-        .query({ tenantCode })
-        .send({
-          username,
-          password,
-          email: params?.email ?? `${username}@${tenantCode}.test`,
-          phone: params?.phone,
-        })
-        .expect(201);
+      const created = await fixture.runInRequestContext(async () => {
+        const tenant = await fixture.tenantRepository.findByCode(tenantCode);
+        if (!tenant) {
+          throw new Error(`E2E tenant fixture not found: ${tenantCode}`);
+        }
+        return fixture.app.get(UserCommandPort).createUser(
+          tenant.id,
+          CreateUserDto.of({
+            username,
+            password,
+            temporaryPassword: false,
+            email: params?.email ?? `${username}@${tenantCode}.test`,
+            phone: params?.phone,
+          }),
+        );
+      });
 
       return {
-        userId: response.body.userId as string,
+        userId: created.id,
         username,
         password,
       };
@@ -4080,6 +4088,16 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
             phone: 'not-a-phone',
           })
           .expect(400);
+
+        await request(fixture.app.getHttpServer())
+          .post('/auth/signup')
+          .query({ tenantCode: 'acme' })
+          .send({
+            username: 'policy-bypass',
+            password: 'Password123!',
+            email: 'policy-bypass@acme.test',
+          })
+          .expect(410);
 
         await request(fixture.app.getHttpServer())
           .get('/auth/profile')

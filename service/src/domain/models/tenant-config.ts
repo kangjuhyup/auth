@@ -68,4 +68,8 @@ export class TenantConfigModel {
       },
     );
   }
+
+  allowsSelfSignup(): boolean {
+    return this.getPolicies().signup.mode === 'open';
+  }
 }

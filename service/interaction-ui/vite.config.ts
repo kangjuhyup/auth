@@ -8,4 +8,8 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
   },
+  test: {
+    environment: 'happy-dom',
+    setupFiles: ['./test/setup.ts'],
+  },
 });

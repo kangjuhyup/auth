@@ -434,10 +434,12 @@ __metadata:
     "@types/react": "npm:^19.1.0"
     "@types/react-dom": "npm:^19.1.0"
     "@vitejs/plugin-react": "npm:^4.4.1"
+    happy-dom: "npm:^20.8.9"
     react: "npm:^19.1.0"
     react-dom: "npm:^19.1.0"
     typescript: "npm:^5.8.3"
     vite: "npm:^6.3.1"
+    vitest: "npm:^3.0.5"
   languageName: unknown
   linkType: soft
 

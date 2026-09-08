@@ -68,12 +68,14 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
 
     let idpList: InteractionDetailsResult['idpList'] = [];
     let mfaRequired = false;
+    let signupAllowed = false;
 
     if (params.tenant) {
       const tenantPolicies = (
         (await this.tenantConfigRepo.findByTenantId(params.tenant.id)) ??
         this.createDefaultTenantConfig(params.tenant.id)
       ).getPolicies();
+      signupAllowed = tenantPolicies.signup.mode === 'open';
       const idps = await this.idpRepo.listEnabledByTenant(params.tenant.id);
       let allowedIdpProviderKeys = tenantPolicies.allowedIdp.providerKeys;
 
@@ -122,8 +124,10 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
       uid: params.uid,
       prompt: prompt.name,
       clientId,
+      issuer: provider.issuer,
       missingScopes,
       mfaRequired,
+      signupAllowed,
       idpList,
     };
   }
@@ -145,10 +149,47 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
     });
     if (conflict) return conflict;
 
+    const details = await provider.interactionDetails(
+      params.req as any,
+      params.res as any,
+    );
+    const result =
+      details.prompt.name === 'create'
+        ? { create: {}, login: { accountId: params.userId } }
+        : { login: { accountId: params.userId } };
     const redirectTo = await provider.interactionResult(
       params.req as any,
       params.res as any,
-      { login: { accountId: params.userId } },
+      result,
+    );
+
+    return { redirectTo };
+  }
+
+  async completeSignup(params: {
+    tenantCode: string;
+    req: unknown;
+    res: unknown;
+    userId: string;
+    tenant?: TenantContext;
+  }): Promise<InteractionLoginResult> {
+    const provider = await this.registry.get(params.tenantCode);
+    const conflict = await this.enforceSessionPolicy({
+      tenantCode: params.tenantCode,
+      req: params.req,
+      res: params.res,
+      tenant: params.tenant,
+      userId: params.userId,
+    });
+    if (conflict) return conflict;
+
+    const redirectTo = await provider.interactionResult(
+      params.req as any,
+      params.res as any,
+      {
+        create: {},
+        login: { accountId: params.userId },
+      },
     );
 
     return { redirectTo };

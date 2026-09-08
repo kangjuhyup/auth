@@ -10,6 +10,8 @@ import {
   Req,
   Res,
   UseGuards,
+  ForbiddenException,
+  GoneException,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthCommandPort } from '@application/commands/ports/auth-command.port';
@@ -54,6 +56,7 @@ import {
   ApiOkArraySchema,
   ApiOkSchema,
   ApiRedirectSchema,
+  ApiDeprecatedGoneSchema,
   OpenApiResponseSchemas,
 } from '@presentation/openapi-response';
 
@@ -66,12 +69,28 @@ export class AuthController {
   ) {}
 
   @Post('signup')
-  @ApiOkSchema('Sign up user', OpenApiResponseSchemas.signup)
-  signup(
+  @ApiDeprecatedGoneSchema(
+    'Direct signup is disabled',
+    'Use the Account-backed OIDC hosted registration flow',
+  )
+  async signup(
     @Tenant() tenant: TenantContext,
     @Body() dto: SignupDto,
   ): Promise<{ userId: string }> {
-    return this.commandPort.signup(tenant.id, AppSignupDto.of(dto));
+    try {
+      return await this.commandPort.signup(tenant.id, AppSignupDto.of(dto));
+    } catch (error) {
+      if (error instanceof Error && error.message === 'SignupNotAllowed') {
+        throw new ForbiddenException('Signup is not allowed');
+      }
+      if (
+        error instanceof Error &&
+        error.message === 'AccountEligibilityRequired'
+      ) {
+        throw new GoneException('Use the OIDC hosted registration flow');
+      }
+      throw error;
+    }
   }
 
   @Post('withdraw')

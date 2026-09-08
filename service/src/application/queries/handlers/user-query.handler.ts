@@ -55,7 +55,11 @@ export class UserQueryHandler implements UserQueryPort {
     sub: string;
   }): Promise<UserClaimsView | null> {
     const user = await this.userWriteRepository.findById(params.sub);
-    if (!user || user.tenantId !== params.tenantId) {
+    if (
+      !user ||
+      user.tenantId !== params.tenantId ||
+      user.status !== 'ACTIVE'
+    ) {
       return null;
     }
 

@@ -49,6 +49,31 @@ describe('UserWriteRepositoryImpl', () => {
       );
     });
 
+    it('tenant와 registration attempt binding으로 pending 사용자를 조회한다', async () => {
+      const user = createUserEntity({
+        status: 'PENDING_REGISTRATION',
+        accountRegistrationId: 'registration-1',
+        registrationAttemptId: 'tenant-1:uid-1',
+      });
+      attachCredentials(user, [createUserCredentialEntity()]);
+      em.findOne.mockResolvedValue(user);
+
+      await expect(
+        repository.findByRegistrationAttemptId('tenant-1', 'tenant-1:uid-1'),
+      ).resolves.toMatchObject({
+        status: 'PENDING_REGISTRATION',
+        accountRegistrationId: 'registration-1',
+      });
+      expect(em.findOne).toHaveBeenCalledWith(
+        UserOrmEntity,
+        {
+          tenant: 'tenant-1',
+          registrationAttemptId: 'tenant-1:uid-1',
+        },
+        { populate: ['tenant', 'credentials'] },
+      );
+    });
+
     it('email 우선, 없으면 phone으로 연락처 조회를 fallback한다', async () => {
       const emailUser = createUserEntity({ email: 'alice@example.com' });
       const phoneUser = createUserEntity({
@@ -205,6 +230,8 @@ describe('UserWriteRepositoryImpl', () => {
           phone: '01012341234',
           phoneVerified: false,
           status: 'ACTIVE',
+          accountRegistrationId: 'registration-1',
+          registrationAttemptId: 'tenant-1:uid-1',
           passwordCredential: createUserCredentialModel({
             secretHash: 'new-secret',
           }),
@@ -218,6 +245,8 @@ describe('UserWriteRepositoryImpl', () => {
           id: 'user-1',
           username: 'alice',
           tenant: expect.objectContaining({ id: 'tenant-1' }),
+          accountRegistrationId: 'registration-1',
+          registrationAttemptId: 'tenant-1:uid-1',
         }),
       );
       expect(txEm.nativeUpdate).toHaveBeenCalledWith(

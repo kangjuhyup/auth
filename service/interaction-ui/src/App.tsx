@@ -8,16 +8,27 @@ import ErrorPage from './pages/ErrorPage';
 import LoadingPage from './pages/LoadingPage';
 import MfaEnrollmentPage from './pages/MfaEnrollmentPage';
 import PasswordChangePage from './pages/PasswordChangePage';
+import SignupPage from './pages/SignupPage';
 import { debugInteraction } from './lib/debug';
 
 type Page =
   | 'loading'
   | 'login'
+  | 'signup'
   | 'password-change'
   | 'mfa-enrollment'
   | 'mfa'
   | 'consent'
   | 'error';
+
+export function resolveInitialPage(details: InteractionDetails): Page {
+  if (details.prompt === 'create') {
+    return details.signupAllowed ? 'signup' : 'error';
+  }
+  if (details.prompt === 'login') return 'login';
+  if (details.prompt === 'consent') return 'consent';
+  return 'error';
+}
 
 export default function App() {
   const [page, setPage] = useState<Page>('loading');
@@ -36,14 +47,17 @@ export default function App() {
           missingScopeCount: d.missingScopes.length,
         });
         setDetails(d);
-        if (d.prompt === 'login') {
+        const initialPage = resolveInitialPage(d);
+        if (initialPage === 'login') {
           debugInteraction('page.transition', {
             from: 'loading',
             to: 'login',
             reason: 'prompt_login',
           });
           setPage('login');
-        } else if (d.prompt === 'consent') {
+        } else if (initialPage === 'signup') {
+          setPage('signup');
+        } else if (initialPage === 'consent') {
           debugInteraction('page.transition', {
             from: 'loading',
             to: 'consent',
@@ -51,7 +65,11 @@ export default function App() {
           });
           setPage('consent');
         } else {
-          setErrorMsg(`지원하지 않는 인터랙션: ${d.prompt}`);
+          setErrorMsg(
+            d.prompt === 'create' && !d.signupAllowed
+              ? '이 테넌트는 공개 회원가입을 허용하지 않습니다.'
+              : `지원하지 않는 인터랙션: ${d.prompt}`,
+          );
           debugInteraction('page.transition', {
             from: 'loading',
             to: 'error',
@@ -146,6 +164,15 @@ export default function App() {
           details={details!}
           onSuccess={handleLoginSuccess}
           onError={handleError}
+          onSignup={() => setPage('signup')}
+        />
+      );
+    case 'signup':
+      return (
+        <SignupPage
+          clientId={details!.clientId}
+          onSuccess={handleLoginSuccess}
+          onLogin={() => setPage('login')}
         />
       );
     case 'password-change':

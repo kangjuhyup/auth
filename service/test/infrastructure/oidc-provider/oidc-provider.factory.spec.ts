@@ -6,7 +6,10 @@ import { TenantModel } from '@domain/models/tenant';
 import { TenantConfigModel } from '@domain/models/tenant-config';
 import { JwksKeyModel } from '@domain/models/jwks-key';
 import { buildOidcConfiguration } from '@infrastructure/oidc-provider/oidc-provider.config';
-import { loadOidcProviderConstructor } from '@infrastructure/oidc-provider/oidc-provider.loader';
+import {
+  loadOidcInteractionPolicy,
+  loadOidcProviderConstructor,
+} from '@infrastructure/oidc-provider/oidc-provider.loader';
 import { registerCustomGrantTypes } from '@infrastructure/oidc-provider/custom-grants/register-custom-grant-types';
 import { createPrivateKey } from 'node:crypto';
 import { EventEmitter } from 'node:events';
@@ -17,6 +20,7 @@ jest.mock('@infrastructure/oidc-provider/oidc-provider.config', () => ({
 
 jest.mock('@infrastructure/oidc-provider/oidc-provider.loader', () => ({
   loadOidcProviderConstructor: jest.fn(),
+  loadOidcInteractionPolicy: jest.fn(),
 }));
 
 jest.mock('@infrastructure/oidc-provider/refresh-token-reuse.store', () => ({
@@ -190,6 +194,10 @@ describe('createOidcProvider', () => {
     (loadOidcProviderConstructor as jest.Mock).mockResolvedValue(
       ProviderConstructor,
     );
+    (loadOidcInteractionPolicy as jest.Mock).mockResolvedValue({
+      base: jest.fn(),
+      Prompt: jest.fn(),
+    });
     (createPrivateKey as jest.Mock).mockReturnValue({
       export: jest.fn().mockReturnValue({
         kty: 'RSA',

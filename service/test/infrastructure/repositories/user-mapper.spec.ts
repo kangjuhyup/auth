@@ -15,6 +15,8 @@ function makeUserEntity(): UserOrmEntity {
     phoneVerified: false,
     status: 'ACTIVE',
     mfaEnabled: true,
+    accountRegistrationId: 'registration-1',
+    registrationAttemptId: 'tenant-1:uid-1',
     createdAt: new Date('2025-01-01'),
     updatedAt: new Date('2025-01-02'),
   });
@@ -50,6 +52,8 @@ describe('UserMapper', () => {
       expect(domain.phoneVerified).toBe(false);
       expect(domain.status).toBe('ACTIVE');
       expect(domain.mfaEnabled).toBe(true);
+      expect(domain.accountRegistrationId).toBe('registration-1');
+      expect(domain.registrationAttemptId).toBe('tenant-1:uid-1');
       expect(domain.passwordCredential?.secretHash).toBe('hashed-password');
       expect(domain.createdAt).toEqual(new Date('2025-01-01'));
       expect(domain.updatedAt).toEqual(new Date('2025-01-02'));

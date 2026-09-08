@@ -58,4 +58,14 @@ describe('TenantConfigModel', () => {
     expect(config.signupPolicy).toBe('invite');
     expect(config.refreshTokenTtlSec).toBe(604800);
   });
+
+  it('open 정책에서만 self signup을 허용한다', () => {
+    const config = makeConfig();
+
+    expect(config.allowsSelfSignup()).toBe(true);
+
+    config.updatePolicies({ signup: { mode: 'invite' } });
+
+    expect(config.allowsSelfSignup()).toBe(false);
+  });
 });

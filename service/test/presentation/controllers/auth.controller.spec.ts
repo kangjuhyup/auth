@@ -1,4 +1,5 @@
 import { AuthController } from '@presentation/controllers/auth.controller';
+import { GoneException } from '@nestjs/common';
 import type { AuthCommandPort } from '@application/commands/ports/auth-command.port';
 import type { AuthQueryPort } from '@application/queries/ports';
 import {
@@ -9,6 +10,9 @@ import {
 function createMockCommandPort(): jest.Mocked<AuthCommandPort> {
   return {
     signup: jest.fn(),
+    resumeRegistrationAttempt: jest.fn(),
+    createPendingRegistration: jest.fn(),
+    activatePendingRegistration: jest.fn(),
     withdraw: jest.fn(),
     changePassword: jest.fn(),
     requestPasswordReset: jest.fn(),
@@ -54,12 +58,15 @@ describe('AuthController', () => {
     controller = new AuthController(commandPort, queryPort);
   });
 
-  it('signup은 tenant.id와 dto를 commandPort에 전달한다', async () => {
+  it('public signup은 Account 가입 flow 사용 안내와 함께 비활성화한다', async () => {
     const dto = { username: 'john', password: 'secret123' } as any;
-    const result = { userId: 'user-1' };
-    commandPort.signup.mockResolvedValue(result);
+    commandPort.signup.mockRejectedValue(
+      new Error('AccountEligibilityRequired'),
+    );
 
-    await expect(controller.signup(tenant, dto)).resolves.toBe(result);
+    await expect(controller.signup(tenant, dto)).rejects.toBeInstanceOf(
+      GoneException,
+    );
     expect(commandPort.signup).toHaveBeenCalledWith(tenant.id, dto);
   });
 
