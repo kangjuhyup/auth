@@ -27,6 +27,7 @@ import {
   RoleInheritRepository,
   IdentityProviderRepository,
   UserIdentityRepository,
+  UserGroupMembershipRepository,
 } from '@domain/repositories';
 import { TenantRepositoryImpl } from './repositories/tenant.repository.impl';
 import { GroupRepositoryImpl } from './repositories/group.repository.impl';
@@ -45,6 +46,7 @@ import { EventRepositoryImpl } from './repositories/event.repository.impl';
 import { RoleInheritRepositoryImpl } from './repositories/role-inherit.repository.impl';
 import { IdentityProviderRepositoryImpl } from './repositories/identity-provider.repository.impl';
 import { UserIdentityRepositoryImpl } from './repositories/user-identity.repository.impl';
+import { UserGroupMembershipRepositoryImpl } from './repositories/user-group-membership.repository.impl';
 
 // Crypto Ports
 import { PasswordHashPort } from '@application/ports/password-hash.port';
@@ -164,6 +166,10 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     {
       provide: UserIdentityRepository,
       useClass: UserIdentityRepositoryImpl,
+    },
+    {
+      provide: UserGroupMembershipRepository,
+      useClass: UserGroupMembershipRepositoryImpl,
     },
     {
       provide: UserWriteRepositoryPort,
@@ -303,6 +309,7 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     IdentityProviderRepository,
     SamlSpPort,
     UserIdentityRepository,
+    UserGroupMembershipRepository,
     IdpPort,
     MfaVerificationPort,
     PasswordHashPort,

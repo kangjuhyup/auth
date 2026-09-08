@@ -134,9 +134,20 @@ export function buildOidcConfiguration(params: {
   return {
     grantTypes: [...supportedGrantTypes],
 
-    extraTokenClaims: async () => ({
-      tenant_id: tenantId,
-    }),
+    extraTokenClaims: async (_ctx, token) => {
+      const claims: Record<string, unknown> = { tenant_id: tenantId };
+      const accountId =
+        'accountId' in token && typeof token.accountId === 'string'
+          ? token.accountId
+          : undefined;
+      if (accountId && parseScopeString(token.scope).includes('groups')) {
+        claims.groups = await userQuery.findAuthorizationGroups({
+          tenantId,
+          userId: accountId,
+        });
+      }
+      return claims;
+    },
 
     interactions: {
       url(_ctx, interaction) {

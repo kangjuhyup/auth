@@ -3,10 +3,12 @@ import './support/mock-mikro-orm-core';
 import { RoleAssignmentRepositoryImpl } from '@infrastructure/repositories/role-assignment.repository.impl';
 import { RolePermissionRepositoryImpl } from '@infrastructure/repositories/role-permission.repository.impl';
 import { RoleInheritRepositoryImpl } from '@infrastructure/repositories/role-inherit.repository.impl';
+import { UserGroupMembershipRepositoryImpl } from '@infrastructure/repositories/user-group-membership.repository.impl';
 import { UserRoleOrmEntity } from '@infrastructure/mikro-orm/entities/user-role';
 import { GroupRoleOrmEntity } from '@infrastructure/mikro-orm/entities/group-role';
 import { RolePermissionOrmEntity } from '@infrastructure/mikro-orm/entities/role-permission';
 import { RoleInheritOrmEntity } from '@infrastructure/mikro-orm/entities/role-inherit';
+import { UserGroupOrmEntity } from '@infrastructure/mikro-orm/entities/user-group';
 import { UserOrmEntity } from '@infrastructure/mikro-orm/entities/user';
 import { GroupOrmEntity } from '@infrastructure/mikro-orm/entities/group';
 import { RoleOrmEntity } from '@infrastructure/mikro-orm/entities/role';
@@ -16,6 +18,7 @@ import {
   asLoadedRef,
   createEntityManagerMock,
   createGroupRoleEntity,
+  createGroupEntity,
   createPermissionEntity,
   createRoleEntity,
   createRoleInheritEntity,
@@ -28,6 +31,58 @@ describe('Membership Repository Implementations', () => {
 
   beforeEach(() => {
     em = createEntityManagerMock();
+  });
+
+  describe('UserGroupMembershipRepositoryImpl', () => {
+    it('사용자와 그룹을 연결한다', async () => {
+      const repository = new UserGroupMembershipRepositoryImpl(em as any);
+
+      await repository.add({ userId: 'user-1', groupId: 'group-1' });
+
+      expect(em.getReference).toHaveBeenCalledWith(UserOrmEntity, 'user-1');
+      expect(em.getReference).toHaveBeenCalledWith(GroupOrmEntity, 'group-1');
+      expect(em.persist).toHaveBeenCalledWith(
+        expect.objectContaining({
+          user: expect.objectContaining({ id: 'user-1' }),
+          group: expect.objectContaining({ id: 'group-1' }),
+        }),
+      );
+    });
+
+    it('사용자와 그룹 연결을 제거한다', async () => {
+      const repository = new UserGroupMembershipRepositoryImpl(em as any);
+
+      await repository.remove({ userId: 'user-1', groupId: 'group-1' });
+
+      expect(em.nativeDelete).toHaveBeenCalledWith(UserGroupOrmEntity, {
+        user: { id: 'user-1' },
+        group: { id: 'group-1' },
+      });
+    });
+
+    it('사용자와 그룹 연결 존재 여부를 반환한다', async () => {
+      const repository = new UserGroupMembershipRepositoryImpl(em as any);
+      em.count.mockResolvedValue(1);
+
+      await expect(
+        repository.exists({ userId: 'user-1', groupId: 'group-1' }),
+      ).resolves.toBe(true);
+    });
+
+    it('사용자에게 직접 연결된 그룹 목록을 반환한다', async () => {
+      const repository = new UserGroupMembershipRepositoryImpl(em as any);
+      const group = asLoadedRef(createGroupEntity());
+      em.find.mockResolvedValue([{ group }]);
+
+      const groups = await repository.listGroupsForUser('user-1');
+
+      expect(groups.map((item) => item.id)).toEqual(['group-1']);
+      expect(em.find).toHaveBeenCalledWith(
+        UserGroupOrmEntity,
+        { user: { id: 'user-1' } },
+        { populate: ['group', 'group.tenant', 'group.parent'] },
+      );
+    });
   });
 
   describe('RoleAssignmentRepositoryImpl', () => {
@@ -66,7 +121,10 @@ describe('Membership Repository Implementations', () => {
       em.findOneOrFail.mockResolvedValue(entity);
 
       await repository.assignToGroup({ groupId: 'group-1', roleId: 'role-1' });
-      await repository.removeFromGroup({ groupId: 'group-1', roleId: 'role-1' });
+      await repository.removeFromGroup({
+        groupId: 'group-1',
+        roleId: 'role-1',
+      });
 
       expect(em.getReference).toHaveBeenCalledWith(GroupOrmEntity, 'group-1');
       expect(em.getReference).toHaveBeenCalledWith(RoleOrmEntity, 'role-1');
@@ -143,7 +201,10 @@ describe('Membership Repository Implementations', () => {
       const entity = createRolePermissionEntity();
       em.findOneOrFail.mockResolvedValue(entity);
 
-      await repository.remove({ roleId: 'role-1', permissionId: 'permission-1' });
+      await repository.remove({
+        roleId: 'role-1',
+        permissionId: 'permission-1',
+      });
 
       expect(em.findOneOrFail).toHaveBeenCalledWith(RolePermissionOrmEntity, {
         role: { id: 'role-1' },
@@ -211,7 +272,10 @@ describe('Membership Repository Implementations', () => {
         childRoleId: 'role-child',
       });
 
-      expect(em.getReference).toHaveBeenCalledWith(RoleOrmEntity, 'role-parent');
+      expect(em.getReference).toHaveBeenCalledWith(
+        RoleOrmEntity,
+        'role-parent',
+      );
       expect(em.getReference).toHaveBeenCalledWith(RoleOrmEntity, 'role-child');
       expect(em.persist).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -231,10 +295,10 @@ describe('Membership Repository Implementations', () => {
         childRoleId: 'role-child',
       });
 
-      expect(em.findOne).toHaveBeenCalledWith(
-        RoleInheritOrmEntity,
-        { parent: 'role-parent', child: 'role-child' },
-      );
+      expect(em.findOne).toHaveBeenCalledWith(RoleInheritOrmEntity, {
+        parent: 'role-parent',
+        child: 'role-child',
+      });
       expect(em.remove).toHaveBeenCalledWith(entity);
     });
 

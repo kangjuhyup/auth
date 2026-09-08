@@ -114,7 +114,7 @@ describe('AdminBootstrapProcessManager', () => {
   }
 
   function makeScope(
-    name: 'openid' | 'profile' | 'email',
+    name: 'openid' | 'profile' | 'email' | 'groups',
     overrides: Partial<{
       tenantId: string;
       name: string;
@@ -188,6 +188,7 @@ describe('AdminBootstrapProcessManager', () => {
       makeScope('openid'),
       makeScope('profile'),
       makeScope('email'),
+      makeScope('groups'),
     ];
 
     const processRepository = {
@@ -447,11 +448,11 @@ describe('AdminBootstrapProcessManager', () => {
 
     expect(subject.scopeRepository.findByNames).toHaveBeenCalledWith(
       'tenant-master',
-      ['openid', 'profile', 'email'],
+      ['openid', 'profile', 'email', 'groups'],
     );
     expect(subject.tenantCommand.ensureBuiltInScopes).toHaveBeenCalledWith(
       'tenant-master',
-      ['profile', 'email'],
+      ['profile', 'email', 'groups'],
       auditContext,
     );
     expect(subject.scopeRepository.save).not.toHaveBeenCalled();
@@ -471,7 +472,7 @@ describe('AdminBootstrapProcessManager', () => {
 
     expect(subject.tenantCommand.ensureBuiltInScopes).toHaveBeenCalledWith(
       'tenant-master',
-      ['openid', 'profile', 'email'],
+      ['openid', 'profile', 'email', 'groups'],
       auditContext,
     );
     expect(subject.scopeRepository.save).not.toHaveBeenCalled();

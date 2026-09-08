@@ -29,6 +29,7 @@ function createMockUserQuery(): jest.Mocked<UserQueryPort> {
   return {
     findProfile: jest.fn().mockResolvedValue(makeProfileView()),
     findClaimsBySub: jest.fn().mockResolvedValue(null),
+    findAuthorizationGroups: jest.fn().mockResolvedValue([]),
     findByUsername: jest.fn().mockResolvedValue(null),
     authenticate: jest.fn().mockResolvedValue(null),
     getMfaMethods: jest.fn().mockResolvedValue([]),

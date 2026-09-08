@@ -7,6 +7,8 @@ import {
   Body,
   Param,
   Query,
+  HttpCode,
+  HttpStatus,
   UseGuards,
 } from '@nestjs/common';
 import { AdminGuard } from '@presentation/http/admin.guard';
@@ -21,6 +23,7 @@ import {
   UserListQuery,
   PaginationQuery,
   RoleResponse,
+  GroupResponse,
   PaginatedResult,
 } from '@presentation/dto';
 import {
@@ -215,5 +218,42 @@ export class AdminUserController {
       return this.commandPort.removeRole(tenant.id, id, roleId);
     }
     return this.commandPort.removeRole(tenant.id, id, roleId, auditContext);
+  }
+
+  @Get(':id/groups')
+  @ApiOkArraySchema('List user groups', OpenApiResponseSchemas.group)
+  getGroups(
+    @Tenant() tenant: TenantContext,
+    @Param('id') id: string,
+  ): Promise<GroupResponse[]> {
+    return this.queryPort.getUserGroups(tenant.id, id);
+  }
+
+  @Post(':id/groups/:groupId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiNoContentSchema('Add user to group')
+  addGroup(
+    @Tenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @Param('groupId') groupId: string,
+    @AdminAuditContext() auditContext?: AuditContext,
+  ): Promise<void> {
+    if (!auditContext) return this.commandPort.addGroup(tenant.id, id, groupId);
+    return this.commandPort.addGroup(tenant.id, id, groupId, auditContext);
+  }
+
+  @Delete(':id/groups/:groupId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiNoContentSchema('Remove user from group')
+  removeGroup(
+    @Tenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @Param('groupId') groupId: string,
+    @AdminAuditContext() auditContext?: AuditContext,
+  ): Promise<void> {
+    if (!auditContext) {
+      return this.commandPort.removeGroup(tenant.id, id, groupId);
+    }
+    return this.commandPort.removeGroup(tenant.id, id, groupId, auditContext);
   }
 }

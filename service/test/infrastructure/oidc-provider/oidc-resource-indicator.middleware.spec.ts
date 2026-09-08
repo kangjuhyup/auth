@@ -54,8 +54,9 @@ describe('OIDC resource indicator normalization middleware', () => {
       'https://profile-api.example.com',
     ]);
 
-    ctx.query.resource = 'http://localhost/private';
+    const query = ctx.query as { resource: string | string[] };
+    query.resource = 'http://localhost/private';
     await middleware!(ctx, next);
-    expect(ctx.query.resource).toBe('http://localhost/private');
+    expect(query.resource).toBe('http://localhost/private');
   });
 });

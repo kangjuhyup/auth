@@ -39,6 +39,7 @@ import {
   EventRepository,
   IdentityProviderRepository,
   ConsentRepository,
+  UserGroupMembershipRepository,
 } from '@domain/repositories';
 import { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
 import { IdentityProviderModel } from '@domain/models/identity-provider';
@@ -72,6 +73,7 @@ export class AdminQueryHandler implements AdminQueryPort {
     private readonly identityProviderRepo: IdentityProviderRepository,
     private readonly consentRepo: ConsentRepository,
     private readonly userSession: UserSessionPort,
+    private readonly userGroupMembership: UserGroupMembershipRepository,
   ) {}
 
   // ── Tenant ──────────────────────────────────────────────────────────────
@@ -449,6 +451,17 @@ export class AdminQueryHandler implements AdminQueryPort {
         expiresAt: session.expiresAt,
       }),
     );
+  }
+
+  async getUserGroups(
+    tenantId: string,
+    userId: string,
+  ): Promise<GroupResponse[]> {
+    await this.assertUserInTenant(tenantId, userId);
+    const groups = await this.userGroupMembership.listGroupsForUser(userId);
+    return groups
+      .filter((group) => group.tenantId === tenantId)
+      .map((group) => this.toGroupResponse(group));
   }
 
   @NoLog

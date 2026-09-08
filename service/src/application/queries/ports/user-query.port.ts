@@ -11,6 +11,11 @@ export abstract class UserQueryPort {
     sub: string;
   }): Promise<UserClaimsView | null>;
 
+  abstract findAuthorizationGroups(params: {
+    tenantId: string;
+    userId: string;
+  }): Promise<GroupAuthorizationView[]>;
+
   abstract findByUsername(params: {
     tenantId: string;
     username: string;
@@ -73,4 +78,16 @@ export type UserClaimsView = Readonly<{
   email_verified?: boolean;
   phone?: string;
   phone_verified?: boolean;
+}>;
+
+export type GroupAuthorizationView = Readonly<{
+  id: string;
+  code: string;
+  parentId: string | null;
+  roles: ReadonlyArray<
+    Readonly<{
+      id: string;
+      code: string;
+    }>
+  >;
 }>;

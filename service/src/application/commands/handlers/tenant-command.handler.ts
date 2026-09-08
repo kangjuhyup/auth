@@ -150,6 +150,7 @@ function defaultScopeDisplayName(scope: string): string {
   if (scope === 'openid') return 'OpenID';
   if (scope === 'profile') return 'Profile';
   if (scope === 'email') return 'Email';
+  if (scope === 'groups') return 'Groups';
   return scope;
 }
 
@@ -157,6 +158,7 @@ function defaultScopeDescription(scope: string): string {
   if (scope === 'openid') return 'OIDC authentication scope';
   if (scope === 'profile') return 'Basic profile claims';
   if (scope === 'email') return 'Email claims';
+  if (scope === 'groups') return 'Tenant group authorization claims';
   return scope;
 }
 
