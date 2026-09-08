@@ -18,6 +18,7 @@ function makeProvider(clientId = 'web-app') {
   );
 
   return {
+    issuer: 'https://auth.example/t/acme/oidc',
     interactionDetails: jest.fn().mockResolvedValue({
       prompt: { name: 'login', details: {} },
       params: { client_id: clientId },
@@ -221,9 +222,78 @@ describe('OidcInteractionAdapter policy resolution', () => {
     });
 
     expect(result.mfaRequired).toBe(true);
+    expect(result.signupAllowed).toBe(false);
     expect(result.idpList).toEqual([
       { provider: 'google', name: 'Google', protocol: 'oauth2' },
     ]);
+  });
+
+  it('open 테넌트에는 hosted signup을 노출한다', async () => {
+    const openConfig = makeTenantConfig(['okta']);
+    openConfig.updatePolicies({ signup: { mode: 'open' } });
+    const { adapter } = createAdapter({
+      tenantConfigRepo: {
+        findByTenantId: jest.fn().mockResolvedValue(openConfig),
+      },
+    });
+
+    const result = await adapter.getDetails({
+      tenantCode: 'acme',
+      uid: 'uid-1',
+      req: {},
+      res: {},
+      tenant,
+    });
+
+    expect(result.signupAllowed).toBe(true);
+  });
+
+  it('signup 완료 시 create prompt와 login을 함께 해소한다', async () => {
+    const { adapter, provider } = createAdapter();
+
+    await expect(
+      (adapter as any).completeSignup({
+        tenantCode: 'acme',
+        req: {},
+        res: {},
+        tenant,
+        userId: 'user-1',
+      }),
+    ).resolves.toEqual({ redirectTo: '/callback' });
+
+    expect(provider.interactionResult).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      {
+        create: {},
+        login: { accountId: 'user-1' },
+      },
+    );
+  });
+
+  it('prompt=create에서 기존 계정 로그인도 create prompt를 해소한다', async () => {
+    const { adapter, provider } = createAdapter();
+    provider.interactionDetails.mockResolvedValue({
+      prompt: { name: 'create', details: {} },
+      params: { client_id: 'web-app' },
+    });
+
+    await adapter.completeLogin({
+      tenantCode: 'acme',
+      req: {},
+      res: {},
+      tenant,
+      userId: 'user-1',
+    });
+
+    expect(provider.interactionResult).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      {
+        create: {},
+        login: { accountId: 'user-1' },
+      },
+    );
   });
 
   it('허용되지 않은 IdP redirect는 거부한다', async () => {

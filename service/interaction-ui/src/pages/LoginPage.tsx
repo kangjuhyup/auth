@@ -8,9 +8,15 @@ interface Props {
   details: InteractionDetails;
   onSuccess: (result: LoginResult) => void;
   onError: (msg: string) => void;
+  onSignup: () => void;
 }
 
-export default function LoginPage({ details, onSuccess, onError }: Props) {
+export default function LoginPage({
+  details,
+  onSuccess,
+  onError,
+  onSignup,
+}: Props) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -94,6 +100,14 @@ export default function LoginPage({ details, onSuccess, onError }: Props) {
           {loading ? '로그인 중...' : '로그인'}
         </button>
       </form>
+
+      {details.signupAllowed && (
+        <div className="abort-link">
+          <button type="button" className="link-button" onClick={onSignup}>
+            계정이 없나요? 회원가입
+          </button>
+        </div>
+      )}
 
       {details.idpList.length > 0 && (
         <>

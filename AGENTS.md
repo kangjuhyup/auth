@@ -28,6 +28,13 @@ Codex must strictly follow the rules below. If a request violates them, propose 
 Allowed: pure TypeScript types, UI-safe constants, lint/config tooling
 Forbidden: server secrets, auth internals, node-oidc-provider config, persistence entities
 
+## Mobile SDK boundary
+
+- Flutter SDK는 `sdks/flutter/`의 독립 Dart package로 관리하며 Yarn workspace에 포함하지 않는다.
+- SDK는 공개 OIDC discovery와 표준 endpoint 계약에만 의존하고 `service/` 내부 코드나 persistence model을 참조하지 않는다.
+- public client에 client secret을 포함하지 않으며 Authorization Code + PKCE 처리는 검증된 AppAuth 구현에 위임한다.
+- SDK release와 server image release는 독립적으로 수행하고 호환성은 공개 계약과 테스트로 검증한다.
+
 ---
 
 # 1. Service Positioning
@@ -166,3 +173,17 @@ Codex Skill manifest는 `.agents/skills/*/SKILL.md`, Codex custom agent manifest
 | Plan            | 구현 계획        | 관련 스킬 전체    |
 | Bash            | 빌드/테스트 실행 | 불필요            |
 | general-purpose | 복합 작업        | 관련 스킬 전체    |
+
+---
+
+## RV Workflow plugin
+
+This fragment is opt-in. Apply it only after reviewing the dry-run report for this project; it never replaces an existing `AGENTS.md`.
+
+Use the smallest plugin-qualified role skill that covers the task: `$rv-workflow:backend`, `$rv-workflow:frontend`, `$rv-workflow:document`, `$rv-workflow:qa`, or `$rv-workflow:planner`. Use `$rv-workflow:project-toolchain` before executable work and its no-op path for prose-only work.
+
+At the start of every tool-using agent task, including read-only inspection, status checks, and small tasks, invoke `$rv-workflow:task-progress` only long enough to resolve its installed plugin root, then run `npm --prefix <plugin-root> run progress:ensure -- --color --workspace <project-root>` exactly once before any role or task classification. This startup is independent of task tracking: it reuses a live watcher and opens a panel only when one is absent. An ensured watcher exits after the workspace has remained on completed work for 30 seconds. If a tracked task is created after the initial startup call, run the same `progress:ensure` command once immediately after creation so slow classification cannot leave that task without a panel. Do not pass `--task-id`. Pure conversational responses that require no tools do not launch the panel.
+
+For explicitly tracked or medium/large work, use `$rv-workflow:task-progress` only at phase boundaries (task/step creation, step start, major milestone, block, completion or skip). Small questions, status checks, file lookups, localized routine edits, and routine commits remain untracked even though the shared panel startup runs. The inline MCP dashboard is read-only; write progress explicitly through the MCP tools. The terminal companion may apply only its confirmed, allowlisted step commands through the same task service. Repeat `--ensure-panel` once just after tracked task creation, but not at later milestones.
+
+Before sending a final response for tracked work, the coordinating agent must read the latest task snapshot. It must not leave a runnable step `pending` or `in_progress`: start and complete the step with evidence, or skip it with a concrete reason when it is genuinely unnecessary. Never infer step completion from an agent or terminal disappearing. Render the dashboard once the task is completed or blocked so the final recorded state is visible.

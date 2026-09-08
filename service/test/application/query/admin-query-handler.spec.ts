@@ -226,6 +226,7 @@ function createMockUserRepo(): jest.Mocked<UserWriteRepositoryPort> {
   return {
     findById: jest.fn().mockResolvedValue(undefined),
     findByUsername: jest.fn().mockResolvedValue(undefined),
+    findByRegistrationAttemptId: jest.fn().mockResolvedValue(undefined),
     findByContact: jest.fn().mockResolvedValue(undefined),
     list: jest.fn().mockResolvedValue({ items: [], total: 0 }),
     save: jest.fn(),

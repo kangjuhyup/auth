@@ -37,6 +37,22 @@ export abstract class InteractionCommandPort {
     tenant?: TenantContext;
   }): Promise<InteractionResponse>;
 
+  abstract submitSignup(params: {
+    tenantCode: string;
+    uid: string;
+    username: string;
+    password: string;
+    handoffId: string;
+    email?: string;
+    phone?: string;
+    ipAddress?: string;
+    userAgent?: string;
+    correlationId?: string;
+    req: unknown;
+    res: unknown;
+    tenant?: TenantContext;
+  }): Promise<InteractionResponse>;
+
   abstract submitMfa(params: {
     tenantCode: string;
     uid: string;

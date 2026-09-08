@@ -7,7 +7,10 @@ import { ConfigService } from '@nestjs/config';
 import { buildOidcConfiguration } from './oidc-provider.config';
 import { ClientQueryPort } from '@application/queries/ports/client-query.port';
 import { UserQueryPort } from '@application/queries/ports/user-query.port';
-import { loadOidcProviderConstructor } from './oidc-provider.loader';
+import {
+  loadOidcInteractionPolicy,
+  loadOidcProviderConstructor,
+} from './oidc-provider.loader';
 import type {
   ClientAuthPolicyRepository,
   ClientRepository,
@@ -71,6 +74,10 @@ export async function createOidcProvider(
   const tenantConfig = await params.tenantConfigRepository.findByTenantId(
     tenant.id,
   );
+  const [Provider, interactionPolicy] = await Promise.all([
+    loadOidcProviderConstructor(),
+    loadOidcInteractionPolicy(),
+  ]);
 
   // Load (or auto-generate) JWKS signing keys for this tenant
   let keyModels = await params.jwksKeyRepository.findActiveByTenantId(
@@ -122,9 +129,8 @@ export async function createOidcProvider(
       tenantConfig?.accessTokenTtlSec ?? DEFAULT_ACCESS_TOKEN_TTL,
     tenantRefreshTokenTtlSec:
       tenantConfig?.refreshTokenTtlSec ?? DEFAULT_REFRESH_TOKEN_TTL,
+    interactionPolicy,
   });
-
-  const Provider = await loadOidcProviderConstructor();
 
   const provider = new Provider(params.issuer, configuration);
   provider.app.proxy =

@@ -47,8 +47,9 @@ default mix:
 Every measured probe and soak window must satisfy all of these conditions:
 
 - request failure rate is strictly less than 1%;
-- overall and endpoint p95 latency is strictly less than 1,000 ms;
-- overall and endpoint p99 latency is strictly less than 2,000 ms;
+- introspection and userinfo: p95 <= 200 ms and p99 <= 500 ms;
+- refresh: p95 <= 300 ms and p99 <= 1,000 ms;
+- overall and other endpoint HTTP metrics retain the fallback gates of p95 < 1,000 ms and p99 < 2,000 ms;
 - normal-flow check failures are zero;
 - the expected auth, PostgreSQL, and Redis containers remain present and
   running, with zero restarts; and
@@ -168,6 +169,48 @@ issuer is fixed to `https://auth-service:13443`. The overlay trusts exactly one
 HTTP proxy hop and enables node-oidc-provider proxy handling so its resume URLs
 and secure cookies retain the external HTTPS origin. Do not substitute an IP
 URL, `0.0.0.0`, a different issuer, or an SSH forwarding address.
+
+#### Optional Auth-PC heap snapshot diagnostics
+
+Use the heap snapshot overlay only for a diagnostic run after an OOM or a
+suspected memory leak. It caps V8 old-space at 768 MiB, leaving headroom below
+the load container's 2 GiB memory limit, and asks Node to write one heap
+snapshot as V8 approaches that limit. The bind source must already exist so
+Compose cannot silently create a permissive directory:
+
+```sh
+(
+  set -eu
+  auth_root="$(git rev-parse --show-toplevel)"
+  [ "$auth_root" = "$(pwd -P)" ]
+  runtime_env="$auth_root/load-tests/.runtime.env"
+  diagnostics_root="$auth_root/load-tests/diagnostics/heap-snapshots"
+  [ -f "$runtime_env" ] && [ ! -L "$runtime_env" ]
+  install -d -m 700 "$diagnostics_root"
+  [ ! -L "$diagnostics_root" ]
+
+  docker compose --project-name auth-load \
+    -f "$auth_root/docker-compose.load.yml" \
+    -f "$auth_root/docker-compose.remote-load.yml" \
+    -f "$auth_root/docker-compose.load-heap-snapshot.yml" \
+    --env-file "$runtime_env" \
+    up --build -d --wait --wait-timeout 180 auth-service load-gateway
+)
+```
+
+Generated `Heap.*.heapsnapshot` files remain beneath
+`load-tests/diagnostics/heap-snapshots/` after the container exits or the
+Compose project is stopped. Node creates them with mode `0600`, and the entire
+diagnostics tree is ignored by Git. Heap snapshots can contain passwords,
+tokens, keys, cookies, and user data from process memory. Never commit, upload,
+or copy them to the M1. Analyze them only on the Auth PC through an approved
+local workflow and securely remove them when the investigation is complete.
+
+Snapshot creation temporarily pauses the Node process and can change GC and
+latency behavior. If a snapshot is produced, treat that run as diagnostic
+evidence rather than a final capacity or soak result. Omitting
+`docker-compose.load-heap-snapshot.yml` keeps the normal load topology and Node
+runtime unchanged.
 
 Copy _only_ the public CA certificate plus the M1 client certificate and key.
 The CA private key and server private key stay on the Auth PC. The copy
@@ -454,3 +497,17 @@ verifiers, cookies, and tokens are generated for the run and are never retained
 in reports. The temporary `load-tests/.runtime.env` is permission-restricted and
 removed during cleanup and error handling. Do not copy it, logs, or raw protocol
 responses into results or bug reports.
+
+### Agreed latency targets (2026-09-06)
+
+The endpoint limits above are load-test acceptance gates. Token issuance also has
+an agreed target of p95 <= 300 ms and p99 <= 1,000 ms, but is currently included
+in the login HTTP metric and cannot be independently evaluated. The login metric
+measures individual HTTP requests, not the end-to-end login flow. Do not report
+these two unmeasured targets as passing. Operational SLO compliance additionally
+requires an agreed observation window and success definition.
+
+Latency is evaluated from the saved k6 summary by the capacity evaluator; the
+k6 process exit code alone is not a latency verdict. Existing experiment reports
+retain their original thresholds; comparisons using these targets must be labeled
+as re-evaluations.

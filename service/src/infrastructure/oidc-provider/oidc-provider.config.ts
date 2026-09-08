@@ -19,6 +19,8 @@ import { ResourceOrigin } from '@domain/value-objects/resource-origin';
 import { buildTenantCookieConfiguration } from './security/tenant-cookie.config';
 import { createSafeOidcFetch } from './security/safe-oidc-fetch';
 import { createIntrospectionAllowedPolicy } from './introspection-policy';
+import { buildOidcInteractionPolicy } from './oidc-interaction.policy';
+import type { OidcInteractionPolicyRuntime } from './oidc-interaction.policy';
 
 type OidcConfiguration = Configuration & {
   grantTypes: string[];
@@ -43,6 +45,7 @@ export function buildOidcConfiguration(params: {
   scopeClaimResolver: ScopeClaimResolverPort;
   tenantAccessTokenTtlSec: number;
   tenantRefreshTokenTtlSec: number;
+  interactionPolicy: OidcInteractionPolicyRuntime;
 }): OidcConfiguration {
   const {
     em,
@@ -62,6 +65,7 @@ export function buildOidcConfiguration(params: {
     scopeClaimResolver,
     tenantAccessTokenTtlSec,
     tenantRefreshTokenTtlSec,
+    interactionPolicy,
   } = params;
 
   const { jwksKeys } = params;
@@ -130,7 +134,6 @@ export function buildOidcConfiguration(params: {
   const accessTokenFormat = configService.getOrThrow<string>(
     'OIDC_ACCESS_TOKEN_FORMAT',
   ) as 'opaque' | 'jwt';
-
   return {
     grantTypes: [...supportedGrantTypes],
 
@@ -150,6 +153,7 @@ export function buildOidcConfiguration(params: {
     },
 
     interactions: {
+      policy: buildOidcInteractionPolicy(interactionPolicy),
       url(_ctx, interaction) {
         return `/t/${tenantCode}/interaction/${interaction.uid}`;
       },

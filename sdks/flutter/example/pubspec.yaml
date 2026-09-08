@@ -1,0 +1,19 @@
+name: auth_platform_flutter_example
+description: Minimal Auth Platform Flutter SDK integration example.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+
+dependencies:
+  auth_platform_flutter:
+    path: ..
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

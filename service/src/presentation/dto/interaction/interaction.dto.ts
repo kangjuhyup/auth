@@ -8,6 +8,15 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { SignupDto as AuthSignupDto } from '../auth/auth.dto';
+
+export class InteractionSignupDto extends AuthSignupDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(512)
+  @MaskLog({ type: 'full' })
+  handoffId!: string;
+}
 
 export class InteractionLoginDto {
   @IsOptional()

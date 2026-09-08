@@ -47,7 +47,9 @@ label {
 }
 
 input[type='text'],
-input[type='password'] {
+input[type='password'],
+input[type='email'],
+input[type='tel'] {
   width: 100%;
   padding: 10px 14px;
   border: 1px solid #d9d9d9;
@@ -181,6 +183,21 @@ input:focus {
 
 .abort-link a:hover {
   color: #666;
+}
+
+.link-button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #1677ff;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  color: #0958d9;
+  text-decoration: underline;
 }
 
 .tab-bar {

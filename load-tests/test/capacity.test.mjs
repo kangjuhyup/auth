@@ -148,7 +148,8 @@ test('evaluateCapacityMetrics enforces p95 and p99 SLOs for every observed endpo
   const result = evaluateCapacityMetrics(passingMetrics({ endpointDurations }));
   assert.deepEqual(result.violations, [
     'endpoint login p95 latency must be < 1000 ms',
-    'endpoint refresh p99 latency must be < 2000 ms',
+    'endpoint refresh p95 latency must be <= 300 ms',
+    'endpoint refresh p99 latency must be <= 1000 ms',
   ]);
 });
 
@@ -213,3 +214,28 @@ test('evaluateCapacityMetrics accepts custom SLO values', () => {
   );
   assert.equal(result.passed, true);
 });
+
+for (const [endpoint, p95Ms, p99Ms] of [
+  ['introspection', 200, 500],
+  ['userinfo', 200, 500],
+  ['refresh', 300, 1000],
+]) {
+  test(`${endpoint} accepts agreed boundaries and rejects either percentile above them`, () => {
+    const evaluate = (duration) =>
+      evaluateCapacityMetrics(
+        passingMetrics({
+          endpointDurations: {
+            ...completeEndpoints,
+            [endpoint]: { count: 1, ...duration },
+          },
+        }),
+      );
+    assert.equal(evaluate({ p95Ms, p99Ms }).passed, true);
+    for (const duration of [
+      { p95Ms: p95Ms + 0.01, p99Ms },
+      { p95Ms, p99Ms: p99Ms + 0.01 },
+    ]) {
+      assert.equal(evaluate(duration).passed, false);
+    }
+  });
+}

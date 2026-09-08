@@ -2,7 +2,12 @@ import { Getter } from '../decorators';
 import { PersistenceModel } from './persistence-model';
 import { UserCredentialModel } from './user-credential';
 
-export type UserStatus = 'ACTIVE' | 'LOCKED' | 'DISABLED' | 'WITHDRAWN';
+export type UserStatus =
+  | 'PENDING_REGISTRATION'
+  | 'ACTIVE'
+  | 'LOCKED'
+  | 'DISABLED'
+  | 'WITHDRAWN';
 
 interface UserProps {
   tenantId: string;
@@ -13,6 +18,8 @@ interface UserProps {
   phoneVerified: boolean;
   status: UserStatus;
   mfaEnabled: boolean;
+  accountRegistrationId?: string | null;
+  registrationAttemptId?: string | null;
   passwordCredential?: UserCredentialModel;
 }
 
@@ -49,6 +56,34 @@ export class UserModel extends PersistenceModel<string, UserProps> {
     );
   }
 
+  static createPendingRegistration(params: {
+    id: string;
+    tenantId: string;
+    username: string;
+    email?: string | null;
+    phone?: string | null;
+    passwordCredential: UserCredentialModel;
+    accountRegistrationId: string;
+    registrationAttemptId: string;
+  }): UserModel {
+    return new UserModel(
+      {
+        tenantId: params.tenantId,
+        username: params.username.trim(),
+        email: params.email ?? null,
+        emailVerified: false,
+        phone: params.phone ?? null,
+        phoneVerified: false,
+        status: 'PENDING_REGISTRATION',
+        mfaEnabled: false,
+        accountRegistrationId: params.accountRegistrationId,
+        registrationAttemptId: params.registrationAttemptId,
+        passwordCredential: params.passwordCredential,
+      },
+      params.id,
+    );
+  }
+
   static of(params: {
     id: string;
     tenantId: string;
@@ -59,6 +94,8 @@ export class UserModel extends PersistenceModel<string, UserProps> {
     phoneVerified: boolean;
     status: UserStatus;
     mfaEnabled?: boolean;
+    accountRegistrationId?: string | null;
+    registrationAttemptId?: string | null;
     passwordCredential?: UserCredentialModel;
   }): UserModel {
     return new UserModel(
@@ -71,6 +108,8 @@ export class UserModel extends PersistenceModel<string, UserProps> {
         phoneVerified: params.phoneVerified,
         status: params.status,
         mfaEnabled: params.mfaEnabled ?? false,
+        accountRegistrationId: params.accountRegistrationId ?? null,
+        registrationAttemptId: params.registrationAttemptId ?? null,
         passwordCredential: params.passwordCredential,
       },
       params.id,
@@ -126,6 +165,14 @@ export class UserModel extends PersistenceModel<string, UserProps> {
     this.etc.status = status;
   }
 
+  activateRegistration(): void {
+    if (this.status === 'ACTIVE') return;
+    if (this.status !== 'PENDING_REGISTRATION') {
+      throw new Error('RegistrationActivationNotAllowed');
+    }
+    this.etc.status = 'ACTIVE';
+  }
+
   changeMfaEnabled(enabled: boolean): void {
     if (this.status === 'WITHDRAWN') throw new Error('UserAlreadyWithdrawn');
     this.etc.mfaEnabled = enabled;
@@ -158,6 +205,12 @@ export class UserModel extends PersistenceModel<string, UserProps> {
 
   @Getter()
   declare readonly mfaEnabled: boolean;
+
+  @Getter()
+  declare readonly accountRegistrationId: string | null | undefined;
+
+  @Getter()
+  declare readonly registrationAttemptId: string | null | undefined;
 
   @Getter()
   declare readonly passwordCredential: UserCredentialModel | undefined;

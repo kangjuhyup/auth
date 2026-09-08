@@ -64,7 +64,12 @@ export type UserProfileView = Readonly<{
   emailVerified: boolean;
   phone?: string;
   phoneVerified: boolean;
-  status: 'ACTIVE' | 'LOCKED' | 'DISABLED' | 'WITHDRAWN';
+  status:
+    | 'PENDING_REGISTRATION'
+    | 'ACTIVE'
+    | 'LOCKED'
+    | 'DISABLED'
+    | 'WITHDRAWN';
   mfaEnabled: boolean;
   passwordChangeRequired: boolean;
   createdAt?: Date;

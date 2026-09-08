@@ -90,6 +90,12 @@ import { ScopeClaimResolverPort } from '@application/ports/scope-claim-resolver.
 import { OidcScopeClaimResolverAdapter } from './oidc-provider/scope-claim-resolver.adapter';
 import { BootstrapProcessRepository } from '@application/process-managers/ports/bootstrap-process.repository';
 import { BootstrapProcessRepositoryImpl } from './repositories/bootstrap-process.repository.impl';
+import { RegistrationEligibilityPort } from '@application/ports/registration-eligibility.port';
+import {
+  AccountRegistrationEligibilityHttpAdapter,
+  DisabledRegistrationEligibilityAdapter,
+  buildAccountRegistrationEligibilityHttpConfig,
+} from './account/account-registration-eligibility-http.adapter';
 
 // Password Hash Implementations
 import { Argon2idHash } from './crypto/password/impl/argon2-hash';
@@ -192,6 +198,17 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
       useClass: RedisLoginAttemptPolicyAdapter,
     },
     {
+      provide: RegistrationEligibilityPort,
+      useFactory: (config: ConfigService) => {
+        const registrationConfig =
+          buildAccountRegistrationEligibilityHttpConfig(config);
+        return registrationConfig
+          ? new AccountRegistrationEligibilityHttpAdapter(registrationConfig)
+          : new DisabledRegistrationEligibilityAdapter();
+      },
+      inject: [ConfigService],
+    },
+    {
       provide: IdentityLinkSessionPort,
       useClass: RedisIdentityLinkSessionRepository,
     },
@@ -286,6 +303,7 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     TenantContextPort,
     AdminSessionTokenPort,
     LoginAttemptPolicyPort,
+    RegistrationEligibilityPort,
     IdentityLinkSessionPort,
     OidcInteractionPort,
     GrantTypeRegistryPort,

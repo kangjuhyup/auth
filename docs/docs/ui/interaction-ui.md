@@ -14,7 +14,7 @@ description: OIDC interaction 화면의 구조, 수정 지점, 빌드 및 검증
 
 ## 개요
 
-Interaction UI는 OIDC authorize 흐름 중 사용자가 직접 보는 로그인, 동의, MFA 화면을 담당하는 React SPA입니다. 화면은 `service/interaction-ui`에서 빌드되고, Nest 서비스가 `/interaction-assets`와 `/t/:tenantCode/interaction/:uid` 경로로 서빙합니다.
+Interaction UI는 OIDC authorize 흐름 중 사용자가 직접 보는 로그인, hosted 회원가입, 동의, MFA 화면을 담당하는 React SPA입니다. 화면은 `service/interaction-ui`에서 빌드되고, Nest 서비스가 `/interaction-assets`와 `/t/:tenantCode/interaction/:uid` 경로로 서빙합니다.
 
 :::info
 관리자 UI와 Interaction UI는 목적이 다릅니다. 관리자 UI는 운영자가 설정을 관리하는 도구이고, Interaction UI는 최종 사용자가 OIDC 인증 중 만나는 화면입니다.
@@ -25,6 +25,7 @@ Interaction UI는 OIDC authorize 흐름 중 사용자가 직접 보는 로그인
 | 구분                             | 포함 여부   | 설명                                                                    |
 | -------------------------------- | ----------- | ----------------------------------------------------------------------- |
 | 로그인 화면 문구와 레이아웃 변경 | 포함        | `LoginPage.tsx`, `index.css`                                            |
+| hosted 회원가입 화면 변경        | 포함        | `SignupPage.tsx`, tenant signup policy                                  |
 | 외부 IdP 버튼 표현 변경          | 포함        | `IdpButton.tsx`, `LoginPage.tsx`                                        |
 | MFA 인증 및 TOTP 등록 화면 변경  | 포함        | `MfaPage.tsx`, `MfaEnrollmentPage.tsx`                                  |
 | 새 interaction prompt 추가       | 조건부 포함 | `App.tsx`, `InteractionController`, provider interaction 흐름 동시 수정 |
@@ -50,6 +51,7 @@ Interaction UI가 호출하는 주요 API:
 ```text
 GET  ./api/details
 POST ./api/login
+POST ./api/signup
 POST ./api/mfa
 POST ./api/mfa/totp/enroll
 POST ./api/mfa/totp/confirm
@@ -65,6 +67,7 @@ GET  ./idp/:provider
 | `src/index.css`                   | 색상, 폼, 카드, 버튼, QR, 반응형 스타일 |
 | `src/App.tsx`                     | prompt별 페이지 전환, 로그인 후 분기    |
 | `src/pages/LoginPage.tsx`         | ID/PW 로그인, 외부 IdP 버튼 목록        |
+| `src/pages/SignupPage.tsx`        | hosted 계정 생성, 로그인 화면 전환      |
 | `src/pages/ConsentPage.tsx`       | scope 동의 화면                         |
 | `src/pages/MfaPage.tsx`           | MFA 인증 화면                           |
 | `src/pages/MfaEnrollmentPage.tsx` | TOTP 등록 QR, 설정 키, 복구 코드        |
@@ -79,6 +82,16 @@ GET  ./idp/:provider
 4. 새 API가 필요하면 `InteractionController`에 endpoint를 추가하고, 프론트 API client를 맞춥니다.
 5. 새 prompt를 추가할 때는 provider interaction 흐름과 `App.tsx` 분기를 함께 설계합니다.
 6. 빌드 후 Nest 오리진에서 실제 OIDC 흐름으로 검증합니다.
+
+## Hosted 회원가입
+
+외부 앱은 먼저 Account가 소유한 본인인증·가입자격 절차를 완료해 짧은 TTL의 `handoffId`를 받습니다. Account는 임의 `returnTo`를 받거나 redirect하지 않습니다. 브라우저 또는 앱은 진행 중인 Auth OIDC interaction URL에 `?handoffId=...`만 추가해 이동해야 합니다. 실제 Account ticket, CI, DI, DI HMAC, 연락처 및 약관 원문은 Auth나 interaction URL로 전달하지 않습니다.
+
+Interaction UI는 tenant signup mode가 `open`이고 `handoffId`가 있을 때만 credential 등록을 제출합니다. Auth는 Account backchannel claim 성공 후 `PENDING_REGISTRATION` 사용자를 만들고, Account complete 성공 후에만 `ACTIVE`로 전환하여 같은 interaction의 MFA, consent, authorization code 발급을 계속합니다. claim lease 만료나 Account timeout 중에는 interaction을 완료하지 않습니다.
+
+`POST ./api/signup`은 hosted UI와 Auth 서비스 사이의 내부 endpoint입니다. 이 endpoint를 모바일 또는 웹 SDK의 공개 계약으로 사용하지 않습니다.
+
+`POST /auth/signup` 공개 endpoint는 Account 가입자격 정책 우회를 막기 위해 비활성화되어 있습니다. OpenAPI에는 일반 가입 API로 오인하지 않도록 deprecated endpoint와 `410 Gone` 계약만 노출합니다.
 
 ## MFA 등록 화면
 

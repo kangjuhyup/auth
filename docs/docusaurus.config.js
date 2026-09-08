@@ -81,7 +81,7 @@ const config = {
         copyright: `Copyright © ${new Date().getFullYear()} Auth.`,
       },
       prism: {
-        additionalLanguages: ['bash', 'json'],
+        additionalLanguages: ['bash', 'dart', 'json', 'yaml'],
       },
     }),
 };

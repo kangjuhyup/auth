@@ -37,6 +37,7 @@ services:
     restart: "no"
     environment:
       NODE_ENV: production
+      RVLOG_MIN_LEVEL: INFO
       DB_DRIVER: postgresql
       DB_HOST: postgres-load
       DB_PORT: "5432"

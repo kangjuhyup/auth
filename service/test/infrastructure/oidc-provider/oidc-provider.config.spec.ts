@@ -127,6 +127,28 @@ describe('buildOidcConfiguration', () => {
         email_verified: baseClaims.email_verified,
       })),
     };
+    class Prompt {
+      constructor(readonly config: { name: string; requestable?: boolean }) {}
+
+      get name() {
+        return this.config.name;
+      }
+
+      get requestable() {
+        return this.config.requestable ?? false;
+      }
+    }
+    const base = () => {
+      const policy = Object.assign(
+        [new Prompt({ name: 'login' }), new Prompt({ name: 'consent' })],
+        {
+          add(prompt: Prompt, index = policy.length) {
+            policy.splice(index, 0, prompt);
+          },
+        },
+      );
+      return policy;
+    };
 
     return {
       tenantId: 'tenant-1',
@@ -151,6 +173,7 @@ describe('buildOidcConfiguration', () => {
       supportedScopes: ['openid', 'profile', 'email', 'orders:read'],
       tenantAccessTokenTtlSec: 3600,
       tenantRefreshTokenTtlSec: 86400,
+      interactionPolicy: { base, Prompt } as any,
     };
   };
 
@@ -165,6 +188,17 @@ describe('buildOidcConfiguration', () => {
     expect(
       typeof (cfg.features?.resourceIndicators as any).getResourceServerInfo,
     ).toBe('function');
+  });
+
+  it('표준 prompt=create를 최우선 requestable interaction으로 등록한다', () => {
+    const cfg = buildOidcConfiguration({
+      ...makeDeps(),
+      tenantCode: 'acme',
+    });
+    const policy = cfg.interactions?.policy as any[];
+
+    expect(policy[0].name).toBe('create');
+    expect(policy[0].requestable).toBe(true);
   });
 
   it('단일 granted resource는 token request에서 생략해도 사용한다', async () => {

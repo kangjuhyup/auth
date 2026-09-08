@@ -389,8 +389,10 @@ export const OpenApiResponseSchemas = {
     uid: string('interaction-uid'),
     prompt: string('login'),
     clientId: string('web-app'),
+    issuer: string('https://auth.example.com/t/acme/oidc'),
     missingScopes: arrayOf(string('email')),
     mfaRequired: boolean(false),
+    signupAllowed: boolean(true),
     idpList: arrayOf(
       object({
         provider: string('google'),
@@ -469,6 +471,24 @@ export function ApiNoContentSchema(summary: string) {
   return applyDecorators(
     ApiOperation({ summary }),
     ApiNoContentResponse({ description: 'No Content' }),
+  );
+}
+
+export function ApiDeprecatedGoneSchema(summary: string, description: string) {
+  return applyDecorators(
+    ApiOperation({ summary, deprecated: true }),
+    ApiResponse({
+      status: HttpStatus.GONE,
+      description,
+      schema: object(
+        {
+          statusCode: integer(HttpStatus.GONE),
+          message: string(description),
+          error: string('Gone'),
+        },
+        ['statusCode', 'message', 'error'],
+      ),
+    }),
   );
 }
 

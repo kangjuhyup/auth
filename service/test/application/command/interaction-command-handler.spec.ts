@@ -7,6 +7,7 @@ describe('InteractionCommandHandler', () => {
   let loginAttemptPolicy: any;
   let metrics: any;
   let authCommand: any;
+  let registrationEligibility: any;
   let auditRecorder: any;
   const tenant = { id: 'tenant-1', code: 'acme', name: 'ACME' };
 
@@ -19,6 +20,7 @@ describe('InteractionCommandHandler', () => {
     oidcInteraction = {
       getDetails: jest.fn(),
       completeLogin: jest.fn(),
+      completeSignup: jest.fn(),
     };
     loginAttemptPolicy = {
       consumeAttempt: jest.fn().mockResolvedValue({ allowed: true }),
@@ -34,6 +36,12 @@ describe('InteractionCommandHandler', () => {
       snapshot: jest.fn(),
     };
     authCommand = {
+      signup: jest.fn(),
+      resumeRegistrationAttempt: jest.fn().mockResolvedValue(null),
+      createPendingRegistration: jest
+        .fn()
+        .mockResolvedValue({ userId: 'user-new' }),
+      activatePendingRegistration: jest.fn().mockResolvedValue(undefined),
       changePassword: jest.fn().mockResolvedValue(undefined),
       beginTotpEnrollment: jest.fn().mockResolvedValue({
         secret: 'totp-secret',
@@ -41,6 +49,18 @@ describe('InteractionCommandHandler', () => {
       }),
       confirmTotpEnrollment: jest.fn().mockResolvedValue({
         recoveryCodes: ['code-1', 'code-2'],
+      }),
+    };
+    registrationEligibility = {
+      claim: jest.fn().mockResolvedValue({
+        registrationId: 'registration-1',
+        attemptId: 'tenant-1:uid-1',
+        status: 'CLAIMED',
+        claimExpiresAt: '2026-09-08T12:00:00.000Z',
+      }),
+      complete: jest.fn().mockResolvedValue({
+        registrationId: 'registration-1',
+        status: 'USED',
       }),
     };
     auditRecorder = {
@@ -52,8 +72,365 @@ describe('InteractionCommandHandler', () => {
       loginAttemptPolicy,
       metrics,
       authCommand,
+      registrationEligibility,
       auditRecorder,
     );
+  });
+
+  it('hosted signup은 claim → pending → complete → ACTIVE 뒤 OIDC interaction을 완료한다', async () => {
+    oidcInteraction.getDetails.mockResolvedValue({
+      uid: 'uid-1',
+      prompt: 'create',
+      clientId: 'mobile-app',
+      issuer: 'https://auth.example/t/acme/oidc',
+      missingScopes: [],
+      mfaRequired: false,
+      signupAllowed: true,
+      idpList: [],
+    });
+    oidcInteraction.completeSignup = jest.fn().mockResolvedValue({
+      redirectTo: '/interaction/done',
+    });
+
+    await expect(
+      (handler as any).submitSignup({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        username: 'new-user',
+        password: 'Secure123!',
+        email: 'new@example.com',
+        handoffId: 'handoff-browser-value',
+        req: {},
+        res: {},
+        tenant,
+      }),
+    ).resolves.toEqual({
+      body: {
+        success: true,
+        mfaRequired: false,
+        redirectTo: '/interaction/done',
+      },
+    });
+
+    expect(registrationEligibility.claim).toHaveBeenCalledWith({
+      handoffId: 'handoff-browser-value',
+      tenantId: 'tenant-1',
+      clientId: 'mobile-app',
+      attemptId: 'tenant-1:uid-1',
+    });
+    expect(authCommand.createPendingRegistration).toHaveBeenCalledWith(
+      'tenant-1',
+      expect.objectContaining({
+        username: 'new-user',
+        password: 'Secure123!',
+        email: 'new@example.com',
+      }),
+      {
+        registrationId: 'registration-1',
+        attemptId: 'tenant-1:uid-1',
+      },
+    );
+    expect(registrationEligibility.complete).toHaveBeenCalledWith({
+      registrationId: 'registration-1',
+      attemptId: 'tenant-1:uid-1',
+      issuer: 'https://auth.example/t/acme/oidc',
+      subject: 'user-new',
+    });
+    expect(authCommand.activatePendingRegistration).toHaveBeenCalledWith(
+      'tenant-1',
+      'user-new',
+    );
+    expect(
+      registrationEligibility.claim.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      authCommand.createPendingRegistration.mock.invocationCallOrder[0],
+    );
+    expect(
+      authCommand.createPendingRegistration.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      registrationEligibility.complete.mock.invocationCallOrder[0],
+    );
+    expect(
+      registrationEligibility.complete.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      authCommand.activatePendingRegistration.mock.invocationCallOrder[0],
+    );
+    expect(
+      authCommand.activatePendingRegistration.mock.invocationCallOrder[0],
+    ).toBeLessThan(oidcInteraction.completeSignup.mock.invocationCallOrder[0]);
+  });
+
+  it('Account complete와 ACTIVE 전이 후 MFA 등록을 거쳐 signup interaction을 완료한다', async () => {
+    oidcInteraction.getDetails.mockResolvedValue({
+      uid: 'uid-1',
+      prompt: 'create',
+      clientId: 'mobile-app',
+      issuer: 'https://auth.example/t/acme/oidc',
+      missingScopes: [],
+      mfaRequired: true,
+      signupAllowed: true,
+      idpList: [],
+    });
+    oidcInteraction.completeSignup = jest.fn().mockResolvedValue({
+      redirectTo: '/interaction/done',
+    });
+    userQuery.getMfaMethods.mockResolvedValue([]);
+
+    await (handler as any).submitSignup({
+      tenantCode: 'acme',
+      uid: 'uid-1',
+      username: 'new-user',
+      password: 'Secure123!',
+      handoffId: 'handoff-browser-value',
+      req: {},
+      res: {},
+      tenant,
+    });
+    await handler.confirmTotpEnrollment({
+      tenantCode: 'acme',
+      uid: 'uid-1',
+      code: '123456',
+      req: {},
+      res: {},
+      tenant,
+    });
+
+    expect(oidcInteraction.completeSignup).toHaveBeenCalledWith({
+      tenantCode: 'acme',
+      req: {},
+      res: {},
+      userId: 'user-new',
+      tenant,
+    });
+    expect(oidcInteraction.completeLogin).not.toHaveBeenCalled();
+  });
+
+  it('Account complete timeout이면 ACTIVE 전이와 OIDC interaction 완료를 하지 않는다', async () => {
+    oidcInteraction.getDetails.mockResolvedValue({
+      uid: 'uid-1',
+      prompt: 'create',
+      clientId: 'mobile-app',
+      issuer: 'https://auth.example/t/acme/oidc',
+      missingScopes: [],
+      mfaRequired: false,
+      signupAllowed: true,
+      idpList: [],
+    });
+    oidcInteraction.completeSignup = jest.fn().mockResolvedValue({
+      redirectTo: '/interaction/done',
+    });
+    registrationEligibility.complete.mockRejectedValue(
+      Object.assign(new Error('RegistrationEligibilityUnavailable'), {
+        code: 'unavailable',
+      }),
+    );
+
+    await expect(
+      handler.submitSignup({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        username: 'new-user',
+        password: 'Secure123!',
+        handoffId: 'handoff-browser-value',
+        req: {},
+        res: {},
+        tenant,
+      }),
+    ).resolves.toEqual({
+      status: 503,
+      body: { error: 'registration_service_unavailable' },
+    });
+
+    expect(authCommand.activatePendingRegistration).not.toHaveBeenCalled();
+    expect(oidcInteraction.completeSignup).not.toHaveBeenCalled();
+  });
+
+  it('만료된 claim이면 pending 사용자와 OIDC token chain을 만들지 않는다', async () => {
+    oidcInteraction.getDetails.mockResolvedValue({
+      uid: 'uid-1',
+      prompt: 'create',
+      clientId: 'mobile-app',
+      issuer: 'https://auth.example/t/acme/oidc',
+      missingScopes: [],
+      mfaRequired: false,
+      signupAllowed: true,
+      idpList: [],
+    });
+    registrationEligibility.claim.mockRejectedValue(
+      Object.assign(new Error('RegistrationEligibilityExpired'), {
+        code: 'expired',
+      }),
+    );
+
+    await expect(
+      handler.submitSignup({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        username: 'new-user',
+        password: 'Secure123!',
+        handoffId: 'expired-handoff',
+        req: {},
+        res: {},
+        tenant,
+      }),
+    ).resolves.toEqual({
+      status: 410,
+      body: { error: 'registration_handoff_expired' },
+    });
+
+    expect(authCommand.createPendingRegistration).not.toHaveBeenCalled();
+    expect(registrationEligibility.complete).not.toHaveBeenCalled();
+    expect(authCommand.activatePendingRegistration).not.toHaveBeenCalled();
+    expect(oidcInteraction.completeSignup).not.toHaveBeenCalled();
+  });
+
+  it('complete timeout 재시도는 동일 attempt binding을 사용하고 한 사용자만 재사용한다', async () => {
+    oidcInteraction.getDetails.mockResolvedValue({
+      uid: 'uid-1',
+      prompt: 'create',
+      clientId: 'mobile-app',
+      issuer: 'https://auth.example/t/acme/oidc',
+      missingScopes: [],
+      mfaRequired: false,
+      signupAllowed: true,
+      idpList: [],
+    });
+    oidcInteraction.completeSignup = jest.fn().mockResolvedValue({
+      redirectTo: '/interaction/done',
+    });
+    registrationEligibility.complete
+      .mockRejectedValueOnce(
+        Object.assign(new Error('RegistrationEligibilityUnavailable'), {
+          code: 'unavailable',
+        }),
+      )
+      .mockResolvedValueOnce({
+        registrationId: 'registration-1',
+        status: 'USED',
+      });
+
+    const input = {
+      tenantCode: 'acme',
+      uid: 'uid-1',
+      username: 'new-user',
+      password: 'Secure123!',
+      handoffId: 'handoff-browser-value',
+      req: {},
+      res: {},
+      tenant,
+    };
+
+    authCommand.resumeRegistrationAttempt
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        userId: 'user-new',
+        registrationId: 'registration-1',
+        status: 'PENDING_REGISTRATION',
+      });
+
+    await expect(handler.submitSignup(input)).resolves.toMatchObject({
+      status: 503,
+    });
+    await expect(handler.submitSignup(input)).resolves.toMatchObject({
+      body: { redirectTo: '/interaction/done' },
+    });
+
+    expect(registrationEligibility.claim).toHaveBeenCalledTimes(1);
+    expect(authCommand.createPendingRegistration).toHaveBeenCalledTimes(1);
+    expect(registrationEligibility.complete).toHaveBeenCalledTimes(2);
+    expect(authCommand.activatePendingRegistration).toHaveBeenCalledTimes(1);
+    expect(oidcInteraction.completeSignup).toHaveBeenCalledTimes(1);
+  });
+
+  it('handoffId가 없으면 Account claim과 사용자 생성을 하지 않는다', async () => {
+    oidcInteraction.getDetails.mockResolvedValue({
+      uid: 'uid-1',
+      prompt: 'create',
+      clientId: 'mobile-app',
+      issuer: 'https://auth.example/t/acme/oidc',
+      missingScopes: [],
+      mfaRequired: false,
+      signupAllowed: true,
+      idpList: [],
+    });
+
+    await expect(
+      handler.submitSignup({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        username: 'new-user',
+        password: 'Secure123!',
+        handoffId: '',
+        req: {},
+        res: {},
+        tenant,
+      }),
+    ).resolves.toEqual({
+      status: 400,
+      body: { error: 'registration_handoff_required' },
+    });
+    expect(registrationEligibility.claim).not.toHaveBeenCalled();
+    expect(authCommand.createPendingRegistration).not.toHaveBeenCalled();
+  });
+
+  it('login/create가 아닌 interaction에서는 사용자를 생성하지 않는다', async () => {
+    oidcInteraction.getDetails.mockResolvedValue({
+      uid: 'uid-1',
+      prompt: 'consent',
+      clientId: 'mobile-app',
+      missingScopes: ['email'],
+      mfaRequired: false,
+      signupAllowed: true,
+      idpList: [],
+    });
+
+    await expect(
+      (handler as any).submitSignup({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        username: 'new-user',
+        password: 'Secure123!',
+        handoffId: 'handoff-browser-value',
+        req: {},
+        res: {},
+        tenant,
+      }),
+    ).resolves.toEqual({
+      status: 400,
+      body: { error: 'signup_interaction_required' },
+    });
+    expect(registrationEligibility.claim).not.toHaveBeenCalled();
+    expect(authCommand.createPendingRegistration).not.toHaveBeenCalled();
+  });
+
+  it('self signup이 비활성화된 tenant에서는 사용자를 생성하지 않는다', async () => {
+    oidcInteraction.getDetails.mockResolvedValue({
+      uid: 'uid-1',
+      prompt: 'create',
+      clientId: 'mobile-app',
+      missingScopes: [],
+      mfaRequired: false,
+      signupAllowed: false,
+      idpList: [],
+    });
+
+    await expect(
+      handler.submitSignup({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        username: 'new-user',
+        password: 'Secure123!',
+        handoffId: 'handoff-browser-value',
+        req: {},
+        res: {},
+        tenant,
+      }),
+    ).resolves.toEqual({
+      status: 403,
+      body: { error: 'signup_not_allowed' },
+    });
+    expect(registrationEligibility.claim).not.toHaveBeenCalled();
+    expect(authCommand.createPendingRegistration).not.toHaveBeenCalled();
   });
 
   it('tenant가 없으면 400 응답을 반환한다', async () => {

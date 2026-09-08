@@ -27,6 +27,26 @@ export abstract class AuthCommandPort {
     dto: SignupDto,
   ): Promise<{ userId: string }>;
 
+  abstract resumeRegistrationAttempt(
+    tenantId: string,
+    attemptId: string,
+  ): Promise<{
+    userId: string;
+    registrationId: string;
+    status: 'PENDING_REGISTRATION' | 'ACTIVE';
+  } | null>;
+
+  abstract createPendingRegistration(
+    tenantId: string,
+    dto: SignupDto,
+    eligibility: { registrationId: string; attemptId: string },
+  ): Promise<{ userId: string }>;
+
+  abstract activatePendingRegistration(
+    tenantId: string,
+    userId: string,
+  ): Promise<void>;
+
   /**
    * Withdraw a user
    * @description 유저 탈퇴

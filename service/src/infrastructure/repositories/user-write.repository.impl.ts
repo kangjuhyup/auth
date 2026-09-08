@@ -50,6 +50,28 @@ export class UserWriteRepositoryImpl implements UserWriteRepositoryPort {
     return UserMapper.toDomain(entity, activeCred);
   }
 
+  async findByRegistrationAttemptId(
+    tenantId: string,
+    attemptId: string,
+  ): Promise<UserModel | undefined> {
+    const entity = await this.em.findOne(
+      UserOrmEntity,
+      {
+        tenant: tenantId as any,
+        registrationAttemptId: attemptId,
+      },
+      { populate: ['tenant', 'credentials'] },
+    );
+    if (!entity) return undefined;
+
+    const activeCred = entity.credentials
+      .getItems()
+      .find(
+        (credential) => credential.type === 'password' && credential.enabled,
+      );
+    return UserMapper.toDomain(entity, activeCred);
+  }
+
   async findByContact(
     tenantId: string,
     params: { email?: string; phone?: string },
@@ -130,6 +152,8 @@ export class UserWriteRepositoryImpl implements UserWriteRepositoryPort {
           phoneVerified: user.phoneVerified,
           status: user.status,
           mfaEnabled: user.mfaEnabled,
+          accountRegistrationId: user.accountRegistrationId ?? undefined,
+          registrationAttemptId: user.registrationAttemptId ?? undefined,
         });
         em.persist(entity);
       } else {
@@ -140,6 +164,8 @@ export class UserWriteRepositoryImpl implements UserWriteRepositoryPort {
         entity.phone = user.phone ?? undefined;
         entity.phoneVerified = user.phoneVerified;
         entity.mfaEnabled = user.mfaEnabled;
+        entity.accountRegistrationId = user.accountRegistrationId ?? undefined;
+        entity.registrationAttemptId = user.registrationAttemptId ?? undefined;
       }
 
       // credential 변경이 있는 경우 (signup / changePassword)

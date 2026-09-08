@@ -14,7 +14,8 @@ Auth Docs는 OIDC Authorization Server와 관리자 UI 운영을 위한 문서 �
 | -------------- | ---------------------------------------------------------------------------------- |
 | 핵심 개념      | Tenant, Client, RBAC, OIDC 인증 흐름, MFA, IdP, Client Grant, Tenant / Client 정책 |
 | 관리자 UI      | 관리자 콘솔 화면별 사용법과 운영 절차                                              |
-| Interaction UI | OIDC 로그인·동의·MFA 화면 커스터마이징                                             |
+| Interaction UI | OIDC 로그인·회원가입·동의·MFA 화면 커스터마이징                                    |
+| SDK            | Flutter 앱 로그인, hosted 회원가입, 토큰 갱신과 로그아웃 연동                      |
 | API            | OpenAPI / Redoc API Reference                                                      |
 | 운영 주의사항  | secret, token, recovery code 등 민감정보 처리 기준                                 |
 
@@ -36,6 +37,7 @@ Auth Docs는 OIDC Authorization Server와 관리자 UI 운영을 위한 문서 �
 | [MFA 개요](./concepts/mfa.md)                         | MFA 정책, enrollment, 인증 흐름                                       |
 | [IdP](./concepts/idp.md)                              | 외부 Identity Provider와 OAuth2/SAML 연동                             |
 | [Interaction UI 커스터마이징](./ui/interaction-ui.md) | 로그인, 동의, MFA 화면 수정 지점과 빌드 절차                          |
+| [Flutter SDK](./sdks/flutter.md)                      | Flutter 앱의 로그인, 회원가입, 토큰 및 로그아웃 연동                  |
 | [Redoc API 문서](./api/redoc.md)                      | 서비스 OpenAPI 문서 확인 방법                                         |
 
 ## 실행

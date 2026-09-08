@@ -1077,6 +1077,10 @@ export function renderSummaryMarkdown(report) {
     `| Check failure rate | <= ${slo.maxCheckFailureRate} |`,
     `| p95 latency | < ${slo.maxP95MsExclusive} ms |`,
     `| p99 latency | < ${slo.maxP99MsExclusive} ms |`,
+    ...Object.entries(slo.endpointLatency ?? {}).map(
+      ([endpoint, limit]) =>
+        `| ${endpoint} latency | p95 <= ${limit.maxP95Ms} ms; p99 <= ${limit.maxP99Ms} ms |`,
+    ),
     '',
     '## Evaluated outcome',
     '',
