@@ -247,6 +247,8 @@ describe('관리자 관계형 컨트롤러', () => {
         removeRole: jest.fn(),
         revokeUserSession: jest.fn(),
         revokeUserSessions: jest.fn(),
+        addGroup: jest.fn(),
+        removeGroup: jest.fn(),
       };
       queryPort = {
         getUsers: jest.fn(),
@@ -255,6 +257,7 @@ describe('관리자 관계형 컨트롤러', () => {
         getUserConsents: jest.fn(),
         getUserConsentHistory: jest.fn(),
         getUserSessions: jest.fn(),
+        getUserGroups: jest.fn(),
       };
       controller = new AdminUserController(commandPort, queryPort);
     });
@@ -354,6 +357,42 @@ describe('관리자 관계형 컨트롤러', () => {
 
       await expect(controller.getRoles(tenant, 'user-1')).resolves.toBe(result);
       expect(queryPort.getUserRoles).toHaveBeenCalledWith(tenant.id, 'user-1');
+    });
+
+    it('getGroups는 tenant.id와 userId를 queryPort에 전달한다', async () => {
+      const result = [{ id: 'group-1' }] as any;
+      queryPort.getUserGroups.mockResolvedValue(result);
+
+      await expect(controller.getGroups(tenant, 'user-1')).resolves.toBe(
+        result,
+      );
+      expect(queryPort.getUserGroups).toHaveBeenCalledWith(tenant.id, 'user-1');
+    });
+
+    it('addGroup은 tenant.id와 userId, groupId를 commandPort에 전달한다', async () => {
+      commandPort.addGroup.mockResolvedValue(undefined);
+
+      await expect(
+        controller.addGroup(tenant, 'user-1', 'group-1'),
+      ).resolves.toBeUndefined();
+      expect(commandPort.addGroup).toHaveBeenCalledWith(
+        tenant.id,
+        'user-1',
+        'group-1',
+      );
+    });
+
+    it('removeGroup은 tenant.id와 userId, groupId를 commandPort에 전달한다', async () => {
+      commandPort.removeGroup.mockResolvedValue(undefined);
+
+      await expect(
+        controller.removeGroup(tenant, 'user-1', 'group-1'),
+      ).resolves.toBeUndefined();
+      expect(commandPort.removeGroup).toHaveBeenCalledWith(
+        tenant.id,
+        'user-1',
+        'group-1',
+      );
     });
 
     it('assignRole은 tenant.id와 userId, roleId를 commandPort에 전달한다', async () => {

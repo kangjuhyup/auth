@@ -7,6 +7,12 @@ import type {
 import type { MfaStrategy } from '@application/queries/strategies';
 import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
+import { GroupModel } from '@domain/models/group';
+import { RoleModel } from '@domain/models/role';
+import type {
+  RoleAssignmentRepository,
+  UserGroupMembershipRepository,
+} from '@domain/repositories';
 
 function makeUser(
   overrides: Partial<Parameters<typeof UserModel.of>[0]> = {},
@@ -49,11 +55,34 @@ function createMockPasswordHash(): jest.Mocked<PasswordHashPort> {
   };
 }
 
+function makeGroup(
+  id: string,
+  code: string,
+  parentId: string | null = null,
+): GroupModel {
+  return new GroupModel({
+    tenantId: 'tenant-1',
+    code,
+    name: code,
+    parentId,
+  }).setPersistence(id, new Date(), new Date());
+}
+
+function makeRole(id: string, code: string): RoleModel {
+  return new RoleModel({
+    tenantId: 'tenant-1',
+    code,
+    name: code,
+  }).setPersistence(id, new Date(), new Date());
+}
+
 describe('UserQueryHandler', () => {
   let handler: UserQueryHandler;
   let userRepo: jest.Mocked<UserWriteRepositoryPort>;
   let passwordHash: jest.Mocked<PasswordHashPort>;
   let totpStrategy: jest.Mocked<MfaStrategy>;
+  let membershipRepo: jest.Mocked<UserGroupMembershipRepository>;
+  let roleAssignmentRepo: jest.Mocked<RoleAssignmentRepository>;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -63,7 +92,66 @@ describe('UserQueryHandler', () => {
       method: 'totp',
       verify: jest.fn().mockResolvedValue(true),
     };
-    handler = new UserQueryHandler(userRepo, passwordHash, [totpStrategy]);
+    membershipRepo = {
+      add: jest.fn(),
+      remove: jest.fn(),
+      exists: jest.fn(),
+      listGroupsForUser: jest.fn().mockResolvedValue([]),
+    };
+    roleAssignmentRepo = {
+      listForGroup: jest.fn().mockResolvedValue([]),
+    } as any;
+    handler = new UserQueryHandler(
+      userRepo,
+      passwordHash,
+      membershipRepo,
+      roleAssignmentRepo,
+      [totpStrategy],
+    );
+  });
+
+  describe('findAuthorizationGroups', () => {
+    it('직접 소속 그룹과 그룹별 역할을 안정적인 식별자로 반환한다', async () => {
+      membershipRepo.listGroupsForUser.mockResolvedValue([
+        makeGroup('group-org', 'organization'),
+        makeGroup('group-managers', 'managers', 'group-org'),
+      ]);
+      roleAssignmentRepo.listForGroup
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([makeRole('role-manager', 'manager')]);
+
+      await expect(
+        handler.findAuthorizationGroups({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+        }),
+      ).resolves.toEqual([
+        {
+          id: 'group-org',
+          code: 'organization',
+          parentId: null,
+          roles: [],
+        },
+        {
+          id: 'group-managers',
+          code: 'managers',
+          parentId: 'group-org',
+          roles: [{ id: 'role-manager', code: 'manager' }],
+        },
+      ]);
+    });
+
+    it('비활성 사용자나 다른 tenant 사용자에게는 그룹을 노출하지 않는다', async () => {
+      userRepo.findById.mockResolvedValue(makeUser({ tenantId: 'other' }));
+
+      await expect(
+        handler.findAuthorizationGroups({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+        }),
+      ).resolves.toEqual([]);
+      expect(membershipRepo.listGroupsForUser).not.toHaveBeenCalled();
+    });
   });
 
   describe('findProfile', () => {

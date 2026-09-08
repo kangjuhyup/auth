@@ -8,6 +8,10 @@ import type {
 } from '@application/queries/ports/user-query.port';
 import { PasswordHashPort } from '@application/ports/password-hash.port';
 import type { MfaMethodType } from '@application/ports/mfa-verification.port';
+import {
+  RoleAssignmentRepository,
+  UserGroupMembershipRepository,
+} from '@domain/repositories';
 import { MFA_STRATEGIES } from '@application/queries/strategies';
 import type { MfaStrategy } from '@application/queries/strategies';
 
@@ -20,9 +24,50 @@ export class UserQueryHandler implements UserQueryPort {
   constructor(
     private readonly userWriteRepository: UserWriteRepositoryPort,
     private readonly passwordHash: PasswordHashPort,
+    private readonly userGroupMembership: UserGroupMembershipRepository,
+    private readonly roleAssignment: RoleAssignmentRepository,
     @Inject(MFA_STRATEGIES) strategies: MfaStrategy[],
   ) {
     this.mfaStrategies = new Map(strategies.map((s) => [s.method, s]));
+  }
+
+  async findAuthorizationGroups(params: {
+    tenantId: string;
+    userId: string;
+  }): Promise<
+    Array<{
+      id: string;
+      code: string;
+      parentId: string | null;
+      roles: Array<{ id: string; code: string }>;
+    }>
+  > {
+    const user = await this.userWriteRepository.findById(params.userId);
+    if (
+      !user ||
+      user.tenantId !== params.tenantId ||
+      user.status !== 'ACTIVE'
+    ) {
+      return [];
+    }
+
+    const groups = (
+      await this.userGroupMembership.listGroupsForUser(params.userId)
+    ).filter((group) => group.tenantId === params.tenantId);
+
+    return Promise.all(
+      groups.map(async (group) => {
+        const roles = (await this.roleAssignment.listForGroup(group.id)).filter(
+          (role) => role.tenantId === params.tenantId,
+        );
+        return {
+          id: group.id,
+          code: group.code,
+          parentId: group.parentId ?? null,
+          roles: roles.map((role) => ({ id: role.id, code: role.code })),
+        };
+      }),
+    );
   }
 
   async findProfile(params: {

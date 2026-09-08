@@ -15,6 +15,7 @@ export {
   RolePermissionListQuery,
 } from './role-permission.repository';
 export { RoleAssignmentRepository } from './role-assignment.repository';
+export { UserGroupMembershipRepository } from './user-group-membership.repository';
 export { ClientRepository, ClientListQuery } from './client.repository';
 export { TenantConfigRepository } from './tenant-config.repository';
 export { JwksKeyRepository } from './jwks-key.repository';

@@ -40,6 +40,7 @@ describe('OidcScopeRegistryAdapter', () => {
       'openid',
       'profile',
       'email',
+      'groups',
       'orders:read',
     ]);
   });

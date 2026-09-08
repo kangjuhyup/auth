@@ -75,6 +75,10 @@ export abstract class AdminQueryPort {
     tenantId: string,
     userId: string,
   ): Promise<UserSessionResponse[]>;
+  abstract getUserGroups(
+    tenantId: string,
+    userId: string,
+  ): Promise<GroupResponse[]>;
 
   // Role
   abstract getRoles(

@@ -54,6 +54,14 @@ describe('buildOidcConfiguration', () => {
         email: 'u@example.com',
         email_verified: true,
       } as any),
+      findAuthorizationGroups: jest.fn().mockResolvedValue([
+        {
+          id: 'group-managers',
+          code: 'managers',
+          parentId: 'group-org',
+          roles: [{ id: 'role-manager', code: 'manager' }],
+        },
+      ]),
     } as any;
 
     const clientQuery: jest.Mocked<ClientQueryPort> = {
@@ -310,6 +318,54 @@ describe('buildOidcConfiguration', () => {
     await expect(cfg.extraTokenClaims!({} as any, {} as any)).resolves.toEqual({
       tenant_id: 'tenant-1',
     });
+  });
+
+  it('groups scope를 가진 사용자 access token에 범용 그룹 컨텍스트를 추가한다', async () => {
+    const deps = makeDeps();
+    const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
+
+    await expect(
+      cfg.extraTokenClaims!(
+        {} as any,
+        {
+          accountId: 'user-1',
+          scope: 'openid groups',
+        } as any,
+      ),
+    ).resolves.toEqual({
+      tenant_id: 'tenant-1',
+      groups: [
+        {
+          id: 'group-managers',
+          code: 'managers',
+          parentId: 'group-org',
+          roles: [{ id: 'role-manager', code: 'manager' }],
+        },
+      ],
+    });
+    expect(deps.userQuery.findAuthorizationGroups).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+    });
+  });
+
+  it('groups scope가 없거나 사용자 주체가 없는 token에는 그룹을 추가하지 않는다', async () => {
+    const deps = makeDeps();
+    const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
+
+    await expect(
+      cfg.extraTokenClaims!(
+        {} as any,
+        {
+          accountId: 'user-1',
+          scope: 'openid profile',
+        } as any,
+      ),
+    ).resolves.toEqual({ tenant_id: 'tenant-1' });
+    await expect(
+      cfg.extraTokenClaims!({} as any, { scope: 'groups' } as any),
+    ).resolves.toEqual({ tenant_id: 'tenant-1' });
+    expect(deps.userQuery.findAuthorizationGroups).not.toHaveBeenCalled();
   });
 
   it('tenant가 없으면 getResourceServerInfo에서 에러(missing_tenant)를 던진다', async () => {

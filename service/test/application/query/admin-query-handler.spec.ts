@@ -16,6 +16,7 @@ import type {
   EventRepository,
   IdentityProviderRepository,
   ConsentRepository,
+  UserGroupMembershipRepository,
 } from '@domain/repositories';
 import type { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
 import type { UserSessionPort } from '@application/ports/user-session.port';
@@ -263,6 +264,15 @@ function createMockUserSession(): jest.Mocked<UserSessionPort> {
   };
 }
 
+function createMockUserGroupMembership(): jest.Mocked<UserGroupMembershipRepository> {
+  return {
+    add: jest.fn(),
+    remove: jest.fn(),
+    exists: jest.fn(),
+    listGroupsForUser: jest.fn().mockResolvedValue([]),
+  };
+}
+
 function createHandler() {
   const tenantRepo = createMockTenantRepo();
   const groupRepo = createMockGroupRepo();
@@ -281,6 +291,7 @@ function createHandler() {
   const identityProviderRepo = createMockIdentityProviderRepo();
   const consentRepo = createMockConsentRepo();
   const userSession = createMockUserSession();
+  const userGroupMembership = createMockUserGroupMembership();
 
   const handler = new AdminQueryHandler(
     tenantRepo,
@@ -300,6 +311,7 @@ function createHandler() {
     identityProviderRepo,
     consentRepo,
     userSession,
+    userGroupMembership,
   );
 
   return {
@@ -321,6 +333,7 @@ function createHandler() {
     identityProviderRepo,
     consentRepo,
     userSession,
+    userGroupMembership,
   };
 }
 
@@ -396,6 +409,33 @@ describe('AdminQueryHandler - Tenant', () => {
         NotFoundException,
       );
     });
+  });
+});
+
+describe('AdminQueryHandler - User groups', () => {
+  it('tenant 사용자에게 직접 연결된 그룹을 반환한다', async () => {
+    const { handler, userRepo, userGroupMembership } = createHandler();
+    userRepo.findById.mockResolvedValue(makeUser('user-1', 'tenant-1'));
+    userGroupMembership.listGroupsForUser.mockResolvedValue([
+      makeGroup('group-1', 'tenant-1'),
+    ]);
+
+    await expect(handler.getUserGroups('tenant-1', 'user-1')).resolves.toEqual([
+      expect.objectContaining({ id: 'group-1', code: 'dev' }),
+    ]);
+    expect(userGroupMembership.listGroupsForUser).toHaveBeenCalledWith(
+      'user-1',
+    );
+  });
+
+  it('다른 tenant 사용자의 그룹 조회를 거부한다', async () => {
+    const { handler, userRepo, userGroupMembership } = createHandler();
+    userRepo.findById.mockResolvedValue(makeUser('user-1', 'other-tenant'));
+
+    await expect(handler.getUserGroups('tenant-1', 'user-1')).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(userGroupMembership.listGroupsForUser).not.toHaveBeenCalled();
   });
 });
 

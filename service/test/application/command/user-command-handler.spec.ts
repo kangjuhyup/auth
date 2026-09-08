@@ -4,6 +4,8 @@ import type { UserWriteRepositoryPort } from '@application/commands/ports/user-w
 import type {
   RoleRepository,
   RoleAssignmentRepository,
+  GroupRepository,
+  UserGroupMembershipRepository,
 } from '@domain/repositories';
 import type {
   PasswordHashPort,
@@ -14,6 +16,7 @@ import type { UserSessionPort } from '@application/ports/user-session.port';
 import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
 import { RoleModel } from '@domain/models/role';
+import { GroupModel } from '@domain/models/group';
 
 function makeUser(id = 'user-1', tenantId = 'tenant-1'): UserModel {
   const user = UserModel.create({
@@ -34,6 +37,16 @@ function makeRole(id = 'role-1', tenantId = 'tenant-1'): RoleModel {
   const r = new RoleModel({ tenantId, code: 'admin', name: 'Admin' });
   r.setPersistence(id, new Date(), new Date());
   return r;
+}
+
+function makeGroup(id = 'group-1', tenantId = 'tenant-1'): GroupModel {
+  const group = new GroupModel({
+    tenantId,
+    code: 'vote-managers',
+    name: 'Vote Managers',
+  });
+  group.setPersistence(id, new Date(), new Date());
+  return group;
 }
 
 function createMockUserWriteRepo(): jest.Mocked<UserWriteRepositoryPort> {
@@ -77,6 +90,16 @@ function createMockRoleRepo(): jest.Mocked<RoleRepository> {
   };
 }
 
+function createMockGroupRepo(): jest.Mocked<GroupRepository> {
+  return {
+    findById: jest.fn().mockResolvedValue(makeGroup()),
+    findByCode: jest.fn(),
+    list: jest.fn(),
+    save: jest.fn(),
+    delete: jest.fn(),
+  };
+}
+
 function createMockRoleAssignment(): jest.Mocked<RoleAssignmentRepository> {
   return {
     assignToUser: jest.fn().mockResolvedValue(undefined),
@@ -87,6 +110,15 @@ function createMockRoleAssignment(): jest.Mocked<RoleAssignmentRepository> {
     existsForGroup: jest.fn().mockResolvedValue(false),
     listForUser: jest.fn().mockResolvedValue([]),
     listForGroup: jest.fn().mockResolvedValue([]),
+  };
+}
+
+function createMockUserGroupMembership(): jest.Mocked<UserGroupMembershipRepository> {
+  return {
+    add: jest.fn().mockResolvedValue(undefined),
+    remove: jest.fn().mockResolvedValue(undefined),
+    exists: jest.fn().mockResolvedValue(false),
+    listGroupsForUser: jest.fn().mockResolvedValue([]),
   };
 }
 
@@ -102,7 +134,9 @@ describe('UserCommandHandler', () => {
   let handler: UserCommandHandler;
   let userWriteRepo: jest.Mocked<UserWriteRepositoryPort>;
   let roleRepo: jest.Mocked<RoleRepository>;
+  let groupRepo: jest.Mocked<GroupRepository>;
   let roleAssignment: jest.Mocked<RoleAssignmentRepository>;
+  let userGroupMembership: jest.Mocked<UserGroupMembershipRepository>;
   let passwordHash: jest.Mocked<PasswordHashPort>;
   let userSession: jest.Mocked<UserSessionPort>;
   let auditRecorder: { recordAdminAction: jest.Mock };
@@ -111,7 +145,9 @@ describe('UserCommandHandler', () => {
     jest.clearAllMocks();
     userWriteRepo = createMockUserWriteRepo();
     roleRepo = createMockRoleRepo();
+    groupRepo = createMockGroupRepo();
     roleAssignment = createMockRoleAssignment();
+    userGroupMembership = createMockUserGroupMembership();
     passwordHash = createMockPasswordHash();
     userSession = createMockUserSession();
     auditRecorder = {
@@ -121,10 +157,72 @@ describe('UserCommandHandler', () => {
       userWriteRepo,
       roleRepo,
       roleAssignment,
+      groupRepo,
+      userGroupMembership,
       passwordHash,
       userSession,
       auditRecorder as any,
     );
+  });
+
+  describe('addGroup', () => {
+    it('같은 tenant의 사용자와 그룹을 연결한다', async () => {
+      await handler.addGroup('tenant-1', 'user-1', 'group-1');
+
+      expect(userGroupMembership.add).toHaveBeenCalledWith({
+        userId: 'user-1',
+        groupId: 'group-1',
+      });
+      expect(userSession.revokeUserSessions).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+      });
+    });
+
+    it('다른 tenant의 그룹 연결을 거부한다', async () => {
+      groupRepo.findById.mockResolvedValue(
+        makeGroup('group-1', 'other-tenant'),
+      );
+
+      await expect(
+        handler.addGroup('tenant-1', 'user-1', 'group-1'),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(userGroupMembership.add).not.toHaveBeenCalled();
+      expect(userSession.revokeUserSessions).not.toHaveBeenCalled();
+    });
+
+    it('이미 연결된 그룹이면 다시 추가하지 않는다', async () => {
+      userGroupMembership.exists.mockResolvedValue(true);
+
+      await handler.addGroup('tenant-1', 'user-1', 'group-1');
+
+      expect(userGroupMembership.add).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('removeGroup', () => {
+    it('같은 tenant의 그룹 연결을 제거한다', async () => {
+      userGroupMembership.exists.mockResolvedValue(true);
+
+      await handler.removeGroup('tenant-1', 'user-1', 'group-1');
+
+      expect(userGroupMembership.remove).toHaveBeenCalledWith({
+        userId: 'user-1',
+        groupId: 'group-1',
+      });
+      expect(userSession.revokeUserSessions).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+      });
+    });
+
+    it('연결이 없으면 멱등적으로 종료한다', async () => {
+      await handler.removeGroup('tenant-1', 'user-1', 'group-1');
+
+      expect(userGroupMembership.remove).not.toHaveBeenCalled();
+      expect(userSession.revokeUserSessions).not.toHaveBeenCalled();
+    });
   });
 
   describe('assignRole', () => {

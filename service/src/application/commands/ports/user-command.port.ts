@@ -54,6 +54,20 @@ export abstract class UserCommandPort {
     auditContext?: AuditContext,
   ): Promise<void>;
 
+  abstract addGroup(
+    tenantId: string,
+    userId: string,
+    groupId: string,
+    auditContext?: AuditContext,
+  ): Promise<void>;
+
+  abstract removeGroup(
+    tenantId: string,
+    userId: string,
+    groupId: string,
+    auditContext?: AuditContext,
+  ): Promise<void>;
+
   abstract revokeUserSession(
     tenantId: string,
     userId: string,

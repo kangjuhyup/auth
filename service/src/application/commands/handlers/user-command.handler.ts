@@ -7,7 +7,12 @@ import {
 import { UserCommandPort } from '../ports/user-command.port';
 import { AuditContext, CreateUserDto, UpdateUserDto } from '@application/dto';
 import { UserWriteRepositoryPort } from '../ports/user-write-repository.port';
-import { RoleRepository, RoleAssignmentRepository } from '@domain/repositories';
+import {
+  GroupRepository,
+  RoleRepository,
+  RoleAssignmentRepository,
+  UserGroupMembershipRepository,
+} from '@domain/repositories';
 import { PasswordHashPort } from '@application/ports/password-hash.port';
 import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
@@ -24,10 +29,64 @@ export class UserCommandHandler implements UserCommandPort {
     private readonly userWriteRepo: UserWriteRepositoryPort,
     private readonly roleRepo: RoleRepository,
     private readonly roleAssignment: RoleAssignmentRepository,
+    private readonly groupRepo: GroupRepository,
+    private readonly userGroupMembership: UserGroupMembershipRepository,
     private readonly passwordHash: PasswordHashPort,
     private readonly userSession: UserSessionPort,
     private readonly auditRecorder?: AuditRecorder,
   ) {}
+
+  async addGroup(
+    tenantId: string,
+    userId: string,
+    groupId: string,
+    auditContext?: AuditContext,
+  ): Promise<void> {
+    await this.assertUserInTenant(tenantId, userId);
+    await this.assertGroupInTenant(tenantId, groupId);
+    if (await this.userGroupMembership.exists({ userId, groupId })) return;
+
+    await this.userGroupMembership.add({ userId, groupId });
+    const revokedSessions = await this.userSession.revokeUserSessions({
+      tenantId,
+      userId,
+    });
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      category: 'USER',
+      action: 'ASSIGN',
+      resourceType: 'user-group',
+      resourceId: userId,
+      metadata: { groupId, revokedSessions },
+      auditContext,
+    });
+  }
+
+  async removeGroup(
+    tenantId: string,
+    userId: string,
+    groupId: string,
+    auditContext?: AuditContext,
+  ): Promise<void> {
+    await this.assertUserInTenant(tenantId, userId);
+    await this.assertGroupInTenant(tenantId, groupId);
+    if (!(await this.userGroupMembership.exists({ userId, groupId }))) return;
+
+    await this.userGroupMembership.remove({ userId, groupId });
+    const revokedSessions = await this.userSession.revokeUserSessions({
+      tenantId,
+      userId,
+    });
+    await this.auditRecorder?.recordAdminAction({
+      tenantId,
+      category: 'USER',
+      action: 'REVOKE',
+      resourceType: 'user-group',
+      resourceId: userId,
+      metadata: { groupId, revokedSessions },
+      auditContext,
+    });
+  }
 
   async createUser(
     tenantId: string,
@@ -291,6 +350,17 @@ export class UserCommandHandler implements UserCommandPort {
       await this.userWriteRepo.findById(userId),
       new NotFoundException('User not found'),
       (u) => u.tenantId === tenantId,
+    );
+  }
+
+  private async assertGroupInTenant(
+    tenantId: string,
+    groupId: string,
+  ): Promise<void> {
+    orThrow(
+      await this.groupRepo.findById(groupId),
+      new NotFoundException('Group not found'),
+      (group) => group.tenantId === tenantId,
     );
   }
 }
