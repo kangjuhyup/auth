@@ -21,9 +21,16 @@ export abstract class RoleAssignmentRepository {
     roleId: string;
   }): Promise<void>;
 
-  abstract existsForUser(params: { userId: string; roleId: string }): Promise<boolean>;
-  abstract existsForGroup(params: { groupId: string; roleId: string }): Promise<boolean>;
+  abstract existsForUser(params: {
+    userId: string;
+    roleId: string;
+  }): Promise<boolean>;
+  abstract existsForGroup(params: {
+    groupId: string;
+    roleId: string;
+  }): Promise<boolean>;
 
   abstract listForUser(userId: string): Promise<RoleModel[]>;
+  abstract listDirectTenantRolesForUser(userId: string): Promise<RoleModel[]>;
   abstract listForGroup(groupId: string): Promise<RoleModel[]>;
 }

@@ -16,6 +16,11 @@ export abstract class UserQueryPort {
     userId: string;
   }): Promise<GroupAuthorizationView[]>;
 
+  abstract findDirectTenantRoles(params: {
+    tenantId: string;
+    userId: string;
+  }): Promise<TenantRoleView[]>;
+
   abstract findByUsername(params: {
     tenantId: string;
     username: string;
@@ -95,4 +100,9 @@ export type GroupAuthorizationView = Readonly<{
       code: string;
     }>
   >;
+}>;
+
+export type TenantRoleView = Readonly<{
+  id: string;
+  code: string;
 }>;

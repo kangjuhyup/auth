@@ -114,7 +114,7 @@ describe('AdminBootstrapProcessManager', () => {
   }
 
   function makeScope(
-    name: 'openid' | 'profile' | 'email' | 'groups',
+    name: 'openid' | 'profile' | 'email' | 'groups' | 'tenant_roles',
     overrides: Partial<{
       tenantId: string;
       name: string;
@@ -189,6 +189,7 @@ describe('AdminBootstrapProcessManager', () => {
       makeScope('profile'),
       makeScope('email'),
       makeScope('groups'),
+      makeScope('tenant_roles'),
     ];
 
     const processRepository = {
@@ -237,6 +238,7 @@ describe('AdminBootstrapProcessManager', () => {
       existsForUser: jest.fn(async () => assignmentExists),
       existsForGroup: jest.fn(),
       listForUser: jest.fn(),
+      listDirectTenantRolesForUser: jest.fn(),
       listForGroup: jest.fn(),
     } as unknown as jest.Mocked<RoleAssignmentRepository>;
     const clientRepository = {
@@ -449,11 +451,11 @@ describe('AdminBootstrapProcessManager', () => {
 
     expect(subject.scopeRepository.findByNames).toHaveBeenCalledWith(
       'tenant-master',
-      ['openid', 'profile', 'email', 'groups'],
+      ['openid', 'profile', 'email', 'groups', 'tenant_roles'],
     );
     expect(subject.tenantCommand.ensureBuiltInScopes).toHaveBeenCalledWith(
       'tenant-master',
-      ['profile', 'email', 'groups'],
+      ['profile', 'email', 'groups', 'tenant_roles'],
       auditContext,
     );
     expect(subject.scopeRepository.save).not.toHaveBeenCalled();
@@ -473,7 +475,7 @@ describe('AdminBootstrapProcessManager', () => {
 
     expect(subject.tenantCommand.ensureBuiltInScopes).toHaveBeenCalledWith(
       'tenant-master',
-      ['openid', 'profile', 'email', 'groups'],
+      ['openid', 'profile', 'email', 'groups', 'tenant_roles'],
       auditContext,
     );
     expect(subject.scopeRepository.save).not.toHaveBeenCalled();

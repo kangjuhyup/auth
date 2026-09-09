@@ -55,7 +55,10 @@ export class RoleAssignmentRepositoryImpl implements RoleAssignmentRepository {
     await this.em.remove(entity).flush();
   }
 
-  async existsForUser(params: { userId: string; roleId: string }): Promise<boolean> {
+  async existsForUser(params: {
+    userId: string;
+    roleId: string;
+  }): Promise<boolean> {
     const count = await this.em.count(UserRoleOrmEntity, {
       user: { id: params.userId },
       role: { id: params.roleId },
@@ -63,7 +66,10 @@ export class RoleAssignmentRepositoryImpl implements RoleAssignmentRepository {
     return count > 0;
   }
 
-  async existsForGroup(params: { groupId: string; roleId: string }): Promise<boolean> {
+  async existsForGroup(params: {
+    groupId: string;
+    roleId: string;
+  }): Promise<boolean> {
     const count = await this.em.count(GroupRoleOrmEntity, {
       group: { id: params.groupId },
       role: { id: params.roleId },
@@ -78,6 +84,15 @@ export class RoleAssignmentRepositoryImpl implements RoleAssignmentRepository {
       { populate: ['role', 'role.tenant'] },
     );
     return entries.map((e) => RoleMapper.toDomain(e.role.unwrap()));
+  }
+
+  async listDirectTenantRolesForUser(userId: string): Promise<RoleModel[]> {
+    const entries = await this.em.find(
+      UserRoleOrmEntity,
+      { user: { id: userId }, client: null },
+      { populate: ['role', 'role.tenant'] },
+    );
+    return entries.map((entry) => RoleMapper.toDomain(entry.role.unwrap()));
   }
 
   async listForGroup(groupId: string): Promise<RoleModel[]> {

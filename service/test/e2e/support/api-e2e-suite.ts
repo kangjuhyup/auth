@@ -542,7 +542,11 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
       scope?: string;
       prompt?: string;
       allowConsent?: boolean;
-    }): Promise<{ accessToken: string; refreshToken?: string }> {
+    }): Promise<{
+      accessToken: string;
+      refreshToken?: string;
+      idToken?: string;
+    }> {
       const { agent, code, verifier } = await authorizeUserViaOidc(params);
 
       const tokenResponse = await agent
@@ -565,6 +569,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
       return {
         accessToken: tokenResponse.body.access_token as string,
         refreshToken: tokenResponse.body.refresh_token as string | undefined,
+        idToken: tokenResponse.body.id_token as string | undefined,
       };
     }
 
@@ -1916,6 +1921,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
         });
         expect(response.body).not.toHaveProperty('email');
         expect(response.body).not.toHaveProperty('roles');
+        expect(response.body).not.toHaveProperty('tenant_roles');
         expect(response.body).not.toHaveProperty('permissions');
         expect(response.body).not.toHaveProperty('secret');
 
@@ -1944,6 +1950,157 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
         expect(
           Object.keys(response.body).every((key) => permittedKeys.has(key)),
         ).toBe(true);
+      });
+
+      it('tenant_roles는 opt-in access token에 직접 tenant role만 싣고 역할 변경 시 기존 권한을 폐기한다', async () => {
+        const resource = 'https://roles.example.test/api';
+        const resourceOrigin = 'https://roles.example.test';
+        const adminToken = await loginAsAdmin();
+        await createTenant(adminToken, 'acme', 'Acme Corp');
+        const userClient = await createClient(adminToken, 'acme', 'roles-web', {
+          scope: 'openid tenant_roles',
+          allowedResources: [resourceOrigin],
+        });
+        const resourceServer = await createClient(
+          adminToken,
+          'acme',
+          'roles-api',
+          {
+            type: 'service',
+            secret: 'roles-api-introspection-secret-000001',
+            redirectUris: [],
+            grantTypes: ['client_credentials'],
+            responseTypes: [],
+            tokenEndpointAuthMethod: 'client_secret_basic',
+            scope: 'tenant_roles',
+            introspectionResources: [resourceOrigin],
+          },
+        );
+        const directRole = await createRole(
+          adminToken,
+          'acme',
+          'tenant_operator',
+        );
+        const clientRole = await createRole(
+          adminToken,
+          'acme',
+          'client_operator',
+        );
+        const groupRole = await createRole(
+          adminToken,
+          'acme',
+          'group_operator',
+        );
+        const group = await createGroup(adminToken, 'acme', 'operators');
+        const signup = await signupUser('acme', {
+          username: 'tenant-role-user',
+          password: 'Password123!',
+        });
+
+        await request(fixture.app.getHttpServer())
+          .post(`/t/acme/admin/groups/${group.id}/roles/${groupRole.id}`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .expect(201);
+        await request(fixture.app.getHttpServer())
+          .post(`/t/acme/admin/users/${signup.userId}/groups/${group.id}`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .expect(204);
+        await fixture.orm.em
+          .getConnection()
+          .execute(
+            'insert into "user_role" (user_id, role_id, client_id) values (?, ?, ?)',
+            [signup.userId, clientRole.id, userClient.id],
+          );
+
+        const beforeAssignment = await loginUserViaOidc({
+          tenantCode: 'acme',
+          clientId: userClient.clientId,
+          redirectUri: userClient.redirectUri,
+          username: signup.username,
+          password: signup.password,
+          resource,
+          omitResourceAtTokenEndpoint: true,
+          scope: 'openid tenant_roles',
+          allowConsent: false,
+        });
+        expect(beforeAssignment.idToken).toEqual(expect.any(String));
+        const idTokenPayload = JSON.parse(
+          Buffer.from(
+            beforeAssignment.idToken!.split('.')[1],
+            'base64url',
+          ).toString('utf8'),
+        ) as Record<string, unknown>;
+        expect(idTokenPayload).not.toHaveProperty('tenant_roles');
+
+        await introspectToken({
+          tenantCode: 'acme',
+          clientId: resourceServer.clientId,
+          clientSecret: resourceServer.secret,
+          token: beforeAssignment.accessToken,
+          tokenTypeHint: 'access_token',
+        })
+          .expect(200)
+          .expect(({ body }) => {
+            expect(body).toMatchObject({
+              active: true,
+              aud: resourceOrigin,
+              scope: 'openid tenant_roles',
+              tenant_roles: [],
+            });
+          });
+
+        await request(fixture.app.getHttpServer())
+          .post(`/t/acme/admin/users/${signup.userId}/roles/${directRole.id}`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .expect(201);
+        await introspectToken({
+          tenantCode: 'acme',
+          clientId: resourceServer.clientId,
+          clientSecret: resourceServer.secret,
+          token: beforeAssignment.accessToken,
+          tokenTypeHint: 'access_token',
+        })
+          .expect(200)
+          .expect(({ body }) => expect(body).toEqual({ active: false }));
+
+        const afterAssignment = await loginUserViaOidc({
+          tenantCode: 'acme',
+          clientId: userClient.clientId,
+          redirectUri: userClient.redirectUri,
+          username: signup.username,
+          password: signup.password,
+          resource,
+          omitResourceAtTokenEndpoint: true,
+          scope: 'openid tenant_roles',
+          allowConsent: false,
+        });
+        await introspectToken({
+          tenantCode: 'acme',
+          clientId: resourceServer.clientId,
+          clientSecret: resourceServer.secret,
+          token: afterAssignment.accessToken,
+          tokenTypeHint: 'access_token',
+        })
+          .expect(200)
+          .expect(({ body }) => {
+            expect(body.tenant_roles).toEqual([
+              { id: directRole.id, code: directRole.code },
+            ]);
+          });
+
+        await request(fixture.app.getHttpServer())
+          .delete(`/t/acme/admin/users/${signup.userId}/roles/${directRole.id}`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .expect(200);
+        await introspectToken({
+          tenantCode: 'acme',
+          clientId: resourceServer.clientId,
+          clientSecret: resourceServer.secret,
+          token: afterAssignment.accessToken,
+          tokenTypeHint: 'access_token',
+        })
+          .expect(200)
+          .expect(({ body }) => expect(body).toEqual({ active: false }));
       });
 
       it('granted resource를 생략한 refresh_token 교환도 API audience access token을 발급한다', async () => {

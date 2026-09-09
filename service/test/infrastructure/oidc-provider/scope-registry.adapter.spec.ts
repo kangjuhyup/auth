@@ -41,6 +41,7 @@ describe('OidcScopeRegistryAdapter', () => {
       'profile',
       'email',
       'groups',
+      'tenant_roles',
       'orders:read',
     ]);
   });

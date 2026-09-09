@@ -240,13 +240,17 @@ export class UserCommandHandler implements UserCommandPort {
     if (alreadyAssigned) return;
 
     await this.roleAssignment.assignToUser({ userId, roleId });
+    const revokedSessions = await this.userSession.revokeUserSessions({
+      tenantId,
+      userId,
+    });
     await this.auditRecorder?.recordAdminAction({
       tenantId,
       category: 'USER',
       action: 'ASSIGN',
       resourceType: 'user-role',
       resourceId: userId,
-      metadata: { roleId },
+      metadata: { roleId, revokedSessions },
       auditContext,
     });
   }
@@ -267,14 +271,30 @@ export class UserCommandHandler implements UserCommandPort {
       (u) => u.tenantId === tenantId,
     );
 
+    orThrow(
+      await this.roleRepo.findById(roleId),
+      new NotFoundException('Role not found'),
+      (r) => r.tenantId === tenantId,
+    );
+
+    const assigned = await this.roleAssignment.existsForUser({
+      userId,
+      roleId,
+    });
+    if (!assigned) return;
+
     await this.roleAssignment.removeFromUser({ userId, roleId });
+    const revokedSessions = await this.userSession.revokeUserSessions({
+      tenantId,
+      userId,
+    });
     await this.auditRecorder?.recordAdminAction({
       tenantId,
       category: 'USER',
       action: 'REVOKE',
       resourceType: 'user-role',
       resourceId: userId,
-      metadata: { roleId },
+      metadata: { roleId, revokedSessions },
       auditContext,
     });
   }
