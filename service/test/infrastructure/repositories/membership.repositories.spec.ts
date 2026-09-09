@@ -155,12 +155,16 @@ describe('Membership Repository Implementations', () => {
       );
       em.find
         .mockResolvedValueOnce([createUserRoleEntity({ role })])
+        .mockResolvedValueOnce([createUserRoleEntity({ role })])
         .mockResolvedValueOnce([createGroupRoleEntity({ role: viewer })]);
 
       const userRoles = await repository.listForUser('user-1');
+      const tenantRoles =
+        await repository.listDirectTenantRolesForUser('user-1');
       const groupRoles = await repository.listForGroup('group-1');
 
       expect(userRoles.map((item) => item.code)).toEqual(['admin']);
+      expect(tenantRoles.map((item) => item.code)).toEqual(['admin']);
       expect(groupRoles.map((item) => item.code)).toEqual(['viewer']);
       expect(em.find).toHaveBeenNthCalledWith(
         1,
@@ -170,6 +174,12 @@ describe('Membership Repository Implementations', () => {
       );
       expect(em.find).toHaveBeenNthCalledWith(
         2,
+        UserRoleOrmEntity,
+        { user: { id: 'user-1' }, client: null },
+        { populate: ['role', 'role.tenant'] },
+      );
+      expect(em.find).toHaveBeenNthCalledWith(
+        3,
         GroupRoleOrmEntity,
         { group: { id: 'group-1' } },
         { populate: ['role', 'role.tenant'] },

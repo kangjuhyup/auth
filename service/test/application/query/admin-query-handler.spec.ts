@@ -179,6 +179,7 @@ function createMockRoleAssignmentRepo(): jest.Mocked<RoleAssignmentRepository> {
     removeFromGroup: jest.fn(),
     listForGroup: jest.fn().mockResolvedValue([]),
     listForUser: jest.fn().mockResolvedValue([]),
+    listDirectTenantRolesForUser: jest.fn().mockResolvedValue([]),
   } as any;
 }
 

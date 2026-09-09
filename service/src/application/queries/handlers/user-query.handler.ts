@@ -70,6 +70,32 @@ export class UserQueryHandler implements UserQueryPort {
     );
   }
 
+  async findDirectTenantRoles(params: {
+    tenantId: string;
+    userId: string;
+  }): Promise<Array<{ id: string; code: string }>> {
+    const user = await this.userWriteRepository.findById(params.userId);
+    if (
+      !user ||
+      user.tenantId !== params.tenantId ||
+      user.status !== 'ACTIVE'
+    ) {
+      return [];
+    }
+
+    const roles = await this.roleAssignment.listDirectTenantRolesForUser(
+      params.userId,
+    );
+    return roles
+      .filter((role) => role.tenantId === params.tenantId)
+      .map((role) => ({ id: role.id, code: role.code }))
+      .sort(
+        (left, right) =>
+          left.code.localeCompare(right.code) ||
+          left.id.localeCompare(right.id),
+      );
+  }
+
   async findProfile(params: {
     tenantId: string;
     userId: string;

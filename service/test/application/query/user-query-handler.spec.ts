@@ -100,6 +100,7 @@ describe('UserQueryHandler', () => {
       listGroupsForUser: jest.fn().mockResolvedValue([]),
     };
     roleAssignmentRepo = {
+      listDirectTenantRolesForUser: jest.fn().mockResolvedValue([]),
       listForGroup: jest.fn().mockResolvedValue([]),
     } as any;
     handler = new UserQueryHandler(
@@ -152,6 +153,45 @@ describe('UserQueryHandler', () => {
         }),
       ).resolves.toEqual([]);
       expect(membershipRepo.listGroupsForUser).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findDirectTenantRoles', () => {
+    it('활성 사용자에게 직접 할당된 tenant role만 안정적인 식별자로 반환한다', async () => {
+      roleAssignmentRepo.listDirectTenantRolesForUser.mockResolvedValue([
+        makeRole('role-editor', 'editor'),
+        makeRole('role-admin', 'admin'),
+      ]);
+
+      await expect(
+        handler.findDirectTenantRoles({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+        }),
+      ).resolves.toEqual([
+        { id: 'role-admin', code: 'admin' },
+        { id: 'role-editor', code: 'editor' },
+      ]);
+      expect(
+        roleAssignmentRepo.listDirectTenantRolesForUser,
+      ).toHaveBeenCalledWith('user-1');
+    });
+
+    it.each([
+      ['다른 tenant', { tenantId: 'other' }],
+      ['비활성 상태', { status: 'DISABLED' as const }],
+    ])('%s 사용자의 role을 노출하지 않는다', async (_name, overrides) => {
+      userRepo.findById.mockResolvedValue(makeUser(overrides));
+
+      await expect(
+        handler.findDirectTenantRoles({
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+        }),
+      ).resolves.toEqual([]);
+      expect(
+        roleAssignmentRepo.listDirectTenantRolesForUser,
+      ).not.toHaveBeenCalled();
     });
   });
 

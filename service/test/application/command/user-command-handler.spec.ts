@@ -110,6 +110,7 @@ function createMockRoleAssignment(): jest.Mocked<RoleAssignmentRepository> {
     existsForUser: jest.fn().mockResolvedValue(false),
     existsForGroup: jest.fn().mockResolvedValue(false),
     listForUser: jest.fn().mockResolvedValue([]),
+    listDirectTenantRolesForUser: jest.fn().mockResolvedValue([]),
     listForGroup: jest.fn().mockResolvedValue([]),
   };
 }
@@ -236,6 +237,10 @@ describe('UserCommandHandler', () => {
         userId: 'user-1',
         roleId: 'role-1',
       });
+      expect(userSession.revokeUserSessions).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+      });
     });
 
     it('유저가 없으면 NotFoundException을 던진다', async () => {
@@ -287,12 +292,17 @@ describe('UserCommandHandler', () => {
 
   describe('removeRole', () => {
     it('유저가 존재하면 removeFromUser를 호출한다', async () => {
+      roleAssignment.existsForUser.mockResolvedValue(true);
       await handler.removeRole('tenant-1', 'user-1', 'role-1');
 
       expect(userWriteRepo.findById).toHaveBeenCalledWith('user-1');
       expect(roleAssignment.removeFromUser).toHaveBeenCalledWith({
         userId: 'user-1',
         roleId: 'role-1',
+      });
+      expect(userSession.revokeUserSessions).toHaveBeenCalledWith({
+        tenantId: 'tenant-1',
+        userId: 'user-1',
       });
     });
 

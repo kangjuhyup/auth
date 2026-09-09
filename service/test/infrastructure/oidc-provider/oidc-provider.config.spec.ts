@@ -62,6 +62,9 @@ describe('buildOidcConfiguration', () => {
           roles: [{ id: 'role-manager', code: 'manager' }],
         },
       ]),
+      findDirectTenantRoles: jest
+        .fn()
+        .mockResolvedValue([{ id: 'role-admin', code: 'admin' }]),
     } as any;
 
     const clientQuery: jest.Mocked<ClientQueryPort> = {
@@ -402,6 +405,41 @@ describe('buildOidcConfiguration', () => {
     expect(deps.userQuery.findAuthorizationGroups).not.toHaveBeenCalled();
   });
 
+  it('tenant_roles scope를 가진 사용자 access token에 직접 tenant role만 추가한다', async () => {
+    const deps = makeDeps();
+    const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
+
+    await expect(
+      cfg.extraTokenClaims!(
+        {} as any,
+        { accountId: 'user-1', scope: 'openid tenant_roles' } as any,
+      ),
+    ).resolves.toEqual({
+      tenant_id: 'tenant-1',
+      tenant_roles: [{ id: 'role-admin', code: 'admin' }],
+    });
+    expect(deps.userQuery.findDirectTenantRoles).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+    });
+  });
+
+  it('tenant_roles가 opt-in되지 않았거나 사용자 주체가 없으면 role claim을 추가하지 않는다', async () => {
+    const deps = makeDeps();
+    const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
+
+    await expect(
+      cfg.extraTokenClaims!(
+        {} as any,
+        { accountId: 'user-1', scope: 'openid' } as any,
+      ),
+    ).resolves.toEqual({ tenant_id: 'tenant-1' });
+    await expect(
+      cfg.extraTokenClaims!({} as any, { scope: 'openid tenant_roles' } as any),
+    ).resolves.toEqual({ tenant_id: 'tenant-1' });
+    expect(deps.userQuery.findDirectTenantRoles).not.toHaveBeenCalled();
+  });
+
   it('tenant가 없으면 getResourceServerInfo에서 에러(missing_tenant)를 던진다', async () => {
     const deps = makeDeps();
     const cfg = buildOidcConfiguration({
@@ -561,6 +599,31 @@ describe('buildOidcConfiguration', () => {
         claimKeys: ['profile', 'email'],
       }),
     );
+  });
+
+  it('findAccount claims는 tenant_roles scope를 ID token claim으로 노출하지 않는다', async () => {
+    const deps = makeDeps();
+    deps.scopeRegistry.listDefinitions.mockResolvedValue([
+      {
+        scope: 'tenant_roles',
+        displayName: 'Tenant roles',
+        claimKeys: [],
+        builtIn: true,
+        enabled: true,
+      },
+    ]);
+    const cfg = buildOidcConfiguration({ ...deps, tenantCode: 'acme' });
+    const account = await cfg.findAccount!(makeCtx('tenant-1'), 'user-1');
+
+    const claims = await account!.claims(
+      'user-1',
+      'openid tenant_roles',
+      {},
+      [],
+    );
+
+    expect(claims).not.toHaveProperty('tenant_roles');
+    expect(deps.userQuery.findDirectTenantRoles).not.toHaveBeenCalled();
   });
 
   it('OIDC_ACCESS_TOKEN_FORMAT=opaque이면 accessTokenFormat은 opaque다', async () => {

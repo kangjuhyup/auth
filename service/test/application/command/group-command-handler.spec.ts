@@ -1,6 +1,10 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { GroupCommandHandler } from '@application/commands/handlers/group-command.handler';
-import type { GroupRepository, RoleRepository, RoleAssignmentRepository } from '@domain/repositories';
+import type {
+  GroupRepository,
+  RoleRepository,
+  RoleAssignmentRepository,
+} from '@domain/repositories';
 import { GroupModel } from '@domain/models/group';
 import { RoleModel } from '@domain/models/role';
 
@@ -48,6 +52,7 @@ function createMockRoleAssignment(): jest.Mocked<RoleAssignmentRepository> {
     existsForUser: jest.fn().mockResolvedValue(false),
     existsForGroup: jest.fn().mockResolvedValue(false),
     listForUser: jest.fn().mockResolvedValue([]),
+    listDirectTenantRolesForUser: jest.fn().mockResolvedValue([]),
     listForGroup: jest.fn().mockResolvedValue([]),
   };
 }
@@ -125,7 +130,9 @@ describe('GroupCommandHandler', () => {
     });
 
     it('tenantId 불일치 시 NotFoundException을 던진다', async () => {
-      groupRepo.findById.mockResolvedValue(makeGroup('group-1', 'other-tenant'));
+      groupRepo.findById.mockResolvedValue(
+        makeGroup('group-1', 'other-tenant'),
+      );
 
       await expect(
         handler.updateGroup('tenant-1', 'group-1', { name: 'X' }),
@@ -160,19 +167,21 @@ describe('GroupCommandHandler', () => {
     it('그룹이 없으면 NotFoundException을 던진다', async () => {
       groupRepo.findById.mockResolvedValue(null);
 
-      await expect(
-        handler.deleteGroup('tenant-1', 'no-such'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(handler.deleteGroup('tenant-1', 'no-such')).rejects.toThrow(
+        NotFoundException,
+      );
 
       expect(groupRepo.delete).not.toHaveBeenCalled();
     });
 
     it('tenantId 불일치 시 NotFoundException을 던진다', async () => {
-      groupRepo.findById.mockResolvedValue(makeGroup('group-1', 'other-tenant'));
+      groupRepo.findById.mockResolvedValue(
+        makeGroup('group-1', 'other-tenant'),
+      );
 
-      await expect(
-        handler.deleteGroup('tenant-1', 'group-1'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(handler.deleteGroup('tenant-1', 'group-1')).rejects.toThrow(
+        NotFoundException,
+      );
 
       expect(groupRepo.delete).not.toHaveBeenCalled();
     });
@@ -211,7 +220,9 @@ describe('GroupCommandHandler', () => {
     });
 
     it('그룹 tenantId 불일치 시 NotFoundException을 던진다', async () => {
-      groupRepo.findById.mockResolvedValue(makeGroup('group-1', 'other-tenant'));
+      groupRepo.findById.mockResolvedValue(
+        makeGroup('group-1', 'other-tenant'),
+      );
 
       await expect(
         handler.assignRole('tenant-1', 'group-1', 'role-1'),
@@ -257,7 +268,9 @@ describe('GroupCommandHandler', () => {
     });
 
     it('그룹 tenantId 불일치 시 NotFoundException을 던진다', async () => {
-      groupRepo.findById.mockResolvedValue(makeGroup('group-1', 'other-tenant'));
+      groupRepo.findById.mockResolvedValue(
+        makeGroup('group-1', 'other-tenant'),
+      );
 
       await expect(
         handler.removeRole('tenant-1', 'group-1', 'role-1'),

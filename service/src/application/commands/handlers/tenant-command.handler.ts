@@ -151,6 +151,7 @@ function defaultScopeDisplayName(scope: string): string {
   if (scope === 'profile') return 'Profile';
   if (scope === 'email') return 'Email';
   if (scope === 'groups') return 'Groups';
+  if (scope === 'tenant_roles') return 'Tenant roles';
   return scope;
 }
 
@@ -159,6 +160,7 @@ function defaultScopeDescription(scope: string): string {
   if (scope === 'profile') return 'Basic profile claims';
   if (scope === 'email') return 'Email claims';
   if (scope === 'groups') return 'Tenant group authorization claims';
+  if (scope === 'tenant_roles') return 'Direct tenant role claims';
   return scope;
 }
 

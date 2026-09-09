@@ -69,7 +69,7 @@ describe('TenantCommandHandler', () => {
 
       expect(tenantRepo.findByCode).toHaveBeenCalledWith('new');
       expect(tenantRepo.save).toHaveBeenCalledTimes(1);
-      expect(scopeRepo.save).toHaveBeenCalledTimes(4);
+      expect(scopeRepo.save).toHaveBeenCalledTimes(5);
       expect(result.id).toBeDefined();
       expect(auditRecorder.recordAdminAction).toHaveBeenCalledWith(
         expect.objectContaining({

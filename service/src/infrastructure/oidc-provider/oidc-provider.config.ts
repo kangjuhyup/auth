@@ -149,6 +149,12 @@ export function buildOidcConfiguration(params: {
           userId: accountId,
         });
       }
+      if (accountId && parseScopeString(token.scope).includes('tenant_roles')) {
+        claims.tenant_roles = await userQuery.findDirectTenantRoles({
+          tenantId,
+          userId: accountId,
+        });
+      }
       return claims;
     },
 
