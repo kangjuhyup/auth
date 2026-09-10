@@ -52,12 +52,3 @@ export type {
   InteractionRedirectResult,
   InteractionXmlResult,
 } from './oidc-interaction.port';
-export {
-  RegistrationEligibilityError,
-  RegistrationEligibilityPort,
-} from './registration-eligibility.port';
-export type {
-  RegistrationEligibilityClaim,
-  RegistrationEligibilityCompletion,
-  RegistrationEligibilityErrorCode,
-} from './registration-eligibility.port';

@@ -94,45 +94,22 @@ describe('UserModel', () => {
     });
   });
 
-  describe('Account 가입 상태 전이', () => {
-    it('Account claim 이후 사용자는 PENDING_REGISTRATION으로 생성된다', () => {
-      const user = UserModel.createPendingRegistration({
+  describe('UserModel.createProvisioned', () => {
+    it('서비스 identity 데이터 없이 ACTIVE credential binding을 만든다', () => {
+      const user = UserModel.createProvisioned({
         id: 'user-1',
         tenantId: 'tenant-1',
-        username: 'john',
+        username: 'alice',
         passwordCredential: makeCredential(),
-        accountRegistrationId: 'registration-1',
-        registrationAttemptId: 'tenant-1:interaction-1',
+        provisionedByClientId: 'provisioner',
+        provisioningKeyHash: 'a'.repeat(64),
       });
-
-      expect(user.status).toBe('PENDING_REGISTRATION');
-      expect(user.accountRegistrationId).toBe('registration-1');
-      expect(user.registrationAttemptId).toBe('tenant-1:interaction-1');
-    });
-
-    it('Account complete 이후에만 ACTIVE로 전이한다', () => {
-      const user = UserModel.createPendingRegistration({
-        id: 'user-1',
-        tenantId: 'tenant-1',
-        username: 'john',
-        passwordCredential: makeCredential(),
-        accountRegistrationId: 'registration-1',
-        registrationAttemptId: 'tenant-1:interaction-1',
-      });
-
-      user.activateRegistration();
 
       expect(user.status).toBe('ACTIVE');
-    });
-
-    it('ACTIVE 재활성화는 멱등이고 다른 상태의 활성화는 거부한다', () => {
-      const active = makeActiveUser();
-      expect(() => active.activateRegistration()).not.toThrow();
-
-      const locked = makeActiveUser({ status: 'LOCKED' });
-      expect(() => locked.activateRegistration()).toThrow(
-        'RegistrationActivationNotAllowed',
-      );
+      expect(user.email).toBeNull();
+      expect(user.phone).toBeNull();
+      expect(user.provisionedByClientId).toBe('provisioner');
+      expect(user.provisioningKeyHash).toBe('a'.repeat(64));
     });
   });
 

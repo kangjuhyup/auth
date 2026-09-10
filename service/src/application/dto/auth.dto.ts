@@ -1,26 +1,3 @@
-export class SignupDto {
-  private constructor(
-    public readonly username: string,
-    public readonly password: string,
-    public readonly email?: string,
-    public readonly phone?: string,
-  ) {}
-
-  static of(params: {
-    username: string;
-    password: string;
-    email?: string;
-    phone?: string;
-  }): SignupDto {
-    return new SignupDto(
-      params.username,
-      params.password,
-      params.email,
-      params.phone,
-    );
-  }
-}
-
 export class WithdrawDto {
   private constructor(public readonly password: string) {}
 

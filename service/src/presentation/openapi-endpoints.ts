@@ -122,11 +122,6 @@ const ENDPOINT_DESCRIPTIONS: Array<{
       'Group management. Group codes are tenant-unique, hierarchy cycles are forbidden, child groups are checked before deletion, and changes are audited.',
   },
   {
-    pattern: /^\/auth\/signup$/,
-    description:
-      'User signup. Tenant signup policy is enforced, passwords are hashed, duplicates are rejected, rate limiting applies, and signup activity is audited.',
-  },
-  {
     pattern: /^\/auth\/withdraw$/,
     description:
       'Authenticated self-service account withdrawal. The caller must be authenticated; related sessions, tokens, consents, and audit records are handled by application policy.',

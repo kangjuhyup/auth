@@ -12,6 +12,7 @@ import { EventRepository } from '@domain/repositories';
 
 export interface AdminAuditParams {
   tenantId: string;
+  clientId?: string | null;
   action: EventAction;
   resourceType: string;
   resourceId?: string | null;
@@ -36,6 +37,7 @@ export class AuditRecorder {
       new EventModel({
         tenantId: params.tenantId,
         userId: params.auditContext?.actorUserId ?? null,
+        clientId: params.clientId ?? null,
         category: params.category ?? 'SYSTEM',
         severity: params.severity ?? 'INFO',
         action: params.action,

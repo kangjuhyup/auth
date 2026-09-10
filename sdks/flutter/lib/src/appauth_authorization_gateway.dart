@@ -43,10 +43,7 @@ final class AppAuthAuthorizationGateway implements AuthorizationGateway {
   final AppAuthDriver _driver;
 
   @override
-  Future<AuthTokenResponse> authorize(
-    AuthClientConfig config, {
-    AuthorizationIntent intent = AuthorizationIntent.signIn,
-  }) async {
+  Future<AuthTokenResponse> authorize(AuthClientConfig config) async {
     try {
       final response = await _driver.authorizeAndExchangeCode(
         AuthorizationTokenRequest(
@@ -54,8 +51,6 @@ final class AppAuthAuthorizationGateway implements AuthorizationGateway {
           config.redirectUri.toString(),
           discoveryUrl: config.discoveryUrl.toString(),
           scopes: config.scopes,
-          promptValues:
-              intent == AuthorizationIntent.signUp ? const ['create'] : null,
           additionalParameters: {'resource': config.resource.toString()},
           allowInsecureConnections: config.allowInsecureConnections,
         ),

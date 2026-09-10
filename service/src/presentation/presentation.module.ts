@@ -27,10 +27,17 @@ import { AdminIdentityProviderController } from './controllers/admin/identity-pr
 import { InteractionController } from './controllers/interaction.controller';
 import { AdminGuard } from './http/admin.guard';
 import { AccessGuard } from './http/access.guard';
+import { UserProvisioningController } from './controllers/user-provisioning.controller';
+import { ServiceProvisioningGuard } from './http/service-provisioning.guard';
 
 @Module({
   imports: [ConfigModule, ApplicationModule],
-  providers: [AdminGuard, AccessGuard, OidcDelegateMiddleware],
+  providers: [
+    AdminGuard,
+    AccessGuard,
+    ServiceProvisioningGuard,
+    OidcDelegateMiddleware,
+  ],
   controllers: [
     HealthController,
     AuthController,
@@ -48,6 +55,7 @@ import { AccessGuard } from './http/access.guard';
     AdminSessionController,
     AdminIdentityProviderController,
     InteractionController,
+    UserProvisioningController,
   ],
 })
 export class PresentationModule implements NestModule {
@@ -69,9 +77,14 @@ export class PresentationModule implements NestModule {
 
     consumer
       .apply(TenantMiddleware)
-      .forRoutes(AuthController, InteractionController, {
-        path: 't/:tenantCode/admin/*path',
-        method: RequestMethod.ALL,
-      });
+      .forRoutes(
+        AuthController,
+        InteractionController,
+        UserProvisioningController,
+        {
+          path: 't/:tenantCode/admin/*path',
+          method: RequestMethod.ALL,
+        },
+      );
   }
 }

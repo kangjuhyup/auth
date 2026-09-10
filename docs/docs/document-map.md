@@ -73,7 +73,7 @@ AuthDocs는 이 저장소의 사용자/운영자 대상 문서 포털입니다. 
 
 | 문서                                                                              | 설명                                                            |
 | --------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| [Account 가입 연동 운영](./operations/account-registration.md)                    | 본인인증 handoff, 서비스 토큰, 상태 전이와 장애 대응            |
+| [서비스 사용자 Provisioning 운영](./operations/account-registration.md)           | 최소 권한 service client, 가입 API 계약과 마이그레이션          |
 | [로컬 부하 테스트 결과 — 2026-09-02](./operations/load-test-2026-09-02.md)        | 단일 Auth 인스턴스의 k6 용량 탐색, 30분 내구성 결과와 병목 해석 |
 | [원격 부하 테스트 결과 — 2026-09-06](./operations/remote-load-test-2026-09-06.md) | M1 Mini에서 실행한 단일 Auth 인스턴스 300 VU 단기 probe 결과    |
 

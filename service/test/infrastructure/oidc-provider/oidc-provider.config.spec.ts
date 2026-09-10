@@ -193,15 +193,14 @@ describe('buildOidcConfiguration', () => {
     ).toBe('function');
   });
 
-  it('표준 prompt=create를 최우선 requestable interaction으로 등록한다', () => {
+  it('hosted registration용 create prompt를 추가하지 않는다', () => {
     const cfg = buildOidcConfiguration({
       ...makeDeps(),
       tenantCode: 'acme',
     });
     const policy = cfg.interactions?.policy as any[];
 
-    expect(policy[0].name).toBe('create');
-    expect(policy[0].requestable).toBe(true);
+    expect(policy.map((prompt) => prompt.name)).toEqual(['login', 'consent']);
   });
 
   it('단일 granted resource는 token request에서 생략해도 사용한다', async () => {

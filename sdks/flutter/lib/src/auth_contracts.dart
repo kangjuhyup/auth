@@ -1,13 +1,8 @@
 import 'auth_client_config.dart';
 import 'auth_session.dart';
 
-enum AuthorizationIntent { signIn, signUp }
-
 abstract interface class AuthorizationGateway {
-  Future<AuthTokenResponse> authorize(
-    AuthClientConfig config, {
-    AuthorizationIntent intent = AuthorizationIntent.signIn,
-  });
+  Future<AuthTokenResponse> authorize(AuthClientConfig config);
 
   Future<AuthTokenResponse> refresh(
     AuthClientConfig config,

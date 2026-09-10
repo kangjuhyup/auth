@@ -40,13 +40,6 @@ class _AuthExampleAppState extends State<AuthExampleApp> {
                   onPressed: _signedIn ? _signOut : _signIn,
                   child: Text(_signedIn ? 'Sign out' : 'Sign in'),
                 ),
-                if (!_signedIn) ...[
-                  const SizedBox(height: 12),
-                  OutlinedButton(
-                    onPressed: _signUp,
-                    child: const Text('Create account'),
-                  ),
-                ],
               ],
             ),
           ),
@@ -55,11 +48,6 @@ class _AuthExampleAppState extends State<AuthExampleApp> {
 
   Future<void> _signIn() async {
     await _auth.signIn();
-    if (mounted) setState(() => _signedIn = true);
-  }
-
-  Future<void> _signUp() async {
-    await _auth.signUp();
     if (mounted) setState(() => _signedIn = true);
   }
 

@@ -43,28 +43,6 @@ void main() {
     expect(response.idToken, 'id-1');
   });
 
-  test('requests hosted account creation with standard prompt=create',
-      () async {
-    driver.authorizationResponse = AuthorizationTokenResponse(
-      'access-1',
-      'refresh-1',
-      DateTime.utc(2026, 9, 8, 5),
-      'id-1',
-      'Bearer',
-      config.scopes,
-      null,
-      null,
-    );
-
-    await gateway.authorize(
-      config,
-      intent: AuthorizationIntent.signUp,
-    );
-
-    expect(driver.authorizationRequest?.promptValues, ['create']);
-    expect(driver.authorizationRequest?.clientSecret, isNull);
-  });
-
   test('keeps the granted resource on refresh without a client secret',
       () async {
     driver.tokenResponse = TokenResponse(

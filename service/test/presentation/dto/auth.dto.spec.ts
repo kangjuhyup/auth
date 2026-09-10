@@ -1,7 +1,6 @@
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import {
-  SignupDto,
   WithdrawDto,
   ChangePasswordDto,
   PasswordResetRequestDto,
@@ -11,21 +10,22 @@ import {
   UpdateMfaPreferenceDto,
   UpdateProfileDto,
 } from '@presentation/dto/auth/auth.dto';
+import { ProvisionUserBody } from '@presentation/dto/provisioning/user-provisioning.dto';
 
 async function getErrors(DtoClass: any, plain: object) {
   const instance = plainToInstance(DtoClass, plain);
   return validate(instance as object);
 }
 
-describe('SignupDto', () => {
+describe('ProvisionUserBody', () => {
   const valid = { username: 'alice', password: 'Passw0rd!' };
 
   it('유효한 값이면 에러 없음', async () => {
-    expect(await getErrors(SignupDto, valid)).toHaveLength(0);
+    expect(await getErrors(ProvisionUserBody, valid)).toHaveLength(0);
   });
 
   it('username 누락 시 에러', async () => {
-    const errors = await getErrors(SignupDto, {
+    const errors = await getErrors(ProvisionUserBody, {
       ...valid,
       username: undefined,
     });
@@ -33,12 +33,15 @@ describe('SignupDto', () => {
   });
 
   it('username 2자 이하면 에러 (minLength=3)', async () => {
-    const errors = await getErrors(SignupDto, { ...valid, username: 'ab' });
+    const errors = await getErrors(ProvisionUserBody, {
+      ...valid,
+      username: 'ab',
+    });
     expect(errors.some((e) => e.property === 'username')).toBe(true);
   });
 
   it('username 65자 초과면 에러 (maxLength=64)', async () => {
-    const errors = await getErrors(SignupDto, {
+    const errors = await getErrors(ProvisionUserBody, {
       ...valid,
       username: 'a'.repeat(65),
     });
@@ -46,12 +49,15 @@ describe('SignupDto', () => {
   });
 
   it('username에 허용되지 않는 문자 포함 시 에러', async () => {
-    const errors = await getErrors(SignupDto, { ...valid, username: 'alice!' });
+    const errors = await getErrors(ProvisionUserBody, {
+      ...valid,
+      username: 'alice!',
+    });
     expect(errors.some((e) => e.property === 'username')).toBe(true);
   });
 
   it('password 누락 시 에러', async () => {
-    const errors = await getErrors(SignupDto, {
+    const errors = await getErrors(ProvisionUserBody, {
       ...valid,
       password: undefined,
     });
@@ -59,45 +65,16 @@ describe('SignupDto', () => {
   });
 
   it('password 7자 이하면 에러 (minLength=8)', async () => {
-    const errors = await getErrors(SignupDto, {
+    const errors = await getErrors(ProvisionUserBody, {
       ...valid,
       password: 'short1!',
     });
     expect(errors.some((e) => e.property === 'password')).toBe(true);
   });
 
-  it('유효한 email 허용', async () => {
-    const errors = await getErrors(SignupDto, {
-      ...valid,
-      email: 'user@example.com',
-    });
-    expect(errors).toHaveLength(0);
-  });
-
-  it('잘못된 email 형식이면 에러', async () => {
-    const errors = await getErrors(SignupDto, {
-      ...valid,
-      email: 'not-an-email',
-    });
-    expect(errors.some((e) => e.property === 'email')).toBe(true);
-  });
-
-  it('유효한 phone 허용', async () => {
-    const errors = await getErrors(SignupDto, {
-      ...valid,
-      phone: '+821012345678',
-    });
-    expect(errors).toHaveLength(0);
-  });
-
-  it('잘못된 phone 형식이면 에러', async () => {
-    const errors = await getErrors(SignupDto, { ...valid, phone: 'abc-1234' });
-    expect(errors.some((e) => e.property === 'phone')).toBe(true);
-  });
-
   it('알 수 없는 필드가 있어도 검증 통과 (whitelist는 파이프에서 처리)', async () => {
     // validate()는 추가 필드를 무시함 — whitelist 제거는 ValidationPipe에서 수행
-    const errors = await getErrors(SignupDto, { ...valid, extra: 'x' });
+    const errors = await getErrors(ProvisionUserBody, { ...valid, extra: 'x' });
     expect(errors).toHaveLength(0);
   });
 });

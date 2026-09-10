@@ -1,6 +1,6 @@
 ---
 title: Flutter SDK
-description: Flutter 앱에서 Auth Platform의 로그인, 회원가입, 토큰 갱신과 로그아웃을 연동하는 방법
+description: Flutter 앱에서 Auth Platform의 표준 OIDC 로그인, 토큰 갱신과 로그아웃을 연동하는 방법
 ---
 
 # Flutter SDK
@@ -16,7 +16,7 @@ description: Flutter 앱에서 Auth Platform의 로그인, 회원가입, 토큰 
 | 기능      | SDK 동작                                                       |
 | --------- | -------------------------------------------------------------- |
 | 로그인    | 시스템 브라우저에서 Authorization Code + PKCE 시작             |
-| 회원가입  | Account 본인인증 handoff 뒤 Auth hosted signup interaction 연결 |
+| 회원가입  | 서비스 앱/서버에서 완료한 뒤 SDK의 일반 OIDC 로그인으로 연결   |
 | 토큰 보관 | `flutter_secure_storage`에 세션 전체를 하나의 값으로 저장      |
 | 토큰 갱신 | 만료 전에 refresh token으로 갱신하며 동시 요청을 하나로 직렬화 |
 | 로그아웃  | refresh/access token 폐기 후 RP-Initiated Logout 요청          |
@@ -40,8 +40,6 @@ SDK는 client secret을 받거나 전송하지 않으며, ID token을 직접 파
 | Resource                   | 호출할 API의 canonical HTTPS origin                       |
 
 예를 들어 `https://api.example.com/path?x=1`이 아니라 `https://api.example.com`을 resource로 등록합니다.
-
-회원가입 화면을 제공하려면 tenant의 signup mode를 `open`으로 설정해야 합니다. `invite` tenant에서는 hosted self-signup이 거부됩니다.
 
 ## 패키지 설치
 
@@ -99,16 +97,10 @@ final session = await auth.signIn();
 
 ## 회원가입
 
-현재 `signUp()`은 authorization 요청에 `prompt=create`를 추가하는 SDK 골자입니다. 실제 서비스에서는 먼저 Account가 소유한 본인인증·가입자격 절차에서 짧은 TTL의 `handoffId`를 받고, 진행 중인 Auth OIDC interaction URL에 `?handoffId=...`만 추가해야 합니다. Account가 임의 return URL로 redirect하지 않으므로 이 browser/app 조합은 서비스 앱이 구현합니다. 이 연결 없이 `signUp()`만 호출하면 Auth hosted 화면은 fail-closed로 가입을 완료하지 않습니다.
-
-비밀번호와 Auth 복구용 연락처 입력은 Auth hosted interaction 화면에서만 처리되며 Flutter 앱이나 Account로 전달되지 않습니다. 반대로 Account의 CI, DI, DI HMAC, 본인인증 연락처와 약관 원문은 Auth로 전달하지 않습니다.
-
-회원가입이 끝나면 별도 로그인 API를 호출하지 않고 같은 OIDC interaction에서 MFA, consent, authorization code 발급을 계속합니다. 이미 계정이 있는 사용자는 hosted 화면에서 로그인으로 전환할 수 있습니다.
+회원가입 UI와 자격 정책은 서비스 앱/서버가 소유합니다. 서비스 서버는 가입 자격을 확인한 뒤 tenant 범위의 Auth provisioning API로 credential을 만들고 `(issuer, subject)`를 회원에 연결합니다. 그 다음 앱은 `signIn()`으로 별도의 Authorization Code + PKCE 로그인을 시작합니다. SDK는 가입 API, service client secret 또는 사용자 password를 다루지 않습니다.
 
 :::info Signup API 경계
-최종 사용자 계정을 생성하는 API는 OIDC Core 규격의 일부가 아닙니다. `/t/{tenant}/interaction/{uid}/api/signup`은 Auth hosted UI 전용 내부 endpoint이며 모바일 앱에서 직접 호출하면 안 됩니다. OIDC 가입 시작에는 `prompt=create` authorization 요청을 사용하고, Account 가입자격 handoff는 위의 서비스 조합 계약을 따릅니다.
-
-기존 `/auth/signup` 공개 endpoint는 Account 가입자격 정책 우회를 막기 위해 비활성화되어 있습니다.
+최종 사용자 계정을 생성하는 API는 OIDC Core 규격의 일부가 아닙니다. 모바일 앱은 provisioning API를 직접 호출하지 않습니다. 정확한 서버 계약은 [서비스 사용자 Provisioning 운영](../operations/account-registration.md)을 따릅니다.
 :::
 
 ## API access token

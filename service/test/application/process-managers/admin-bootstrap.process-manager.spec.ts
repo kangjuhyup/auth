@@ -114,7 +114,13 @@ describe('AdminBootstrapProcessManager', () => {
   }
 
   function makeScope(
-    name: 'openid' | 'profile' | 'email' | 'groups' | 'tenant_roles',
+    name:
+      | 'openid'
+      | 'profile'
+      | 'email'
+      | 'groups'
+      | 'tenant_roles'
+      | 'auth.user.provision',
     overrides: Partial<{
       tenantId: string;
       name: string;
@@ -190,6 +196,7 @@ describe('AdminBootstrapProcessManager', () => {
       makeScope('email'),
       makeScope('groups'),
       makeScope('tenant_roles'),
+      makeScope('auth.user.provision'),
     ];
 
     const processRepository = {
@@ -222,7 +229,7 @@ describe('AdminBootstrapProcessManager', () => {
     const userRepository = {
       findById: jest.fn(),
       findByUsername: jest.fn(async () => user),
-      findByRegistrationAttemptId: jest.fn(),
+      findByProvisioningKey: jest.fn(),
       findByContact: jest.fn(),
       list: jest.fn(),
       save: jest.fn(),
@@ -451,11 +458,18 @@ describe('AdminBootstrapProcessManager', () => {
 
     expect(subject.scopeRepository.findByNames).toHaveBeenCalledWith(
       'tenant-master',
-      ['openid', 'profile', 'email', 'groups', 'tenant_roles'],
+      [
+        'openid',
+        'profile',
+        'email',
+        'groups',
+        'tenant_roles',
+        'auth.user.provision',
+      ],
     );
     expect(subject.tenantCommand.ensureBuiltInScopes).toHaveBeenCalledWith(
       'tenant-master',
-      ['profile', 'email', 'groups', 'tenant_roles'],
+      ['profile', 'email', 'groups', 'tenant_roles', 'auth.user.provision'],
       auditContext,
     );
     expect(subject.scopeRepository.save).not.toHaveBeenCalled();
@@ -475,7 +489,14 @@ describe('AdminBootstrapProcessManager', () => {
 
     expect(subject.tenantCommand.ensureBuiltInScopes).toHaveBeenCalledWith(
       'tenant-master',
-      ['openid', 'profile', 'email', 'groups', 'tenant_roles'],
+      [
+        'openid',
+        'profile',
+        'email',
+        'groups',
+        'tenant_roles',
+        'auth.user.provision',
+      ],
       auditContext,
     );
     expect(subject.scopeRepository.save).not.toHaveBeenCalled();

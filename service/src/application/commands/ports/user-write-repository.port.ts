@@ -23,9 +23,10 @@ export abstract class UserWriteRepositoryPort {
     tenantId: string,
     username: string,
   ): Promise<UserModel | undefined>;
-  abstract findByRegistrationAttemptId(
+  abstract findByProvisioningKey(
     tenantId: string,
-    attemptId: string,
+    clientId: string,
+    keyHash: string,
   ): Promise<UserModel | undefined>;
   abstract findByContact(
     tenantId: string,

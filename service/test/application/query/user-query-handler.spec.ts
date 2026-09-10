@@ -38,7 +38,7 @@ function createMockUserRepo(): jest.Mocked<UserWriteRepositoryPort> {
   return {
     findById: jest.fn().mockResolvedValue(makeUser()),
     findByUsername: jest.fn().mockResolvedValue(makeUser()),
-    findByRegistrationAttemptId: jest.fn().mockResolvedValue(undefined),
+    findByProvisioningKey: jest.fn().mockResolvedValue(undefined),
     findByContact: jest.fn().mockResolvedValue(null),
     list: jest.fn().mockResolvedValue({ items: [], total: 0 }),
     save: jest.fn().mockResolvedValue(undefined),
@@ -266,16 +266,6 @@ describe('UserQueryHandler', () => {
       ).toBeNull();
     });
 
-    it('PENDING_REGISTRATION 사용자의 OIDC claims를 노출하지 않는다', async () => {
-      userRepo.findById.mockResolvedValue(
-        makeUser({ status: 'PENDING_REGISTRATION' }),
-      );
-
-      expect(
-        await handler.findClaimsBySub({ tenantId: 'tenant-1', sub: 'user-1' }),
-      ).toBeNull();
-    });
-
     it('성공 → sub/email/email_verified 매핑', async () => {
       const result = await handler.findClaimsBySub({
         tenantId: 'tenant-1',
@@ -339,21 +329,6 @@ describe('UserQueryHandler', () => {
           password: 'pw',
         }),
       ).toBeNull();
-    });
-
-    it('PENDING_REGISTRATION 사용자는 올바른 비밀번호로도 로그인할 수 없다', async () => {
-      userRepo.findByUsername.mockResolvedValue(
-        makeUser({ status: 'PENDING_REGISTRATION' }),
-      );
-
-      expect(
-        await handler.authenticate({
-          tenantId: 'tenant-1',
-          username: 'u',
-          password: 'correct',
-        }),
-      ).toBeNull();
-      expect(passwordHash.verify).not.toHaveBeenCalled();
     });
 
     it('password credential 없음 → null', async () => {
