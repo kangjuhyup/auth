@@ -51,7 +51,9 @@ export function ClientTable({
           confidential: 'green',
           service: 'purple',
         };
-        return <Tag color={colorMap[type] || 'default'}>{type.toUpperCase()}</Tag>;
+        return (
+          <Tag color={colorMap[type] || 'default'}>{type.toUpperCase()}</Tag>
+        );
       },
     },
     {
@@ -77,6 +79,16 @@ export function ClientTable({
           ))}
           {grants.length > 2 && <Tag>+{grants.length - 2}</Tag>}
         </Space>
+      ),
+    },
+    {
+      title: 'Hosted UI',
+      dataIndex: 'externalInteractionUiUrl',
+      key: 'externalInteractionUiUrl',
+      render: (url: string | null) => (
+        <Tag color={url ? 'cyan' : 'default'}>
+          {url ? 'External' : 'Built-in'}
+        </Tag>
       ),
     },
     {
