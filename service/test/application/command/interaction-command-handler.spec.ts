@@ -8,6 +8,7 @@ describe('InteractionCommandHandler', () => {
   let metrics: any;
   let authCommand: any;
   let auditRecorder: any;
+  let externalInteractionUi: any;
   const tenant = { id: 'tenant-1', code: 'acme', name: 'ACME' };
 
   beforeEach(() => {
@@ -46,6 +47,9 @@ describe('InteractionCommandHandler', () => {
     auditRecorder = {
       recordAdminAction: jest.fn().mockResolvedValue(undefined),
     };
+    externalInteractionUi = {
+      consume: jest.fn().mockResolvedValue(true),
+    };
     handler = new InteractionCommandHandler(
       userQuery,
       oidcInteraction,
@@ -53,6 +57,7 @@ describe('InteractionCommandHandler', () => {
       metrics,
       authCommand,
       auditRecorder,
+      externalInteractionUi,
     );
   });
 
@@ -674,6 +679,78 @@ describe('InteractionCommandHandler', () => {
       'login_success_total',
       { tenantCode: 'acme' },
     );
+  });
+
+  it('외부 interaction login이 완료되면 access를 소비하고 실패 시에는 유지한다', async () => {
+    userQuery.authenticate.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      userId: 'user-1',
+    });
+    oidcInteraction.getDetails.mockResolvedValue({
+      uid: 'uid-1',
+      prompt: 'login',
+      clientId: 'web-app',
+      missingScopes: [],
+      mfaRequired: false,
+      idpList: [],
+    });
+    oidcInteraction.completeLogin.mockResolvedValue({
+      redirectTo: '/interaction/continue',
+    });
+
+    await handler.submitLogin({
+      tenantCode: 'acme',
+      uid: 'uid-1',
+      username: 'john',
+      password: 'wrong',
+      req: {},
+      res: {},
+      tenant,
+      externalAccessId: 'access-1',
+    });
+    expect(externalInteractionUi.consume).not.toHaveBeenCalled();
+
+    await handler.submitLogin({
+      tenantCode: 'acme',
+      uid: 'uid-1',
+      username: 'john',
+      password: 'secret',
+      req: {},
+      res: {},
+      tenant,
+      externalAccessId: 'access-1',
+    });
+    expect(externalInteractionUi.consume).toHaveBeenCalledWith({
+      tenantCode: 'acme',
+      uid: 'uid-1',
+      accessId: 'access-1',
+    });
+  });
+
+  it('이미 소비된 외부 access의 동시 재생은 provider 완료 전에 거부한다', async () => {
+    userQuery.authenticate.mockResolvedValue({ userId: 'user-1' });
+    oidcInteraction.getDetails.mockResolvedValue({
+      uid: 'uid-1',
+      prompt: 'login',
+      clientId: 'web-app',
+      missingScopes: [],
+      mfaRequired: false,
+      idpList: [],
+    });
+    externalInteractionUi.consume.mockResolvedValue(false);
+
+    await expect(
+      handler.submitLogin({
+        tenantCode: 'acme',
+        uid: 'uid-1',
+        username: 'john',
+        password: 'secret',
+        req: {},
+        res: {},
+        tenant,
+        externalAccessId: 'replayed-access',
+      }),
+    ).rejects.toThrow('External interaction request denied');
+    expect(oidcInteraction.completeLogin).not.toHaveBeenCalled();
   });
 
   it('pending MFA가 없으면 400 응답을 반환한다', async () => {

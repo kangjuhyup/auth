@@ -1,4 +1,7 @@
-import { OidcInteractionAdapter } from '@infrastructure/oidc-provider/oidc-interaction.adapter';
+import {
+  assertSafeInteractionReturnTo,
+  OidcInteractionAdapter,
+} from '@infrastructure/oidc-provider/oidc-interaction.adapter';
 import { ClientAuthPolicyModel } from '@domain/models/client-auth-policy';
 import { TenantConfigModel } from '@domain/models/tenant-config';
 
@@ -20,11 +23,18 @@ function makeProvider(clientId = 'web-app') {
   return {
     issuer: 'https://auth.example/t/acme/oidc',
     interactionDetails: jest.fn().mockResolvedValue({
+      uid: 'uid-1',
       prompt: { name: 'login', details: {} },
       params: { client_id: clientId },
     }),
     interactionResult: jest.fn().mockResolvedValue('/callback'),
     callback: jest.fn().mockReturnValue(jest.fn().mockResolvedValue(undefined)),
+    Interaction: {
+      find: jest.fn().mockResolvedValue({
+        uid: 'uid-1',
+        params: { client_id: clientId },
+      }),
+    },
     Grant,
     grant,
   };
@@ -172,6 +182,48 @@ function makeTokenRequest(overrides: Record<string, unknown> = {}) {
 }
 
 describe('OidcInteractionAdapter policy resolution', () => {
+  it('저장된 provider interaction의 uid와 client binding만 반환한다', async () => {
+    const { adapter, provider } = createAdapter();
+
+    await expect(
+      adapter.findInteractionBinding({ tenantCode: 'acme', uid: 'uid-1' }),
+    ).resolves.toEqual({ clientId: 'web-app' });
+
+    provider.Interaction.find.mockResolvedValueOnce(null);
+    await expect(
+      adapter.findInteractionBinding({ tenantCode: 'acme', uid: 'missing' }),
+    ).resolves.toBeNull();
+
+    provider.Interaction.find.mockResolvedValueOnce({
+      uid: 'different-uid',
+      params: { client_id: 'web-app' },
+    });
+    await expect(
+      adapter.findInteractionBinding({ tenantCode: 'acme', uid: 'uid-1' }),
+    ).resolves.toBeNull();
+  });
+
+  it('provider interaction return URL은 Auth origin 밖으로 이탈할 수 없다', () => {
+    expect(
+      assertSafeInteractionReturnTo(
+        'https://auth.example/t/acme/oidc',
+        '/t/acme/oidc/auth/resume-1',
+      ),
+    ).toBe('/t/acme/oidc/auth/resume-1');
+    expect(() =>
+      assertSafeInteractionReturnTo(
+        'https://auth.example/t/acme/oidc',
+        'https://evil.example/callback',
+      ),
+    ).toThrow('Unsafe interaction return URL');
+    expect(() =>
+      assertSafeInteractionReturnTo(
+        'https://auth.example/t/acme/oidc',
+        '//evil.example/callback',
+      ),
+    ).toThrow('Unsafe interaction return URL');
+  });
+
   it('consent 완료 시 provider가 보고한 OIDC 및 resource scope를 grant에 추가한다', async () => {
     const { adapter, provider } = createAdapter();
     provider.interactionDetails.mockResolvedValue({

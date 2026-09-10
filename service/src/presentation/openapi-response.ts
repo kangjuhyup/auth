@@ -125,6 +125,9 @@ export const OpenApiResponseSchemas = {
     frontchannelLogoutUri: nullableString(
       'https://app.example.com/frontchannel-logout',
     ),
+    externalInteractionUiUrl: nullableString(
+      'https://login.example.com/interaction',
+    ),
     allowedResources: arrayOf(string('https://api.example.com')),
     introspectionResources: arrayOf(string('https://api.example.com')),
     skipConsent: boolean(false),

@@ -20,6 +20,7 @@ export class ClientMapper {
         applicationType: entity.applicationType,
         backchannelLogoutUri: entity.backchannelLogoutUri ?? null,
         frontchannelLogoutUri: entity.frontchannelLogoutUri ?? null,
+        externalInteractionUiUrl: entity.externalInteractionUiUrl ?? null,
         accessTokenTtlSec: entity.accessTokenTtlSec ?? null,
         refreshTokenTtlSec: entity.refreshTokenTtlSec ?? null,
         allowedResources: entity.allowedResources,
@@ -55,6 +56,7 @@ export class ClientMapper {
     entity.applicationType = domain.applicationType;
     entity.backchannelLogoutUri = domain.backchannelLogoutUri ?? null;
     entity.frontchannelLogoutUri = domain.frontchannelLogoutUri ?? null;
+    entity.externalInteractionUiUrl = domain.externalInteractionUiUrl ?? null;
     entity.accessTokenTtlSec = domain.accessTokenTtlSec ?? null;
     entity.refreshTokenTtlSec = domain.refreshTokenTtlSec ?? null;
     entity.allowedResources = domain.allowedResources;

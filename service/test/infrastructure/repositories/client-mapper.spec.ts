@@ -20,6 +20,7 @@ function makeOrmEntity(): ClientOrmEntity {
     applicationType: 'web' as const,
     backchannelLogoutUri: 'https://app.example.com/backchannel-logout',
     frontchannelLogoutUri: null,
+    externalInteractionUiUrl: 'https://login.example.com/interaction',
     allowedResources: ['https://api.example.com'],
     introspectionResources: ['https://api.example.com'],
     skipConsent: false,
@@ -46,6 +47,7 @@ function makeDomainModel(id?: string): ClientModel {
       applicationType: 'web',
       backchannelLogoutUri: 'https://app.example.com/backchannel-logout',
       frontchannelLogoutUri: null,
+      externalInteractionUiUrl: 'https://login.example.com/interaction',
       allowedResources: ['https://api.example.com'],
       introspectionResources: ['https://api.example.com'],
       skipConsent: false,
@@ -82,6 +84,9 @@ describe('ClientMapper', () => {
         'https://app.example.com/backchannel-logout',
       );
       expect(domain.frontchannelLogoutUri).toBeNull();
+      expect(domain.externalInteractionUiUrl).toBe(
+        'https://login.example.com/interaction',
+      );
       expect(domain.allowedResources).toEqual(['https://api.example.com']);
       expect(domain.introspectionResources).toEqual([
         'https://api.example.com',
@@ -143,6 +148,9 @@ describe('ClientMapper', () => {
         'https://app.example.com/backchannel-logout',
       );
       expect(entity.frontchannelLogoutUri).toBeNull();
+      expect(entity.externalInteractionUiUrl).toBe(
+        'https://login.example.com/interaction',
+      );
       expect(entity.allowedResources).toEqual(['https://api.example.com']);
       expect(entity.introspectionResources).toEqual([
         'https://api.example.com',

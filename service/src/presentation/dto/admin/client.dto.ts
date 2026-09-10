@@ -123,6 +123,12 @@ export class CreateClientDto {
   frontchannelLogoutUri?: string;
 
   @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(2048)
+  externalInteractionUiUrl?: string;
+
+  @IsOptional()
   @IsArray()
   @ArrayMaxSize(20)
   @IsUrl({ protocols: ['https'] }, { each: true })
@@ -222,6 +228,13 @@ export class UpdateClientDto {
   @ValidateIf((o) => o.frontchannelLogoutUri !== null)
   @IsUrl({ protocols: ['https'] })
   frontchannelLogoutUri?: string | null;
+
+  @IsOptional()
+  @ValidateIf((o) => o.externalInteractionUiUrl !== null)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(2048)
+  externalInteractionUiUrl?: string | null;
 
   @IsOptional()
   @IsArray()
@@ -379,6 +392,9 @@ export class ClientResponse {
 
   @Expose()
   frontchannelLogoutUri!: string | null;
+
+  @Expose()
+  externalInteractionUiUrl!: string | null;
 
   @Expose()
   allowedResources!: string[];

@@ -6,30 +6,15 @@ import { AppModule } from './app.module';
 import { configureBodyParsers } from '@presentation/http/body-parser';
 import { applyHttpSecurityMiddleware } from '@presentation/http/http-security';
 import { configureOpenApiDocs } from '@presentation/openapi';
+import { buildHttpCorsDelegate } from '@presentation/http/http-cors';
+import { ExternalInteractionUiPort } from '@application/ports/external-interaction-ui.port';
 
 function configureCors(
   app: NestExpressApplication,
   config: ConfigService,
+  externalInteractionUi: ExternalInteractionUiPort,
 ): void {
-  const rawOrigins =
-    config.get<string>('HTTP_CORS_ORIGINS') ??
-    config.get<string>('ADMIN_UI_URL');
-  if (!rawOrigins) {
-    return;
-  }
-
-  const origins = rawOrigins
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter((origin) => origin !== '' && origin !== '*');
-  if (origins.length === 0) {
-    return;
-  }
-
-  app.enableCors({
-    origin: origins,
-    credentials: true,
-  });
+  app.enableCors(buildHttpCorsDelegate(config, externalInteractionUi));
 }
 
 async function bootstrap() {
@@ -38,8 +23,9 @@ async function bootstrap() {
   });
 
   const config = app.get(ConfigService);
+  const externalInteractionUi = app.get(ExternalInteractionUiPort);
 
-  configureCors(app, config);
+  configureCors(app, config, externalInteractionUi);
 
   applyHttpSecurityMiddleware(app, config);
 

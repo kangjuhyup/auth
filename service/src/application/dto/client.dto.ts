@@ -16,6 +16,7 @@ export class CreateClientDto {
     public readonly applicationType?: ClientApplicationTypeInput,
     public readonly backchannelLogoutUri?: string,
     public readonly frontchannelLogoutUri?: string,
+    public readonly externalInteractionUiUrl?: string,
     public readonly allowedResources?: string[],
     public readonly introspectionResources?: string[],
     public readonly skipConsent?: boolean,
@@ -37,6 +38,7 @@ export class CreateClientDto {
     applicationType?: ClientApplicationTypeInput;
     backchannelLogoutUri?: string;
     frontchannelLogoutUri?: string;
+    externalInteractionUiUrl?: string;
     allowedResources?: string[];
     introspectionResources?: string[];
     skipConsent?: boolean;
@@ -57,6 +59,7 @@ export class CreateClientDto {
       params.applicationType,
       params.backchannelLogoutUri,
       params.frontchannelLogoutUri,
+      params.externalInteractionUiUrl,
       params.allowedResources,
       params.introspectionResources,
       params.skipConsent,
@@ -80,6 +83,7 @@ export class UpdateClientDto {
     public readonly applicationType?: ClientApplicationTypeInput,
     public readonly backchannelLogoutUri?: string | null,
     public readonly frontchannelLogoutUri?: string | null,
+    public readonly externalInteractionUiUrl?: string | null,
     public readonly allowedResources?: string[],
     public readonly introspectionResources?: string[],
     public readonly skipConsent?: boolean,
@@ -100,6 +104,7 @@ export class UpdateClientDto {
     applicationType?: ClientApplicationTypeInput;
     backchannelLogoutUri?: string | null;
     frontchannelLogoutUri?: string | null;
+    externalInteractionUiUrl?: string | null;
     allowedResources?: string[];
     introspectionResources?: string[];
     skipConsent?: boolean;
@@ -119,6 +124,7 @@ export class UpdateClientDto {
       params.applicationType,
       params.backchannelLogoutUri,
       params.frontchannelLogoutUri,
+      params.externalInteractionUiUrl,
       params.allowedResources,
       params.introspectionResources,
       params.skipConsent,
@@ -144,6 +150,7 @@ export class ClientResponse {
     public readonly applicationType: string,
     public readonly backchannelLogoutUri: string | null,
     public readonly frontchannelLogoutUri: string | null,
+    public readonly externalInteractionUiUrl: string | null,
     public readonly allowedResources: string[],
     public readonly introspectionResources: string[],
     public readonly skipConsent: boolean,
@@ -168,6 +175,7 @@ export class ClientResponse {
     applicationType: string;
     backchannelLogoutUri: string | null;
     frontchannelLogoutUri: string | null;
+    externalInteractionUiUrl: string | null;
     allowedResources: string[];
     introspectionResources: string[];
     skipConsent: boolean;
@@ -191,6 +199,7 @@ export class ClientResponse {
       params.applicationType,
       params.backchannelLogoutUri,
       params.frontchannelLogoutUri,
+      params.externalInteractionUiUrl,
       params.allowedResources,
       params.introspectionResources,
       params.skipConsent,

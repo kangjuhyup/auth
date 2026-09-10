@@ -30,7 +30,7 @@ jest.setTimeout(180_000);
  *
  * 3. 일반 유저 셀프서비스
  *    - 내부 관리자 command로 특정 테넌트에 ACTIVE 테스트 사용자를 준비한다.
- *    - Account 가입자격 없는 public signup이 비활성화됐는지 검증한다.
+ *    - 외부 가입정책을 우회하는 public signup이 비활성화됐는지 검증한다.
  *    - 실제 OIDC authorize → interaction login → token 교환으로 로그인한다.
  *    - 발급된 access token으로 프로필 조회/수정/비밀번호 변경/회원탈퇴를 수행한다.
  *    - 동의 목록 조회와 철회를 수행한다.

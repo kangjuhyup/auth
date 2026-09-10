@@ -26,6 +26,17 @@ export type {
   LoginAttemptScope,
 } from './login-attempt-policy.port';
 export { OidcInteractionPort } from './oidc-interaction.port';
+export { ExternalInteractionUiUrlPolicyPort } from './external-interaction-ui-url-policy.port';
+export {
+  ExternalInteractionAccessPort,
+  type ExternalInteractionAccessClaims,
+  type IssuedExternalInteractionAccess,
+} from './external-interaction-access.port';
+export {
+  ExternalInteractionUiPort,
+  type ExternalInteractionAuthorization,
+  type ExternalInteractionUiDecision,
+} from './external-interaction-ui.port';
 export { GrantTypeRegistryPort } from './grant-type-registry.port';
 export type {
   GrantTypeDefinition,
@@ -44,6 +55,7 @@ export type {
 export { ScopeClaimResolverPort } from './scope-claim-resolver.port';
 export type { ScopeClaimResolveParams } from './scope-claim-resolver.port';
 export type {
+  InteractionBindingResult,
   InteractionCompletionResult,
   InteractionDetailsResult,
   InteractionIdpCallbackResult,

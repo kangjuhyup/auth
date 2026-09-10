@@ -35,6 +35,7 @@ export abstract class InteractionCommandPort {
     req: unknown;
     res: unknown;
     tenant?: TenantContext;
+    externalAccessId?: string;
   }): Promise<InteractionResponse>;
 
   abstract submitMfa(params: {
@@ -51,12 +52,14 @@ export abstract class InteractionCommandPort {
     tenant?: TenantContext;
     rpId: string;
     expectedOrigin: string;
+    externalAccessId?: string;
   }): Promise<InteractionResponse>;
 
   abstract beginTotpEnrollment(params: {
     tenantCode: string;
     uid: string;
     tenant?: TenantContext;
+    externalAccessId?: string;
   }): Promise<InteractionResponse>;
 
   abstract confirmTotpEnrollment(params: {
@@ -66,6 +69,7 @@ export abstract class InteractionCommandPort {
     req: unknown;
     res: unknown;
     tenant?: TenantContext;
+    externalAccessId?: string;
   }): Promise<InteractionResponse>;
 
   abstract submitPasswordChange(params: {
@@ -76,18 +80,23 @@ export abstract class InteractionCommandPort {
     req: unknown;
     res: unknown;
     tenant?: TenantContext;
+    externalAccessId?: string;
   }): Promise<InteractionResponse>;
 
   abstract submitConsent(params: {
     tenantCode: string;
     req: unknown;
     res: unknown;
+    uid: string;
+    externalAccessId?: string;
   }): Promise<InteractionJsonResult | InteractionRedirectResult>;
 
   abstract abort(params: {
     tenantCode: string;
     req: unknown;
     res: unknown;
+    uid: string;
+    externalAccessId?: string;
   }): Promise<InteractionRedirectResult>;
 
   abstract getWebAuthnOptions(params: {

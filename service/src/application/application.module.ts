@@ -49,6 +49,8 @@ import { AdminSessionHandler } from './commands/handlers/admin-session.handler';
 import { InteractionCommandPort } from './ports/interaction-command.port';
 import { InteractionCommandHandler } from './commands/handlers/interaction-command.handler';
 import { AuditRecorder } from './services/audit-recorder';
+import { ExternalInteractionUiPort } from './ports/external-interaction-ui.port';
+import { ExternalInteractionUiService } from './services/external-interaction-ui.service';
 import { AcmeBootstrapProcessManager } from './process-managers/acme-bootstrap.process-manager';
 import { AdminBootstrapProcessManager } from './process-managers/admin-bootstrap.process-manager';
 import { BootstrapStepRunner } from './process-managers/bootstrap-step-runner';
@@ -133,6 +135,10 @@ const commands = [
   {
     provide: InteractionCommandPort,
     useClass: InteractionCommandHandler,
+  },
+  {
+    provide: ExternalInteractionUiPort,
+    useClass: ExternalInteractionUiService,
   },
 ];
 

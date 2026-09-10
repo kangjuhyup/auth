@@ -113,6 +113,14 @@ export class ClientOrmEntity extends BaseEntity {
   })
   frontchannelLogoutUri?: string | null;
 
+  @Property({
+    fieldName: 'external_interaction_ui_url',
+    type: 'varchar',
+    length: 2048,
+    nullable: true,
+  })
+  externalInteractionUiUrl?: string | null;
+
   @Property({ fieldName: 'allowed_resources', type: 'json', default: '[]' })
   allowedResources!: string[];
 

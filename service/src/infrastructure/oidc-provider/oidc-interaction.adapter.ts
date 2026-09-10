@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { isIP } from 'node:net';
 import type { Request } from 'express';
 import type {
+  InteractionBindingResult,
   InteractionCompletionResult,
   InteractionDetailsResult,
   InteractionIdpCallbackResult,
@@ -51,6 +52,20 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
     super();
   }
 
+  async findInteractionBinding(params: {
+    tenantCode: string;
+    uid: string;
+  }): Promise<InteractionBindingResult | null> {
+    const provider = await this.registry.get(params.tenantCode);
+    const interaction = await provider.Interaction.find(params.uid);
+    const clientId = String(interaction?.params?.client_id ?? '');
+    if (!interaction || interaction.uid !== params.uid || !clientId) {
+      return null;
+    }
+
+    return { clientId };
+  }
+
   async getDetails(params: {
     tenantCode: string;
     uid: string;
@@ -63,6 +78,9 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
       params.req as any,
       params.res as any,
     );
+    if (details.uid !== params.uid) {
+      throw new Error('Interaction UID binding mismatch');
+    }
     const { prompt, params: oidcParams } = details;
     const clientId = String(oidcParams.client_id ?? '');
 
@@ -152,7 +170,9 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
       result,
     );
 
-    return { redirectTo };
+    return {
+      redirectTo: assertSafeInteractionReturnTo(provider.issuer, redirectTo),
+    };
   }
 
   async completeConsent(params: {
@@ -208,7 +228,9 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
       { consent: { grantId } },
     );
 
-    return { redirectTo };
+    return {
+      redirectTo: assertSafeInteractionReturnTo(provider.issuer, redirectTo),
+    };
   }
 
   async abort(params: {
@@ -226,7 +248,9 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
       },
     );
 
-    return { redirectTo };
+    return {
+      redirectTo: assertSafeInteractionReturnTo(provider.issuer, redirectTo),
+    };
   }
 
   async delegateProviderCallback(params: {
@@ -898,6 +922,18 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
 }
 
 type ClientAuthenticatedEndpoint = 'token' | 'introspection';
+
+export function assertSafeInteractionReturnTo(
+  issuer: string,
+  redirectTo: string,
+): string {
+  const issuerUrl = new URL(issuer);
+  const target = new URL(redirectTo, issuerUrl);
+  if (target.origin !== issuerUrl.origin) {
+    throw new Error('Unsafe interaction return URL');
+  }
+  return redirectTo;
+}
 
 function getClientAuthenticatedEndpoint(
   url: string,

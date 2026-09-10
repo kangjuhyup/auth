@@ -25,6 +25,7 @@ import { TenantCommandPort } from '@application/commands/ports/tenant-command.po
 import { UserCommandPort } from '@application/commands/ports/user-command.port';
 import { UserProvisioningCommandPort } from '@application/commands/ports/user-provisioning-command.port';
 import { ServiceAccessVerifierPort } from '@application/ports/service-access-verifier.port';
+import { ExternalInteractionUiPort } from '@application/ports/external-interaction-ui.port';
 import { AdminQueryPort, AuthQueryPort } from '@application/queries/ports';
 import { ObservabilityQueryPort } from '@application/queries/ports/observability-query.port';
 import { AdminAuditLogController } from '@presentation/controllers/admin/audit-log.controller';
@@ -97,6 +98,7 @@ async function createDocumentApp(): Promise<{
       provider(UserCommandPort),
       provider(UserProvisioningCommandPort),
       provider(ServiceAccessVerifierPort),
+      provider(ExternalInteractionUiPort),
       {
         provide: ConfigService,
         useValue: { get: () => undefined },

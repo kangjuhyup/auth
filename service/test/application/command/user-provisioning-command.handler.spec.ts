@@ -4,7 +4,7 @@ import type { UserWriteRepositoryPort } from '@application/commands/ports/user-w
 
 describe('UserProvisioningCommandHandler', () => {
   const tenantId = 'tenant-1';
-  const clientId = 'gaegaeting-provisioner';
+  const clientId = 'service-user-provisioner';
   const command = ProvisionUserCommand.of({
     username: 'alice',
     password: 'correct horse battery staple',

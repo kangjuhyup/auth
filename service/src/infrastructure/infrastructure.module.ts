@@ -92,6 +92,10 @@ import { BootstrapProcessRepository } from '@application/process-managers/ports/
 import { BootstrapProcessRepositoryImpl } from './repositories/bootstrap-process.repository.impl';
 import { IdempotencyKeyHashPort } from '@application/ports/idempotency-key-hash.port';
 import { IdempotencyKeyHashAdapter } from './crypto/idempotency-key-hash.adapter';
+import { ExternalInteractionUiUrlPolicyPort } from '@application/ports/external-interaction-ui-url-policy.port';
+import { ExternalInteractionUiUrlPolicyAdapter } from './oidc-provider/security/external-interaction-ui-url-policy.adapter';
+import { ExternalInteractionAccessPort } from '@application/ports/external-interaction-access.port';
+import { ExternalInteractionAccessAdapter } from './oidc-provider/security/external-interaction-access.adapter';
 
 // Password Hash Implementations
 import { Argon2idHash } from './crypto/password/impl/argon2-hash';
@@ -198,6 +202,14 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
       useClass: IdempotencyKeyHashAdapter,
     },
     {
+      provide: ExternalInteractionUiUrlPolicyPort,
+      useClass: ExternalInteractionUiUrlPolicyAdapter,
+    },
+    {
+      provide: ExternalInteractionAccessPort,
+      useClass: ExternalInteractionAccessAdapter,
+    },
+    {
       provide: IdentityLinkSessionPort,
       useClass: RedisIdentityLinkSessionRepository,
     },
@@ -293,6 +305,8 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     AdminSessionTokenPort,
     LoginAttemptPolicyPort,
     IdempotencyKeyHashPort,
+    ExternalInteractionUiUrlPolicyPort,
+    ExternalInteractionAccessPort,
     IdentityLinkSessionPort,
     OidcInteractionPort,
     GrantTypeRegistryPort,

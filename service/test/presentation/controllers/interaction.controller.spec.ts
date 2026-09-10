@@ -14,6 +14,7 @@ import {
 describe('InteractionController', () => {
   let controller: InteractionController;
   let interactionCommand: any;
+  let externalInteractionUi: any;
   let config: { get: jest.Mock };
 
   beforeEach(() => {
@@ -36,18 +37,66 @@ describe('InteractionController', () => {
       getSamlMetadata: jest.fn(),
       handleSamlCallback: jest.fn(),
     };
+    externalInteractionUi = {
+      prepare: jest.fn().mockResolvedValue({ mode: 'embedded' }),
+    };
 
-    controller = new InteractionController(interactionCommand, config as any);
+    controller = new InteractionController(
+      interactionCommand,
+      config as any,
+      externalInteractionUi,
+    );
   });
 
   describe('serveSpa', () => {
-    it('빌드된 UI가 없으면 404 응답을 반환한다', () => {
+    it('설정된 client는 provider cookie를 보존해 외부 UI로 위임한다', async () => {
+      const req = createMockRequest({
+        tenant: makeTenantContext(),
+        headers: {
+          cookie:
+            '_interaction_acme=uid_12345678; _interaction_acme.sig=signed-cookie',
+        },
+      }) as any;
       const res = createMockResponse();
+      externalInteractionUi.prepare.mockResolvedValue({
+        mode: 'external',
+        redirectTo:
+          'https://login.example.com/interaction?tenantCode=acme&uid=uid_12345678#interaction_token=token&csrf_token=csrf',
+        browserBinding: 'browser-binding',
+        maxAgeMs: 300_000,
+        secureCookies: true,
+      });
+
+      await controller.serveSpa('acme', 'uid_12345678', req, res);
+
+      expect(res.cookie).toHaveBeenCalledWith(
+        '_external_interaction_acme',
+        'browser-binding',
+        expect.objectContaining({
+          httpOnly: true,
+          sameSite: 'none',
+          secure: true,
+        }),
+      );
+      expect(res.setHeader).toHaveBeenCalledWith(
+        'Referrer-Policy',
+        'no-referrer',
+      );
+      expect(res.redirect).toHaveBeenCalledWith(
+        303,
+        expect.stringMatching(/^https:\/\/login\.example\.com\/interaction/),
+      );
+      expect(readFileSync).not.toHaveBeenCalled();
+    });
+
+    it('빌드된 UI가 없으면 404 응답을 반환한다', async () => {
+      const res = createMockResponse();
+      const req = createMockRequest({ tenant: makeTenantContext() }) as any;
       (existsSync as jest.MockedFunction<typeof existsSync>).mockReturnValue(
         false,
       );
 
-      controller.serveSpa(res);
+      await controller.serveSpa('acme', 'uid_12345678', req, res);
 
       expect(res.status).toHaveBeenCalledWith(404);
       expect(res.json).toHaveBeenCalledWith({
@@ -55,7 +104,7 @@ describe('InteractionController', () => {
       });
     });
 
-    it('명시적으로 HTML 캐시를 켜면 빌드된 UI HTML을 읽어 캐시하고 반환한다', () => {
+    it('명시적으로 HTML 캐시를 켜면 빌드된 UI HTML을 읽어 캐시하고 반환한다', async () => {
       const html = '<html><body>interaction-ui</body></html>';
       const res1 = createMockResponse();
       const res2 = createMockResponse();
@@ -67,8 +116,9 @@ describe('InteractionController', () => {
         readFileSync as jest.MockedFunction<typeof readFileSync>
       ).mockReturnValue(html);
 
-      controller.serveSpa(res1);
-      controller.serveSpa(res2);
+      const req = createMockRequest({ tenant: makeTenantContext() }) as any;
+      await controller.serveSpa('acme', 'uid_12345678', req, res1);
+      await controller.serveSpa('acme', 'uid_12345678', req, res2);
 
       expect(readFileSync).toHaveBeenCalledTimes(1);
       expect(res1.type).toHaveBeenCalledWith('html');
@@ -80,7 +130,7 @@ describe('InteractionController', () => {
       );
     });
 
-    it('기본값은 최신 UI HTML을 매 요청마다 읽고 no-store로 반환한다', () => {
+    it('기본값은 최신 UI HTML을 매 요청마다 읽고 no-store로 반환한다', async () => {
       const html1 = '<html><body>interaction-ui-v1</body></html>';
       const html2 = '<html><body>interaction-ui-v2</body></html>';
       const res1 = createMockResponse();
@@ -93,8 +143,9 @@ describe('InteractionController', () => {
         .mockReturnValueOnce(html1)
         .mockReturnValueOnce(html2);
 
-      controller.serveSpa(res1);
-      controller.serveSpa(res2);
+      const req = createMockRequest({ tenant: makeTenantContext() }) as any;
+      await controller.serveSpa('acme', 'uid_12345678', req, res1);
+      await controller.serveSpa('acme', 'uid_12345678', req, res2);
 
       expect(readFileSync).toHaveBeenCalledTimes(2);
       expect(res1.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');

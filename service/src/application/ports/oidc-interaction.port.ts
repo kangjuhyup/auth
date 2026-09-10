@@ -41,7 +41,16 @@ export type InteractionIdpRedirectResult =
 
 export type InteractionIdpCallbackResult = InteractionRedirectResult;
 
+export type InteractionBindingResult = Readonly<{
+  clientId: string;
+}>;
+
 export abstract class OidcInteractionPort {
+  abstract findInteractionBinding(params: {
+    tenantCode: string;
+    uid: string;
+  }): Promise<InteractionBindingResult | null>;
+
   abstract getDetails(params: {
     tenantCode: string;
     uid: string;
