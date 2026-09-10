@@ -110,6 +110,8 @@ yarn install
 
 관리 콘솔(`ui`)은 [`ui/.env.development`](ui/.env.development) 등에서 `VITE_API_BASE_URL`(예: 프록시 사용 시 `/api`)을 확인합니다.
 
+운영 공유 Redis의 mTLS, 앱별 key prefix와 최소 ACL은 [Kubernetes 운영 계약](docs/docs/operations/kubernetes-runtime.md)을 참고하세요. `REDIS_URL` 로컬 경로와 운영의 `REDIS_HOST` 계열은 동시에 설정하지 않습니다.
+
 ### 4. DB 마이그레이션
 
 로컬 개발에서만 Yarn 4와 MikroORM CLI를 사용합니다.
@@ -181,6 +183,8 @@ corepack yarn workspace @auth/service bootstrap:acme:prod
 docker run --rm --env-file path/to/production.env ghcr.io/your-org/your-repo/auth-service:tag node dist/cli/bootstrap-admin.js
 docker run --rm --env-file path/to/production.env ghcr.io/your-org/your-repo/auth-service:tag node dist/cli/bootstrap-acme.js
 ```
+
+HPA 환경에서는 replica entrypoint migration을 사용하지 않습니다. 동일 이미지의 단일 migration Job은 `command: ['node']`, `args: ['dist/cli/migrate.js']`로 완료한 뒤, API replica를 `command: ['node']`, `args: ['dist/main.js']`로 시작해 Docker entrypoint를 우회합니다. cleanup worker도 같은 방식으로 `dist/worker.js`를 정확히 1개만 실행합니다. 자세한 실행 순서와 `auth.rvkang.app` 동일 origin 라우팅 경로는 [Kubernetes 운영 계약](docs/docs/operations/kubernetes-runtime.md)에 있습니다.
 
 운영 이미지의 서버 시작, migration, bootstrap 경로는 Yarn을 사용하지 않고 Node.js로 컴파일된 JavaScript를 직접 실행합니다. 기반 이미지에는 Yarn 1과 Corepack이 있지만 운영 실행 경로에서는 사용하지 않습니다. TypeScript, `ts-node`, MikroORM CLI는 운영 이미지에 포함되지 않으며, Yarn 4는 개발과 이미지 빌드에서만 사용합니다. 빌드된 Interaction UI도 `/app/service/interaction-ui/dist`에 포함되어 Nest의 정적 파일 경로와 일치합니다.
 
