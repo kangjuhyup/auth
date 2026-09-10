@@ -176,6 +176,22 @@ describe('ExternalInteractionUiService', () => {
     );
   });
 
+  it('설정 제거 후 남은 외부 credential을 embedded fallback으로 허용하지 않는다', async () => {
+    const { service, access } = setup(null);
+
+    await expect(
+      service.authorize({
+        tenantCode: 'acme',
+        uid: 'uid_12345678',
+        origin: 'https://login.example.com',
+        accessToken: 'signed-token',
+        csrfToken: 'csrf-token',
+        browserBinding: 'browser-binding',
+      }),
+    ).rejects.toThrow('External interaction request denied');
+    expect(access.verify).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['임의 origin', { origin: 'https://evil.example.com' }],
     ['access token 누락', { accessToken: undefined }],

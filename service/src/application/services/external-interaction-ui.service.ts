@@ -86,7 +86,12 @@ export class ExternalInteractionUiService extends ExternalInteractionUiPort {
   }): Promise<ExternalInteractionAuthorization> {
     const binding = await this.resolveInteractionClient(params);
     if (!binding) throw denied();
-    if (!binding.url) return { mode: 'embedded' };
+    if (!binding.url) {
+      if (params.accessToken || params.csrfToken || params.browserBinding) {
+        throw denied();
+      }
+      return { mode: 'embedded' };
+    }
 
     if (
       params.origin !== binding.url.origin ||
