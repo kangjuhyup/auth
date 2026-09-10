@@ -22,14 +22,14 @@ Interaction UI는 OIDC authorize 흐름 중 사용자가 직접 보는 로그인
 
 ## 적용 범위
 
-| 구분                             | 포함 여부   | 설명                                                                    |
-| -------------------------------- | ----------- | ----------------------------------------------------------------------- |
-| 로그인 화면 문구와 레이아웃 변경 | 포함        | `LoginPage.tsx`, `index.css`                                            |
-| 회원가입·계정 provisioning       | 제외        | 서비스 서버와 전용 provisioning API가 담당                              |
-| 외부 IdP 버튼 표현 변경          | 포함        | `IdpButton.tsx`, `LoginPage.tsx`                                        |
-| MFA 인증 및 TOTP 등록 화면 변경  | 포함        | `MfaPage.tsx`, `MfaEnrollmentPage.tsx`                                  |
-| 새 interaction prompt 추가       | 조건부 포함 | `App.tsx`, `InteractionController`, provider interaction 흐름 동시 수정 |
-| OIDC protocol 처리 재구현        | 제외        | `node-oidc-provider`에 위임                                             |
+| 구분                                | 포함 여부   | 설명                                                                    |
+| ----------------------------------- | ----------- | ----------------------------------------------------------------------- |
+| 로그인 화면 문구와 레이아웃 변경    | 포함        | `LoginPage.tsx`, `index.css`                                            |
+| 사용자 등록·credential provisioning | 제외        | 서비스 서버와 전용 provisioning API가 담당                              |
+| 외부 IdP 버튼 표현 변경             | 포함        | `IdpButton.tsx`, `LoginPage.tsx`                                        |
+| MFA 인증 및 TOTP 등록 화면 변경     | 포함        | `MfaPage.tsx`, `MfaEnrollmentPage.tsx`                                  |
+| 새 interaction prompt 추가          | 조건부 포함 | `App.tsx`, `InteractionController`, provider interaction 흐름 동시 수정 |
+| OIDC protocol 처리 재구현           | 제외        | `node-oidc-provider`에 위임                                             |
 
 ## 서빙 구조
 
@@ -84,7 +84,7 @@ GET  ./idp/:provider
 
 ## 회원가입 경계
 
-Interaction UI는 로그인, MFA, consent만 처리하며 회원가입 화면이나 API를 제공하지 않습니다. 서비스 서버가 자체 가입 정책을 완료한 뒤 Auth provisioning API로 계정을 만들고, 사용자는 별도의 일반 Authorization Code + PKCE 로그인 interaction에 진입합니다. 자세한 서버 계약은 [서비스 사용자 Provisioning 운영](../operations/account-registration.md)을 참고합니다.
+Interaction UI는 로그인, MFA, consent만 처리하며 사용자 등록 화면이나 API를 제공하지 않습니다. 서비스 서버가 자체 사용자 등록 정책을 완료한 뒤 Auth provisioning API로 사용자를 만들고, 사용자는 별도의 일반 Authorization Code + PKCE 로그인 interaction에 진입합니다. 자세한 서버 계약은 [서비스 사용자 Provisioning 운영](../operations/user-provisioning.md)을 참고합니다.
 
 ## MFA 등록 화면
 
