@@ -50,15 +50,17 @@ export class UserWriteRepositoryImpl implements UserWriteRepositoryPort {
     return UserMapper.toDomain(entity, activeCred);
   }
 
-  async findByRegistrationAttemptId(
+  async findByProvisioningKey(
     tenantId: string,
-    attemptId: string,
+    clientId: string,
+    keyHash: string,
   ): Promise<UserModel | undefined> {
     const entity = await this.em.findOne(
       UserOrmEntity,
       {
         tenant: tenantId as any,
-        registrationAttemptId: attemptId,
+        provisionedByClientId: clientId,
+        provisioningKeyHash: keyHash,
       },
       { populate: ['tenant', 'credentials'] },
     );
@@ -152,8 +154,8 @@ export class UserWriteRepositoryImpl implements UserWriteRepositoryPort {
           phoneVerified: user.phoneVerified,
           status: user.status,
           mfaEnabled: user.mfaEnabled,
-          accountRegistrationId: user.accountRegistrationId ?? undefined,
-          registrationAttemptId: user.registrationAttemptId ?? undefined,
+          provisionedByClientId: user.provisionedByClientId ?? undefined,
+          provisioningKeyHash: user.provisioningKeyHash ?? undefined,
         });
         em.persist(entity);
       } else {
@@ -164,11 +166,11 @@ export class UserWriteRepositoryImpl implements UserWriteRepositoryPort {
         entity.phone = user.phone ?? undefined;
         entity.phoneVerified = user.phoneVerified;
         entity.mfaEnabled = user.mfaEnabled;
-        entity.accountRegistrationId = user.accountRegistrationId ?? undefined;
-        entity.registrationAttemptId = user.registrationAttemptId ?? undefined;
+        entity.provisionedByClientId = user.provisionedByClientId ?? undefined;
+        entity.provisioningKeyHash = user.provisioningKeyHash ?? undefined;
       }
 
-      // credential 변경이 있는 경우 (signup / changePassword)
+      // credential 변경이 있는 경우 (create / changePassword)
       if (user.passwordCredential) {
         // 기존 password credential 비활성화
         await em.nativeUpdate(

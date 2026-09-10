@@ -4,6 +4,8 @@ import { OIDC_PROVIDER } from './oidc-provider.constants';
 import { createOidcProvider } from './oidc-provider.factory';
 import { AccessVerifierPort } from '@application/ports/access-verifier.port';
 import { AccessVerifierAdapter } from './access-verifier.adapter';
+import { ServiceAccessVerifierPort } from '@application/ports/service-access-verifier.port';
+import { ServiceAccessVerifierAdapter } from './service-access-verifier.adapter';
 import { MikroORM } from '@mikro-orm/core';
 import Redis from 'ioredis';
 import { ClientQueryPort } from '@application/queries/ports/client-query.port';
@@ -136,6 +138,10 @@ import { UserSessionPort } from '@application/ports/user-session.port';
       provide: AccessVerifierPort,
       useClass: AccessVerifierAdapter,
     },
+    {
+      provide: ServiceAccessVerifierPort,
+      useClass: ServiceAccessVerifierAdapter,
+    },
     OidcSessionControlService,
     {
       provide: UserSessionPort,
@@ -145,6 +151,7 @@ import { UserSessionPort } from '@application/ports/user-session.port';
   exports: [
     OIDC_PROVIDER,
     AccessVerifierPort,
+    ServiceAccessVerifierPort,
     OperationalMetricsPort,
     GrantTypeRegistryPort,
     ScopeRegistryPort,

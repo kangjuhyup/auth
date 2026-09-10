@@ -19,7 +19,6 @@ import type { ConsentRepository } from '@domain/repositories/consent.repository'
 import type { UserIdentityRepository } from '@domain/repositories/user-identity.repository';
 import type { EventRepository } from '@domain/repositories/event.repository';
 import type { IdentityProviderRepository } from '@domain/repositories/identity-provider.repository';
-import type { TenantConfigRepository } from '@domain/repositories/tenant-config.repository';
 import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
 import { ConsentModel } from '@domain/models/consent';
@@ -53,7 +52,7 @@ function createMockUserWriteRepo(): jest.Mocked<UserWriteRepositoryPort> {
   return {
     findById: jest.fn().mockResolvedValue(makeActiveUser()),
     findByUsername: jest.fn().mockResolvedValue(makeActiveUser()),
-    findByRegistrationAttemptId: jest.fn().mockResolvedValue(undefined),
+    findByProvisioningKey: jest.fn().mockResolvedValue(undefined),
     findByContact: jest.fn().mockResolvedValue(makeActiveUser()),
     list: jest.fn().mockResolvedValue({ items: [], total: 0 }),
     save: jest.fn().mockResolvedValue(undefined),
@@ -179,13 +178,6 @@ function createMockEventRepo(): jest.Mocked<EventRepository> {
   };
 }
 
-function createMockTenantConfigRepo(): jest.Mocked<TenantConfigRepository> {
-  return {
-    findByTenantId: jest.fn().mockResolvedValue(null),
-    save: jest.fn(),
-  } as any;
-}
-
 function createMockPasswordHash(): jest.Mocked<PasswordHashPort> {
   const result: HashResult = {
     alg: 'argon2id',
@@ -276,7 +268,6 @@ describe('AuthCommandHandler', () => {
   let idpPort: jest.Mocked<IdpPort>;
   let identityLinkSession: jest.Mocked<IdentityLinkSessionPort>;
   let eventRepo: jest.Mocked<EventRepository>;
-  let tenantConfigRepo: jest.Mocked<TenantConfigRepository>;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -292,7 +283,6 @@ describe('AuthCommandHandler', () => {
     idpPort = createMockIdpPort();
     identityLinkSession = createMockIdentityLinkSession();
     eventRepo = createMockEventRepo();
-    tenantConfigRepo = createMockTenantConfigRepo();
     configService = {
       get: jest.fn().mockReturnValue(undefined),
       getOrThrow: jest.fn().mockReturnValue('600'),
@@ -312,137 +302,7 @@ describe('AuthCommandHandler', () => {
       idpPort,
       identityLinkSession,
       eventRepo,
-      tenantConfigRepo,
     );
-  });
-
-  describe('Account 가입 credential', () => {
-    const tenantId = 'tenant-1';
-    const dto = { username: 'john', password: 'secure123' };
-
-    it('public signup은 Account 가입자격 없이 항상 차단한다', async () => {
-      await expect(handler.signup(tenantId, dto as any)).rejects.toThrow(
-        'AccountEligibilityRequired',
-      );
-
-      expect(passwordHash.hash).not.toHaveBeenCalled();
-      expect(userWriteRepo.save).not.toHaveBeenCalled();
-    });
-
-    it('claim된 가입자격으로 PENDING_REGISTRATION 사용자를 생성한다', async () => {
-      const result = await handler.createPendingRegistration(
-        tenantId,
-        dto as any,
-        {
-          registrationId: 'registration-1',
-          attemptId: 'tenant-1:uid-1',
-        },
-      );
-
-      expect(result.userId).toEqual(expect.any(String));
-      expect(passwordHash.hash).toHaveBeenCalledWith('secure123');
-      expect(userWriteRepo.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          status: 'PENDING_REGISTRATION',
-          accountRegistrationId: 'registration-1',
-          registrationAttemptId: 'tenant-1:uid-1',
-        }),
-      );
-    });
-
-    it('동일 attempt 재시도는 기존 pending 사용자를 반환한다', async () => {
-      userWriteRepo.findByRegistrationAttemptId.mockResolvedValue(
-        makeActiveUser({
-          status: 'PENDING_REGISTRATION',
-          accountRegistrationId: 'registration-1',
-          registrationAttemptId: 'tenant-1:uid-1',
-        }),
-      );
-
-      await expect(
-        handler.createPendingRegistration(tenantId, dto as any, {
-          registrationId: 'registration-1',
-          attemptId: 'tenant-1:uid-1',
-        }),
-      ).resolves.toEqual({ userId: 'user-1' });
-      expect(passwordHash.hash).not.toHaveBeenCalled();
-      expect(userWriteRepo.save).not.toHaveBeenCalled();
-    });
-
-    it('동시 생성 충돌 뒤 동일 attempt 사용자를 다시 읽어 멱등 처리한다', async () => {
-      const concurrentUser = makeActiveUser({
-        status: 'PENDING_REGISTRATION',
-        accountRegistrationId: 'registration-1',
-        registrationAttemptId: 'tenant-1:uid-1',
-      });
-      userWriteRepo.findByRegistrationAttemptId
-        .mockResolvedValueOnce(undefined)
-        .mockResolvedValueOnce(concurrentUser);
-      userWriteRepo.save.mockRejectedValueOnce(new Error('unique violation'));
-
-      await expect(
-        handler.createPendingRegistration(tenantId, dto as any, {
-          registrationId: 'registration-1',
-          attemptId: 'tenant-1:uid-1',
-        }),
-      ).resolves.toEqual({ userId: 'user-1' });
-
-      expect(userWriteRepo.findByRegistrationAttemptId).toHaveBeenCalledTimes(
-        2,
-      );
-    });
-
-    it('저장된 pending attempt를 Account complete 재시도용 binding으로 반환한다', async () => {
-      userWriteRepo.findByRegistrationAttemptId.mockResolvedValue(
-        makeActiveUser({
-          status: 'PENDING_REGISTRATION',
-          accountRegistrationId: 'registration-1',
-          registrationAttemptId: 'tenant-1:uid-1',
-        }),
-      );
-
-      await expect(
-        handler.resumeRegistrationAttempt(tenantId, 'tenant-1:uid-1'),
-      ).resolves.toEqual({
-        userId: 'user-1',
-        registrationId: 'registration-1',
-        status: 'PENDING_REGISTRATION',
-      });
-    });
-
-    it('invite 정책이면 pending 사용자 생성 전에 차단한다', async () => {
-      tenantConfigRepo.findByTenantId.mockResolvedValue({
-        allowsSelfSignup: () => false,
-      } as any);
-
-      await expect(
-        handler.createPendingRegistration(tenantId, dto as any, {
-          registrationId: 'registration-1',
-          attemptId: 'tenant-1:uid-1',
-        }),
-      ).rejects.toThrow('SignupNotAllowed');
-      expect(passwordHash.hash).not.toHaveBeenCalled();
-      expect(userWriteRepo.save).not.toHaveBeenCalled();
-    });
-
-    it('Account complete 뒤 PENDING_REGISTRATION을 ACTIVE로 전이한다', async () => {
-      const pending = makeActiveUser({ status: 'PENDING_REGISTRATION' });
-      userWriteRepo.findById.mockResolvedValue(pending);
-
-      await handler.activatePendingRegistration('tenant-1', 'user-1');
-
-      expect(pending.status).toBe('ACTIVE');
-      expect(userWriteRepo.save).toHaveBeenCalledWith(pending);
-    });
-
-    it('이미 ACTIVE인 사용자의 재활성화는 저장 없이 성공한다', async () => {
-      userWriteRepo.findById.mockResolvedValue(makeActiveUser());
-
-      await expect(
-        handler.activatePendingRegistration('tenant-1', 'user-1'),
-      ).resolves.toBeUndefined();
-      expect(userWriteRepo.save).not.toHaveBeenCalled();
-    });
   });
 
   describe('withdraw', () => {

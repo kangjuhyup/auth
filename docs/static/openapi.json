@@ -182,10 +182,6 @@
                       "type": "string",
                       "example": "web-app"
                     },
-                    "issuer": {
-                      "type": "string",
-                      "example": "https://auth.example.com/t/acme/oidc"
-                    },
                     "missingScopes": {
                       "type": "array",
                       "items": {
@@ -196,10 +192,6 @@
                     "mfaRequired": {
                       "type": "boolean",
                       "example": false
-                    },
-                    "signupAllowed": {
-                      "type": "boolean",
-                      "example": true
                     },
                     "idpList": {
                       "type": "array",
@@ -227,10 +219,8 @@
                     "uid",
                     "prompt",
                     "clientId",
-                    "issuer",
                     "missingScopes",
                     "mfaRequired",
-                    "signupAllowed",
                     "idpList"
                   ]
                 }
@@ -320,87 +310,6 @@
           }
         },
         "summary": "Submit interaction login",
-        "tags": ["Interaction"]
-      }
-    },
-    "/t/{tenantCode}/interaction/{uid}/api/signup": {
-      "post": {
-        "operationId": "InteractionController_submitSignup",
-        "parameters": [
-          {
-            "name": "tenantCode",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "uid",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/InteractionSignupDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "mfaRequired": {
-                      "type": "boolean",
-                      "example": false
-                    },
-                    "passwordChangeRequired": {
-                      "type": "boolean",
-                      "example": false
-                    },
-                    "redirectTo": {
-                      "type": "string",
-                      "example": "/t/acme/interaction/uid"
-                    },
-                    "methods": {
-                      "type": "array",
-                      "items": {
-                        "type": "string",
-                        "example": "totp"
-                      }
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "invalid_credentials"
-                    },
-                    "retryAfterSec": {
-                      "type": "integer",
-                      "example": 60
-                    }
-                  },
-                  "required": []
-                }
-              }
-            }
-          }
-        },
-        "summary": "Submit hosted interaction signup",
         "tags": ["Interaction"]
       }
     },
@@ -998,53 +907,6 @@
         },
         "summary": "Handle SAML identity provider callback",
         "tags": ["Interaction"]
-      }
-    },
-    "/auth/signup": {
-      "post": {
-        "deprecated": true,
-        "operationId": "AuthController_signup",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SignupDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "410": {
-            "description": "Use the Account-backed OIDC hosted registration flow",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "integer",
-                      "example": 410
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Use the Account-backed OIDC hosted registration flow"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Gone"
-                    }
-                  },
-                  "required": ["statusCode", "message", "error"]
-                }
-              }
-            }
-          }
-        },
-        "summary": "Direct signup is disabled",
-        "tags": ["Auth"],
-        "description": "User signup. Tenant signup policy is enforced, passwords are hashed, duplicates are rejected, rate limiting applies, and signup activity is audited."
       }
     },
     "/auth/withdraw": {
@@ -6279,6 +6141,223 @@
         "description": "User management. Passwords are hashed, sensitive credentials are not returned, status changes are audited, and personally identifiable data is kept minimal."
       }
     },
+    "/t/{tenantCode}/admin/users/{id}/groups": {
+      "get": {
+        "operationId": "AdminUserController_getGroups",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "example": "group-1"
+                      },
+                      "code": {
+                        "type": "string",
+                        "example": "engineering"
+                      },
+                      "name": {
+                        "type": "string",
+                        "example": "Engineering"
+                      },
+                      "parentId": {
+                        "type": "string",
+                        "example": "group-parent-1",
+                        "nullable": true
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-05-25T00:00:00.000Z"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-05-25T00:00:00.000Z"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "code",
+                      "name",
+                      "parentId",
+                      "createdAt",
+                      "updatedAt"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Admin session is missing or invalid"
+          },
+          "403": {
+            "description": "Admin permission is required"
+          }
+        },
+        "security": [
+          {
+            "admin_session": []
+          }
+        ],
+        "summary": "List user groups",
+        "tags": ["Admin Users"],
+        "description": "User management. Passwords are hashed, sensitive credentials are not returned, status changes are audited, and personally identifiable data is kept minimal."
+      }
+    },
+    "/t/{tenantCode}/admin/users/{id}/groups/{groupId}": {
+      "post": {
+        "operationId": "AdminUserController_addGroup",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "groupId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "Admin session is missing or invalid"
+          },
+          "403": {
+            "description": "Admin permission is required"
+          }
+        },
+        "security": [
+          {
+            "admin_session": []
+          }
+        ],
+        "summary": "Add user to group",
+        "tags": ["Admin Users"],
+        "description": "User management. Passwords are hashed, sensitive credentials are not returned, status changes are audited, and personally identifiable data is kept minimal."
+      },
+      "delete": {
+        "operationId": "AdminUserController_removeGroup",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "groupId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "Admin session is missing or invalid"
+          },
+          "403": {
+            "description": "Admin permission is required"
+          }
+        },
+        "security": [
+          {
+            "admin_session": []
+          }
+        ],
+        "summary": "Remove user from group",
+        "tags": ["Admin Users"],
+        "description": "User management. Passwords are hashed, sensitive credentials are not returned, status changes are audited, and personally identifiable data is kept minimal."
+      }
+    },
+    "/t/{tenantCode}/provisioning/users": {
+      "post": {
+        "operationId": "UserProvisioningController_provision",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "16-128 characters: letters, digits, dot, underscore, tilde, hyphen",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProvisionUserBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProvisionUserResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid, expired, or cross-tenant token"
+          },
+          "403": {
+            "description": "The service token lacks auth.user.provision"
+          },
+          "409": {
+            "description": "Username or idempotency binding conflict"
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Provision an Auth user for this tenant",
+        "tags": ["Service User Provisioning"]
+      }
+    },
     "/t/{tenantCode}/oidc/.well-known/openid-configuration": {
       "get": {
         "tags": ["OIDC Protocol"],
@@ -7188,10 +7267,6 @@
         "type": "object",
         "properties": {}
       },
-      "InteractionSignupDto": {
-        "type": "object",
-        "properties": {}
-      },
       "InteractionMfaDto": {
         "type": "object",
         "properties": {}
@@ -7205,10 +7280,6 @@
         "properties": {}
       },
       "SamlCallbackDto": {
-        "type": "object",
-        "properties": {}
-      },
-      "SignupDto": {
         "type": "object",
         "properties": {}
       },
@@ -7319,6 +7390,32 @@
       "UpdateUserDto": {
         "type": "object",
         "properties": {}
+      },
+      "ProvisionUserBody": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "example": "alice"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "minLength": 8,
+            "maxLength": 128
+          }
+        },
+        "required": ["username", "password"]
+      },
+      "ProvisionUserResponse": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "OIDC subject for the created Auth user"
+          }
+        },
+        "required": ["subject"]
       }
     }
   }

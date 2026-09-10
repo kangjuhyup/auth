@@ -4,5 +4,5 @@
 
 - Add the initial public Flutter SDK skeleton.
 - Delegate Authorization Code and PKCE behavior to AppAuth.
-- Add hosted account creation through the standard `prompt=create` flow.
+- Keep account creation outside the mobile SDK and use standard OIDC login only.
 - Add secure session persistence, serialized refresh, revocation, and logout boundaries.

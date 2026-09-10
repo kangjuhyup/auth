@@ -42,6 +42,7 @@ describe('OidcScopeRegistryAdapter', () => {
       'email',
       'groups',
       'tenant_roles',
+      'auth.user.provision',
       'orders:read',
     ]);
   });

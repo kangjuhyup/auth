@@ -12,6 +12,8 @@ import { GroupCommandPort } from './commands/ports/group-command.port';
 import { GroupCommandHandler } from './commands/handlers/group-command.handler';
 import { UserCommandPort } from './commands/ports/user-command.port';
 import { UserCommandHandler } from './commands/handlers/user-command.handler';
+import { UserProvisioningCommandPort } from './commands/ports/user-provisioning-command.port';
+import { UserProvisioningCommandHandler } from './commands/handlers/user-provisioning-command.handler';
 import { RoleCommandPort } from './commands/ports/role-command.port';
 import { RoleCommandHandler } from './commands/handlers/role-command.handler';
 import { PermissionCommandPort } from './commands/ports/permission-command.port';
@@ -87,6 +89,10 @@ const commands = [
   {
     provide: UserCommandPort,
     useClass: UserCommandHandler,
+  },
+  {
+    provide: UserProvisioningCommandPort,
+    useClass: UserProvisioningCommandHandler,
   },
   {
     provide: RoleCommandPort,

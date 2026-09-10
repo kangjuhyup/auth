@@ -9,7 +9,6 @@ import {
   InteractionLoginDto,
   InteractionMfaDto,
   InteractionPasswordChangeDto,
-  InteractionSignupDto,
   InteractionTotpConfirmationDto,
   SamlCallbackDto,
 } from '@presentation/dto';
@@ -94,39 +93,6 @@ export class InteractionController {
       uid,
       username: body.username ?? '',
       password: body.password ?? '',
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent'),
-      correlationId:
-        (req as any).correlationId ??
-        req.get('x-correlation-id') ??
-        req.get('x-request-id'),
-      req,
-      res,
-      tenant: this.getTenant(req),
-    });
-    return res.status(result.status ?? 200).json(result.body);
-  }
-
-  @Post(':uid/api/signup')
-  @ApiOkSchema(
-    'Submit hosted interaction signup',
-    OpenApiResponseSchemas.interactionResponse,
-  )
-  async submitSignup(
-    @Param('tenantCode') tenantCode: string,
-    @Param('uid') uid: string,
-    @Body() body: InteractionSignupDto,
-    @Req() req: Request,
-    @Res() res: Response,
-  ) {
-    const result = await this.interactionCommand.submitSignup({
-      tenantCode,
-      uid,
-      username: body.username,
-      password: body.password,
-      handoffId: body.handoffId,
-      email: body.email,
-      phone: body.phone,
       ipAddress: req.ip,
       userAgent: req.get('user-agent'),
       correlationId:

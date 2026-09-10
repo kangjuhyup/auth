@@ -1,5 +1,4 @@
 import {
-  SignupDto,
   WithdrawDto,
   ChangePasswordDto,
   PasswordResetRequestDto,
@@ -18,35 +17,6 @@ import {
 } from '@application/dto';
 
 export abstract class AuthCommandPort {
-  /**
-   * Sign up a new user
-   * @description 신규 유저 회원가입
-   */
-  abstract signup(
-    tenantId: string,
-    dto: SignupDto,
-  ): Promise<{ userId: string }>;
-
-  abstract resumeRegistrationAttempt(
-    tenantId: string,
-    attemptId: string,
-  ): Promise<{
-    userId: string;
-    registrationId: string;
-    status: 'PENDING_REGISTRATION' | 'ACTIVE';
-  } | null>;
-
-  abstract createPendingRegistration(
-    tenantId: string,
-    dto: SignupDto,
-    eligibility: { registrationId: string; attemptId: string },
-  ): Promise<{ userId: string }>;
-
-  abstract activatePendingRegistration(
-    tenantId: string,
-    userId: string,
-  ): Promise<void>;
-
   /**
    * Withdraw a user
    * @description 유저 탈퇴

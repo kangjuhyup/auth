@@ -7,6 +7,7 @@ export const BUILT_IN_OIDC_SCOPES = [
   'email',
   'groups',
   'tenant_roles',
+  'auth.user.provision',
 ] as const;
 export type BuiltInOidcScope = (typeof BUILT_IN_OIDC_SCOPES)[number];
 

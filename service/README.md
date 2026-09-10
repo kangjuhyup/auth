@@ -195,10 +195,11 @@ yarn workspace @auth/service start:dev
 
 ## 문서
 
-| 문서                                             | 설명                           |
-| ------------------------------------------------ | ------------------------------ |
-| [Service Docs Index](docs/README.md)             | 백엔드 로컬 문서 목록          |
-| [OIDC Overview](docs/OIDC.md)                    | `node-oidc-provider` 연동 구조 |
-| [OIDC Custom Grant](docs/OIDC_CUSTOM_GRANT.md)   | 커스텀 grant 확장              |
-| [Database](docs/DATABASE.md)                     | DB 설정과 마이그레이션         |
-| [AuthDocs 문서 맵](../docs/docs/document-map.md) | 저장소 전체 문서 위치          |
+| 문서                                                                | 설명                           |
+| ------------------------------------------------------------------- | ------------------------------ |
+| [Service Docs Index](docs/README.md)                                | 백엔드 로컬 문서 목록          |
+| [OIDC Overview](docs/OIDC.md)                                       | `node-oidc-provider` 연동 구조 |
+| [OIDC Custom Grant](docs/OIDC_CUSTOM_GRANT.md)                      | 커스텀 grant 확장              |
+| [Database](docs/DATABASE.md)                                        | DB 설정과 마이그레이션         |
+| [Kubernetes runtime](../docs/docs/operations/kubernetes-runtime.md) | Redis mTLS/ACL, HPA 실행 계약  |
+| [AuthDocs 문서 맵](../docs/docs/document-map.md)                    | 저장소 전체 문서 위치          |

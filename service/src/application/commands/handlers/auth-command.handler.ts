@@ -10,7 +10,6 @@ import {
   RotateRecoveryCodesResponse,
   UpdateMfaPreferenceDto,
   UpdateProfileDto,
-  SignupDto,
   StartIdentityLinkDto,
   StartIdentityLinkResponse,
   CompleteIdentityLinkDto,
@@ -36,7 +35,6 @@ import { ConsentRepository } from '@domain/repositories/consent.repository';
 import { UserIdentityRepository } from '@domain/repositories/user-identity.repository';
 import { EventRepository } from '@domain/repositories/event.repository';
 import { IdentityProviderRepository } from '@domain/repositories/identity-provider.repository';
-import { TenantConfigRepository } from '@domain/repositories/tenant-config.repository';
 import { EventModel } from '@domain/models/event';
 import { orThrow } from '@domain/utils';
 
@@ -58,115 +56,7 @@ export class AuthCommandHandler implements AuthCommandPort {
     private readonly idpPort: IdpPort,
     private readonly identityLinkSession: IdentityLinkSessionPort,
     private readonly eventRepo: EventRepository,
-    private readonly tenantConfigRepo: TenantConfigRepository,
   ) {}
-
-  async signup(tenantId: string, dto: SignupDto): Promise<{ userId: string }> {
-    void tenantId;
-    void dto;
-    throw new Error('AccountEligibilityRequired');
-  }
-
-  async resumeRegistrationAttempt(
-    tenantId: string,
-    attemptId: string,
-  ): Promise<{
-    userId: string;
-    registrationId: string;
-    status: 'PENDING_REGISTRATION' | 'ACTIVE';
-  } | null> {
-    const user = await this.userWriteRepo.findByRegistrationAttemptId(
-      tenantId,
-      attemptId,
-    );
-    if (!user) return null;
-    if (
-      !user.accountRegistrationId ||
-      (user.status !== 'PENDING_REGISTRATION' && user.status !== 'ACTIVE')
-    ) {
-      throw new Error('RegistrationResumeNotAllowed');
-    }
-    return {
-      userId: user.id,
-      registrationId: user.accountRegistrationId,
-      status: user.status,
-    };
-  }
-
-  async createPendingRegistration(
-    tenantId: string,
-    dto: SignupDto,
-    eligibility: { registrationId: string; attemptId: string },
-  ): Promise<{ userId: string }> {
-    const tenantConfig = await this.tenantConfigRepo.findByTenantId(tenantId);
-    if (tenantConfig && !tenantConfig.allowsSelfSignup()) {
-      throw new Error('SignupNotAllowed');
-    }
-
-    const existing = await this.userWriteRepo.findByRegistrationAttemptId(
-      tenantId,
-      eligibility.attemptId,
-    );
-    if (existing) {
-      if (existing.accountRegistrationId !== eligibility.registrationId) {
-        throw new Error('RegistrationBindingMismatch');
-      }
-      return { userId: existing.id };
-    }
-
-    this.logger.log(`Creating pending registration in tenant ${tenantId}`);
-
-    const userId = ulid();
-    const passwordHashResult = await this.passwordHash.hash(dto.password);
-
-    const credential = UserCredentialModel.password({
-      secretHash: passwordHashResult.hash,
-      hashAlg: passwordHashResult.alg,
-      hashParams: passwordHashResult.params,
-      hashVersion: passwordHashResult.version,
-    });
-
-    const user = UserModel.createPendingRegistration({
-      id: userId,
-      tenantId,
-      username: dto.username,
-      email: dto.email,
-      phone: dto.phone,
-      passwordCredential: credential,
-      accountRegistrationId: eligibility.registrationId,
-      registrationAttemptId: eligibility.attemptId,
-    });
-
-    try {
-      await this.userWriteRepo.save(user);
-    } catch (error) {
-      const concurrent = await this.userWriteRepo.findByRegistrationAttemptId(
-        tenantId,
-        eligibility.attemptId,
-      );
-      if (concurrent?.accountRegistrationId === eligibility.registrationId) {
-        return { userId: concurrent.id };
-      }
-      throw error;
-    }
-
-    return { userId };
-  }
-
-  async activatePendingRegistration(
-    tenantId: string,
-    userId: string,
-  ): Promise<void> {
-    const user = orThrow(
-      await this.userWriteRepo.findById(userId),
-      new Error('UserNotFound'),
-    );
-    if (user.tenantId !== tenantId) throw new Error('TenantMismatch');
-    if (user.status === 'ACTIVE') return;
-
-    user.activateRegistration();
-    await this.userWriteRepo.save(user);
-  }
 
   async withdraw(
     tenantId: string,
