@@ -1,82 +1,105 @@
 ---
-title: Account 가입 연동 운영
-description: Account 본인인증 handoff와 Auth credential 등록을 운영하는 배포·장애 대응 기준
+title: 서비스 사용자 Provisioning 운영
+description: 서비스 서버가 최소 권한 credential로 Auth 계정을 만들고 표준 OIDC 로그인을 연결하는 계약
 ---
 
-# Account 가입 연동 운영
+# 서비스 사용자 Provisioning 운영
 
-Account는 본인인증, CI 폐기, DI HMAC, 중복가입, 약관과 가입자격을 소유한다. Auth는 credential, 로그인·MFA, OIDC interaction과 `PENDING_REGISTRATION` → `ACTIVE` 전이를 소유한다. CI, DI, DI HMAC, Account 연락처와 약관 원문은 Auth에 전달하거나 Auth 로그에 남기지 않는다.
+Auth는 Account 또는 Gaegaeting을 호출하지 않는다. 서비스 서버가 자체 본인인증, 중복 가입, 약관과 가입 자격을 완료한 뒤 Auth의 tenant 범위 provisioning API를 호출한다. 사용자는 계정 생성과 별개의 Authorization Code + PKCE 흐름으로 로그인한다.
 
-## 배포 설정
+CI, DI, DI HMAC, 본인인증 연락처, 약관 원문과 서비스 회원 DTO는 Auth 요청이나 로그에 포함하지 않는다. Auth가 받는 값은 로그인 credential인 `username`과 `password`뿐이며, 응답은 OIDC 연결 키인 `subject`뿐이다.
 
-Auth API 프로세스에 다음 환경 변수를 주입한다.
+## 최소 권한 client 준비
 
-| 환경 변수                            | 필수   | 운영 기준                                            |
-| ------------------------------------ | ------ | ---------------------------------------------------- |
-| `ACCOUNT_REGISTRATION_BASE_URL`      | 예     | Account의 HTTPS origin. 자격증명·query·fragment 금지 |
-| `ACCOUNT_REGISTRATION_SERVICE_TOKEN` | 예     | Account internal API 전용 Bearer service token       |
-| `ACCOUNT_REGISTRATION_TIMEOUT_MS`    | 아니요 | 기본 3000ms, 허용 범위 100–10000ms                   |
+tenant 관리자가 `POST /t/{tenantCode}/admin/clients`로 전용 client를 한 번 생성한다. Admin session은 배포 준비에만 사용하고 런타임 Gaegaeting 서버에는 전달하지 않는다.
 
-`ACCOUNT_REGISTRATION_BASE_URL`이 없으면 hosted signup은 fail-closed로 `503`을 반환한다. `/auth/signup` 공개 endpoint는 설정과 무관하게 비활성화되어 `410 Gone`을 반환한다. OpenAPI에는 일반 가입 API로 오인하지 않도록 deprecated endpoint와 `410` 계약만 명시한다.
-
-서비스 토큰은 브라우저, 모바일 앱, Interaction UI bundle에 주입하지 않는다. Auth와 Account에서만 secret manager를 통해 주입하고, 교체 시 두 서비스가 동시에 새 토큰을 수용하는 배포 순서를 사용한다.
-
-## 호출 계약
-
-Auth만 다음 internal API를 호출한다.
-
-```text
-POST /account/internal/v1/registration-eligibilities/claim
-Authorization: Bearer <ACCOUNT_REGISTRATION_SERVICE_TOKEN>
-{ handoffId, tenantId, clientId, attemptId }
-
-POST /account/internal/v1/registration-eligibilities/complete
-Authorization: Bearer <ACCOUNT_REGISTRATION_SERVICE_TOKEN>
-{ registrationId, attemptId, issuer, subject }
+```json
+{
+  "clientId": "gaegaeting-user-provisioner",
+  "secret": "<32자 이상의 secret-manager 생성값>",
+  "name": "Gaegaeting user provisioner",
+  "type": "service",
+  "grantTypes": ["client_credentials"],
+  "responseTypes": [],
+  "tokenEndpointAuthMethod": "client_secret_basic",
+  "scope": "auth.user.provision",
+  "redirectUris": [],
+  "postLogoutRedirectUris": []
+}
 ```
 
-claim 응답은 `{ registrationId, attemptId, status: "CLAIMED", claimExpiresAt }`, complete 응답은 `{ registrationId, status: "USED" }`다. 응답과 Auth 저장 데이터에 Account identity 원문을 추가하지 않는다.
+secret은 Auth가 암호화 저장하며 생성 응답으로 되돌려주지 않는다. Gaegaeting은 별도 secret manager에 보관하고 브라우저·모바일 앱·로그에 노출하지 않는다. client는 가입 처리 전용으로 만들고 일반 OIDC 로그인 client와 분리한다.
 
-브라우저/app은 Account 가입자격 완료 응답의 짧은 TTL `handoffId`만 진행 중인 Auth OIDC interaction URL의 `handoffId` query로 전달한다. Account는 임의 `returnTo`를 받거나 3xx redirect하지 않으므로 서비스 앱이 이미 생성된 interaction URL과 handoff를 조합한다. 실제 Account ticket은 브라우저에 노출하지 않는다.
+## Gaegaeting 호출 계약
 
-## 상태와 재시도
+### 1. service access token
 
-정상 순서는 다음과 같다.
+```http
+POST /t/{tenantCode}/oidc/token
+Authorization: Basic base64(gaegaeting-user-provisioner:<client-secret>)
+Content-Type: application/x-www-form-urlencoded
 
-```text
-Account ISSUED
-  → claim 200 CLAIMED
-  → Auth PENDING_REGISTRATION
-  → complete 200 USED
-  → Auth ACTIVE
-  → MFA/consent/OIDC interaction 완료
+grant_type=client_credentials&scope=auth.user.provision
 ```
 
-- claim lease 만료는 `410`이며 ISSUED로 되돌리거나 handoff를 재사용하지 않는다.
-- 다른 tenant/client/attempt 또는 issuer/subject binding은 `409`다.
-- 같은 binding의 complete 재시도는 Account가 이미 `USED`여도 `200`이다.
-- Auth는 동일 OIDC attempt의 pending binding을 먼저 재개한다. complete 응답이 유실되거나 timeout된 재시도에서 claim을 다시 소비하지 않는다.
-- Account complete가 확인되기 전에는 Auth 사용자를 `ACTIVE`로 바꾸거나 OIDC interaction을 완료하지 않는다.
+성공은 표준 OAuth token response다. 이 token은 최종 사용자 token이 아니며 provisioning endpoint 외에는 사용하지 않는다.
 
-## 장애 대응
+### 2. Auth 사용자 생성
 
-| Auth 응답 | 의미                                 | 운영 조치                                                         |
-| --------- | ------------------------------------ | ----------------------------------------------------------------- |
-| `400`     | handoff 누락 또는 잘못된 interaction | Account 완료 후 같은 interaction URL로 다시 진입                  |
-| `409`     | binding 또는 Auth 상태 충돌          | 자동 재바인딩 금지, tenant/client/attempt와 감사 로그 점검        |
-| `410`     | handoff/claim lease 만료             | 새 Account 본인인증과 새 handoff로 처음부터 시작                  |
-| `503`     | Account 미설정, timeout, 비정상 응답 | Account 상태·네트워크·서비스 토큰을 확인한 뒤 동일 attempt 재시도 |
+```http
+POST /t/{tenantCode}/provisioning/users
+Authorization: Bearer <client-credentials-access-token>
+Idempotency-Key: <Gaegaeting 가입 시도별 16-128자 불변 키>
+Content-Type: application/json
 
-오류 로그에는 service token, handoffId, registrationId, issuer 전체 query, DB URL 또는 Account 응답 본문을 기록하지 않는다. `503`이 지속되면 Auth 재시작보다 Account health, TLS, DNS, token 배포 순서를 먼저 확인한다.
+{
+  "username": "alice",
+  "password": "correct horse battery staple"
+}
+```
 
-## 배포 체크리스트
+```http
+HTTP/1.1 201 Created
+Content-Type: application/json
 
-1. `Migration20260908000000`을 적용해 registration binding column과 unique index를 생성한다.
-2. Account와 Auth에 동일한 internal service token을 secret manager로 주입한다.
-3. Auth에서 Account HTTPS origin에 연결 가능한지 확인한다.
-4. open signup tenant와 등록된 client로 Account handoff를 발급한다.
-5. claim 이후 Auth 사용자가 `PENDING_REGISTRATION`인지 확인한다.
-6. complete 성공 후에만 `ACTIVE` 및 authorization code 발급이 이루어지는지 확인한다.
-7. complete timeout 재시도, lease 만료 `410`, 다른 binding `409`, public `/auth/signup`의 `410`을 확인한다.
+{
+  "subject": "01K..."
+}
+```
 
-운영 지표에는 결과 코드별 claim/complete 실패율과 `PENDING_REGISTRATION` 체류 시간을 추가하되 식별자나 payload는 label로 사용하지 않는다.
+- `username`: 3–64자, 영문자·숫자·`_`·`.`·`-`만 허용
+- `password`: 8–128자. TLS에서만 전송하며 Auth가 즉시 Argon2id 계열 hash로 저장
+- `Idempotency-Key`: 16–128자, 영문자·숫자·`.`·`_`·`~`·`-`만 허용. Auth에는 SHA-256만 저장
+- 동일 tenant/client/key와 동일 username 재시도는 기존 `subject`로 `201`을 반환
+- 동일 key를 다른 username에 쓰거나 username이 이미 존재하면 `409`
+
+오류 계약:
+
+| HTTP  | 의미                                                     | 재시도                               |
+| ----- | -------------------------------------------------------- | ------------------------------------ |
+| `400` | body 또는 `Idempotency-Key` 형식 오류                    | 입력 수정 후 새 요청                 |
+| `401` | token 누락·만료·잘못된 token·tenant 불일치·client 비활성 | 새 token 발급 후 재시도              |
+| `403` | `auth.user.provision` scope 누락                         | client 설정 수정 전 재시도 금지      |
+| `404` | `tenantCode`가 없음                                      | tenant 설정 확인                     |
+| `409` | username 또는 idempotency binding 충돌                   | 자동으로 다른 사용자에 재바인딩 금지 |
+| `5xx` | 일시적 Auth 장애                                         | 같은 `Idempotency-Key`로 제한 재시도 |
+
+성공 감사 이벤트는 호출 client ID, tenant, 생성된 subject, correlation ID, IP와 user-agent를 기록한다. password, bearer token, client secret, `Idempotency-Key` 원문은 기록하지 않는다.
+
+### 3. 서비스 회원 연결과 로그인
+
+Gaegaeting은 성공한 Auth issuer와 `subject`를 서비스 회원에 연결한다. issuer는 설정된 discovery issuer(예: `https://auth.example.com/t/acme/oidc`)를 사용하며 provisioning 응답에 임의 issuer를 받지 않는다.
+
+그 뒤 앱은 기존 public client로 일반 Authorization Code + PKCE 로그인을 시작한다. `prompt=create`, `handoffId`, `/auth/signup`, hosted signup endpoint는 사용하지 않는다. 로그인 성공 시 검증된 ID token의 `(iss, sub)`가 앞서 저장한 연결과 일치해야 한다.
+
+## 이전 hosted registration에서 마이그레이션
+
+1. Auth 이미지를 배포하기 전에 `Migration20260910000000`을 적용한다.
+2. migration은 남아 있는 `PENDING_REGISTRATION` 사용자를 안전하게 `DISABLED`로 바꾸고 Account registration binding column을 제거한다.
+3. `ACCOUNT_REGISTRATION_BASE_URL`, `ACCOUNT_REGISTRATION_SERVICE_TOKEN`, `ACCOUNT_REGISTRATION_TIMEOUT_MS` secret/env를 배포 설정에서 제거한다.
+4. Account claim/complete 호출과 Auth interaction URL의 `handoffId`, `prompt=create` 조합을 Gaegaeting에서 제거한다.
+5. 위 전용 service client를 만든 뒤 secret과 tenant code를 Gaegaeting 서버에만 배포한다.
+6. 가입 완료 순서를 `Account 정책 완료 → Auth provisioning → (issuer, subject) 저장 → 별도 OIDC 로그인`으로 바꾼다.
+7. 전환 중 `DISABLED` 처리된 미완료 사용자는 자동 활성화하지 말고 서비스 가입 상태를 확인한 뒤 새 provisioning 시도로 복구한다.
+
+`Migration20260908000000`은 이미 배포되었을 수 있으므로 수정하지 않는다. 새 migration만 순서대로 적용한다.

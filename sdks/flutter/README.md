@@ -36,9 +36,9 @@ final accessToken = await auth.accessToken();
 await auth.signOut();
 ```
 
-To start the hosted account-creation experience, call `auth.signUp()`. The SDK
-sends the standard OIDC `prompt=create` authorization request; credentials stay
-inside the authorization server's browser interaction.
+Account creation is owned by the integrating service. Its backend provisions the
+Auth credential with a tenant-scoped service client, then the app calls
+`auth.signIn()` for a separate Authorization Code + PKCE login.
 
 Use `session.idToken` only as the verified login result supplied by AppAuth.
 Use `accessToken` only for the configured API resource. An API-audience access

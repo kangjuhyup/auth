@@ -75,10 +75,6 @@ export const OpenApiResponseSchemas = {
     passwordChangeRequired: boolean(false),
   }),
 
-  signup: object({
-    userId: string('user-1'),
-  }),
-
   totpEnrollment: object({
     secret: string('JBSWY3DPEHPK3PXP'),
     otpauthUrl: string('otpauth://totp/Auth:john?secret=JBSWY3DPEHPK3PXP'),
@@ -389,10 +385,8 @@ export const OpenApiResponseSchemas = {
     uid: string('interaction-uid'),
     prompt: string('login'),
     clientId: string('web-app'),
-    issuer: string('https://auth.example.com/t/acme/oidc'),
     missingScopes: arrayOf(string('email')),
     mfaRequired: boolean(false),
-    signupAllowed: boolean(true),
     idpList: arrayOf(
       object({
         provider: string('google'),

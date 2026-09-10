@@ -4,10 +4,8 @@ export interface InteractionDetails {
   uid: string;
   prompt: 'login' | 'consent' | string;
   clientId: string;
-  issuer: string;
   missingScopes: string[];
   mfaRequired: boolean;
-  signupAllowed: boolean;
   idpList: { provider: string; name: string }[];
 }
 
@@ -18,14 +16,6 @@ export interface LoginResult {
   passwordChangeRequired?: boolean;
   methods?: string[];
   redirectTo?: string;
-}
-
-export interface SignupInput {
-  username: string;
-  password: string;
-  handoffId: string;
-  email?: string;
-  phone?: string;
 }
 
 export interface TotpEnrollmentResult {
@@ -59,12 +49,6 @@ function apiBase(): string {
   // URL: /t/{tenant}/interaction/{uid}
   // API: /t/{tenant}/interaction/{uid}/api/...
   return path;
-}
-
-export function readRegistrationHandoffId(
-  search = window.location.search,
-): string {
-  return new URLSearchParams(search).get('handoffId')?.trim() ?? '';
 }
 
 async function request<T>(
@@ -114,13 +98,6 @@ export function submitLogin(
   return request('login', `${apiBase()}/api/login`, {
     method: 'POST',
     body: JSON.stringify({ username, password }),
-  });
-}
-
-export function submitSignup(input: SignupInput): Promise<LoginResult> {
-  return request('signup', `${apiBase()}/api/signup`, {
-    method: 'POST',
-    body: JSON.stringify(input),
   });
 }
 

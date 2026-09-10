@@ -28,15 +28,10 @@ final class AuthClient {
   final Duration refreshSkew;
   Future<String?>? _refreshInFlight;
 
-  Future<AuthSession> signIn() => _authorize(AuthorizationIntent.signIn);
+  Future<AuthSession> signIn() => _authorize();
 
-  Future<AuthSession> signUp() => _authorize(AuthorizationIntent.signUp);
-
-  Future<AuthSession> _authorize(AuthorizationIntent intent) async {
-    final response = await _authorizationGateway.authorize(
-      config,
-      intent: intent,
-    );
+  Future<AuthSession> _authorize() async {
+    final response = await _authorizationGateway.authorize(config);
     final session = _mergeResponse(response, previous: null);
     await _sessionStore.write(session);
     return session;

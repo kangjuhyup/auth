@@ -2,12 +2,7 @@ import { Getter } from '../decorators';
 import { PersistenceModel } from './persistence-model';
 import { UserCredentialModel } from './user-credential';
 
-export type UserStatus =
-  | 'PENDING_REGISTRATION'
-  | 'ACTIVE'
-  | 'LOCKED'
-  | 'DISABLED'
-  | 'WITHDRAWN';
+export type UserStatus = 'ACTIVE' | 'LOCKED' | 'DISABLED' | 'WITHDRAWN';
 
 interface UserProps {
   tenantId: string;
@@ -18,8 +13,8 @@ interface UserProps {
   phoneVerified: boolean;
   status: UserStatus;
   mfaEnabled: boolean;
-  accountRegistrationId?: string | null;
-  registrationAttemptId?: string | null;
+  provisionedByClientId?: string | null;
+  provisioningKeyHash?: string | null;
   passwordCredential?: UserCredentialModel;
 }
 
@@ -56,28 +51,26 @@ export class UserModel extends PersistenceModel<string, UserProps> {
     );
   }
 
-  static createPendingRegistration(params: {
+  static createProvisioned(params: {
     id: string;
     tenantId: string;
     username: string;
-    email?: string | null;
-    phone?: string | null;
     passwordCredential: UserCredentialModel;
-    accountRegistrationId: string;
-    registrationAttemptId: string;
+    provisionedByClientId: string;
+    provisioningKeyHash: string;
   }): UserModel {
     return new UserModel(
       {
         tenantId: params.tenantId,
         username: params.username.trim(),
-        email: params.email ?? null,
+        email: null,
         emailVerified: false,
-        phone: params.phone ?? null,
+        phone: null,
         phoneVerified: false,
-        status: 'PENDING_REGISTRATION',
+        status: 'ACTIVE',
         mfaEnabled: false,
-        accountRegistrationId: params.accountRegistrationId,
-        registrationAttemptId: params.registrationAttemptId,
+        provisionedByClientId: params.provisionedByClientId,
+        provisioningKeyHash: params.provisioningKeyHash,
         passwordCredential: params.passwordCredential,
       },
       params.id,
@@ -94,8 +87,8 @@ export class UserModel extends PersistenceModel<string, UserProps> {
     phoneVerified: boolean;
     status: UserStatus;
     mfaEnabled?: boolean;
-    accountRegistrationId?: string | null;
-    registrationAttemptId?: string | null;
+    provisionedByClientId?: string | null;
+    provisioningKeyHash?: string | null;
     passwordCredential?: UserCredentialModel;
   }): UserModel {
     return new UserModel(
@@ -108,8 +101,8 @@ export class UserModel extends PersistenceModel<string, UserProps> {
         phoneVerified: params.phoneVerified,
         status: params.status,
         mfaEnabled: params.mfaEnabled ?? false,
-        accountRegistrationId: params.accountRegistrationId ?? null,
-        registrationAttemptId: params.registrationAttemptId ?? null,
+        provisionedByClientId: params.provisionedByClientId ?? null,
+        provisioningKeyHash: params.provisioningKeyHash ?? null,
         passwordCredential: params.passwordCredential,
       },
       params.id,
@@ -165,14 +158,6 @@ export class UserModel extends PersistenceModel<string, UserProps> {
     this.etc.status = status;
   }
 
-  activateRegistration(): void {
-    if (this.status === 'ACTIVE') return;
-    if (this.status !== 'PENDING_REGISTRATION') {
-      throw new Error('RegistrationActivationNotAllowed');
-    }
-    this.etc.status = 'ACTIVE';
-  }
-
   changeMfaEnabled(enabled: boolean): void {
     if (this.status === 'WITHDRAWN') throw new Error('UserAlreadyWithdrawn');
     this.etc.mfaEnabled = enabled;
@@ -207,10 +192,10 @@ export class UserModel extends PersistenceModel<string, UserProps> {
   declare readonly mfaEnabled: boolean;
 
   @Getter()
-  declare readonly accountRegistrationId: string | null | undefined;
+  declare readonly provisionedByClientId: string | null | undefined;
 
   @Getter()
-  declare readonly registrationAttemptId: string | null | undefined;
+  declare readonly provisioningKeyHash: string | null | undefined;
 
   @Getter()
   declare readonly passwordCredential: UserCredentialModel | undefined;

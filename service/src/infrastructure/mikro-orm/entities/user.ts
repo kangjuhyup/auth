@@ -16,19 +16,14 @@ import { UserIdentityOrmEntity } from './user-identity';
 import { UserCredentialOrmEntity } from './user-credential';
 import { ulid } from 'ulid';
 
-export type UserStatus =
-  | 'PENDING_REGISTRATION'
-  | 'ACTIVE'
-  | 'LOCKED'
-  | 'DISABLED'
-  | 'WITHDRAWN';
+export type UserStatus = 'ACTIVE' | 'LOCKED' | 'DISABLED' | 'WITHDRAWN';
 
 @Entity({ tableName: 'user' })
 @Unique({ properties: ['tenant', 'username'], name: 'uk_user_tenant_username' })
 @Unique({ properties: ['tenant', 'email'], name: 'uk_user_tenant_email' })
 @Unique({
-  properties: ['tenant', 'registrationAttemptId'],
-  name: 'uk_user_tenant_registration_attempt',
+  properties: ['tenant', 'provisionedByClientId', 'provisioningKeyHash'],
+  name: 'uk_user_tenant_provisioning_key',
 })
 export class UserOrmEntity extends BaseEntity {
   @PrimaryKey({ type: 'char', length: 26 })
@@ -63,20 +58,20 @@ export class UserOrmEntity extends BaseEntity {
   mfaEnabled!: boolean;
 
   @Property({
-    fieldName: 'account_registration_id',
+    fieldName: 'provisioned_by_client_id',
     type: 'varchar',
     length: 191,
     nullable: true,
   })
-  accountRegistrationId?: string | null;
+  provisionedByClientId?: string | null;
 
   @Property({
-    fieldName: 'registration_attempt_id',
-    type: 'varchar',
-    length: 191,
+    fieldName: 'provisioning_key_hash',
+    type: 'char',
+    length: 64,
     nullable: true,
   })
-  registrationAttemptId?: string | null;
+  provisioningKeyHash?: string | null;
 
   @OneToMany(() => UserCredentialOrmEntity, (uc) => uc.user)
   credentials = new Collection<UserCredentialOrmEntity>(this);

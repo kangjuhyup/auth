@@ -39,23 +39,6 @@ void main() {
     expect((await store.read())?.refreshToken, 'refresh-1');
   });
 
-  test('signUp persists the hosted prompt=create result', () async {
-    gateway.authorizeResponse = AuthTokenResponse(
-      accessToken: 'access-new',
-      refreshToken: 'refresh-new',
-      idToken: 'id-new',
-      accessTokenExpiresAt: now.add(const Duration(minutes: 5)),
-      scopes: config.scopes,
-    );
-    final client = createClient(config, gateway, store, revoker, now);
-
-    final session = await client.signUp();
-
-    expect(session.idToken, 'id-new');
-    expect(gateway.lastIntent, AuthorizationIntent.signUp);
-    expect((await store.read())?.accessToken, 'access-new');
-  });
-
   test('concurrent accessToken calls share one rotating refresh request',
       () async {
     store.session = AuthSession(
@@ -164,16 +147,10 @@ class FakeAuthorizationGateway implements AuthorizationGateway {
   Future<AuthTokenResponse> Function()? onRefresh;
   int refreshCalls = 0;
   String? endedIdToken;
-  AuthorizationIntent? lastIntent;
 
   @override
-  Future<AuthTokenResponse> authorize(
-    AuthClientConfig config, {
-    AuthorizationIntent intent = AuthorizationIntent.signIn,
-  }) async {
-    lastIntent = intent;
-    return authorizeResponse;
-  }
+  Future<AuthTokenResponse> authorize(AuthClientConfig config) async =>
+      authorizeResponse;
 
   @override
   Future<void> endSession(

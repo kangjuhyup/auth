@@ -20,6 +20,7 @@ import { AdminRoleController } from '@presentation/controllers/admin/role.contro
 import { AdminScopeController } from '@presentation/controllers/admin/scope.controller';
 import { AdminTenantController } from '@presentation/controllers/admin/tenant.controller';
 import { AdminUserController } from '@presentation/controllers/admin/user.controller';
+import { UserProvisioningController } from '@presentation/controllers/user-provisioning.controller';
 import { ObservabilityQueryPort } from '@application/queries/ports/observability-query.port';
 import { InteractionCommandPort } from '@application/ports/interaction-command.port';
 import { AccessVerifierPort } from '@application/ports/access-verifier.port';
@@ -38,6 +39,8 @@ import { RoleCommandPort } from '@application/commands/ports/role-command.port';
 import { ScopeCommandPort } from '@application/commands/ports/scope-command.port';
 import { TenantCommandPort } from '@application/commands/ports/tenant-command.port';
 import { UserCommandPort } from '@application/commands/ports/user-command.port';
+import { UserProvisioningCommandPort } from '@application/commands/ports/user-provisioning-command.port';
+import { ServiceAccessVerifierPort } from '@application/ports/service-access-verifier.port';
 
 type HttpMethod = 'get' | 'post' | 'put' | 'delete' | 'patch';
 
@@ -148,6 +151,7 @@ describe('openapi route coverage', () => {
         AdminScopeController,
         AdminTenantController,
         AdminUserController,
+        UserProvisioningController,
       ],
       providers: [
         provider(ObservabilityQueryPort),
@@ -168,6 +172,8 @@ describe('openapi route coverage', () => {
         provider(ScopeCommandPort),
         provider(TenantCommandPort),
         provider(UserCommandPort),
+        provider(UserProvisioningCommandPort),
+        provider(ServiceAccessVerifierPort),
         {
           provide: ConfigService,
           useValue: { get: jest.fn() },

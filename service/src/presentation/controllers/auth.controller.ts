@@ -10,14 +10,11 @@ import {
   Req,
   Res,
   UseGuards,
-  ForbiddenException,
-  GoneException,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthCommandPort } from '@application/commands/ports/auth-command.port';
 import { AuthQueryPort } from '@application/queries/ports';
 import {
-  SignupDto,
   WithdrawDto,
   ChangePasswordDto,
   PasswordResetRequestDto,
@@ -37,7 +34,6 @@ import {
   CompleteIdentityLinkDto as AppCompleteIdentityLinkDto,
   PasswordResetDto as AppPasswordResetDto,
   PasswordResetRequestDto as AppPasswordResetRequestDto,
-  SignupDto as AppSignupDto,
   StartIdentityLinkDto as AppStartIdentityLinkDto,
   TenantContext,
   TotpConfirmationDto as AppTotpConfirmationDto,
@@ -56,7 +52,6 @@ import {
   ApiOkArraySchema,
   ApiOkSchema,
   ApiRedirectSchema,
-  ApiDeprecatedGoneSchema,
   OpenApiResponseSchemas,
 } from '@presentation/openapi-response';
 
@@ -67,31 +62,6 @@ export class AuthController {
     private readonly commandPort: AuthCommandPort,
     private readonly queryPort: AuthQueryPort,
   ) {}
-
-  @Post('signup')
-  @ApiDeprecatedGoneSchema(
-    'Direct signup is disabled',
-    'Use the Account-backed OIDC hosted registration flow',
-  )
-  async signup(
-    @Tenant() tenant: TenantContext,
-    @Body() dto: SignupDto,
-  ): Promise<{ userId: string }> {
-    try {
-      return await this.commandPort.signup(tenant.id, AppSignupDto.of(dto));
-    } catch (error) {
-      if (error instanceof Error && error.message === 'SignupNotAllowed') {
-        throw new ForbiddenException('Signup is not allowed');
-      }
-      if (
-        error instanceof Error &&
-        error.message === 'AccountEligibilityRequired'
-      ) {
-        throw new GoneException('Use the OIDC hosted registration flow');
-      }
-      throw error;
-    }
-  }
 
   @Post('withdraw')
   @UseGuards(AccessGuard)

@@ -24,7 +24,6 @@ describe('InteractionController', () => {
     interactionCommand = {
       getDetails: jest.fn(),
       submitLogin: jest.fn(),
-      submitSignup: jest.fn(),
       submitMfa: jest.fn(),
       beginTotpEnrollment: jest.fn(),
       confirmTotpEnrollment: jest.fn(),
@@ -39,52 +38,6 @@ describe('InteractionController', () => {
     };
 
     controller = new InteractionController(interactionCommand, config as any);
-  });
-
-  it('hosted signup 입력과 request metadata를 interaction command에 위임한다', async () => {
-    const tenant = makeTenantContext();
-    const req = createMockRequest({
-      tenant,
-      ip: '203.0.113.10',
-      get: jest.fn((name: string) =>
-        name.toLowerCase() === 'user-agent' ? 'jest' : undefined,
-      ) as any,
-    }) as any;
-    req.correlationId = 'req-1';
-    const res = createMockResponse();
-    interactionCommand.submitSignup.mockResolvedValue({
-      body: { success: true, redirectTo: '/interaction/done' },
-    });
-
-    await (controller as any).submitSignup(
-      'acme',
-      'uid-1',
-      {
-        username: 'new-user',
-        password: 'Secure123!',
-        email: 'new@example.com',
-        handoffId: 'handoff-browser-value',
-      },
-      req,
-      res,
-    );
-
-    expect(interactionCommand.submitSignup).toHaveBeenCalledWith({
-      tenantCode: 'acme',
-      uid: 'uid-1',
-      username: 'new-user',
-      password: 'Secure123!',
-      email: 'new@example.com',
-      phone: undefined,
-      handoffId: 'handoff-browser-value',
-      ipAddress: '203.0.113.10',
-      userAgent: 'jest',
-      correlationId: 'req-1',
-      req,
-      res,
-      tenant,
-    });
-    expect(res.status).toHaveBeenCalledWith(200);
   });
 
   describe('serveSpa', () => {

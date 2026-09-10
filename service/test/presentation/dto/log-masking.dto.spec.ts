@@ -7,7 +7,7 @@ import {
   InteractionMfaDto,
   PasswordResetDto,
   SamlCallbackDto,
-  SignupDto,
+  ProvisionUserBody,
   TotpConfirmationDto,
   UpdateProfileDto,
 } from '@presentation/dto';
@@ -22,17 +22,13 @@ function maskWith<T extends object>(DtoClass: new () => T, body: object) {
 describe('presentation DTO log masking', () => {
   it('인증 요청의 password, token, code와 개인정보를 마스킹한다', () => {
     expect(
-      maskWith(SignupDto, {
+      maskWith(ProvisionUserBody, {
         username: 'alice',
         password: 'Passw0rd!',
-        email: 'user@example.com',
-        phone: '01012345678',
       }),
     ).toMatchObject({
       username: 'alice',
       password: '******',
-      email: 'us***@example.com',
-      phone: '010-****-5678',
     });
 
     expect(

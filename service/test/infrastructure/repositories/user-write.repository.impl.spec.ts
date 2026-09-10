@@ -49,26 +49,31 @@ describe('UserWriteRepositoryImpl', () => {
       );
     });
 
-    it('tenant와 registration attempt binding으로 pending 사용자를 조회한다', async () => {
+    it('tenant, client와 idempotency hash로 provisioned 사용자를 조회한다', async () => {
       const user = createUserEntity({
-        status: 'PENDING_REGISTRATION',
-        accountRegistrationId: 'registration-1',
-        registrationAttemptId: 'tenant-1:uid-1',
+        status: 'ACTIVE',
+        provisionedByClientId: 'provisioner',
+        provisioningKeyHash: 'a'.repeat(64),
       });
       attachCredentials(user, [createUserCredentialEntity()]);
       em.findOne.mockResolvedValue(user);
 
       await expect(
-        repository.findByRegistrationAttemptId('tenant-1', 'tenant-1:uid-1'),
+        repository.findByProvisioningKey(
+          'tenant-1',
+          'provisioner',
+          'a'.repeat(64),
+        ),
       ).resolves.toMatchObject({
-        status: 'PENDING_REGISTRATION',
-        accountRegistrationId: 'registration-1',
+        status: 'ACTIVE',
+        provisionedByClientId: 'provisioner',
       });
       expect(em.findOne).toHaveBeenCalledWith(
         UserOrmEntity,
         {
           tenant: 'tenant-1',
-          registrationAttemptId: 'tenant-1:uid-1',
+          provisionedByClientId: 'provisioner',
+          provisioningKeyHash: 'a'.repeat(64),
         },
         { populate: ['tenant', 'credentials'] },
       );
@@ -230,8 +235,8 @@ describe('UserWriteRepositoryImpl', () => {
           phone: '01012341234',
           phoneVerified: false,
           status: 'ACTIVE',
-          accountRegistrationId: 'registration-1',
-          registrationAttemptId: 'tenant-1:uid-1',
+          provisionedByClientId: 'provisioner',
+          provisioningKeyHash: 'a'.repeat(64),
           passwordCredential: createUserCredentialModel({
             secretHash: 'new-secret',
           }),
@@ -245,8 +250,8 @@ describe('UserWriteRepositoryImpl', () => {
           id: 'user-1',
           username: 'alice',
           tenant: expect.objectContaining({ id: 'tenant-1' }),
-          accountRegistrationId: 'registration-1',
-          registrationAttemptId: 'tenant-1:uid-1',
+          provisionedByClientId: 'provisioner',
+          provisioningKeyHash: 'a'.repeat(64),
         }),
       );
       expect(txEm.nativeUpdate).toHaveBeenCalledWith(

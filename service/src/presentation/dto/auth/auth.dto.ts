@@ -11,36 +11,6 @@ import {
 import { Transform, Expose } from 'class-transformer';
 import { MaskLog } from '@kangjuhyup/rvlog';
 
-export class SignupDto {
-  @IsString()
-  @IsNotEmpty()
-  @MinLength(3)
-  @MaxLength(64)
-  @Matches(/^[a-zA-Z0-9_.-]+$/, {
-    message: 'username은 영문자, 숫자, _, ., - 만 허용됩니다',
-  })
-  username!: string;
-
-  @IsString()
-  @IsNotEmpty()
-  @MinLength(8)
-  @MaxLength(128)
-  @MaskLog({ type: 'full' })
-  password!: string;
-
-  @IsOptional()
-  @IsEmail()
-  @MaxLength(254)
-  @MaskLog({ type: 'email' })
-  email?: string;
-
-  @IsOptional()
-  @IsString()
-  @Matches(/^\+?[0-9]{7,15}$/, { message: '유효하지 않은 전화번호 형식입니다' })
-  @MaskLog({ type: 'phone' })
-  phone?: string;
-}
-
 export class WithdrawDto {
   @IsString()
   @IsNotEmpty()

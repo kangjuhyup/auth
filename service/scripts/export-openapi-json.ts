@@ -23,6 +23,8 @@ import { RoleCommandPort } from '@application/commands/ports/role-command.port';
 import { ScopeCommandPort } from '@application/commands/ports/scope-command.port';
 import { TenantCommandPort } from '@application/commands/ports/tenant-command.port';
 import { UserCommandPort } from '@application/commands/ports/user-command.port';
+import { UserProvisioningCommandPort } from '@application/commands/ports/user-provisioning-command.port';
+import { ServiceAccessVerifierPort } from '@application/ports/service-access-verifier.port';
 import { AdminQueryPort, AuthQueryPort } from '@application/queries/ports';
 import { ObservabilityQueryPort } from '@application/queries/ports/observability-query.port';
 import { AdminAuditLogController } from '@presentation/controllers/admin/audit-log.controller';
@@ -40,6 +42,7 @@ import { AdminUserController } from '@presentation/controllers/admin/user.contro
 import { AuthController } from '@presentation/controllers/auth.controller';
 import { HealthController } from '@presentation/controllers/health.controller';
 import { InteractionController } from '@presentation/controllers/interaction.controller';
+import { UserProvisioningController } from '@presentation/controllers/user-provisioning.controller';
 import { createOpenApiDocument } from '@presentation/openapi';
 
 const DEFAULT_OUTPUT_PATH = '../docs/static/openapi.json';
@@ -72,6 +75,7 @@ async function createDocumentApp(): Promise<{
       AdminScopeController,
       AdminTenantController,
       AdminUserController,
+      UserProvisioningController,
     ],
     providers: [
       provider(ObservabilityQueryPort),
@@ -91,6 +95,8 @@ async function createDocumentApp(): Promise<{
       provider(ScopeCommandPort),
       provider(TenantCommandPort),
       provider(UserCommandPort),
+      provider(UserProvisioningCommandPort),
+      provider(ServiceAccessVerifierPort),
       {
         provide: ConfigService,
         useValue: { get: () => undefined },
