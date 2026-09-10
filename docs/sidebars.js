@@ -86,7 +86,8 @@ const sidebars = {
       collapsed: false,
       items: [
         'operations/external-interaction-ui',
-        'operations/service-user-provisioning',
+        'operations/kubernetes-runtime',
+        'operations/user-provisioning',
         'operations/load-test-2026-09-02',
         'operations/remote-load-test-2026-09-06',
       ],

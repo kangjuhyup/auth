@@ -5,7 +5,7 @@ description: client별 외부 로그인 UI 위임의 Admin 설정, 브라우저 
 
 # 외부 Hosted Interaction UI 운영
 
-Auth는 소비자 서비스의 도메인이나 URL 계약을 알지 않습니다. 외부 Hosted UI는 화면 렌더링과 사용자 입력만 담당하고, OIDC 세션·credential 검증·MFA·동의·토큰 발급은 Auth가 소유합니다. 외부 UI는 Auth DB와 Admin API에 접근하지 않으며 비밀번호를 Account나 소비 앱 서버를 거치지 않고 Auth interaction API로 직접 제출합니다.
+Auth는 소비자 서비스의 도메인 계약을 알거나 소비자 서버를 역호출하지 않습니다. 외부 Hosted UI는 화면 렌더링과 사용자 입력만 담당하고, OIDC 세션·credential 검증·MFA·동의·토큰 발급은 Auth가 소유합니다. 외부 UI는 Auth DB와 Admin API에 접근하지 않으며 비밀번호를 소비자 서버를 거치지 않고 Auth interaction API로 직접 제출합니다.
 
 ## Admin 설정
 

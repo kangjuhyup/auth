@@ -5,7 +5,7 @@ description: Per-client UI delegation, browser contract, exact-origin CORS, CSRF
 
 # External Hosted Interaction UI
 
-Auth does not know consumer-service domains or call Account. An external Hosted UI only renders screens and collects user input. Auth retains ownership of the OIDC interaction, credentials, MFA, consent, and token issuance. The UI must not access the Auth database or Admin API. Passwords must be submitted directly from the browser to the Auth interaction API, never through Account or a consumer application server.
+Auth neither knows consumer-service domain contracts nor calls consumer servers. An external Hosted UI only renders screens and collects user input. Auth retains ownership of the OIDC interaction, credentials, MFA, consent, and token issuance. The UI must not access the Auth database or Admin API. Passwords must be submitted directly from the browser to the Auth interaction API, never through a consumer application server.
 
 ## Admin configuration
 

@@ -64,9 +64,27 @@ describe('InfrastructureReadinessAdapter', () => {
         expect.objectContaining({
           name: 'redis',
           status: 'not_ready',
-          reason: 'Redis ping failed',
+          reason: 'Redis unavailable',
         }),
       ]),
     );
+  });
+
+  it('Redis 연결 오류의 URL과 credential을 readiness 응답에 노출하지 않는다', async () => {
+    const secret = 'redis://auth-app:password@redis.internal/private-key';
+    const result = await createAdapter({
+      redisError: new Error(secret),
+    }).check();
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'redis',
+          status: 'not_ready',
+          reason: 'Redis unavailable',
+        }),
+      ]),
+    );
+    expect(JSON.stringify(result)).not.toContain(secret);
   });
 });
