@@ -67,9 +67,13 @@ export class InfrastructureReadinessAdapter extends ReadinessCheckPort {
 
   @NoLog
   private async checkRedis(): Promise<void> {
-    const pong = await this.redis.ping();
-    if (pong !== 'PONG') {
-      throw new Error('Redis ping failed');
+    try {
+      const pong = await this.redis.ping();
+      if (pong !== 'PONG') {
+        throw new Error('Redis ping failed');
+      }
+    } catch {
+      throw new Error('Redis unavailable');
     }
   }
 
