@@ -15,11 +15,12 @@
 
 ## AuthDocs 연결
 
-| 문서                                                             | 설명                         |
-| ---------------------------------------------------------------- | ---------------------------- |
-| [OIDC 인증 흐름](../../docs/docs/concepts/oidc-flow.md)          | OIDC 흐름 설명               |
-| [커스텀 Grant](../../docs/docs/concepts/client/grants/custom.md) | AuthDocs용 커스텀 grant 문서 |
-| [Tenant 정책](../../docs/docs/concepts/tenant/policies.md)       | tenant 기본 정책             |
-| [Client 정책](../../docs/docs/concepts/client/policies.md)       | client auth policy 개념      |
-| [Grant 개요](../../docs/docs/concepts/client/grants/overview.md) | client `grantTypes` 정책     |
-| [Scope 개요](../../docs/docs/concepts/client/scopes.md)          | scope와 resource indicator   |
+| 문서                                                                                | 설명                         |
+| ----------------------------------------------------------------------------------- | ---------------------------- |
+| [OIDC 인증 흐름](../../docs/docs/concepts/oidc-flow.md)                             | OIDC 흐름 설명               |
+| [커스텀 Grant](../../docs/docs/concepts/client/grants/custom.md)                    | AuthDocs용 커스텀 grant 문서 |
+| [Tenant 정책](../../docs/docs/concepts/tenant/policies.md)                          | tenant 기본 정책             |
+| [Client 정책](../../docs/docs/concepts/client/policies.md)                          | client auth policy 개념      |
+| [Grant 개요](../../docs/docs/concepts/client/grants/overview.md)                    | client `grantTypes` 정책     |
+| [Scope 개요](../../docs/docs/concepts/client/scopes.md)                             | scope와 resource indicator   |
+| [외부 Hosted Interaction UI](../../docs/docs/operations/external-interaction-ui.md) | client별 UI 위임과 보안 계약 |

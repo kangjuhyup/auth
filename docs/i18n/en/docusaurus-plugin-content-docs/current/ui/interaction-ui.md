@@ -35,9 +35,11 @@ POST ./api/mfa
 POST ./api/mfa/totp/enroll
 POST ./api/mfa/totp/confirm
 POST ./api/consent
-GET  ./api/abort
+POST ./api/abort
 GET  ./idp/:provider
 ```
+
+When a client has `externalInteractionUiUrl`, Auth delegates rendering to that UI instead of serving this SPA. The external UI calls the same APIs directly on the Auth origin and must follow the credential, CORS, and CSRF contract in [External Hosted Interaction UI](../operations/external-interaction-ui.md).
 
 ## Customization Procedure
 

@@ -123,7 +123,24 @@
     "/t/{tenantCode}/interaction/{uid}": {
       "get": {
         "operationId": "InteractionController_serveSpa",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "tenantCode",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "uid",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -138,7 +155,8 @@
           }
         },
         "summary": "Serve interaction UI",
-        "tags": ["Interaction"]
+        "tags": ["Interaction"],
+        "description": "Auth-owned OIDC interaction. External hosted UIs use exact-origin credentialed CORS with a short-lived signed interaction token, CSRF header, and HttpOnly browser binding; OIDC redirect URI, state, and PKCE remain provider-owned."
       }
     },
     "/t/{tenantCode}/interaction/{uid}/api/details": {
@@ -229,7 +247,8 @@
           }
         },
         "summary": "Get interaction details",
-        "tags": ["Interaction"]
+        "tags": ["Interaction"],
+        "description": "Auth-owned OIDC interaction. External hosted UIs use exact-origin credentialed CORS with a short-lived signed interaction token, CSRF header, and HttpOnly browser binding; OIDC redirect URI, state, and PKCE remain provider-owned."
       }
     },
     "/t/{tenantCode}/interaction/{uid}/api/login": {
@@ -310,7 +329,8 @@
           }
         },
         "summary": "Submit interaction login",
-        "tags": ["Interaction"]
+        "tags": ["Interaction"],
+        "description": "Auth-owned OIDC interaction. External hosted UIs use exact-origin credentialed CORS with a short-lived signed interaction token, CSRF header, and HttpOnly browser binding; OIDC redirect URI, state, and PKCE remain provider-owned."
       }
     },
     "/t/{tenantCode}/interaction/{uid}/api/mfa": {
@@ -391,7 +411,8 @@
           }
         },
         "summary": "Submit interaction MFA",
-        "tags": ["Interaction"]
+        "tags": ["Interaction"],
+        "description": "Auth-owned OIDC interaction. External hosted UIs use exact-origin credentialed CORS with a short-lived signed interaction token, CSRF header, and HttpOnly browser binding; OIDC redirect URI, state, and PKCE remain provider-owned."
       }
     },
     "/t/{tenantCode}/interaction/{uid}/api/mfa/totp/enroll": {
@@ -439,7 +460,8 @@
           }
         },
         "summary": "Begin interaction TOTP enrollment",
-        "tags": ["Interaction"]
+        "tags": ["Interaction"],
+        "description": "Auth-owned OIDC interaction. External hosted UIs use exact-origin credentialed CORS with a short-lived signed interaction token, CSRF header, and HttpOnly browser binding; OIDC redirect URI, state, and PKCE remain provider-owned."
       }
     },
     "/t/{tenantCode}/interaction/{uid}/api/mfa/totp/confirm": {
@@ -520,7 +542,8 @@
           }
         },
         "summary": "Confirm interaction TOTP enrollment",
-        "tags": ["Interaction"]
+        "tags": ["Interaction"],
+        "description": "Auth-owned OIDC interaction. External hosted UIs use exact-origin credentialed CORS with a short-lived signed interaction token, CSRF header, and HttpOnly browser binding; OIDC redirect URI, state, and PKCE remain provider-owned."
       }
     },
     "/t/{tenantCode}/interaction/{uid}/api/password-change": {
@@ -601,7 +624,8 @@
           }
         },
         "summary": "Submit required password change",
-        "tags": ["Interaction"]
+        "tags": ["Interaction"],
+        "description": "Auth-owned OIDC interaction. External hosted UIs use exact-origin credentialed CORS with a short-lived signed interaction token, CSRF header, and HttpOnly browser binding; OIDC redirect URI, state, and PKCE remain provider-owned."
       }
     },
     "/t/{tenantCode}/interaction/{uid}/api/consent": {
@@ -645,11 +669,12 @@
           }
         },
         "summary": "Submit interaction consent",
-        "tags": ["Interaction"]
+        "tags": ["Interaction"],
+        "description": "Auth-owned OIDC interaction. External hosted UIs use exact-origin credentialed CORS with a short-lived signed interaction token, CSRF header, and HttpOnly browser binding; OIDC redirect URI, state, and PKCE remain provider-owned."
       }
     },
     "/t/{tenantCode}/interaction/{uid}/api/abort": {
-      "get": {
+      "post": {
         "operationId": "InteractionController_abortInteraction",
         "parameters": [
           {
@@ -689,7 +714,8 @@
           }
         },
         "summary": "Abort interaction",
-        "tags": ["Interaction"]
+        "tags": ["Interaction"],
+        "description": "Auth-owned OIDC interaction. External hosted UIs use exact-origin credentialed CORS with a short-lived signed interaction token, CSRF header, and HttpOnly browser binding; OIDC redirect URI, state, and PKCE remain provider-owned."
       }
     },
     "/t/{tenantCode}/interaction/{uid}/api/mfa/webauthn-options": {
@@ -719,7 +745,8 @@
           }
         },
         "summary": "Get WebAuthn authentication options",
-        "tags": ["Interaction"]
+        "tags": ["Interaction"],
+        "description": "Auth-owned OIDC interaction. External hosted UIs use exact-origin credentialed CORS with a short-lived signed interaction token, CSRF header, and HttpOnly browser binding; OIDC redirect URI, state, and PKCE remain provider-owned."
       }
     },
     "/t/{tenantCode}/interaction/{uid}/idp/{provider}": {
@@ -766,7 +793,8 @@
           }
         },
         "summary": "Redirect to external identity provider",
-        "tags": ["Interaction"]
+        "tags": ["Interaction"],
+        "description": "Auth-owned OIDC interaction. External hosted UIs use exact-origin credentialed CORS with a short-lived signed interaction token, CSRF header, and HttpOnly browser binding; OIDC redirect URI, state, and PKCE remain provider-owned."
       }
     },
     "/t/{tenantCode}/interaction/{uid}/idp/{provider}/callback": {
@@ -813,7 +841,8 @@
           }
         },
         "summary": "Handle external identity provider callback",
-        "tags": ["Interaction"]
+        "tags": ["Interaction"],
+        "description": "Auth-owned OIDC interaction. External hosted UIs use exact-origin credentialed CORS with a short-lived signed interaction token, CSRF header, and HttpOnly browser binding; OIDC redirect URI, state, and PKCE remain provider-owned."
       }
     },
     "/t/{tenantCode}/interaction/saml/{provider}/metadata": {
@@ -2097,6 +2126,11 @@
                             "example": "https://app.example.com/frontchannel-logout",
                             "nullable": true
                           },
+                          "externalInteractionUiUrl": {
+                            "type": "string",
+                            "example": "https://login.example.com/interaction",
+                            "nullable": true
+                          },
                           "allowedResources": {
                             "type": "array",
                             "items": {
@@ -2151,6 +2185,7 @@
                           "applicationType",
                           "backchannelLogoutUri",
                           "frontchannelLogoutUri",
+                          "externalInteractionUiUrl",
                           "allowedResources",
                           "introspectionResources",
                           "skipConsent",
@@ -2193,7 +2228,7 @@
         ],
         "summary": "List clients",
         "tags": ["Admin Clients"],
-        "description": "Client lifecycle management. Redirect URIs are strictly validated, grant types are checked against policy, client secrets are never returned, and changes are audited."
+        "description": "Client lifecycle management. Redirect URIs are strictly validated, optional external hosted interaction UI URLs use a dedicated security policy, grant types are checked against policy, client secrets are never returned, and changes are audited."
       },
       "post": {
         "operationId": "AdminClientController_create",
@@ -2240,7 +2275,7 @@
         ],
         "summary": "Create client",
         "tags": ["Admin Clients"],
-        "description": "Client lifecycle management. Redirect URIs are strictly validated, grant types are checked against policy, client secrets are never returned, and changes are audited."
+        "description": "Client lifecycle management. Redirect URIs are strictly validated, optional external hosted interaction UI URLs use a dedicated security policy, grant types are checked against policy, client secrets are never returned, and changes are audited."
       }
     },
     "/t/{tenantCode}/admin/clients/{id}": {
@@ -2334,6 +2369,11 @@
                       "example": "https://app.example.com/frontchannel-logout",
                       "nullable": true
                     },
+                    "externalInteractionUiUrl": {
+                      "type": "string",
+                      "example": "https://login.example.com/interaction",
+                      "nullable": true
+                    },
                     "allowedResources": {
                       "type": "array",
                       "items": {
@@ -2388,6 +2428,7 @@
                     "applicationType",
                     "backchannelLogoutUri",
                     "frontchannelLogoutUri",
+                    "externalInteractionUiUrl",
                     "allowedResources",
                     "introspectionResources",
                     "skipConsent",
@@ -2414,7 +2455,7 @@
         ],
         "summary": "Get client",
         "tags": ["Admin Clients"],
-        "description": "Client lifecycle management. Redirect URIs are strictly validated, grant types are checked against policy, client secrets are never returned, and changes are audited."
+        "description": "Client lifecycle management. Redirect URIs are strictly validated, optional external hosted interaction UI URLs use a dedicated security policy, grant types are checked against policy, client secrets are never returned, and changes are audited."
       },
       "put": {
         "operationId": "AdminClientController_update",
@@ -2456,7 +2497,7 @@
         ],
         "summary": "Update client",
         "tags": ["Admin Clients"],
-        "description": "Client lifecycle management. Redirect URIs are strictly validated, grant types are checked against policy, client secrets are never returned, and changes are audited."
+        "description": "Client lifecycle management. Redirect URIs are strictly validated, optional external hosted interaction UI URLs use a dedicated security policy, grant types are checked against policy, client secrets are never returned, and changes are audited."
       },
       "delete": {
         "operationId": "AdminClientController_delete",
@@ -2488,7 +2529,7 @@
         ],
         "summary": "Delete client",
         "tags": ["Admin Clients"],
-        "description": "Client lifecycle management. Redirect URIs are strictly validated, grant types are checked against policy, client secrets are never returned, and changes are audited."
+        "description": "Client lifecycle management. Redirect URIs are strictly validated, optional external hosted interaction UI URLs use a dedicated security policy, grant types are checked against policy, client secrets are never returned, and changes are audited."
       }
     },
     "/t/{tenantCode}/admin/clients/{id}/auth-policy": {
@@ -2683,7 +2724,7 @@
         ],
         "summary": "Get client auth policy",
         "tags": ["Admin Clients"],
-        "description": "Client lifecycle management. Redirect URIs are strictly validated, grant types are checked against policy, client secrets are never returned, and changes are audited."
+        "description": "Client lifecycle management. Redirect URIs are strictly validated, optional external hosted interaction UI URLs use a dedicated security policy, grant types are checked against policy, client secrets are never returned, and changes are audited."
       },
       "put": {
         "operationId": "AdminClientController_updateAuthPolicy",
@@ -2725,7 +2766,7 @@
         ],
         "summary": "Update client auth policy",
         "tags": ["Admin Clients"],
-        "description": "Client lifecycle management. Redirect URIs are strictly validated, grant types are checked against policy, client secrets are never returned, and changes are audited."
+        "description": "Client lifecycle management. Redirect URIs are strictly validated, optional external hosted interaction UI URLs use a dedicated security policy, grant types are checked against policy, client secrets are never returned, and changes are audited."
       }
     },
     "/t/{tenantCode}/admin/groups": {

@@ -51,14 +51,15 @@ Interaction UI가 호출하는 주요 API:
 ```text
 GET  ./api/details
 POST ./api/login
-POST ./api/signup
 POST ./api/mfa
 POST ./api/mfa/totp/enroll
 POST ./api/mfa/totp/confirm
 POST ./api/consent
-GET  ./api/abort
+POST ./api/abort
 GET  ./idp/:provider
 ```
+
+client에 `externalInteractionUiUrl`이 설정되면 이 내장 SPA 대신 외부 UI로 위임됩니다. 외부 UI는 같은 API를 Auth origin으로 직접 호출하며, 자세한 credential/CORS/CSRF 계약은 [외부 Hosted Interaction UI 운영](../operations/external-interaction-ui.md)을 따릅니다.
 
 ## 수정 지점
 
@@ -84,7 +85,7 @@ GET  ./idp/:provider
 
 ## 회원가입 경계
 
-Interaction UI는 로그인, MFA, consent만 처리하며 회원가입 화면이나 API를 제공하지 않습니다. 서비스 서버가 자체 가입 정책을 완료한 뒤 Auth provisioning API로 계정을 만들고, 사용자는 별도의 일반 Authorization Code + PKCE 로그인 interaction에 진입합니다. 자세한 서버 계약은 [서비스 사용자 Provisioning 운영](../operations/account-registration.md)을 참고합니다.
+Interaction UI는 로그인, MFA, consent만 처리하며 회원가입 화면이나 API를 제공하지 않습니다. 서비스 서버가 자체 가입 정책을 완료한 뒤 Auth provisioning API로 계정을 만들고, 사용자는 별도의 일반 Authorization Code + PKCE 로그인 interaction에 진입합니다. 자세한 서버 계약은 [서비스 사용자 Provisioning 운영](../operations/service-user-provisioning.md)을 참고합니다.
 
 ## MFA 등록 화면
 

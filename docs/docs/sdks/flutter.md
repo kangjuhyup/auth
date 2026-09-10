@@ -100,7 +100,7 @@ final session = await auth.signIn();
 회원가입 UI와 자격 정책은 서비스 앱/서버가 소유합니다. 서비스 서버는 가입 자격을 확인한 뒤 tenant 범위의 Auth provisioning API로 credential을 만들고 `(issuer, subject)`를 회원에 연결합니다. 그 다음 앱은 `signIn()`으로 별도의 Authorization Code + PKCE 로그인을 시작합니다. SDK는 가입 API, service client secret 또는 사용자 password를 다루지 않습니다.
 
 :::info Signup API 경계
-최종 사용자 계정을 생성하는 API는 OIDC Core 규격의 일부가 아닙니다. 모바일 앱은 provisioning API를 직접 호출하지 않습니다. 정확한 서버 계약은 [서비스 사용자 Provisioning 운영](../operations/account-registration.md)을 따릅니다.
+최종 사용자 계정을 생성하는 API는 OIDC Core 규격의 일부가 아닙니다. 모바일 앱은 provisioning API를 직접 호출하지 않습니다. 정확한 서버 계약은 [서비스 사용자 Provisioning 운영](../operations/service-user-provisioning.md)을 따릅니다.
 :::
 
 ## API access token

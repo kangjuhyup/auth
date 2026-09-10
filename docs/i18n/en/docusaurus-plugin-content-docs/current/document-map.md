@@ -19,22 +19,23 @@ AuthDocs is the user and operator documentation portal for this repository. Mark
 
 ## AuthDocs
 
-| Document                                               | Description                                                  |
-| ------------------------------------------------------ | ------------------------------------------------------------ |
-| [Documentation Overview](./intro.md)                   | AuthDocs entry point                                         |
-| [Core Concepts](./concepts.md)                         | Tenant, Client, RBAC, MFA, and IdP relationship              |
-| [OIDC Flow](./concepts/oidc-flow.md)                   | Authorization Code + PKCE flow                               |
-| [Tenant Overview](./concepts/tenant/overview.md)       | Tenant security boundary and issuer                          |
-| [Tenant Policies](./concepts/tenant/policies.md)       | Tenant-level security policies                               |
-| [Client Overview](./concepts/client/overview.md)       | Client attributes and OIDC/OAuth settings                    |
-| [Client Policies](./concepts/client/policies.md)       | Client authentication policy overrides                       |
-| [Grant Overview](./concepts/client/grants/overview.md) | Client grant type policy                                     |
-| [Custom Grant](./concepts/client/grants/custom.md)     | Custom `grant_type` extension procedure                      |
-| [Scope Overview](./concepts/client/scopes/overview.md) | Scope and resource indicator behavior                        |
-| [Custom Scope](./concepts/client/scopes/custom.md)     | Service-specific custom scope definition rules               |
-| [MFA Overview](./concepts/mfa.md)                      | MFA methods, enrollment, and interaction verification        |
-| [IdP](./concepts/idp.md)                               | External identity provider protocols and policy restrictions |
-| [Redoc API Reference](./api/redoc.md)                  | OpenAPI / Redoc reference                                    |
+| Document                                                                  | Description                                                      |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| [Documentation Overview](./intro.md)                                      | AuthDocs entry point                                             |
+| [Core Concepts](./concepts.md)                                            | Tenant, Client, RBAC, MFA, and IdP relationship                  |
+| [OIDC Flow](./concepts/oidc-flow.md)                                      | Authorization Code + PKCE flow                                   |
+| [Tenant Overview](./concepts/tenant/overview.md)                          | Tenant security boundary and issuer                              |
+| [Tenant Policies](./concepts/tenant/policies.md)                          | Tenant-level security policies                                   |
+| [Client Overview](./concepts/client/overview.md)                          | Client attributes and OIDC/OAuth settings                        |
+| [Client Policies](./concepts/client/policies.md)                          | Client authentication policy overrides                           |
+| [Grant Overview](./concepts/client/grants/overview.md)                    | Client grant type policy                                         |
+| [Custom Grant](./concepts/client/grants/custom.md)                        | Custom `grant_type` extension procedure                          |
+| [Scope Overview](./concepts/client/scopes/overview.md)                    | Scope and resource indicator behavior                            |
+| [Custom Scope](./concepts/client/scopes/custom.md)                        | Service-specific custom scope definition rules                   |
+| [MFA Overview](./concepts/mfa.md)                                         | MFA methods, enrollment, and interaction verification            |
+| [IdP](./concepts/idp.md)                                                  | External identity provider protocols and policy restrictions     |
+| [Redoc API Reference](./api/redoc.md)                                     | OpenAPI / Redoc reference                                        |
+| [External Hosted Interaction UI](./operations/external-interaction-ui.md) | Per-client UI delegation, CORS, access/CSRF contract, and states |
 
 ## Admin UI
 

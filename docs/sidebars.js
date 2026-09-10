@@ -85,7 +85,8 @@ const sidebars = {
       label: '운영',
       collapsed: false,
       items: [
-        'operations/account-registration',
+        'operations/external-interaction-ui',
+        'operations/service-user-provisioning',
         'operations/load-test-2026-09-02',
         'operations/remote-load-test-2026-09-06',
       ],
