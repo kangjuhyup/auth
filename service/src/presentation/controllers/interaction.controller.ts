@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Post, Req, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
 import { resolve } from 'node:path';
@@ -18,6 +27,12 @@ import {
   ApiRedirectSchema,
   OpenApiResponseSchemas,
 } from '@presentation/openapi-response';
+import { ExternalInteractionUiPort } from '@application/ports/external-interaction-ui.port';
+import { setExternalInteractionCookies } from '@presentation/http/external-interaction-cookie';
+import {
+  ExternalInteractionGuard,
+  type ExternalInteractionRequest,
+} from '@presentation/http/external-interaction.guard';
 
 const SPA_INDEX_PATH = resolve(
   __dirname,
@@ -32,12 +47,40 @@ export class InteractionController {
   constructor(
     private readonly interactionCommand: InteractionCommandPort,
     private readonly config: ConfigService,
+    private readonly externalInteractionUi: ExternalInteractionUiPort,
   ) {}
 
   @Get(':uid')
   @ApiProduces('text/html')
   @ApiOkSchema('Serve interaction UI', { type: 'string', format: 'html' })
-  serveSpa(@Res() res: Response) {
+  async serveSpa(
+    @Param('tenantCode') tenantCode: string,
+    @Param('uid') uid: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const decision = await this.externalInteractionUi.prepare({
+      tenantCode,
+      uid,
+      req,
+      res,
+      tenant: this.getTenant(req),
+    });
+    if (decision.mode === 'external') {
+      setExternalInteractionCookies({
+        request: req,
+        response: res,
+        tenantCode,
+        uid,
+        browserBinding: decision.browserBinding,
+        maxAgeMs: decision.maxAgeMs,
+        secure: decision.secureCookies,
+      });
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      return res.redirect(303, decision.redirectTo);
+    }
+
     if (!existsSync(SPA_INDEX_PATH)) {
       return res.status(404).json({ error: 'Interaction UI not built' });
     }
@@ -55,6 +98,7 @@ export class InteractionController {
   }
 
   @Get(':uid/api/details')
+  @UseGuards(ExternalInteractionGuard)
   @ApiOkSchema(
     'Get interaction details',
     OpenApiResponseSchemas.interactionDetails,
@@ -77,6 +121,7 @@ export class InteractionController {
   }
 
   @Post(':uid/api/login')
+  @UseGuards(ExternalInteractionGuard)
   @ApiOkSchema(
     'Submit interaction login',
     OpenApiResponseSchemas.interactionResponse,
@@ -102,11 +147,13 @@ export class InteractionController {
       req,
       res,
       tenant: this.getTenant(req),
+      ...this.externalAccess(req),
     });
     return res.status(result.status ?? 200).json(result.body);
   }
 
   @Post(':uid/api/mfa')
+  @UseGuards(ExternalInteractionGuard)
   @ApiOkSchema(
     'Submit interaction MFA',
     OpenApiResponseSchemas.interactionResponse,
@@ -118,7 +165,7 @@ export class InteractionController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const host = req.get('host') ?? 'localhost';
+    const rp = this.interactionRp(req);
     const result = await this.interactionCommand.submitMfa({
       tenantCode,
       uid,
@@ -134,13 +181,15 @@ export class InteractionController {
       req,
       res,
       tenant: this.getTenant(req),
-      rpId: host.split(':')[0],
-      expectedOrigin: `${req.protocol}://${host}`,
+      rpId: rp.hostname,
+      expectedOrigin: rp.origin,
+      ...this.externalAccess(req),
     });
     return res.status(result.status ?? 200).json(result.body);
   }
 
   @Post(':uid/api/mfa/totp/enroll')
+  @UseGuards(ExternalInteractionGuard)
   @ApiOkSchema(
     'Begin interaction TOTP enrollment',
     OpenApiResponseSchemas.totpEnrollment,
@@ -160,6 +209,7 @@ export class InteractionController {
   }
 
   @Post(':uid/api/mfa/totp/confirm')
+  @UseGuards(ExternalInteractionGuard)
   @ApiOkSchema(
     'Confirm interaction TOTP enrollment',
     OpenApiResponseSchemas.interactionResponse,
@@ -178,11 +228,13 @@ export class InteractionController {
       req,
       res,
       tenant: this.getTenant(req),
+      ...this.externalAccess(req),
     });
     return res.status(result.status ?? 200).json(result.body);
   }
 
   @Post(':uid/api/password-change')
+  @UseGuards(ExternalInteractionGuard)
   @ApiOkSchema(
     'Submit required password change',
     OpenApiResponseSchemas.interactionResponse,
@@ -202,15 +254,17 @@ export class InteractionController {
       req,
       res,
       tenant: this.getTenant(req),
+      ...this.externalAccess(req),
     });
     return res.status(result.status ?? 200).json(result.body);
   }
 
   @Post(':uid/api/consent')
+  @UseGuards(ExternalInteractionGuard)
   @ApiOkSchema('Submit interaction consent', OpenApiResponseSchemas.redirectTo)
   async submitConsent(
     @Param('tenantCode') tenantCode: string,
-    @Param('uid') _uid: string,
+    @Param('uid') uid: string,
     @Req() req: Request,
     @Res() res: Response,
   ) {
@@ -218,6 +272,8 @@ export class InteractionController {
       tenantCode,
       req,
       res,
+      uid,
+      ...this.externalAccess(req),
     });
     if ('body' in result) {
       return res.status(result.status ?? 200).json(result.body);
@@ -226,11 +282,12 @@ export class InteractionController {
     return res.json({ success: true, redirectTo: result.redirectTo });
   }
 
-  @Get(':uid/api/abort')
+  @Post(':uid/api/abort')
+  @UseGuards(ExternalInteractionGuard)
   @ApiOkSchema('Abort interaction', OpenApiResponseSchemas.redirectTo)
   async abortInteraction(
     @Param('tenantCode') tenantCode: string,
-    @Param('uid') _uid: string,
+    @Param('uid') uid: string,
     @Req() req: Request,
     @Res() res: Response,
   ) {
@@ -238,12 +295,15 @@ export class InteractionController {
       tenantCode,
       req,
       res,
+      uid,
+      ...this.externalAccess(req),
     });
 
     return res.json({ redirectTo });
   }
 
   @Get(':uid/api/mfa/webauthn-options')
+  @UseGuards(ExternalInteractionGuard)
   @ApiOkSchema(
     'Get WebAuthn authentication options',
     OpenApiResponseSchemas.webauthnOptions,
@@ -253,11 +313,11 @@ export class InteractionController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const host = req.get('host') ?? 'localhost';
+    const rp = this.interactionRp(req);
     const result = await this.interactionCommand.getWebAuthnOptions({
       uid,
-      rpId: host.split(':')[0],
-      expectedOrigin: `${req.protocol}://${host}`,
+      rpId: rp.hostname,
+      expectedOrigin: rp.origin,
     });
     return res.status(result.status ?? 200).json(result.body);
   }
@@ -359,6 +419,27 @@ export class InteractionController {
 
   private getTenant(req: Request): TenantContext | undefined {
     return (req as any).tenant as TenantContext | undefined;
+  }
+
+  private externalAccess(req: Request): { externalAccessId?: string } {
+    const access = (req as ExternalInteractionRequest)
+      .externalInteractionAccess;
+    return access ? { externalAccessId: access.accessId } : {};
+  }
+
+  private interactionRp(req: Request): { hostname: string; origin: string } {
+    const access = (req as ExternalInteractionRequest)
+      .externalInteractionAccess;
+    if (access) {
+      const url = new URL(access.origin);
+      return { hostname: url.hostname, origin: url.origin };
+    }
+
+    const host = req.get('host') ?? 'localhost';
+    return {
+      hostname: host.split(':')[0],
+      origin: `${req.protocol}://${host}`,
+    };
   }
 
   private shouldCacheSpaHtml(): boolean {

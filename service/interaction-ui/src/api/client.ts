@@ -144,7 +144,7 @@ export function submitConsent(): Promise<ConsentResult> {
 }
 
 export function abortInteraction(): Promise<AbortResult> {
-  return request('abort', `${apiBase()}/api/abort`);
+  return request('abort', `${apiBase()}/api/abort`, { method: 'POST' });
 }
 
 export function getIdpUrl(provider: string): string {

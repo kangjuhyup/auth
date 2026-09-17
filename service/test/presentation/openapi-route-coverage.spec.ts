@@ -41,6 +41,7 @@ import { TenantCommandPort } from '@application/commands/ports/tenant-command.po
 import { UserCommandPort } from '@application/commands/ports/user-command.port';
 import { UserProvisioningCommandPort } from '@application/commands/ports/user-provisioning-command.port';
 import { ServiceAccessVerifierPort } from '@application/ports/service-access-verifier.port';
+import { ExternalInteractionUiPort } from '@application/ports/external-interaction-ui.port';
 
 type HttpMethod = 'get' | 'post' | 'put' | 'delete' | 'patch';
 
@@ -174,6 +175,7 @@ describe('openapi route coverage', () => {
         provider(UserCommandPort),
         provider(UserProvisioningCommandPort),
         provider(ServiceAccessVerifierPort),
+        provider(ExternalInteractionUiPort),
         {
           provide: ConfigService,
           useValue: { get: jest.fn() },

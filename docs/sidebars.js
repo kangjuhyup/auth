@@ -85,6 +85,7 @@ const sidebars = {
       label: '운영',
       collapsed: false,
       items: [
+        'operations/external-interaction-ui',
         'operations/kubernetes-runtime',
         'operations/user-provisioning',
         'operations/load-test-2026-09-02',

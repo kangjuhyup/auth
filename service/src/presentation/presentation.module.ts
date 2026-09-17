@@ -29,6 +29,7 @@ import { AdminGuard } from './http/admin.guard';
 import { AccessGuard } from './http/access.guard';
 import { UserProvisioningController } from './controllers/user-provisioning.controller';
 import { ServiceProvisioningGuard } from './http/service-provisioning.guard';
+import { ExternalInteractionGuard } from './http/external-interaction.guard';
 
 @Module({
   imports: [ConfigModule, ApplicationModule],
@@ -36,6 +37,7 @@ import { ServiceProvisioningGuard } from './http/service-provisioning.guard';
     AdminGuard,
     AccessGuard,
     ServiceProvisioningGuard,
+    ExternalInteractionGuard,
     OidcDelegateMiddleware,
   ],
   controllers: [

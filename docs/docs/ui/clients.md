@@ -10,18 +10,21 @@ OIDC/OAuth client를 관리합니다. client는 로그인을 요청하는 애플
 
 ## 주요 필드
 
-| 필드                         | 설명                                               |
-| ---------------------------- | -------------------------------------------------- |
-| `Client ID`                  | OIDC `client_id`입니다. 생성 후 수정하지 않습니다. |
-| `Name`                       | client 표시 이름입니다.                            |
-| `Client Type`                | `Public`, `Confidential`, `Service` 중 선택합니다. |
-| `Enabled`                    | client 활성화 여부입니다.                          |
-| `Redirect URIs`              | authorization code flow callback URI입니다.        |
-| `Post Logout Redirect URIs`  | logout 이후 허용할 redirect URI입니다.             |
-| `Grant Types`                | 허용 grant type입니다.                             |
-| `Response Types`             | 허용 response type입니다.                          |
-| `Allowed Scopes`             | 허용 scope 문자열입니다.                           |
-| `Token Endpoint Auth Method` | token endpoint client 인증 방식입니다.             |
+| 필드                         | 설명                                                                                  |
+| ---------------------------- | ------------------------------------------------------------------------------------- |
+| `Client ID`                  | OIDC `client_id`입니다. 생성 후 수정하지 않습니다.                                    |
+| `Name`                       | client 표시 이름입니다.                                                               |
+| `Client Type`                | `Public`, `Confidential`, `Service` 중 선택합니다.                                    |
+| `Enabled`                    | client 활성화 여부입니다.                                                             |
+| `Redirect URIs`              | authorization code flow callback URI입니다.                                           |
+| `Post Logout Redirect URIs`  | logout 이후 허용할 redirect URI입니다.                                                |
+| `Grant Types`                | 허용 grant type입니다.                                                                |
+| `Response Types`             | 허용 response type입니다.                                                             |
+| `Allowed Scopes`             | 허용 scope 문자열입니다.                                                              |
+| `Token Endpoint Auth Method` | token endpoint client 인증 방식입니다.                                                |
+| `External Hosted UI URL`     | 해당 client의 interaction 화면을 위임할 HTTPS URL입니다. 비우면 내장 UI를 사용합니다. |
+
+외부 Hosted UI URL은 절대 HTTPS URL이어야 하며 userinfo, fragment, wildcard host를 허용하지 않습니다. 개발 환경의 HTTP loopback은 Auth 서버에서 `EXTERNAL_INTERACTION_UI_ALLOW_HTTP_LOCALHOST=true`를 명시한 경우에만 허용됩니다. 연동 계약은 [외부 Hosted Interaction UI 운영](../operations/external-interaction-ui.md)을 참고하세요.
 
 Redirect URI 등 client 속성 설명은 [Client 개요](../concepts/client/overview.md)를 참고하세요.
 Grant Type 선택 기준과 조합은 [Grant 개요](../concepts/client/grants/overview.md)를 참고하세요.

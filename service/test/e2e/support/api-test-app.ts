@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import * as argon2 from 'argon2';
 import { Client as PgClient } from 'pg';
 import type Redis from 'ioredis';
+import type { NextFunction, Request, Response } from 'express';
 import { MikroORM, RequestContext } from '@mikro-orm/core';
 import type { INestApplication } from '@nestjs/common';
 import { ValidationPipe } from '@nestjs/common';
@@ -205,13 +206,18 @@ function applyTestEnvironment(env: TestEnvironment): void {
   process.env.RVLOG_MIN_LEVEL = process.env.RVLOG_MIN_LEVEL ?? 'ERROR';
   process.env.RVLOG_PRETTY = process.env.RVLOG_PRETTY ?? 'false';
   process.env.MIKRO_ORM_LOGGER = process.env.MIKRO_ORM_LOGGER ?? 'silent';
+  process.env.OIDC_PROVIDER_CONFIG_POLL_INTERVAL_MS = '0';
 }
 
 function clearOidcRegistryCache(registry: OidcProviderRegistry): void {
   const providers = (registry as any).providers as
+    | Map<string, unknown>
+    | undefined;
+  const refreshes = (registry as any).refreshes as
     | Map<string, Promise<unknown>>
     | undefined;
   providers?.clear();
+  refreshes?.clear();
 }
 
 function sqlLiteral(value: string): string {
@@ -371,6 +377,13 @@ export async function createApiE2eFixture(
 
   const app = moduleRef.createNestApplication<NestExpressApplication>({
     bodyParser: false,
+  });
+  const canonicalOidcHost = new URL(
+    process.env.OIDC_ISSUER ?? 'http://localhost:3000',
+  ).host;
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    req.headers.host = canonicalOidcHost;
+    next();
   });
   configureBodyParsers(app);
   app.useGlobalPipes(

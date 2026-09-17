@@ -1,4 +1,8 @@
-import type { PaginationQuery, PaginatedResult, TenantContext } from '@application/dto';
+import type {
+  PaginationQuery,
+  PaginatedResult,
+  TenantContext,
+} from '@application/dto';
 import type { AuthenticatedUser } from '@application/ports/access-verifier.port';
 import type { Request, Response } from 'express';
 
@@ -79,6 +83,7 @@ export function createMockResponse(): Response {
     type: jest.fn().mockReturnThis(),
     send: jest.fn().mockReturnThis(),
     redirect: jest.fn().mockReturnThis(),
+    cookie: jest.fn().mockReturnThis(),
   };
 
   return res as Response;

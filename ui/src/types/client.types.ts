@@ -8,6 +8,7 @@ export interface CreateClientDto {
   tokenEndpointAuthMethod?: string;
   scope?: string;
   postLogoutRedirectUris?: string[];
+  externalInteractionUiUrl?: string;
 }
 
 export interface UpdateClientDto {
@@ -19,6 +20,7 @@ export interface UpdateClientDto {
   tokenEndpointAuthMethod?: string;
   scope?: string;
   postLogoutRedirectUris?: string[];
+  externalInteractionUiUrl?: string | null;
 }
 
 export interface ClientResponse {
@@ -33,6 +35,7 @@ export interface ClientResponse {
   tokenEndpointAuthMethod: string;
   scope: string;
   postLogoutRedirectUris: string[];
+  externalInteractionUiUrl: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

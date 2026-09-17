@@ -4,6 +4,7 @@ import { PlusOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import type { CreateClientDto, UpdateClientDto } from '@/types/client.types';
 import type { CustomGrantResponse } from '@/types/custom-grant.types';
 import type { ScopeResponse } from '@/types/scope.types';
+import { validateExternalInteractionUiUrl } from '../externalInteractionUiUrl';
 
 interface ClientFormProps {
   initialValues?: Partial<CreateClientDto | UpdateClientDto>;
@@ -142,6 +143,22 @@ export function ClientForm({
             </>
           )}
         </Form.List>
+      </Form.Item>
+
+      <Form.Item
+        name="externalInteractionUiUrl"
+        label="External Hosted UI URL"
+        extra="Optional. HTTPS only; exact origin CORS is derived from this URL. HTTP loopback requires an explicit Auth development flag."
+        rules={[
+          {
+            validator: async (_, value: string | null | undefined) => {
+              const error = validateExternalInteractionUiUrl(value);
+              if (error) throw new Error(error);
+            },
+          },
+        ]}
+      >
+        <Input placeholder="https://login.example.com/interaction" />
       </Form.Item>
 
       <Form.Item name="grantTypes" label="Grant Types">

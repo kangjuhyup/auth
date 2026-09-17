@@ -7,7 +7,7 @@ import { useDeleteClient } from '../hooks/useDeleteClient';
 import { useClients } from '../hooks/useClients';
 import { useCustomGrants } from '@/features/custom-grants/hooks/useCustomGrants';
 import { useScopes } from '@/features/scopes/hooks/useScopes';
-import { toUpdateClientDto } from '../clientFormPayload';
+import { toCreateClientDto, toUpdateClientDto } from '../clientFormPayload';
 import { useAdminUiStore } from '@/stores/adminUi.store';
 import type { CreateClientDto, UpdateClientDto } from '@/types/client.types';
 
@@ -43,7 +43,7 @@ export function ClientFormModal() {
   }, [editingClient, editForm]);
 
   const handleCreate = (values: CreateClientDto | UpdateClientDto) => {
-    createMutation.mutate(values as CreateClientDto, {
+    createMutation.mutate(toCreateClientDto(values as CreateClientDto), {
       onSuccess: () => {
         closeCreateModal();
         createForm.resetFields();

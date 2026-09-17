@@ -4,7 +4,7 @@ import type { UserWriteRepositoryPort } from '@application/commands/ports/user-w
 
 describe('UserProvisioningCommandHandler', () => {
   const tenantId = 'tenant-1';
-  const clientId = 'gaegaeting-provisioner';
+  const clientId = 'service-user-provisioner';
   const command = ProvisionUserCommand.of({
     username: 'alice',
     password: 'correct horse battery staple',
@@ -35,13 +35,24 @@ describe('UserProvisioningCommandHandler', () => {
       hash: jest.fn().mockReturnValue('a'.repeat(64)),
     };
     const auditRecorder = { recordAdminAction: jest.fn() };
+    const clients = {
+      findByClientId: jest.fn().mockResolvedValue({ id: '5', clientId }),
+    };
     const handler = new UserProvisioningCommandHandler(
       repository,
       passwordHash as any,
       keyHash as any,
       auditRecorder as any,
+      clients as any,
     );
-    return { handler, repository, passwordHash, keyHash, auditRecorder };
+    return {
+      handler,
+      repository,
+      passwordHash,
+      keyHash,
+      auditRecorder,
+      clients,
+    };
   }
 
   it('ACTIVE 사용자와 password credential을 tenant/client/idempotency binding으로 생성한다', async () => {
@@ -61,7 +72,7 @@ describe('UserProvisioningCommandHandler', () => {
     expect(auditRecorder.recordAdminAction).toHaveBeenCalledWith(
       expect.objectContaining({
         tenantId,
-        clientId,
+        clientId: '5',
         action: 'CREATE',
         resourceId: result.subject,
       }),
@@ -141,5 +152,15 @@ describe('UserProvisioningCommandHandler', () => {
       'another-client',
       'a'.repeat(64),
     );
+  });
+
+  it('client가 사라졌다면 사용자 생성 전에 중단한다', async () => {
+    const { handler, repository, clients } = setup();
+    clients.findByClientId.mockResolvedValue(null);
+
+    await expect(
+      handler.provision(tenantId, clientId, command),
+    ).rejects.toThrow('Provisioning client unavailable');
+    expect(repository.save).not.toHaveBeenCalled();
   });
 });

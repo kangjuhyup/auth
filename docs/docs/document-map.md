@@ -75,6 +75,7 @@ AuthDocs는 이 저장소의 사용자/운영자 대상 문서 포털입니다. 
 | --------------------------------------------------------------------------------- | --------------------------------------------------------------- |
 | [Kubernetes 운영 계약](./operations/kubernetes-runtime.md)                        | Redis mTLS/ACL, HPA migration, 동일 origin routing 계약         |
 | [서비스 사용자 Provisioning 운영](./operations/user-provisioning.md)              | 최소 권한 service client, 사용자 생성 API와 마이그레이션        |
+| [외부 Hosted Interaction UI 운영](./operations/external-interaction-ui.md)        | client별 UI 위임, CORS, access/CSRF 계약과 상태 전이            |
 | [로컬 부하 테스트 결과 — 2026-09-02](./operations/load-test-2026-09-02.md)        | 단일 Auth 인스턴스의 k6 용량 탐색, 30분 내구성 결과와 병목 해석 |
 | [원격 부하 테스트 결과 — 2026-09-06](./operations/remote-load-test-2026-09-06.md) | M1 Mini에서 실행한 단일 Auth 인스턴스 300 VU 단기 probe 결과    |
 

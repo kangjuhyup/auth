@@ -18,6 +18,31 @@ describe('CreateClientDto', () => {
     expect(await getErrors(CreateClientDto, valid)).toHaveLength(0);
   });
 
+  it('externalInteractionUiUrl은 application 정책 검증 전 문자열 길이를 제한한다', async () => {
+    expect(
+      await getErrors(CreateClientDto, {
+        ...valid,
+        externalInteractionUiUrl: 'https://login.example.com/interaction',
+      }),
+    ).toHaveLength(0);
+    const errors = await getErrors(CreateClientDto, {
+      ...valid,
+      externalInteractionUiUrl: `https://example.com/${'a'.repeat(2048)}`,
+    });
+    expect(
+      errors.some((error) => error.property === 'externalInteractionUiUrl'),
+    ).toBe(true);
+
+    expect(
+      (
+        await getErrors(CreateClientDto, {
+          ...valid,
+          externalInteractionUiUrl: '',
+        })
+      ).some((error) => error.property === 'externalInteractionUiUrl'),
+    ).toBe(true);
+  });
+
   it('clientId 누락 시 에러', async () => {
     const errors = await getErrors(CreateClientDto, {
       ...valid,
@@ -198,6 +223,12 @@ describe('CreateClientDto', () => {
 });
 
 describe('UpdateClientDto', () => {
+  it('externalInteractionUiUrl null은 외부 UI 설정 제거 의도로 허용한다', async () => {
+    expect(
+      await getErrors(UpdateClientDto, { externalInteractionUiUrl: null }),
+    ).toHaveLength(0);
+  });
+
   it('빈 객체도 에러 없음', async () => {
     expect(await getErrors(UpdateClientDto, {})).toHaveLength(0);
   });

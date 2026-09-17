@@ -13,6 +13,8 @@ import { OidcProviderRegistry } from './oidc-provider.registry';
 type ClientCredentialsLike = {
   clientId?: string;
   scope?: string;
+  exp?: number;
+  extra?: Record<string, unknown>;
   payload?: Record<string, unknown>;
   toJSON?: () => Record<string, unknown>;
 };
@@ -41,7 +43,11 @@ export class ServiceAccessVerifierAdapter extends ServiceAccessVerifierPort {
     if (!token) throw new ServiceAccessError('unauthorized');
 
     const payload = this.extractPayload(token);
-    const tokenTenantId = payload.tenant_id ?? payload.tenantId;
+    const extra = payload.extra;
+    const tokenTenantId =
+      payload.tenant_id ??
+      payload.tenantId ??
+      (extra && typeof extra === 'object' ? extra.tenant_id : undefined);
     const clientId = token.clientId ?? payload.client_id ?? payload.clientId;
     const scope = String(token.scope ?? payload.scope ?? '');
     const exp = payload.exp;
@@ -78,6 +84,6 @@ export class ServiceAccessVerifierAdapter extends ServiceAccessVerifierPort {
     if (json?.payload && typeof json.payload === 'object') {
       return json.payload as Record<string, any>;
     }
-    return json ?? {};
+    return json ?? (token as Record<string, unknown>);
   }
 }

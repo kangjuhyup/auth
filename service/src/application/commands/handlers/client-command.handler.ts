@@ -28,6 +28,7 @@ import { ScopeRegistryPort } from '@application/ports/scope-registry.port';
 import type { ScopeValidationIssue } from '@application/ports/scope-registry.port';
 import { normalizeScopeString, parseScopeString } from '@domain/models/scope';
 import { ResourceOrigin } from '@domain/value-objects/resource-origin';
+import { ExternalInteractionUiUrlPolicyPort } from '@application/ports/external-interaction-ui-url-policy.port';
 
 @Injectable()
 export class ClientCommandHandler implements ClientCommandPort {
@@ -39,6 +40,7 @@ export class ClientCommandHandler implements ClientCommandPort {
     private readonly symmetricCrypto: SymmetricCryptoPort,
     private readonly grantTypeRegistry: GrantTypeRegistryPort,
     private readonly scopeRegistry: ScopeRegistryPort,
+    private readonly externalInteractionUiUrlPolicy: ExternalInteractionUiUrlPolicyPort,
     private readonly auditRecorder?: AuditRecorder,
   ) {}
 
@@ -101,6 +103,12 @@ export class ClientCommandHandler implements ClientCommandPort {
       applicationType,
       backchannelLogoutUri: dto.backchannelLogoutUri ?? null,
       frontchannelLogoutUri: dto.frontchannelLogoutUri ?? null,
+      externalInteractionUiUrl:
+        dto.externalInteractionUiUrl === undefined
+          ? null
+          : this.normalizeExternalInteractionUiUrl(
+              dto.externalInteractionUiUrl,
+            ),
       allowedResources: dto.allowedResources ?? [],
       introspectionResources: [],
       skipConsent: dto.skipConsent ?? false,
@@ -200,6 +208,15 @@ export class ClientCommandHandler implements ClientCommandPort {
       client.changeBackchannelLogoutUri(dto.backchannelLogoutUri ?? null);
     if (dto.frontchannelLogoutUri !== undefined)
       client.changeFrontchannelLogoutUri(dto.frontchannelLogoutUri ?? null);
+    if (dto.externalInteractionUiUrl !== undefined) {
+      client.changeExternalInteractionUiUrl(
+        dto.externalInteractionUiUrl === null
+          ? null
+          : this.normalizeExternalInteractionUiUrl(
+              dto.externalInteractionUiUrl,
+            ),
+      );
+    }
     if (dto.allowedResources !== undefined)
       client.changeAllowedResources(dto.allowedResources);
     client.changeIntrospectionResources(normalizedIntrospectionResources);
@@ -223,6 +240,14 @@ export class ClientCommandHandler implements ClientCommandPort {
       },
       auditContext,
     });
+  }
+
+  private normalizeExternalInteractionUiUrl(url: string): string {
+    try {
+      return this.externalInteractionUiUrlPolicy.normalize(url);
+    } catch {
+      throw new BadRequestException('Invalid external interaction UI URL');
+    }
   }
 
   async updateClientAuthPolicy(

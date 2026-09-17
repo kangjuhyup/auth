@@ -79,7 +79,12 @@ const ENDPOINT_DESCRIPTIONS: Array<{
   {
     pattern: /^\/t\/\{tenantCode\}\/admin\/clients/,
     description:
-      'Client lifecycle management. Redirect URIs are strictly validated, grant types are checked against policy, client secrets are never returned, and changes are audited.',
+      'Client lifecycle management. Redirect URIs are strictly validated, optional external hosted interaction UI URLs use a dedicated security policy, grant types are checked against policy, client secrets are never returned, and changes are audited.',
+  },
+  {
+    pattern: /^\/t\/\{tenantCode\}\/interaction\/\{uid\}/,
+    description:
+      'Auth-owned OIDC interaction. External hosted UIs use exact-origin credentialed CORS with a short-lived signed interaction token, CSRF header, and HttpOnly browser binding; OIDC redirect URI, state, and PKCE remain provider-owned.',
   },
   {
     pattern: /^\/t\/\{tenantCode\}\/admin\/keys/,

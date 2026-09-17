@@ -1,4 +1,10 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  OnModuleDestroy,
+  OnModuleInit,
+  Optional,
+} from '@nestjs/common';
 import { OidcInteractionPort } from '@application/ports/oidc-interaction.port';
 import {
   InteractionCommandPort,
@@ -10,6 +16,7 @@ import { OperationalMetricsPort } from '@application/ports/operational-metrics.p
 import { type TenantContext } from '@application/dto';
 import { AuditRecorder } from '@application/services/audit-recorder';
 import { AuthCommandPort } from '../ports/auth-command.port';
+import { ExternalInteractionUiPort } from '@application/ports/external-interaction-ui.port';
 
 type PendingMfaSession = Readonly<{
   userId: string;
@@ -47,6 +54,8 @@ export class InteractionCommandHandler
     private readonly metrics: OperationalMetricsPort,
     private readonly authCommand: AuthCommandPort,
     private readonly auditRecorder?: AuditRecorder,
+    @Optional()
+    private readonly externalInteractionUi?: ExternalInteractionUiPort,
   ) {
     super();
   }
@@ -85,6 +94,7 @@ export class InteractionCommandHandler
     req: unknown;
     res: unknown;
     tenant?: TenantContext;
+    externalAccessId?: string;
   }): Promise<InteractionResponse> {
     if (!params.tenant) {
       this.metrics.incrementCounter('login_failure_total', {
@@ -187,7 +197,7 @@ export class InteractionCommandHandler
       };
     }
 
-    return this.continueAuthenticatedLogin({
+    const response = await this.continueAuthenticatedLogin({
       tenantCode: params.tenantCode,
       uid: params.uid,
       tenant: params.tenant,
@@ -196,7 +206,9 @@ export class InteractionCommandHandler
       req: params.req,
       res: params.res,
       completion: 'login',
+      externalAccessId: params.externalAccessId,
     });
+    return response;
   }
 
   async submitPasswordChange(params: {
@@ -207,6 +219,7 @@ export class InteractionCommandHandler
     req: unknown;
     res: unknown;
     tenant?: TenantContext;
+    externalAccessId?: string;
   }): Promise<InteractionResponse> {
     const pending = this.getPendingPasswordChangeSession(params.uid);
     if (!pending || !params.tenant || pending.tenantId !== params.tenant.id) {
@@ -231,7 +244,7 @@ export class InteractionCommandHandler
 
     this.passwordChangePendingSessions.delete(params.uid);
 
-    return this.continueAuthenticatedLogin({
+    const response = await this.continueAuthenticatedLogin({
       tenantCode: params.tenantCode,
       uid: params.uid,
       tenant: params.tenant,
@@ -240,7 +253,9 @@ export class InteractionCommandHandler
       req: params.req,
       res: params.res,
       completion: 'login',
+      externalAccessId: params.externalAccessId,
     });
+    return response;
   }
 
   async submitMfa(params: {
@@ -257,6 +272,7 @@ export class InteractionCommandHandler
     tenant?: TenantContext;
     rpId: string;
     expectedOrigin: string;
+    externalAccessId?: string;
   }): Promise<InteractionResponse> {
     const pending = this.getPendingSession(params.uid);
     if (!pending) {
@@ -305,26 +321,30 @@ export class InteractionCommandHandler
 
     const loginResult = await this.completeInteraction({
       tenantCode: params.tenantCode,
+      uid: params.uid,
       req: params.req,
       res: params.res,
       userId: pending.userId,
       tenant: params.tenant,
       completion: pending.completion,
+      externalAccessId: params.externalAccessId,
     });
     if ('body' in loginResult) return loginResult;
 
-    return {
+    const response = {
       body: {
         success: true,
         redirectTo: loginResult.redirectTo,
       },
     };
+    return response;
   }
 
   async beginTotpEnrollment(params: {
     tenantCode: string;
     uid: string;
     tenant?: TenantContext;
+    externalAccessId?: string;
   }): Promise<InteractionResponse> {
     const pending = this.getPendingSession(params.uid);
     if (!pending || !params.tenant || pending.tenantId !== params.tenant.id) {
@@ -351,6 +371,7 @@ export class InteractionCommandHandler
     req: unknown;
     res: unknown;
     tenant?: TenantContext;
+    externalAccessId?: string;
   }): Promise<InteractionResponse> {
     const pending = this.getPendingSession(params.uid);
     if (!pending || !params.tenant || pending.tenantId !== params.tenant.id) {
@@ -381,21 +402,24 @@ export class InteractionCommandHandler
 
     const loginResult = await this.completeInteraction({
       tenantCode: params.tenantCode,
+      uid: params.uid,
       req: params.req,
       res: params.res,
       userId: pending.userId,
       tenant: params.tenant,
       completion: pending.completion,
+      externalAccessId: params.externalAccessId,
     });
     if ('body' in loginResult) return loginResult;
 
-    return {
+    const response = {
       body: {
         success: true,
         recoveryCodes: confirmation.recoveryCodes,
         redirectTo: loginResult.redirectTo,
       },
     };
+    return response;
   }
 
   async getWebAuthnOptions(params: {
@@ -419,11 +443,25 @@ export class InteractionCommandHandler
     return { body: options };
   }
 
-  submitConsent(params: { tenantCode: string; req: unknown; res: unknown }) {
+  async submitConsent(params: {
+    tenantCode: string;
+    uid: string;
+    req: unknown;
+    res: unknown;
+    externalAccessId?: string;
+  }) {
+    await this.consumeExternalAccess(params);
     return this.oidcInteraction.completeConsent(params);
   }
 
-  abort(params: { tenantCode: string; req: unknown; res: unknown }) {
+  async abort(params: {
+    tenantCode: string;
+    uid: string;
+    req: unknown;
+    res: unknown;
+    externalAccessId?: string;
+  }) {
+    await this.consumeExternalAccess(params);
     return this.oidcInteraction.abort(params);
   }
 
@@ -479,6 +517,7 @@ export class InteractionCommandHandler
     req: unknown;
     res: unknown;
     completion: 'login';
+    externalAccessId?: string;
   }): Promise<InteractionResponse> {
     const details = await this.oidcInteraction.getDetails({
       tenantCode: params.tenantCode,
@@ -533,11 +572,13 @@ export class InteractionCommandHandler
 
     const loginResult = await this.completeInteraction({
       tenantCode: params.tenantCode,
+      uid: params.uid,
       req: params.req,
       res: params.res,
       userId: params.userId,
       tenant: params.tenant,
       completion: params.completion,
+      externalAccessId: params.externalAccessId,
     });
     if ('body' in loginResult) return loginResult;
 
@@ -550,14 +591,17 @@ export class InteractionCommandHandler
     };
   }
 
-  private completeInteraction(params: {
+  private async completeInteraction(params: {
     tenantCode: string;
+    uid: string;
     req: unknown;
     res: unknown;
     userId: string;
     tenant?: TenantContext;
     completion: 'login';
+    externalAccessId?: string;
   }) {
+    await this.consumeExternalAccess(params);
     const completionParams = {
       tenantCode: params.tenantCode,
       req: params.req,
@@ -566,6 +610,22 @@ export class InteractionCommandHandler
       tenant: params.tenant,
     };
     return this.oidcInteraction.completeLogin(completionParams);
+  }
+
+  private async consumeExternalAccess(params: {
+    tenantCode: string;
+    uid: string;
+    externalAccessId?: string;
+  }): Promise<void> {
+    if (!params.externalAccessId) return;
+    if (!this.externalInteractionUi) throw interactionDenied();
+
+    const consumed = await this.externalInteractionUi.consume({
+      tenantCode: params.tenantCode,
+      uid: params.uid,
+      accessId: params.externalAccessId,
+    });
+    if (!consumed) throw interactionDenied();
   }
 
   private getPendingSession(uid: string): PendingMfaSession | null {
@@ -629,4 +689,8 @@ export class InteractionCommandHandler
       },
     });
   }
+}
+
+function interactionDenied(): ForbiddenException {
+  return new ForbiddenException('External interaction request denied');
 }

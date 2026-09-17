@@ -15,6 +15,7 @@ import { ClientModel } from '@domain/models/client';
 import { ClientAuthPolicyModel } from '@domain/models/client-auth-policy';
 import { UpdateClientDto as ApplicationUpdateClientDto } from '@application/dto';
 import type { AuditRecorder } from '@application/services/audit-recorder';
+import type { ExternalInteractionUiUrlPolicyPort } from '@application/ports/external-interaction-ui-url-policy.port';
 
 function makeClient(id = 'client-1', tenantId = 'tenant-1'): ClientModel {
   const c = new ClientModel({
@@ -157,6 +158,7 @@ describe('ClientCommandHandler', () => {
   let grantTypeRegistry: jest.Mocked<GrantTypeRegistryPort>;
   let scopeRegistry: jest.Mocked<ScopeRegistryPort>;
   let auditRecorder: jest.Mocked<AuditRecorder>;
+  let externalInteractionUiUrlPolicy: jest.Mocked<ExternalInteractionUiUrlPolicyPort>;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -166,17 +168,57 @@ describe('ClientCommandHandler', () => {
     grantTypeRegistry = createMockGrantTypeRegistry();
     scopeRegistry = createMockScopeRegistry();
     auditRecorder = createMockAuditRecorder();
+    externalInteractionUiUrlPolicy = {
+      normalize: jest.fn((url: string) => url),
+    };
     handler = new ClientCommandHandler(
       clientRepo,
       clientAuthPolicyRepo,
       crypto,
       grantTypeRegistry,
       scopeRegistry,
+      externalInteractionUiUrlPolicy,
       auditRecorder,
     );
   });
 
   describe('createClient', () => {
+    it('external interaction UI URL을 보안 정책으로 정규화해 저장한다', async () => {
+      externalInteractionUiUrlPolicy.normalize.mockReturnValue(
+        'https://login.example.com/interaction',
+      );
+
+      await handler.createClient('tenant-1', {
+        clientId: 'external-ui-app',
+        name: 'External UI app',
+        externalInteractionUiUrl: 'https://LOGIN.example.com:443/interaction',
+      });
+
+      expect(externalInteractionUiUrlPolicy.normalize).toHaveBeenCalledWith(
+        'https://LOGIN.example.com:443/interaction',
+      );
+      expect(clientRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          externalInteractionUiUrl: 'https://login.example.com/interaction',
+        }),
+      );
+    });
+
+    it('잘못된 external interaction UI URL은 Admin 계약의 400으로 변환한다', async () => {
+      externalInteractionUiUrlPolicy.normalize.mockImplementation(() => {
+        throw new Error('policy detail');
+      });
+
+      await expect(
+        handler.createClient('tenant-1', {
+          clientId: 'external-ui-app',
+          name: 'External UI app',
+          externalInteractionUiUrl: 'http://evil.example.com',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(clientRepo.save).not.toHaveBeenCalled();
+    });
+
     it('clientId 중복이 없으면 save를 호출하고 id를 반환한다', async () => {
       const result = await handler.createClient('tenant-1', {
         clientId: 'new-app',
@@ -386,6 +428,26 @@ describe('ClientCommandHandler', () => {
   });
 
   describe('updateClient', () => {
+    it('external interaction UI URL을 수정하거나 null로 제거한다', async () => {
+      const client = makeClient();
+      client.changeExternalInteractionUiUrl(
+        'https://old-login.example.com/interaction',
+      );
+      clientRepo.findById.mockResolvedValue(client);
+
+      await handler.updateClient('tenant-1', 'client-1', {
+        externalInteractionUiUrl: 'https://new-login.example.com/interaction',
+      });
+      expect(client.externalInteractionUiUrl).toBe(
+        'https://new-login.example.com/interaction',
+      );
+
+      await handler.updateClient('tenant-1', 'client-1', {
+        externalInteractionUiUrl: null,
+      });
+      expect(client.externalInteractionUiUrl).toBeNull();
+    });
+
     it('findById → save 순서로 호출된다', async () => {
       await handler.updateClient('tenant-1', 'client-1', { name: 'Updated' });
 

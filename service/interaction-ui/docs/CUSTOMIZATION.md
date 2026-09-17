@@ -44,11 +44,13 @@ OIDC authorize 흐름 중 **로그인·동의·MFA**를 담당하는 SPA입니�
 | POST   | `./api/mfa`                  | TOTP·recovery 등 MFA 제출                                          |
 | GET    | `./api/mfa/webauthn-options` | WebAuthn 옵션 조회                                                 |
 | POST   | `./api/consent`              | 동의 제출                                                          |
-| GET    | `./api/abort`                | 인터랙션 취소                                                      |
+| POST   | `./api/abort`                | 인터랙션 취소                                                      |
 | GET    | `./idp/:provider`            | 외부 IdP로 브라우저 리다이렉트(전체 페이지)                        |
 | GET    | `./idp/:provider/callback`   | IdP 콜백(서버 처리, SPA 아님)                                      |
 
 **커스터마이징 시** 새 필드·새 API를 추가하려면 `InteractionController`와 `api/client.ts`·`InteractionDetails` 타입을 **양쪽**에서 맞춥니다. 응답 형식을 바꾸면 [`App.tsx`](../src/App.tsx)의 분기(`prompt === 'login'` 등)도 검토합니다.
+
+client별 외부 UI를 별도 배포하려면 AuthDocs의 [외부 Hosted Interaction UI 운영](../../../docs/docs/operations/external-interaction-ui.md)을 따릅니다. 외부 UI는 Auth DB나 Admin API에 접근하지 않고, 비밀번호를 Auth interaction API로 직접 전송해야 합니다.
 
 ---
 

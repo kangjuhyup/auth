@@ -20,6 +20,7 @@ interface ClientModelProps {
   applicationType: ApplicationType;
   backchannelLogoutUri?: string | null;
   frontchannelLogoutUri?: string | null;
+  externalInteractionUiUrl?: string | null;
   accessTokenTtlSec?: number | null;
   refreshTokenTtlSec?: number | null;
   allowedResources: string[];
@@ -82,6 +83,9 @@ export class ClientModel extends PersistenceModel<string, ClientModelProps> {
 
   @Getter()
   declare readonly frontchannelLogoutUri: string | null | undefined;
+
+  @Getter()
+  declare readonly externalInteractionUiUrl: string | null | undefined;
 
   @Getter()
   declare readonly accessTokenTtlSec: number | null | undefined;
@@ -148,6 +152,10 @@ export class ClientModel extends PersistenceModel<string, ClientModelProps> {
 
   changeFrontchannelLogoutUri(uri: string | null): void {
     this.etc.frontchannelLogoutUri = uri;
+  }
+
+  changeExternalInteractionUiUrl(uri: string | null): void {
+    this.etc.externalInteractionUiUrl = uri;
   }
 
   changeAllowedResources(resources: string[]): void {

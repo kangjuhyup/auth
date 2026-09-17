@@ -51,14 +51,15 @@ Interaction UI가 호출하는 주요 API:
 ```text
 GET  ./api/details
 POST ./api/login
-POST ./api/signup
 POST ./api/mfa
 POST ./api/mfa/totp/enroll
 POST ./api/mfa/totp/confirm
 POST ./api/consent
-GET  ./api/abort
+POST ./api/abort
 GET  ./idp/:provider
 ```
+
+client에 `externalInteractionUiUrl`이 설정되면 이 내장 SPA 대신 외부 UI로 위임됩니다. 외부 UI는 같은 API를 Auth origin으로 직접 호출하며, 자세한 credential/CORS/CSRF 계약은 [외부 Hosted Interaction UI 운영](../operations/external-interaction-ui.md)을 따릅니다.
 
 ## 수정 지점
 

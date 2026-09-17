@@ -21,6 +21,20 @@ const base = {
 };
 
 describe('ClientModel', () => {
+  it('외부 interaction UI URL을 설정하고 제거한다', () => {
+    const client = new ClientModel(base);
+
+    client.changeExternalInteractionUiUrl(
+      'https://login.example.com/interaction',
+    );
+    expect(client.externalInteractionUiUrl).toBe(
+      'https://login.example.com/interaction',
+    );
+
+    client.changeExternalInteractionUiUrl(null);
+    expect(client.externalInteractionUiUrl).toBeNull();
+  });
+
   it('introspection resource allowlist를 변경한다', () => {
     const client = new ClientModel(base);
     expect(client.introspectionResources).toEqual([]);
