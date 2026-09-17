@@ -205,13 +205,18 @@ function applyTestEnvironment(env: TestEnvironment): void {
   process.env.RVLOG_MIN_LEVEL = process.env.RVLOG_MIN_LEVEL ?? 'ERROR';
   process.env.RVLOG_PRETTY = process.env.RVLOG_PRETTY ?? 'false';
   process.env.MIKRO_ORM_LOGGER = process.env.MIKRO_ORM_LOGGER ?? 'silent';
+  process.env.OIDC_PROVIDER_CONFIG_POLL_INTERVAL_MS = '0';
 }
 
 function clearOidcRegistryCache(registry: OidcProviderRegistry): void {
   const providers = (registry as any).providers as
+    | Map<string, unknown>
+    | undefined;
+  const refreshes = (registry as any).refreshes as
     | Map<string, Promise<unknown>>
     | undefined;
   providers?.clear();
+  refreshes?.clear();
 }
 
 function sqlLiteral(value: string): string {

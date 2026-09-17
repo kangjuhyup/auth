@@ -6,7 +6,7 @@ import { AccessVerifierPort } from '@application/ports/access-verifier.port';
 import { AccessVerifierAdapter } from './access-verifier.adapter';
 import { ServiceAccessVerifierPort } from '@application/ports/service-access-verifier.port';
 import { ServiceAccessVerifierAdapter } from './service-access-verifier.adapter';
-import { MikroORM } from '@mikro-orm/core';
+import { MikroORM, RequestContext } from '@mikro-orm/core';
 import Redis from 'ioredis';
 import { ClientQueryPort } from '@application/queries/ports/client-query.port';
 import { OidcProviderRegistry } from './oidc-provider.registry';
@@ -35,6 +35,7 @@ import { ScopeClaimResolverPort } from '@application/ports/scope-claim-resolver.
 import { OidcScopeClaimResolverAdapter } from './scope-claim-resolver.adapter';
 import { OidcSessionControlService } from './session/oidc-session-control.service';
 import { UserSessionPort } from '@application/ports/user-session.port';
+import { createOidcProviderConfigurationRevisionResolver } from './oidc-provider-configuration-revision';
 
 @Module({
   imports: [
@@ -68,32 +69,49 @@ import { UserSessionPort } from '@application/ports/user-session.port';
       ) => {
         const base = configService.getOrThrow<string>('OIDC_ISSUER');
 
-        const registry = new OidcProviderRegistry((tenantCode) => {
-          const issuer = `${base}/t/${tenantCode}/oidc`;
-
-          return createOidcProvider({
-            issuer,
-            em: orm.em.fork(),
-            redis,
-            userQuery,
-            clientQuery,
-            configService,
-            tenantCode,
-            clientRepository,
-            clientAuthPolicyRepository,
+        const resolveConfigurationRevision =
+          createOidcProviderConfigurationRevisionResolver({
             tenantRepository,
-            tenantConfigRepository,
-            jwksKeyRepository,
-            eventRepository,
-            customGrantRepository,
-            jwksKeyCrypto,
-            symmetricCrypto,
-            grantTypeRegistry,
             scopeRegistry,
-            scopeClaimResolver,
-            metrics,
+            grantTypeRegistry,
           });
-        }, metrics);
+        const registry = new OidcProviderRegistry(
+          (tenantCode) => {
+            const issuer = `${base}/t/${tenantCode}/oidc`;
+
+            return createOidcProvider({
+              issuer,
+              em: orm.em.fork(),
+              redis,
+              userQuery,
+              clientQuery,
+              configService,
+              tenantCode,
+              clientRepository,
+              clientAuthPolicyRepository,
+              tenantRepository,
+              tenantConfigRepository,
+              jwksKeyRepository,
+              eventRepository,
+              customGrantRepository,
+              jwksKeyCrypto,
+              symmetricCrypto,
+              grantTypeRegistry,
+              scopeRegistry,
+              scopeClaimResolver,
+              metrics,
+            });
+          },
+          metrics,
+          {
+            resolveRevision: (tenantCode) =>
+              RequestContext.create(orm.em, () =>
+                resolveConfigurationRevision(tenantCode),
+              ),
+            revisionPollIntervalMs:
+              readProviderConfigurationPollInterval(configService),
+          },
+        );
 
         return registry;
       },
@@ -161,3 +179,15 @@ import { UserSessionPort } from '@application/ports/user-session.port';
   ],
 })
 export class OidcProviderModule {}
+
+function readProviderConfigurationPollInterval(
+  configService: ConfigService,
+): number {
+  const interval = Number(
+    configService.get<string>('OIDC_PROVIDER_CONFIG_POLL_INTERVAL_MS', '1000'),
+  );
+  if (!Number.isInteger(interval) || interval < 0 || interval > 60_000) {
+    throw new Error('OIDC_PROVIDER_CONFIG_POLL_INTERVAL_MS_INVALID');
+  }
+  return interval;
+}

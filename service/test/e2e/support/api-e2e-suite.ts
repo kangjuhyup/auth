@@ -1526,6 +1526,208 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
     });
 
     describeOidc('클라이언트 설정 기반 OIDC 시나리오', () => {
+      it('warm Provider가 scope 생성·비활성·삭제를 재시작 없이 discovery와 authorization에 반영한다', async () => {
+        const adminToken = await loginAsAdmin();
+        await createTenant(adminToken, 'acme', 'Acme Corp');
+        await createTenant(adminToken, 'beta', 'Beta Corp');
+
+        const initialAcme = await request(fixture.app.getHttpServer())
+          .get('/t/acme/oidc/.well-known/openid-configuration')
+          .expect(200);
+        const initialBeta = await request(fixture.app.getHttpServer())
+          .get('/t/beta/oidc/.well-known/openid-configuration')
+          .expect(200);
+
+        expect(initialAcme.body.scopes_supported).not.toContain(
+          'offline_access',
+        );
+        expect(initialAcme.body.grant_types_supported).not.toContain(
+          'refresh_token',
+        );
+        const initialJwks = await request(fixture.app.getHttpServer())
+          .get(new URL(initialAcme.body.jwks_uri as string).pathname)
+          .expect(200);
+        const existingClient = await createClient(
+          adminToken,
+          'acme',
+          'existing-session-web',
+          { scope: 'openid' },
+        );
+        const existingInteraction = await beginOidcInteraction({
+          tenantCode: 'acme',
+          clientId: existingClient.clientId,
+          redirectUri: existingClient.redirectUri,
+          scope: 'openid',
+        });
+
+        const scopeResponse = await request(fixture.app.getHttpServer())
+          .post('/t/acme/admin/scopes')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({
+            name: 'offline_access',
+            displayName: 'Offline access',
+            claimKeys: [],
+            enabled: true,
+          })
+          .expect(201);
+        const scopeId = scopeResponse.body.id as string;
+
+        const enabledDiscovery = await request(fixture.app.getHttpServer())
+          .get('/t/acme/oidc/.well-known/openid-configuration')
+          .expect(200);
+        const unchangedBeta = await request(fixture.app.getHttpServer())
+          .get('/t/beta/oidc/.well-known/openid-configuration')
+          .expect(200);
+
+        expect(enabledDiscovery.body.scopes_supported).toContain(
+          'offline_access',
+        );
+        expect(enabledDiscovery.body.grant_types_supported).toContain(
+          'refresh_token',
+        );
+        const refreshedJwks = await request(fixture.app.getHttpServer())
+          .get(new URL(enabledDiscovery.body.jwks_uri as string).pathname)
+          .expect(200);
+        expect(refreshedJwks.body).toEqual(initialJwks.body);
+        await existingInteraction.agent
+          .get(`/t/acme/interaction/${existingInteraction.uid}/api/details`)
+          .expect(200)
+          .expect(({ body }) =>
+            expect(body).toMatchObject({
+              uid: existingInteraction.uid,
+              clientId: existingClient.clientId,
+              prompt: 'login',
+            }),
+          );
+        expect(unchangedBeta.body.scopes_supported).toEqual(
+          initialBeta.body.scopes_supported,
+        );
+        expect(unchangedBeta.body.grant_types_supported).toEqual(
+          initialBeta.body.grant_types_supported,
+        );
+
+        const client = await createClient(
+          adminToken,
+          'acme',
+          'runtime-refresh-web',
+          {
+            grantTypes: ['authorization_code', 'refresh_token'],
+            scope: 'openid offline_access',
+          },
+        );
+
+        const expectPromptNoneLoginRequired = async (): Promise<void> => {
+          const { challenge } = buildPkce();
+          const response = await request(fixture.app.getHttpServer())
+            .get('/t/acme/oidc/auth')
+            .query({
+              client_id: client.clientId,
+              redirect_uri: client.redirectUri,
+              response_type: 'code',
+              scope: 'openid offline_access',
+              code_challenge: challenge,
+              code_challenge_method: 'S256',
+              nonce: 'runtime-refresh-nonce',
+              state: 'runtime-refresh-state',
+              prompt: 'none',
+            })
+            .expect((result) => {
+              expect([302, 303]).toContain(result.status);
+            });
+          const callback = new URL(response.headers.location as string);
+          expect(callback.origin + callback.pathname).toBe(client.redirectUri);
+          expect(callback.searchParams.get('error')).toBe('login_required');
+        };
+
+        const expectClientMetadataRejected = async (): Promise<void> => {
+          const { challenge } = buildPkce();
+          const response = await request(fixture.app.getHttpServer())
+            .get('/t/acme/oidc/auth')
+            .set('Accept', 'application/json')
+            .query({
+              client_id: client.clientId,
+              redirect_uri: client.redirectUri,
+              response_type: 'code',
+              scope: 'openid offline_access',
+              code_challenge: challenge,
+              code_challenge_method: 'S256',
+              nonce: 'runtime-refresh-nonce',
+              state: 'runtime-refresh-state',
+              prompt: 'none',
+            })
+            .expect(400);
+          expect(response.body).toMatchObject({
+            error: 'invalid_client_metadata',
+          });
+        };
+
+        await expectPromptNoneLoginRequired();
+        const user = await signupUser('acme', {
+          username: 'runtime-refresh-user',
+          password: 'Password123!',
+        });
+        const issuedTokens = await loginUserViaOidc({
+          tenantCode: 'acme',
+          clientId: client.clientId,
+          redirectUri: client.redirectUri,
+          username: user.username,
+          password: user.password,
+          scope: 'openid offline_access',
+          prompt: 'consent',
+        });
+        expect(issuedTokens.refreshToken).toEqual(expect.any(String));
+
+        await request(fixture.app.getHttpServer())
+          .put(`/t/acme/admin/scopes/${scopeId}`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ enabled: false })
+          .expect(200);
+        const disabledDiscovery = await request(fixture.app.getHttpServer())
+          .get('/t/acme/oidc/.well-known/openid-configuration')
+          .expect(200);
+        expect(disabledDiscovery.body.scopes_supported).not.toContain(
+          'offline_access',
+        );
+        expect(disabledDiscovery.body.grant_types_supported).not.toContain(
+          'refresh_token',
+        );
+        await expectClientMetadataRejected();
+        await request(fixture.app.getHttpServer())
+          .post('/t/acme/oidc/token')
+          .type('form')
+          .send({
+            grant_type: 'refresh_token',
+            client_id: client.clientId,
+            refresh_token: issuedTokens.refreshToken,
+          })
+          .expect(400)
+          .expect(({ body }) =>
+            expect(body).toMatchObject({ error: 'invalid_client_metadata' }),
+          );
+
+        await request(fixture.app.getHttpServer())
+          .put(`/t/acme/admin/scopes/${scopeId}`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ enabled: true })
+          .expect(200);
+        await expectPromptNoneLoginRequired();
+
+        await request(fixture.app.getHttpServer())
+          .delete(`/t/acme/admin/scopes/${scopeId}`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .expect(200);
+        const deletedDiscovery = await request(fixture.app.getHttpServer())
+          .get('/t/acme/oidc/.well-known/openid-configuration')
+          .expect(200);
+        expect(deletedDiscovery.body.scopes_supported).not.toContain(
+          'offline_access',
+        );
+        expect(deletedDiscovery.body.grant_types_supported).not.toContain(
+          'refresh_token',
+        );
+        await expectClientMetadataRejected();
+      });
+
       it('discovery가 tenant introspection, revocation, end-session endpoint를 광고한다', async () => {
         const adminToken = await loginAsAdmin();
         await createTenant(adminToken, 'acme', 'Acme Corp');
