@@ -6,6 +6,7 @@ import { PasswordHashPort } from '@application/ports/password-hash.port';
 import { AuditRecorder } from '@application/services/audit-recorder';
 import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
+import { ClientRepository } from '@domain/repositories';
 import type { ProvisionUserCommand } from '../commands/provision-user.command';
 import {
   UserProvisioningCommandPort,
@@ -20,6 +21,7 @@ export class UserProvisioningCommandHandler extends UserProvisioningCommandPort 
     private readonly passwordHash: PasswordHashPort,
     private readonly keyHash: IdempotencyKeyHashPort,
     private readonly auditRecorder: AuditRecorder,
+    private readonly clients: ClientRepository,
   ) {
     super();
   }
@@ -30,6 +32,8 @@ export class UserProvisioningCommandHandler extends UserProvisioningCommandPort 
     command: ProvisionUserCommand,
     auditContext?: AuditContext,
   ): Promise<{ subject: string }> {
+    const auditClient = await this.clients.findByClientId(tenantId, clientId);
+    if (!auditClient) throw new Error('Provisioning client unavailable');
     const provisioningKeyHash = this.keyHash.hash(command.idempotencyKey);
     const replay = await this.users.findByProvisioningKey(
       tenantId,
@@ -76,7 +80,7 @@ export class UserProvisioningCommandHandler extends UserProvisioningCommandPort 
 
     await this.auditRecorder.recordAdminAction({
       tenantId,
-      clientId,
+      clientId: auditClient.id,
       category: 'USER',
       action: 'CREATE',
       resourceType: 'provisioned-user',
