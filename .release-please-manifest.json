@@ -1,6 +1,6 @@
 {
-  ".": "0.2.0",
-  "service": "0.2.0",
-  "ui": "0.2.0",
-  "service/interaction-ui": "0.2.0"
+  ".": "0.3.0",
+  "service": "0.3.0",
+  "ui": "0.3.0",
+  "service/interaction-ui": "0.3.0"
 }
