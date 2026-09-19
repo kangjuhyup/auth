@@ -41,16 +41,16 @@ jobs:
           R=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           echo "repository_lc=$R" >> "$GITHUB_OUTPUT"
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
       - name: Resolve image version
         id: version
         shell: bash
         run: |
-          BASE_VERSION=$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' package.json | head -n 1)
-          if [[ ! "$BASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "package.json version must be a stable SemVer value" >&2
-            exit 1
-          fi
-          IMAGE_VERSION="v${BASE_VERSION}"
+          IMAGE_VERSION=$(node scripts/resolve-container-version.mjs)
           echo "image_version=$IMAGE_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Setup QEMU

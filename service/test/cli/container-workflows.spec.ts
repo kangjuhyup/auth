@@ -1,9 +1,22 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 
 const workflowsDirectory = resolve(__dirname, '../../../.github/workflows');
 const dockerDirectory = resolve(__dirname, '../../../deploy/docker');
+const repositoryRoot = resolve(__dirname, '../../..');
+const containerVersionScript = resolve(
+  repositoryRoot,
+  'scripts/resolve-container-version.mjs',
+);
 const workflowFiles = readdirSync(workflowsDirectory)
   .filter((filename) => /\.ya?ml$/.test(filename))
   .sort();
@@ -86,7 +99,9 @@ describe('container publication workflows', () => {
   it('publishes main images with latest and package SemVer tags', () => {
     const workflow = readWorkflow('container-main.yml');
 
-    expect(workflow).toContain('IMAGE_VERSION="v${BASE_VERSION}"');
+    expect(workflow).toContain(
+      'IMAGE_VERSION=$(node scripts/resolve-container-version.mjs)',
+    );
     expect(workflow).toContain('type=raw,value=latest');
     expect(workflow).toContain(
       'type=raw,value=${{ steps.version.outputs.image_version }}',
@@ -103,6 +118,14 @@ describe('container publication workflows', () => {
     expect(workflow).toMatch(/^ {10}platforms: linux\/amd64,linux\/arm64$/m);
   });
 
+  it('builds release images for the root Release Please tag', () => {
+    const workflow = readWorkflow('release.yml');
+
+    expect(workflow).toContain("- 'auth-v[0-9]+.[0-9]+.[0-9]+'");
+    expect(workflow).toContain('VIN="${VIN#auth-v}"');
+    expect(workflow).not.toContain("- 'v[0-9]+.[0-9]+.[0-9]+'");
+  });
+
   it.each(['container-main.yml', 'release.yml'])(
     '%s keeps the required multi-platform build actions',
     (filename) => {
@@ -113,6 +136,86 @@ describe('container publication workflows', () => {
       expect(workflow).toContain('uses: docker/build-push-action@v6');
     },
   );
+});
+
+describe('container version resolution', () => {
+  it('resolves the linked package and release manifest version', () => {
+    const result = spawnSync(process.execPath, [containerVersionScript], {
+      cwd: repositoryRoot,
+      encoding: 'utf8',
+    });
+
+    expect({ status: result.status, stderr: result.stderr }).toEqual({
+      status: 0,
+      stderr: '',
+    });
+    expect(result.stdout.trim()).toBe('v0.2.1');
+  });
+
+  it('rejects a workspace version that differs from the release manifest', () => {
+    const workspace = mkdtempSync(resolve(tmpdir(), 'auth-version-test-'));
+
+    try {
+      writeVersionFixture(workspace, {
+        root: '0.2.1',
+        service: '0.2.0',
+        ui: '0.2.1',
+        interactionUi: '0.2.1',
+      });
+      const result = spawnSync(
+        process.execPath,
+        [containerVersionScript, workspace],
+        { encoding: 'utf8' },
+      );
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        'service/package.json version 0.2.0 does not match 0.2.1',
+      );
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('release version contract', () => {
+  it('creates one root release and updates workspace package versions', () => {
+    const config = JSON.parse(
+      readFileSync(
+        resolve(repositoryRoot, 'release-please-config.json'),
+        'utf8',
+      ),
+    ) as {
+      plugins?: unknown[];
+      packages: Record<
+        string,
+        { 'extra-files'?: Array<{ path?: string; jsonpath?: string }> }
+      >;
+    };
+    const manifest = JSON.parse(
+      readFileSync(
+        resolve(repositoryRoot, '.release-please-manifest.json'),
+        'utf8',
+      ),
+    ) as Record<string, string>;
+
+    expect(Object.keys(config.packages)).toEqual(['.']);
+    expect(config.plugins ?? []).toEqual([]);
+    expect(config.packages['.']['extra-files']).toEqual([
+      {
+        type: 'json',
+        path: 'service/package.json',
+        jsonpath: '$.version',
+      },
+      { type: 'json', path: 'ui/package.json', jsonpath: '$.version' },
+      {
+        type: 'json',
+        path: 'service/interaction-ui/package.json',
+        jsonpath: '$.version',
+      },
+    ]);
+    expect(manifest).toEqual({ '.': '0.2.1' });
+  });
 });
 
 describe('UI production image build', () => {
@@ -158,6 +261,35 @@ describe('UI production image build', () => {
 
 function readWorkflow(filename: string): string {
   return readFileSync(resolve(workflowsDirectory, filename), 'utf8');
+}
+
+function writeVersionFixture(
+  workspace: string,
+  versions: Readonly<{
+    root: string;
+    service: string;
+    ui: string;
+    interactionUi: string;
+  }>,
+): void {
+  const files = new Map([
+    ['package.json', versions.root],
+    ['service/package.json', versions.service],
+    ['ui/package.json', versions.ui],
+    ['service/interaction-ui/package.json', versions.interactionUi],
+  ]);
+
+  for (const [filename, version] of files) {
+    const path = resolve(workspace, filename);
+    const directory = path.slice(0, path.lastIndexOf('/'));
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(path, JSON.stringify({ version }));
+  }
+
+  writeFileSync(
+    resolve(workspace, '.release-please-manifest.json'),
+    JSON.stringify({ '.': versions.root }),
+  );
 }
 
 type WorkflowJob = Readonly<{ name: string; source: string }>;
