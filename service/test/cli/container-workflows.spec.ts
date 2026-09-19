@@ -116,6 +116,10 @@ describe('container publication workflows', () => {
     const workflow = readWorkflow('release.yml');
 
     expect(workflow).toMatch(/^ {10}platforms: linux\/amd64,linux\/arm64$/m);
+    expect(workflow).toContain(
+      'org.opencontainers.image.revision=${{ needs.verify.outputs.sha }}',
+    );
+    expect(workflow).not.toContain('cache: yarn');
   });
 
   it('builds release images for the root Release Please tag', () => {
