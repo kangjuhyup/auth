@@ -83,6 +83,20 @@ describe('container publication workflows', () => {
     expect(workflow).toMatch(/^ {10}platforms: \${{ env\.PLATFORMS }}$/m);
   });
 
+  it('publishes main images with latest and package SemVer tags', () => {
+    const workflow = readWorkflow('container-main.yml');
+
+    expect(workflow).toContain('IMAGE_VERSION="v${BASE_VERSION}"');
+    expect(workflow).toContain('type=raw,value=latest');
+    expect(workflow).toContain(
+      'type=raw,value=${{ steps.version.outputs.image_version }}',
+    );
+    expect(workflow).not.toContain('type=raw,value=main');
+    expect(workflow).not.toContain('type=sha,prefix=main-,format=short');
+    expect(workflow).toContain('/auth-service:latest');
+    expect(workflow).toContain('/auth-ui:latest');
+  });
+
   it('publishes release images for amd64 and arm64', () => {
     const workflow = readWorkflow('release.yml');
 

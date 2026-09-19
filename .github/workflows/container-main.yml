@@ -30,6 +30,7 @@ jobs:
             dockerfile: deploy/docker/Dockerfile.ui
     outputs:
       repository_lc: ${{ steps.ns.outputs.repository_lc }}
+      image_version: ${{ steps.version.outputs.image_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,6 +40,18 @@ jobs:
         run: |
           R=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           echo "repository_lc=$R" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve image version
+        id: version
+        shell: bash
+        run: |
+          BASE_VERSION=$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' package.json | head -n 1)
+          if [[ ! "$BASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "package.json version must be a stable SemVer value" >&2
+            exit 1
+          fi
+          IMAGE_VERSION="v${BASE_VERSION}"
+          echo "image_version=$IMAGE_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Setup QEMU
         uses: docker/setup-qemu-action@v3
@@ -59,8 +72,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ steps.ns.outputs.repository_lc }}/${{ matrix.image_name }}
           tags: |
-            type=raw,value=main
-            type=sha,prefix=main-,format=short
+            type=raw,value=latest
+            type=raw,value=${{ steps.version.outputs.image_version }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -97,4 +110,4 @@ jobs:
             "$DEPLOY_WEBHOOK_URL"
         env:
           PAYLOAD: >-
-            {"repository":"${{ github.repository }}","sha":"${{ github.sha }}","ref":"${{ github.ref_name }}","images":{"service":"${{ env.REGISTRY }}/${{ needs.docker-publish.outputs.repository_lc }}/auth-service:main","ui":"${{ env.REGISTRY }}/${{ needs.docker-publish.outputs.repository_lc }}/auth-ui:main"}}
+            {"repository":"${{ github.repository }}","sha":"${{ github.sha }}","ref":"${{ github.ref_name }}","version":"${{ needs.docker-publish.outputs.image_version }}","images":{"service":"${{ env.REGISTRY }}/${{ needs.docker-publish.outputs.repository_lc }}/auth-service:latest","ui":"${{ env.REGISTRY }}/${{ needs.docker-publish.outputs.repository_lc }}/auth-ui:latest"}}
