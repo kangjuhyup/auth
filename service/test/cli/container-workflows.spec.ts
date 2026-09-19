@@ -89,6 +89,12 @@ describe('self-hosted workflow routing', () => {
 });
 
 describe('container publication workflows', () => {
+  it('opens the unified Release Please PR against main', () => {
+    const workflow = readWorkflow('release-please.yml');
+
+    expect(workflow).toMatch(/^ {10}target-branch: main$/m);
+  });
+
   it('publishes main images for amd64 and arm64', () => {
     const workflow = readWorkflow('container-main.yml');
 
