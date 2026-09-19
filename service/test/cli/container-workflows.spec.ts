@@ -130,6 +130,17 @@ describe('container publication workflows', () => {
     expect(workflow).not.toContain("- 'v[0-9]+.[0-9]+.[0-9]+'");
   });
 
+  it('only creates a manual GitHub release when the boolean input is enabled', () => {
+    const workflow = readWorkflow('release.yml');
+
+    expect(workflow).toContain(
+      "if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_github_release == true }}",
+    );
+    expect(workflow).not.toContain(
+      'github.event.inputs.create_github_release }}',
+    );
+  });
+
   it.each(['container-main.yml', 'release.yml'])(
     '%s keeps the required multi-platform build actions',
     (filename) => {

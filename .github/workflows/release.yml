@@ -178,7 +178,7 @@ jobs:
 
   github-release:
     needs: [verify, docker-publish]
-    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.create_github_release }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_github_release == true }}
     runs-on: [self-hosted, macOS, ARM64]
     permissions:
       contents: write
