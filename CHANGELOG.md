@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.2](https://github.com/kangjuhyup/auth/compare/auth-v0.2.1...auth-v0.2.2) (2026-09-19)
+
+
+### Bug Fixes
+
+* **ci:** bind release image revision to source ([72ef064](https://github.com/kangjuhyup/auth/commit/72ef06476ee95d7e97821737d08aa0d305473460))
+* **ci:** bind release image revision to source ([5471698](https://github.com/kangjuhyup/auth/commit/547169847dc772c3738d0634bbbc2d034da6fb27))
+* **ci:** initialize Yarn after Node setup ([0a6f3d5](https://github.com/kangjuhyup/auth/commit/0a6f3d547d95eab2397f3364cedb8d0deec6d53f))
+* **ci:** initialize Yarn after Node setup ([5ee6468](https://github.com/kangjuhyup/auth/commit/5ee64686f6acabba8565c91cde1c16a3e11be3c5))
+* **release:** honor manual release boolean ([#31](https://github.com/kangjuhyup/auth/issues/31)) ([bb93656](https://github.com/kangjuhyup/auth/commit/bb936562b9986f07a150cf72b7cc34af665d4c21))
+* **release:** target main for release PRs ([#33](https://github.com/kangjuhyup/auth/issues/33)) ([f3e0020](https://github.com/kangjuhyup/auth/commit/f3e0020d5f7c60b51e128d9b4981b834c68a3c03))
+
 ## [0.2.1](https://github.com/kangjuhyup/auth/compare/auth-v0.2.0...auth-v0.2.1) (2026-09-19)
 
 ### Bug Fixes
