@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/kangjuhyup/auth/compare/auth-v0.2.0...auth-v0.3.0) (2026-09-19)
+
+
+### Miscellaneous Chores
+
+* **auth:** Synchronize auth versions
+
 ## [0.2.0](https://github.com/kangjuhyup/auth/compare/auth-v0.1.1...auth-v0.2.0) (2026-06-06)
 
 
