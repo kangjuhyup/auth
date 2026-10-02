@@ -72,6 +72,33 @@ describe('loadOidcProviderConstructor', () => {
     });
   });
 
+  it('제한된 claims parameter를 표준 invalid_request 오류로 거부한다', async () => {
+    class InvalidRequest extends Error {
+      readonly error = 'invalid_request';
+
+      readonly statusCode = 400;
+
+      constructor(description: string) {
+        super(description);
+      }
+    }
+    const importFn = jest.fn().mockResolvedValue({
+      default: jest.fn(),
+      errors: { InvalidRequest },
+    });
+    (globalThis as any).Function = jest.fn().mockImplementation(() => importFn);
+
+    const { createOidcInvalidRequestError } = (await loadModule()) as any;
+
+    const error = await createOidcInvalidRequestError('sid only');
+
+    expect(error).toMatchObject({
+      error: 'invalid_request',
+      statusCode: 400,
+      message: 'sid only',
+    });
+  });
+
   it('interaction policy runtime을 같은 ESM import에서 제공한다', async () => {
     const runtime = { base: jest.fn(), Prompt: jest.fn() };
     const importFn = jest.fn().mockResolvedValue({

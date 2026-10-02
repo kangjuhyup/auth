@@ -178,13 +178,47 @@ Authorization: Bearer {access_token}
 
 ## Refresh Token과 Logout
 
-| 기능          | Endpoint                          | 설명                                               |
-| ------------- | --------------------------------- | -------------------------------------------------- |
-| Refresh token | `POST /t/:tenantCode/oidc/token`  | `grant_type=refresh_token`으로 access token 재발급 |
-| Token revoke  | `POST /t/:tenantCode/oidc/revoke` | token 폐기                                         |
-| End session   | `/t/:tenantCode/oidc/session/end` | RP initiated logout                                |
+| 기능          | Endpoint                                    | 설명                                               |
+| ------------- | ------------------------------------------- | -------------------------------------------------- |
+| Refresh token | `POST /t/:tenantCode/oidc/token`            | `grant_type=refresh_token`으로 access token 재발급 |
+| Token revoke  | `POST /t/:tenantCode/oidc/token/revocation` | token 폐기                                         |
+| End session   | `/t/:tenantCode/oidc/session/end`           | RP initiated logout                                |
 
 Refresh token rotation 정책은 client auth policy에 따라 결정됩니다. 재사용 감지 시 grant revoke와 audit event 저장 흐름이 동작합니다.
+
+### 확인 화면 없는 RP-Initiated Logout
+
+Auth는 다음 조건을 모두 충족한 요청만 확인 화면 없이 전역 OP 세션 로그아웃으로 진행합니다.
+
+| 조건          | 기준                                                                                       |
+| ------------- | ------------------------------------------------------------------------------------------ |
+| ID Token hint | 현재 tenant issuer가 서명·발급했고 provider 검증을 통과해야 함                             |
+| RP            | 명시한 `client_id`가 hint의 audience 및 현재 세션의 client와 일치해야 함                   |
+| 사용자        | hint의 `sub`가 현재 OP 세션 사용자와 일치해야 함                                           |
+| 세션          | hint의 `sid`가 현재 OP 세션에서 해당 client에 발급한 `sid`와 일치해야 함                   |
+| 반환 주소     | `post_logout_redirect_uri`가 client의 `postLogoutRedirectUris` 등록값과 정확히 일치해야 함 |
+
+RP는 authorization 요청에서 표준 claims parameter로 `sid`를 요청해야 합니다.
+
+```text
+claims={"id_token":{"sid":null}}
+```
+
+현재 claims parameter는 이 로그아웃 세션 결합 용도의 `id_token.sid` 요청만 허용합니다. 다른 claim은 등록된 scope와 기존 ID Token/UserInfo 계약으로 요청합니다.
+
+로그아웃 요청은 팝업이나 iframe이 아닌 현재 창의 top-level navigation으로 전송합니다.
+
+```text
+GET /t/:tenantCode/oidc/session/end
+  ?id_token_hint={verified_id_token}
+  &client_id={client_id}
+  &post_logout_redirect_uri={exact_registered_uri}
+  &state={opaque_state}
+```
+
+Auth는 provider가 만든 CSRF 값과 native confirmation endpoint를 그대로 사용해 자동 제출합니다. `state`는 RP로 그대로 반환하는 opaque 값일 뿐 자동 승인의 근거가 아닙니다. hint가 없거나 서명, issuer, audience, tenant, user, `sid`가 현재 세션과 일치하지 않으면 기존 확인 화면을 유지합니다. 등록되지 않은 반환 주소와 변조된 hint는 provider 검증 오류로 거부합니다.
+
+토큰 revocation과 OP 세션 종료는 별도 단계입니다. RP는 필요하면 먼저 revocation endpoint에서 token을 폐기한 다음 end-session endpoint로 이동합니다. 관리자 UI의 `DELETE /admin/session`은 관리자 API 세션만 종료하며 RP-Initiated Logout 계약과 별개입니다.
 
 ## 보안 기준
 

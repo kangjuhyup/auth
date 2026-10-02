@@ -392,6 +392,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
       resource?: string;
       scope?: string;
       prompt?: string;
+      claims?: Record<string, unknown>;
     }) {
       const agent = request.agent(fixture.app.getHttpServer());
       const { verifier, challenge } = buildPkce();
@@ -409,6 +410,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           state: 'state-1234',
           ...(params.resource ? { resource: params.resource } : {}),
           ...(params.prompt ? { prompt: params.prompt } : {}),
+          ...(params.claims ? { claims: JSON.stringify(params.claims) } : {}),
         })
         .expect((response) => {
           expect([302, 303]).toContain(response.status);
@@ -448,6 +450,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
       scope?: string;
       prompt?: string;
       allowConsent?: boolean;
+      claims?: Record<string, unknown>;
     }) {
       const { agent, uid, verifier } = await beginOidcInteraction(params);
 
@@ -1745,6 +1748,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
         expect(discovery.body.end_session_endpoint).toEqual(
           expect.stringMatching(/\/t\/acme\/oidc\/session\/end$/),
         );
+        expect(discovery.body.claims_parameter_supported).toBe(true);
       });
 
       it('public PKCE client는 자신의 refresh token을 폐기해 token family를 비활성화한다', async () => {
@@ -3059,6 +3063,284 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           prompt: 'login',
           clientId: clientA.clientId,
         });
+      });
+
+      it('현재 OP 세션과 일치하는 RP logout은 확인 화면 없이 전역 세션을 종료하고 state를 반환한다', async () => {
+        const adminToken = await loginAsAdmin();
+        await createTenant(adminToken, 'acme', 'Acme Corp');
+        const client = await createClient(
+          adminToken,
+          'acme',
+          'logout-current-session-web',
+          {
+            redirectUris: ['https://logout.example.test/callback'],
+            postLogoutRedirectUris: ['https://logout.example.test/signed-out'],
+          },
+        );
+        const signup = await signupUser('acme', {
+          username: 'logout-current-session-user',
+          password: 'Password123!',
+        });
+        const authorization = await authorizeUserViaOidc({
+          tenantCode: 'acme',
+          clientId: client.clientId,
+          redirectUri: client.redirectUri,
+          username: signup.username,
+          password: signup.password,
+          claims: { id_token: { sid: null } },
+        });
+        const tokens = await exchangeAuthorizationCode({
+          agent: authorization.agent,
+          tenantCode: 'acme',
+          clientId: client.clientId,
+          redirectUri: client.redirectUri,
+          code: authorization.code,
+          codeVerifier: authorization.verifier,
+        }).expect(200);
+
+        const logout = await authorization.agent
+          .get('/t/acme/oidc/session/end')
+          .query({
+            id_token_hint: tokens.body.id_token,
+            client_id: client.clientId,
+            post_logout_redirect_uri: 'https://logout.example.test/signed-out',
+            state: 'opaque-logout-state',
+          })
+          .expect(200);
+        expect(logout.text).toContain('data-auto-submit="true"');
+        const logoutForm =
+          /<form[^>]+action="([^"]+)"[^>]*>.*name="xsrf" value="([^"]+)"/s.exec(
+            logout.text,
+          );
+        expect(logoutForm).toBeTruthy();
+
+        const confirmation = await authorization.agent
+          .post(toAppPath(logoutForm![1]))
+          .type('form')
+          .send({ xsrf: logoutForm![2], logout: 'yes' })
+          .expect(303);
+        expect(confirmation.headers.location).toBe(
+          'https://logout.example.test/signed-out?state=opaque-logout-state',
+        );
+
+        const afterLogout = await authorization.agent
+          .get('/t/acme/oidc/auth')
+          .query({
+            client_id: client.clientId,
+            redirect_uri: client.redirectUri,
+            response_type: 'code',
+            scope: 'openid',
+            code_challenge: buildPkce().challenge,
+            code_challenge_method: 'S256',
+            nonce: 'nonce-after-confirmation-free-logout',
+            state: 'state-after-confirmation-free-logout',
+          })
+          .expect((response) => {
+            expect([302, 303]).toContain(response.status);
+          });
+        expect(afterLogout.headers.location).toMatch(
+          /\/t\/acme\/interaction\//,
+        );
+      });
+
+      it('stale·누락 hint는 자동 승인하지 않고 CSRF 실패 뒤 현재 OP 세션을 보존한다', async () => {
+        const adminToken = await loginAsAdmin();
+        await createTenant(adminToken, 'acme', 'Acme Corp');
+        await createTenant(adminToken, 'beta', 'Beta Corp');
+        const client = await createClient(
+          adminToken,
+          'acme',
+          'logout-session-web',
+          {
+            redirectUris: ['https://logout.example.test/callback'],
+            postLogoutRedirectUris: ['https://logout.example.test/signed-out'],
+          },
+        );
+        const signup = await signupUser('acme', {
+          username: 'logout-session-user',
+          password: 'Password123!',
+        });
+        const claims = { id_token: { sid: null } };
+
+        const staleAuthorization = await authorizeUserViaOidc({
+          tenantCode: 'acme',
+          clientId: client.clientId,
+          redirectUri: client.redirectUri,
+          username: signup.username,
+          password: signup.password,
+          claims,
+        });
+        const staleTokens = await exchangeAuthorizationCode({
+          agent: staleAuthorization.agent,
+          tenantCode: 'acme',
+          clientId: client.clientId,
+          redirectUri: client.redirectUri,
+          code: staleAuthorization.code,
+          codeVerifier: staleAuthorization.verifier,
+        }).expect(200);
+
+        const currentAuthorization = await authorizeUserViaOidc({
+          tenantCode: 'acme',
+          clientId: client.clientId,
+          redirectUri: client.redirectUri,
+          username: signup.username,
+          password: signup.password,
+          claims,
+        });
+        const currentTokens = await exchangeAuthorizationCode({
+          agent: currentAuthorization.agent,
+          tenantCode: 'acme',
+          clientId: client.clientId,
+          redirectUri: client.redirectUri,
+          code: currentAuthorization.code,
+          codeVerifier: currentAuthorization.verifier,
+        }).expect(200);
+        const currentIdTokenPayload = JSON.parse(
+          Buffer.from(
+            (currentTokens.body.id_token as string).split('.')[1],
+            'base64url',
+          ).toString('utf8'),
+        ) as Record<string, unknown>;
+        expect(currentIdTokenPayload.sid).toEqual(expect.any(String));
+
+        const otherSignup = await signupUser('acme', {
+          username: 'logout-other-user',
+          password: 'Password123!',
+        });
+        const otherAuthorization = await authorizeUserViaOidc({
+          tenantCode: 'acme',
+          clientId: client.clientId,
+          redirectUri: client.redirectUri,
+          username: otherSignup.username,
+          password: otherSignup.password,
+          claims,
+        });
+        const otherTokens = await exchangeAuthorizationCode({
+          agent: otherAuthorization.agent,
+          tenantCode: 'acme',
+          clientId: client.clientId,
+          redirectUri: client.redirectUri,
+          code: otherAuthorization.code,
+          codeVerifier: otherAuthorization.verifier,
+        }).expect(200);
+
+        const betaClient = await createClient(
+          adminToken,
+          'beta',
+          'logout-session-web',
+          {
+            redirectUris: ['https://beta-logout.example.test/callback'],
+            postLogoutRedirectUris: [
+              'https://beta-logout.example.test/signed-out',
+            ],
+          },
+        );
+        const betaSignup = await signupUser('beta', {
+          username: 'logout-session-user',
+          password: 'Password123!',
+        });
+        const betaAuthorization = await authorizeUserViaOidc({
+          tenantCode: 'beta',
+          clientId: betaClient.clientId,
+          redirectUri: betaClient.redirectUri,
+          username: betaSignup.username,
+          password: betaSignup.password,
+          claims,
+        });
+        const betaTokens = await exchangeAuthorizationCode({
+          agent: betaAuthorization.agent,
+          tenantCode: 'beta',
+          clientId: betaClient.clientId,
+          redirectUri: betaClient.redirectUri,
+          code: betaAuthorization.code,
+          codeVerifier: betaAuthorization.verifier,
+        }).expect(200);
+
+        const missingHint = await currentAuthorization.agent
+          .get('/t/acme/oidc/session/end')
+          .query({
+            client_id: client.clientId,
+            post_logout_redirect_uri: 'https://logout.example.test/signed-out',
+          })
+          .expect(200);
+        expect(missingHint.text).toContain('data-auto-submit="false"');
+
+        const staleLogout = await currentAuthorization.agent
+          .get('/t/acme/oidc/session/end')
+          .query({
+            id_token_hint: staleTokens.body.id_token,
+            client_id: client.clientId,
+            post_logout_redirect_uri: 'https://logout.example.test/signed-out',
+          })
+          .expect(200);
+        expect(staleLogout.text).toContain('data-auto-submit="false"');
+        const staleLogoutForm =
+          /<form[^>]+action="([^"]+)"[^>]*>.*name="xsrf" value="([^"]+)"/s.exec(
+            staleLogout.text,
+          );
+        expect(staleLogoutForm).toBeTruthy();
+
+        await currentAuthorization.agent
+          .post(toAppPath(staleLogoutForm![1]))
+          .type('form')
+          .send({ xsrf: `${staleLogoutForm![2]}-invalid`, logout: 'yes' })
+          .expect(400);
+
+        const otherUserLogout = await currentAuthorization.agent
+          .get('/t/acme/oidc/session/end')
+          .query({
+            id_token_hint: otherTokens.body.id_token,
+            client_id: client.clientId,
+            post_logout_redirect_uri: 'https://logout.example.test/signed-out',
+          })
+          .expect(200);
+        expect(otherUserLogout.text).toContain('data-auto-submit="false"');
+
+        await currentAuthorization.agent
+          .get('/t/acme/oidc/session/end')
+          .set('Accept', 'application/json')
+          .query({
+            id_token_hint: currentTokens.body.id_token,
+            client_id: 'another-client',
+            post_logout_redirect_uri: 'https://logout.example.test/signed-out',
+          })
+          .expect(400);
+
+        await currentAuthorization.agent
+          .get('/t/acme/oidc/session/end')
+          .set('Accept', 'application/json')
+          .query({
+            id_token_hint: betaTokens.body.id_token,
+            client_id: client.clientId,
+            post_logout_redirect_uri: 'https://logout.example.test/signed-out',
+          })
+          .expect(400);
+
+        const currentLogout = await currentAuthorization.agent
+          .get('/t/acme/oidc/session/end')
+          .query({
+            id_token_hint: currentTokens.body.id_token,
+            client_id: client.clientId,
+            post_logout_redirect_uri: 'https://logout.example.test/signed-out',
+          })
+          .expect(200);
+        expect(currentLogout.text).toContain('data-auto-submit="true"');
+
+        const [header, payload, signature] = (
+          currentTokens.body.id_token as string
+        ).split('.');
+        const tamperedHint = `${header}.${payload}.${
+          signature.startsWith('a') ? 'b' : 'a'
+        }${signature.slice(1)}`;
+        await currentAuthorization.agent
+          .get('/t/acme/oidc/session/end')
+          .set('Accept', 'application/json')
+          .query({
+            id_token_hint: tamperedHint,
+            client_id: client.clientId,
+            post_logout_redirect_uri: 'https://logout.example.test/signed-out',
+          })
+          .expect(400);
       });
 
       it('다른 테넌트는 브라우저 세션과 back-channel logout을 공유하지 않는다', async () => {

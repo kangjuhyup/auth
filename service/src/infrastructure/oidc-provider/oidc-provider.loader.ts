@@ -26,6 +26,11 @@ export async function createOidcInvalidGrantError(detail: string) {
   return new errors.InvalidGrant(detail);
 }
 
+export async function createOidcInvalidRequestError(description: string) {
+  const { errors } = await loadOidcProviderModule();
+  return new errors.InvalidRequest(description);
+}
+
 async function loadOidcProviderModule(): Promise<OidcProviderModule> {
   providerModulePromise ??= importOidcProviderModule();
 

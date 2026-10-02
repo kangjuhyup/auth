@@ -1,5 +1,5 @@
 // service/src/infrastructure/oidc-provider/oidc-provider.config.ts
-import type { Configuration } from 'oidc-provider';
+import type { ClaimsParameter, Configuration } from 'oidc-provider';
 import type { EntityManager } from '@mikro-orm/core';
 import type Redis from 'ioredis';
 import { ConfigService } from '@nestjs/config';
@@ -21,6 +21,8 @@ import { createSafeOidcFetch } from './security/safe-oidc-fetch';
 import { createIntrospectionAllowedPolicy } from './introspection-policy';
 import { buildOidcInteractionPolicy } from './oidc-interaction.policy';
 import type { OidcInteractionPolicyRuntime } from './oidc-interaction.policy';
+import { createRpInitiatedLogoutSource } from './security/rp-initiated-logout-source';
+import { createOidcInvalidRequestError } from './oidc-provider.loader';
 
 type OidcConfiguration = Configuration & {
   grantTypes: string[];
@@ -220,6 +222,14 @@ export function buildOidcConfiguration(params: {
     features: {
       devInteractions: { enabled: false },
       backchannelLogout: { enabled: true },
+      claimsParameter: {
+        enabled: true,
+        assertClaimsParameter: assertLogoutSessionClaimsParameter,
+      },
+      rpInitiatedLogout: {
+        enabled: true,
+        logoutSource: createRpInitiatedLogoutSource({ tenantId }),
+      },
       clientCredentials: {
         enabled: supportedGrantTypes.includes('client_credentials'),
       },
@@ -446,6 +456,23 @@ export function buildOidcConfiguration(params: {
       Grant: 14 * 24 * 60 * 60,
     },
   };
+}
+
+async function assertLogoutSessionClaimsParameter(
+  _ctx: unknown,
+  claims: ClaimsParameter,
+): Promise<void> {
+  const idTokenClaimNames = Object.keys(claims.id_token ?? {});
+  const requestsOnlySessionId =
+    claims.userinfo === undefined &&
+    idTokenClaimNames.length === 1 &&
+    idTokenClaimNames[0] === 'sid';
+
+  if (!requestsOnlySessionId) {
+    throw await createOidcInvalidRequestError(
+      'claims parameter only supports the id_token sid claim',
+    );
+  }
 }
 
 function escapeHtml(value: string): string {
