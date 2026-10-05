@@ -7,6 +7,7 @@ export type IdentityLinkSession = Readonly<{
   redirectUri: string;
   returnTo?: string | null;
   createdAt: string;
+  browserHash?: string;
 }>;
 
 export abstract class IdentityLinkSessionPort {

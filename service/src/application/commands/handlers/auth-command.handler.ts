@@ -1,3 +1,4 @@
+import { IdentityUnlinkPort } from '@application/ports/identity-unlink.port';
 import {
   WithdrawDto,
   ChangePasswordDto,
@@ -16,10 +17,15 @@ import {
   CompleteIdentityLinkResponse,
 } from '@application/dto';
 import { AuthCommandPort } from '../ports/auth-command.port';
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  Optional,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ulid } from 'ulid';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { UserModel } from '@domain/models/user';
 import { UserCredentialModel } from '@domain/models/user-credential';
 import { UserIdentityModel } from '@domain/models/user-identity';
@@ -31,6 +37,7 @@ import { MfaVerificationPort } from '@application/ports/mfa-verification.port';
 import { IdpPort } from '@application/ports/idp.port';
 import { IdentityLinkSessionPort } from '@application/ports/identity-link-session.port';
 import { UserWriteRepositoryPort } from '../ports/user-write-repository.port';
+import { ClientRepository } from '@domain/repositories';
 import { ConsentRepository } from '@domain/repositories/consent.repository';
 import { UserIdentityRepository } from '@domain/repositories/user-identity.repository';
 import { EventRepository } from '@domain/repositories/event.repository';
@@ -56,6 +63,8 @@ export class AuthCommandHandler implements AuthCommandPort {
     private readonly idpPort: IdpPort,
     private readonly identityLinkSession: IdentityLinkSessionPort,
     private readonly eventRepo: EventRepository,
+    @Optional() private readonly clients?: ClientRepository,
+    @Optional() private readonly identityUnlink?: IdentityUnlinkPort,
   ) {}
 
   async withdraw(
@@ -638,7 +647,8 @@ export class AuthCommandHandler implements AuthCommandPort {
     }
 
     const state = randomBytes(32).toString('base64url');
-    const returnTo = this.normalizeReturnTo(dto.returnTo);
+    const browserBinding = randomBytes(32).toString('base64url');
+    const returnTo = await this.identityLinkReturnTo(tenantId, dto);
     await this.identityLinkSession.create(
       {
         state,
@@ -649,11 +659,13 @@ export class AuthCommandHandler implements AuthCommandPort {
         redirectUri: dto.redirectUri,
         returnTo,
         createdAt: new Date().toISOString(),
+        browserHash: createHash('sha256').update(browserBinding).digest('hex'),
       },
       this.getTtlSec('IDENTITY_LINK_STATE_TTL_SEC', 300),
     );
 
     return StartIdentityLinkResponse.of({
+      browserBinding,
       authorizationUrl: this.idpPort.getAuthorizationUrl(
         idpConfig.provider,
         idpConfig.oauthConfig,
@@ -679,6 +691,15 @@ export class AuthCommandHandler implements AuthCommandPort {
         redirectTo: this.redirectWithIdentityLinkError(null, 'invalid_state'),
       });
     }
+    if (
+      !session.browserHash ||
+      !dto.browserBinding ||
+      session.browserHash !==
+        createHash('sha256').update(dto.browserBinding).digest('hex')
+    )
+      return CompleteIdentityLinkResponse.of({
+        redirectTo: this.redirectWithIdentityLinkError(null, 'invalid_state'),
+      });
     if (dto.provider && dto.provider !== session.provider) {
       return CompleteIdentityLinkResponse.of({
         redirectTo: this.redirectWithIdentityLinkError(
@@ -691,7 +712,7 @@ export class AuthCommandHandler implements AuthCommandPort {
       return CompleteIdentityLinkResponse.of({
         redirectTo: this.redirectWithIdentityLinkError(
           session.returnTo,
-          dto.error,
+          'idp_denied',
         ),
       });
     }
@@ -718,6 +739,10 @@ export class AuthCommandHandler implements AuthCommandPort {
     }
 
     try {
+      this.assertActiveTenantUser(
+        await this.userWriteRepo.findById(session.userId),
+        session.tenantId,
+      );
       const userInfo = await this.idpPort.exchangeCode(
         idpConfig.provider,
         idpConfig.oauthConfig,
@@ -785,7 +810,10 @@ export class AuthCommandHandler implements AuthCommandPort {
             provider: session.provider,
             providerSub: userInfo.sub,
             email: userInfo.email ?? null,
-            profileJson: userInfo.profile ?? null,
+            profileJson:
+              typeof userInfo.profile?.nickname === 'string'
+                ? { nickname: userInfo.profile.nickname.slice(0, 128) }
+                : {},
             linkedAt: new Date(),
           }),
         );
@@ -851,7 +879,8 @@ export class AuthCommandHandler implements AuthCommandPort {
       throw new Error('LastLoginMethodCannotBeUnlinked');
     }
 
-    await this.userIdentityRepo.delete(identity.id);
+    if (!this.identityUnlink) throw new Error('IdentityUnlinkUnavailable');
+    await this.identityUnlink.remove(tenantId, userId, identity.id);
     await this.recordAudit({
       tenantId,
       userId,
@@ -939,6 +968,34 @@ export class AuthCommandHandler implements AuthCommandPort {
     return value?.trim() ? value.trim() : fallback;
   }
 
+  private async identityLinkReturnTo(
+    tenantId: string,
+    dto: StartIdentityLinkDto,
+  ): Promise<string> {
+    if (!dto.returnTo || !/^https?:/.test(dto.returnTo))
+      return this.normalizeReturnTo(dto.returnTo);
+    const client =
+      dto.callerClientId && this.clients
+        ? await this.clients.findByClientId(tenantId, dto.callerClientId)
+        : null;
+    if (!client?.externalInteractionUiUrl)
+      throw new BadRequestException('Invalid identity-link return');
+    const expected = new URL(client.externalInteractionUiUrl);
+    const target = new URL(dto.returnTo);
+    if (
+      client.enabled === false ||
+      !client.redirectUris?.includes(target.toString()) ||
+      target.origin !== expected.origin ||
+      target.pathname !== '/login' ||
+      target.search ||
+      target.hash ||
+      target.username ||
+      target.password
+    )
+      throw new BadRequestException('Invalid identity-link return');
+    return target.toString();
+  }
+
   private normalizeReturnTo(returnTo: string | null | undefined): string {
     if (!returnTo || !returnTo.startsWith('/') || returnTo.startsWith('//')) {
       return '/admin/security';
@@ -950,7 +1007,7 @@ export class AuthCommandHandler implements AuthCommandPort {
     returnTo: string | null | undefined,
     provider: string,
   ): string {
-    return this.addQueryParam(this.normalizeReturnTo(returnTo), {
+    return this.addQueryParam(returnTo ?? '/admin/security', {
       identityLinked: provider,
     });
   }
@@ -959,7 +1016,7 @@ export class AuthCommandHandler implements AuthCommandPort {
     returnTo: string | null | undefined,
     error: string,
   ): string {
-    return this.addQueryParam(this.normalizeReturnTo(returnTo), {
+    return this.addQueryParam(returnTo ?? '/admin/security', {
       identityError: error,
     });
   }
@@ -969,7 +1026,9 @@ export class AuthCommandHandler implements AuthCommandPort {
     for (const [key, value] of Object.entries(params)) {
       url.searchParams.set(key, value);
     }
-    return `${url.pathname}${url.search}`;
+    return /^https?:/.test(path)
+      ? url.toString()
+      : `${url.pathname}${url.search}`;
   }
 
   private async createRecoveryCodes(userId: string): Promise<string[]> {

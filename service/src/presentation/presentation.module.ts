@@ -1,3 +1,4 @@
+import { ExternalSignupController } from './controllers/external-signup.controller';
 import {
   MiddlewareConsumer,
   Module,
@@ -41,6 +42,7 @@ import { ExternalInteractionGuard } from './http/external-interaction.guard';
     OidcDelegateMiddleware,
   ],
   controllers: [
+    ExternalSignupController,
     HealthController,
     AuthController,
     AdminClientController,
@@ -83,6 +85,7 @@ export class PresentationModule implements NestModule {
         AuthController,
         InteractionController,
         UserProvisioningController,
+        ExternalSignupController,
         {
           path: 't/:tenantCode/admin/*path',
           method: RequestMethod.ALL,

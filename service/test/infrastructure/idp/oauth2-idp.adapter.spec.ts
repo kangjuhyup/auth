@@ -1,11 +1,17 @@
 import { OAuth2IdpAdapter } from '@infrastructure/idp/oauth2-idp.adapter';
+import type { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
 
 describe('OAuth2IdpAdapter', () => {
   let adapter: OAuth2IdpAdapter;
+  let crypto: jest.Mocked<SymmetricCryptoPort>;
 
   beforeEach(() => {
     jest.restoreAllMocks();
-    adapter = new OAuth2IdpAdapter();
+    crypto = {
+      encrypt: jest.fn(),
+      decrypt: jest.fn().mockReturnValue('secret'),
+    };
+    adapter = new OAuth2IdpAdapter(crypto);
   });
 
   afterEach(() => {
@@ -84,6 +90,87 @@ describe('OAuth2IdpAdapter', () => {
   });
 
   describe('exchangeCode', () => {
+    it('Kakao default login never requests CI or requires OIDC/email consent', () => {
+      const url = new URL(
+        adapter.getAuthorizationUrl(
+          'kakao',
+          { scopes: ['profile_nickname', 'account_ci'] },
+          'client',
+          'https://auth.example/callback',
+          'state',
+        ),
+      );
+      expect(url.searchParams.get('scope')).toBe('profile_nickname');
+      const minimum = new URL(
+        adapter.getAuthorizationUrl(
+          'kakao',
+          null,
+          'client',
+          'https://auth.example/callback',
+          'state',
+        ),
+      );
+      expect(minimum.searchParams.get('scope')).toBe('profile_nickname');
+    });
+    it('discards CI and raw Kakao profile while allowing missing email', async () => {
+      jest
+        .spyOn(adapter as any, 'httpPost')
+        .mockResolvedValue({ access_token: 'token' });
+      jest.spyOn(adapter as any, 'httpGet').mockResolvedValue({
+        id: 123,
+        kakao_account: { ci: 'sensitive', profile: { nickname: 'Member' } },
+      });
+      expect(
+        await adapter.exchangeCode(
+          'kakao',
+          null,
+          'client',
+          'enc:v1:ciphertext',
+          'code',
+          'https://auth.example/callback',
+        ),
+      ).toEqual({
+        sub: '123',
+        email: undefined,
+        profile: { nickname: 'Member' },
+      });
+    });
+    it.each([
+      undefined,
+      null,
+      {},
+      'undefined',
+      'null',
+      0,
+      Number.MAX_SAFE_INTEGER + 1,
+    ])('rejects invalid Kakao id %s', async (id) => {
+      jest
+        .spyOn(adapter as any, 'httpPost')
+        .mockResolvedValue({ access_token: 'token' });
+      jest.spyOn(adapter as any, 'httpGet').mockResolvedValue({ id });
+      await expect(
+        adapter.exchangeCode(
+          'kakao',
+          null,
+          'client',
+          null,
+          'code',
+          'https://auth.example/callback',
+        ),
+      ).rejects.toThrow('subject unavailable');
+    });
+    it('extraAuthParams cannot override security state or redirect', () => {
+      expect(() =>
+        adapter.getAuthorizationUrl(
+          'kakao',
+          { extraAuthParams: { state: 'attacker' } },
+          'client',
+          'https://auth.example/callback',
+          'state',
+        ),
+      ).toThrow('Reserved');
+    });
+
     it('userinfo endpoint가 있는 provider는 access token으로 profile을 조회한다', async () => {
       const httpPost = jest
         .spyOn(adapter as any, 'httpPost')
@@ -101,7 +188,7 @@ describe('OAuth2IdpAdapter', () => {
         'google',
         null,
         'google-client',
-        'google-secret',
+        'enc:v1:ciphertext',
         'auth-code',
         'https://app.example.com/callback',
       );
@@ -121,7 +208,8 @@ describe('OAuth2IdpAdapter', () => {
         'https://app.example.com/callback',
       );
       expect(params.get('client_id')).toBe('google-client');
-      expect(params.get('client_secret')).toBe('google-secret');
+      expect(params.get('client_secret')).toBe('secret');
+      expect(crypto.decrypt).toHaveBeenCalledWith('ciphertext');
 
       expect(httpGet).toHaveBeenCalledWith(
         'https://openidconnect.googleapis.com/v1/userinfo',
@@ -130,7 +218,7 @@ describe('OAuth2IdpAdapter', () => {
       expect(result).toEqual({
         sub: 'google-user',
         email: 'user@example.com',
-        profile,
+        profile: { nickname: 'Google User' },
       });
     });
 
@@ -166,55 +254,59 @@ describe('OAuth2IdpAdapter', () => {
       expect(result).toEqual({
         sub: 'naver-user',
         email: 'naver@example.com',
-        profile: {
-          response: {
-            id: 'naver-user',
-            email: 'naver@example.com',
-            nickname: 'Naver User',
-          },
-        },
+        profile: {},
       });
     });
 
-    it('userinfo endpoint가 없는 provider는 id_token payload를 파싱한다', async () => {
-      const payload = {
-        sub: 'apple-user',
-        email: 'apple@example.com',
-        email_verified: true,
-      };
-      const idToken = [
-        Buffer.from(JSON.stringify({ alg: 'none' })).toString('base64url'),
-        Buffer.from(JSON.stringify(payload)).toString('base64url'),
-        'signature',
-      ].join('.');
-      const httpPost = jest
+    it('userinfo 없는 공급자의 검증되지 않은 ID token으로 로그인하지 않는다', async () => {
+      jest
         .spyOn(adapter as any, 'httpPost')
-        .mockResolvedValue({
-          access_token: 'apple-access-token',
-          id_token: idToken,
-        });
-      const httpGet = jest.spyOn(adapter as any, 'httpGet');
+        .mockResolvedValue({ access_token: 'access', id_token: 'unsigned' });
+      await expect(
+        adapter.exchangeCode(
+          'apple',
+          null,
+          'client',
+          'enc:v1:ciphertext',
+          'code',
+          'https://auth.example/callback',
+        ),
+      ).rejects.toThrow('userinfo endpoint required');
+    });
 
-      const result = await adapter.exchangeCode(
-        'apple',
-        null,
-        'apple-client',
-        'apple-secret',
-        'auth-code',
-        'https://app.example.com/callback',
-      );
+    it('평문 또는 손상된 client secret은 token endpoint로 전송하지 않는다', async () => {
+      const httpPost = jest.spyOn(adapter as any, 'httpPost');
 
-      expect(httpPost).toHaveBeenCalledWith(
-        'https://appleid.apple.com/auth/token',
-        expect.any(String),
-        { 'Content-Type': 'application/x-www-form-urlencoded' },
-      );
-      expect(httpGet).not.toHaveBeenCalled();
-      expect(result).toEqual({
-        sub: 'apple-user',
-        email: 'apple@example.com',
-        profile: payload,
+      await expect(
+        adapter.exchangeCode(
+          'kakao',
+          null,
+          'client',
+          'legacy-plaintext',
+          'code',
+          'https://auth.example/callback',
+        ),
+      ).rejects.toThrow('IdP client secret is not protected');
+      expect(httpPost).not.toHaveBeenCalled();
+    });
+
+    it('암호문 인증에 실패한 client secret도 token endpoint로 전송하지 않는다', async () => {
+      const httpPost = jest.spyOn(adapter as any, 'httpPost');
+      crypto.decrypt.mockImplementationOnce(() => {
+        throw new Error('invalid authentication tag');
       });
+
+      await expect(
+        adapter.exchangeCode(
+          'kakao',
+          null,
+          'client',
+          'enc:v1:corrupted',
+          'code',
+          'https://auth.example/callback',
+        ),
+      ).rejects.toThrow('invalid authentication tag');
+      expect(httpPost).not.toHaveBeenCalled();
     });
 
     it('well-known에 없고 oauth_config도 없으면 예외를 던진다', async () => {

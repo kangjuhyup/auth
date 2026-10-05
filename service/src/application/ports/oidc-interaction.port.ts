@@ -6,6 +6,13 @@ export type InteractionDetailsResult = Readonly<{
   clientId: string;
   missingScopes: string[];
   mfaRequired: boolean;
+  externalSignup?: {
+    ticket: string;
+    provider: string;
+    expiresAt: string;
+    attemptId: string;
+  };
+  externalLoginResult?: unknown;
   idpList: ReadonlyArray<{
     provider: string;
     name: string;
@@ -96,12 +103,35 @@ export abstract class OidcInteractionPort {
 
   abstract handleIdpCallback(params: {
     tenantCode: string;
-    uid: string;
     providerName: string;
     req: unknown;
     res: unknown;
     tenant?: TenantContext;
   }): Promise<InteractionIdpCallbackResult>;
+
+  async continueIdpLogin(_params: {
+    tenantCode: string;
+    uid: string;
+    providerName: string;
+    req: unknown;
+    res: unknown;
+    tenant?: TenantContext;
+  }): Promise<{ userId: string; uid: string } | InteractionRedirectResult> {
+    void _params;
+    throw new Error('Not implemented');
+  }
+  async resolveExternalSignup(_params: {
+    tenantCode: string;
+    uid: string;
+    ticket: string;
+    attemptId: string;
+    req: unknown;
+    res: unknown;
+    tenant?: TenantContext;
+  }): Promise<{ userId: string }> {
+    void _params;
+    throw new Error('Not implemented');
+  }
 
   abstract getSamlMetadata(params: {
     tenantCode: string;

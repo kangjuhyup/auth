@@ -77,6 +77,29 @@ export class UserModel extends PersistenceModel<string, UserProps> {
     );
   }
 
+  static createExternal(params: {
+    id: string;
+    tenantId: string;
+    provisionedByClientId: string;
+    provisioningKeyHash: string;
+  }): UserModel {
+    return new UserModel(
+      {
+        tenantId: params.tenantId,
+        username: `external_${params.id}`,
+        email: null,
+        emailVerified: false,
+        phone: null,
+        phoneVerified: false,
+        status: 'ACTIVE',
+        mfaEnabled: false,
+        provisionedByClientId: params.provisionedByClientId,
+        provisioningKeyHash: params.provisioningKeyHash,
+      },
+      params.id,
+    );
+  }
+
   static of(params: {
     id: string;
     tenantId: string;

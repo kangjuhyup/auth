@@ -45,6 +45,10 @@ export class InteractionCommandHandler
     string,
     PendingPasswordChangeSession
   >();
+  private readonly externalLoginResults = new Map<
+    string,
+    { body: unknown; expiresAt: number }
+  >();
   private mfaCleanupTimer: NodeJS.Timeout | undefined;
 
   constructor(
@@ -73,14 +77,23 @@ export class InteractionCommandHandler
     }
   }
 
-  getDetails(params: {
+  async getDetails(params: {
     tenantCode: string;
     uid: string;
     req: unknown;
     res: unknown;
     tenant?: TenantContext;
   }) {
-    return this.oidcInteraction.getDetails(params);
+    const details = await this.oidcInteraction.getDetails(params);
+    return {
+      ...details,
+      ...(this.externalLoginResults.has(params.uid)
+        ? {
+            externalLoginResult: this.externalLoginResults.get(params.uid)
+              ?.body,
+          }
+        : {}),
+    };
   }
 
   async submitLogin(params: {
@@ -297,6 +310,7 @@ export class InteractionCommandHandler
     }
 
     this.mfaPendingSessions.delete(params.uid);
+    this.externalLoginResults.delete(params.uid);
     if (params.method === 'recovery_code') {
       await this.auditRecorder?.recordAdminAction({
         tenantId: pending.tenantId,
@@ -399,6 +413,7 @@ export class InteractionCommandHandler
     }
 
     this.mfaPendingSessions.delete(params.uid);
+    this.externalLoginResults.delete(params.uid);
 
     const loginResult = await this.completeInteraction({
       tenantCode: params.tenantCode,
@@ -478,13 +493,79 @@ export class InteractionCommandHandler
 
   handleIdpCallback(params: {
     tenantCode: string;
-    uid: string;
     providerName: string;
     req: unknown;
     res: unknown;
     tenant?: TenantContext;
   }) {
     return this.oidcInteraction.handleIdpCallback(params);
+  }
+
+  async continueIdpLogin(params: {
+    tenantCode: string;
+    uid: string;
+    providerName: string;
+    req: unknown;
+    res: unknown;
+    tenant?: TenantContext;
+  }) {
+    const result = await this.oidcInteraction.continueIdpLogin(params);
+    if ('redirectTo' in result) return result;
+    const login = await this.authenticateExternal({
+      ...params,
+      userId: result.userId,
+    });
+    const body = login.body as Record<string, unknown>;
+    if (typeof body.redirectTo === 'string')
+      return { redirectTo: body.redirectTo };
+    this.externalLoginResults.set(params.uid, {
+      body,
+      expiresAt: Date.now() + this.mfaSessionTtlMs,
+    });
+    return { redirectTo: `/t/${params.tenantCode}/interaction/${params.uid}` };
+  }
+
+  async resumeExternalSignup(params: {
+    tenantCode: string;
+    uid: string;
+    ticket: string;
+    attemptId: string;
+    req: unknown;
+    res: unknown;
+    tenant?: TenantContext;
+    externalAccessId?: string;
+  }) {
+    try {
+      const result = await this.oidcInteraction.resolveExternalSignup(params);
+      return this.authenticateExternal({ ...params, userId: result.userId });
+    } catch {
+      return { status: 403, body: { error: 'interaction_denied' } };
+    }
+  }
+
+  private async authenticateExternal(params: {
+    tenantCode: string;
+    uid: string;
+    userId: string;
+    req: unknown;
+    res: unknown;
+    tenant?: TenantContext;
+    externalAccessId?: string;
+  }): Promise<InteractionResponse> {
+    if (!params.tenant)
+      return { status: 403, body: { error: 'interaction_denied' } };
+    const user = await this.userQuery.findProfile({
+      tenantId: params.tenant.id,
+      userId: params.userId,
+    });
+    if (!user || user.tenantId !== params.tenant.id || user.status !== 'ACTIVE')
+      return { status: 403, body: { error: 'user_inactive' } };
+    return this.continueAuthenticatedLogin({
+      ...params,
+      tenant: params.tenant,
+      mfaEnabled: user.mfaEnabled,
+      completion: 'login',
+    });
   }
 
   getSamlMetadata(params: {
@@ -650,9 +731,13 @@ export class InteractionCommandHandler
 
   private deleteExpiredSessions() {
     const now = Date.now();
+    for (const [uid, result] of this.externalLoginResults) {
+      if (result.expiresAt <= Date.now()) this.externalLoginResults.delete(uid);
+    }
     for (const [uid, session] of this.mfaPendingSessions) {
       if (session.expiresAt <= now) {
         this.mfaPendingSessions.delete(uid);
+        this.externalLoginResults.delete(uid);
       }
     }
     for (const [uid, session] of this.passwordChangePendingSessions) {

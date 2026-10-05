@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/kangjuhyup/auth/compare/auth-v0.2.1...auth-v0.3.0) (2026-10-05)
+
+### Features
+
+- **service:** add browser-bound Kakao signup tickets and passwordless external identity provisioning
+
+### Security
+
+- bind OAuth callbacks and identity linking to one-time server state and HttpOnly browser cookies
+- preserve tenant, client, interaction, ACTIVE user, MFA, and last-login-method protections
+- encrypt external IdP client secrets at rest and fail closed on unprotected or invalid values
+
 ## [0.2.1](https://github.com/kangjuhyup/auth/compare/auth-v0.2.0...auth-v0.2.1) (2026-09-19)
 
 ### Bug Fixes

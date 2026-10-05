@@ -40,10 +40,22 @@ IdPs are tenant-scoped resources. Even when connecting the same Google, Okta, or
 | `Token endpoint`         | URL used to exchange an authorization code for tokens              |
 | `Userinfo endpoint`      | URL used to fetch the external user profile                        |
 
+Auth encrypts OAuth client secrets before persistence with an
+AES-256-GCM envelope backed by `JWKS_ENCRYPTION_KEY`. API responses and
+logs never return the plaintext and expose only `clientSecretSet`. The
+production migration runner upgrades legacy plaintext rows before starting
+the service. An unencrypted or undecryptable secret is rejected before any
+request reaches the external provider token endpoint.
+
+Supply the secret to a one-shot Admin API process through a secret manager or
+a permission-restricted `0600` temporary file. Never place it in source,
+deployment manifests, shell history, or command arguments. Remove the
+temporary file after registration and verify only `clientSecretSet: true`.
+
 Register the service callback URL as a redirect URI in the OAuth provider.
 
 ```text
-/t/{tenantCode}/interaction/{uid}/idp/{provider}/callback
+/t/{tenantCode}/interaction/idp/{provider}/callback
 ```
 
 In production, register the URL with the real issuer/host.
