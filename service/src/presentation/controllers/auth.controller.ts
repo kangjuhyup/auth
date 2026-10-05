@@ -1,3 +1,4 @@
+import { ConfigService } from '@nestjs/config';
 import {
   Controller,
   Post,
@@ -10,6 +11,7 @@ import {
   Req,
   Res,
   UseGuards,
+  Optional,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthCommandPort } from '@application/commands/ports/auth-command.port';
@@ -61,6 +63,7 @@ export class AuthController {
   constructor(
     private readonly commandPort: AuthCommandPort,
     private readonly queryPort: AuthQueryPort,
+    @Optional() private readonly config?: ConfigService,
   ) {}
 
   @Post('withdraw')
@@ -322,15 +325,20 @@ export class AuthController {
     'Start identity provider link',
     OpenApiResponseSchemas.authorizationUrl,
   )
-  startIdentityLink(
+  async startIdentityLink(
     @Tenant() tenant: TenantContext,
     @AuthUser() user: AuthenticatedUser,
     @Param('provider') provider: string,
     @Body() dto: StartIdentityLinkDto,
     @Req() req: Request,
+    @Res({ passthrough: true }) res?: Response,
   ): Promise<{ authorizationUrl: string }> {
-    const redirectUri = `${req.protocol}://${req.get('host')}/auth/identity-links/${provider}/callback?tenantCode=${encodeURIComponent(tenant.code)}`;
-    return this.commandPort.startIdentityLink(
+    const base =
+      this.config?.get<string>('OIDC_ISSUER') ??
+      `${req.protocol}://${req.get('host')}`;
+    const origin = new URL(base).origin;
+    const redirectUri = `${origin}/auth/identity-links/${provider}/callback?tenantCode=${encodeURIComponent(tenant.code)}`;
+    const result = await this.commandPort.startIdentityLink(
       tenant.id,
       user.userId,
       AppStartIdentityLinkDto.of({
@@ -338,8 +346,18 @@ export class AuthController {
         tenantCode: tenant.code,
         redirectUri,
         returnTo: dto.returnTo,
+        callerClientId: user.clientId,
       }),
     );
+    if (result.browserBinding && res)
+      res.cookie(identityLinkCookie(provider), result.browserBinding, {
+        httpOnly: true,
+        secure: req.protocol === 'https',
+        sameSite: 'lax',
+        path: `/auth/identity-links/${provider}/callback`,
+        maxAge: 300000,
+      });
+    return { authorizationUrl: result.authorizationUrl };
   }
 
   @Get('identity-links/:provider/callback')
@@ -348,6 +366,7 @@ export class AuthController {
     @Param('provider') provider: string,
     @Query() query: IdentityLinkCallbackQuery,
     @Res() res: Response,
+    @Req() req?: Request,
   ): Promise<void> {
     const result = await this.commandPort.completeIdentityLink(
       AppCompleteIdentityLinkDto.of({
@@ -355,8 +374,12 @@ export class AuthController {
         state: query.state,
         code: query.code,
         error: query.error,
+        browserBinding: readIdentityLinkCookie(req, provider),
       }),
     );
+    res.clearCookie?.(identityLinkCookie(provider), {
+      path: `/auth/identity-links/${provider}/callback`,
+    });
     res.redirect(result.redirectTo);
   }
 
@@ -383,4 +406,19 @@ export class AuthController {
   ): Promise<void> {
     return this.commandPort.revokeConsent(tenant.id, user.userId, clientId);
   }
+}
+
+function identityLinkCookie(provider: string) {
+  return `_identity_link_${provider}`;
+}
+function readIdentityLinkCookie(
+  req: Request | undefined,
+  provider: string,
+): string | undefined {
+  const name = identityLinkCookie(provider);
+  const part = req?.headers?.cookie
+    ?.split(';')
+    .map((value) => value.trim())
+    .find((value) => value.startsWith(`${name}=`));
+  return part?.slice(name.length + 1);
 }

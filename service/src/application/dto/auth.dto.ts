@@ -226,6 +226,7 @@ export class StartIdentityLinkDto {
     public readonly tenantCode: string,
     public readonly redirectUri: string,
     public readonly returnTo?: string | null,
+    public readonly callerClientId?: string,
   ) {}
 
   static of(params: {
@@ -233,21 +234,32 @@ export class StartIdentityLinkDto {
     tenantCode: string;
     redirectUri: string;
     returnTo?: string | null;
+    callerClientId?: string;
   }): StartIdentityLinkDto {
     return new StartIdentityLinkDto(
       params.provider,
       params.tenantCode,
       params.redirectUri,
       params.returnTo,
+      params.callerClientId,
     );
   }
 }
 
 export class StartIdentityLinkResponse {
-  private constructor(public readonly authorizationUrl: string) {}
+  private constructor(
+    public readonly authorizationUrl: string,
+    public readonly browserBinding?: string,
+  ) {}
 
-  static of(params: { authorizationUrl: string }): StartIdentityLinkResponse {
-    return new StartIdentityLinkResponse(params.authorizationUrl);
+  static of(params: {
+    authorizationUrl: string;
+    browserBinding?: string;
+  }): StartIdentityLinkResponse {
+    return new StartIdentityLinkResponse(
+      params.authorizationUrl,
+      params.browserBinding,
+    );
   }
 }
 
@@ -257,6 +269,7 @@ export class CompleteIdentityLinkDto {
     public readonly state?: string | null,
     public readonly code?: string | null,
     public readonly error?: string | null,
+    public readonly browserBinding?: string,
   ) {}
 
   static of(params: {
@@ -264,12 +277,14 @@ export class CompleteIdentityLinkDto {
     state?: string | null;
     code?: string | null;
     error?: string | null;
+    browserBinding?: string;
   }): CompleteIdentityLinkDto {
     return new CompleteIdentityLinkDto(
       params.provider,
       params.state,
       params.code,
       params.error,
+      params.browserBinding,
     );
   }
 }

@@ -4,7 +4,7 @@ import type { IdentityLinkSession } from '@application/ports/identity-link-sessi
 function makeRedis(overrides: Record<string, jest.Mock> = {}) {
   return {
     set: jest.fn().mockResolvedValue('OK'),
-    get: jest.fn().mockResolvedValue(null),
+    getdel: jest.fn().mockResolvedValue(null),
     del: jest.fn().mockResolvedValue(1),
     ...overrides,
   };
@@ -39,12 +39,12 @@ describe('RedisIdentityLinkSessionRepository', () => {
 
   it('consume은 세션을 조회한 뒤 state key를 삭제한다', async () => {
     const redis = makeRedis({
-      get: jest.fn().mockResolvedValue(JSON.stringify(session)),
+      getdel: jest.fn().mockResolvedValue(JSON.stringify(session)),
     });
     const repository = new RedisIdentityLinkSessionRepository(redis as any);
 
     await expect(repository.consume('state-1')).resolves.toEqual(session);
-    expect(redis.del).toHaveBeenCalledWith('identity-link:state:state-1');
+    expect(redis.getdel).toHaveBeenCalledWith('identity-link:state:state-1');
   });
 
   it('consume은 없는 state면 null을 반환하고 삭제하지 않는다', async () => {

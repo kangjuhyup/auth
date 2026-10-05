@@ -631,11 +631,10 @@ describe('InteractionController', () => {
       redirectTo: '/interaction/continue',
     });
 
-    await controller.idpCallback('acme', 'uid-1', 'google', req, res);
+    await controller.idpCallback('acme', 'google', req, res);
 
     expect(interactionCommand.handleIdpCallback).toHaveBeenCalledWith({
       tenantCode: 'acme',
-      uid: 'uid-1',
       providerName: 'google',
       req,
       res,
@@ -649,7 +648,7 @@ describe('InteractionController', () => {
     const res = createMockResponse();
     interactionCommand.handleIdpCallback.mockResolvedValue({});
 
-    await controller.idpCallback('acme', 'uid-1', 'google', req, res);
+    await controller.idpCallback('acme', 'google', req, res);
 
     expect(res.redirect).not.toHaveBeenCalled();
   });

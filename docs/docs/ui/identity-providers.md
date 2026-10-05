@@ -44,10 +44,21 @@ IdP는 tenant별 리소스입니다. 같은 Google, Okta, SAML 연동이라도 t
 OAuth client secret은 생성 시 필수입니다. 수정 시 비워두면 기존 값을 유지합니다.
 :::
 
+OAuth client secret 원문은 API 응답이나 로그에 반환하지 않습니다. Auth는 저장 전에
+`JWKS_ENCRYPTION_KEY` 기반 AES-256-GCM envelope로 암호화하며 조회 API에는
+`clientSecretSet`만 노출합니다. 배포용 `migration:up:prod` runner는 기존 평문 값을
+서비스 시작 전에 같은 형식으로 변환합니다. 암호화되지 않았거나 복호화에 실패한 값은
+외부 IdP token endpoint로 전송하지 않고 로그인을 안전하게 거부합니다.
+
+secret을 저장소, 배포 manifest, shell history에 넣지 않습니다. 운영 등록은 secret
+manager가 제공한 일회성 환경 변수 또는 권한이 제한된 `0600` 임시 파일을 Admin API
+호출 프로세스만 읽도록 구성합니다. 등록 성공 후 임시 파일은 제거하고, 응답의
+`clientSecretSet: true`만 확인합니다.
+
 OAuth provider에는 서비스의 callback URL을 redirect URI로 등록해야 합니다.
 
 ```text
-/t/{tenantCode}/interaction/{uid}/idp/{provider}/callback
+/t/{tenantCode}/interaction/idp/{provider}/callback
 ```
 
 운영 환경에서는 실제 issuer/host 기준 URL을 등록합니다.

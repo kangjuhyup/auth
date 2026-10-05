@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/kangjuhyup/auth/compare/auth-service-v0.2.1...auth-service-v0.3.0) (2026-10-05)
+
+### Features
+
+- add fixed external OAuth callbacks, atomic signup tickets, service-authorized passwordless provisioning, and resumable OIDC login
+
+### Security
+
+- validate callback state, browser binding, exact redirect URIs, tenant/client ownership, active-user policy, and atomic identity unlink invariants
+- exclude Kakao CI scope and persist only the minimum verified external profile
+- encrypt external IdP client secrets and upgrade legacy plaintext values before service startup
+
 ## [0.2.1](https://github.com/kangjuhyup/auth/compare/auth-service-v0.2.0...auth-service-v0.2.1) (2026-09-19)
 
 ### Bug Fixes

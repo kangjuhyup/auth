@@ -83,6 +83,11 @@ GitOps는 같은 immutable image digest로 아래 순서를 보장해야 한다.
 3. API Pod는 Docker entrypoint를 우회하고 서버만 실행한다.
 4. cleanup worker도 entrypoint를 우회해 정확히 1개만 실행한다.
 
+`dist/cli/migrate.js`는 schema migration이 끝난 뒤 기존 외부 IdP client secret을
+`JWKS_ENCRYPTION_KEY`로 암호화하는 멱등 backfill도 수행한다. 따라서 이 Job이 성공하기
+전에 새 API Pod를 시작하거나 IdP를 생성·활성화하지 않는다. key 누락, 암호화 실패,
+DB 저장 실패는 migration Job 실패로 처리하며 API rollout을 계속하지 않는다.
+
 Kubernetes의 `command`는 Docker `ENTRYPOINT`, `args`는 `CMD`를 덮어쓴다.
 
 ```yaml
@@ -130,6 +135,55 @@ Ingress/HTTPRoute는 아래 공개 backend 경로를 Auth service로 먼저 매�
 관리 UI 자체의 `/login`, `/tenants`, `/users` 같은 browser route와 `/assets/*`는 UI nginx로 보낸다. `/health`, `/ready`, `/metrics`는 service 내부 probe/수집 경로로 유지하고 공개 ingress에 노출하지 않는다. production에서 기본 비활성인 `/openapi.json`을 명시적으로 켜는 경우에도 별도 접근 제어를 둔다. Cloudflare와 ingress 모두 query string, `Set-Cookie`, `Cookie`, `Location`, `X-Forwarded-Proto=https`를 보존해야 한다.
 
 OIDC session, grant와 replay coordination state는 Redis/RDB adapter에 저장되므로 API replica 사이의 sticky session을 요구하지 않는다. 모든 replica는 동일한 DB, Redis prefix, cookie signing key와 JWKS encryption key를 사용해야 한다.
+
+## 외부 Interaction UI CORS 주입 계약
+
+`externalInteractionUiUrl`이 설정된 client의 interaction API는 저장된 URL의 exact origin을
+동적으로 허용한다. 반면 `/auth/identity-links/*`처럼 interaction 경로 밖에 있는 브라우저
+API는 정적 `HTTP_CORS_ORIGINS` 목록을 사용한다. wildcard를 넣지 않고 scheme, host, port가
+정확히 일치하는 origin만 쉼표로 구분한다.
+
+`HTTP_CORS_ORIGINS`를 명시하면 `ADMIN_UI_URL` fallback을 대체한다. 따라서 기존 관리자 UI
+origin을 유지해야 하는 배포는 새 외부 UI origin과 함께 목록에 포함한다. 예를 들어
+`gaegaeting-dev` 연결 UI를 배포할 때의 값은 다음과 같다.
+
+```dotenv
+HTTP_CORS_ORIGINS=https://auth.rvkang.app,https://test-ggt-ui.rvkang.app
+```
+
+Doppler에 값이 존재하는 것만으로 Pod에 주입되었다고 간주하지 않는다. GitOps의
+runtime-sync가 명시적 secret 이름 allowlist를 사용하면 `HTTP_CORS_ORIGINS`를 그 목록에
+추가하고, workload manifest가 개별 `env.valueFrom.secretKeyRef`를 사용하면 같은 key를
+container env에 명시한다. 이 저장소 기본 manifest처럼 `envFrom.secretRef`를 사용하는
+환경에서도 실제 생성된 Secret에 key가 있는지 확인한다.
+
+rollout 뒤에는 실행 중인 모든 Pod에서 변수 존재 여부만 확인하고 값 전체를 로그로 남기지
+않는다. 이어서 허용된 exact origin의 credentialed preflight가 `204`, 실제 interaction
+요청이 허용 origin과 `Access-Control-Allow-Credentials: true`를 반환하는지 검증한다.
+임의 origin, sibling subdomain, 다른 scheme 또는 port는 계속 거부되어야 한다.
+
+### `gaegaeting-dev` 배포 인계 기록 (2026-10-05)
+
+다음은 배포 전 준비 상태를 기록한 스냅샷이며 다른 tenant의 설정 근거로 사용하지 않는다.
+
+- tenant `gaegaeting-dev`의 Kakao provider는 관리 리소스 ID `2`로 등록되었다.
+- provider는 `enabled: false`, `clientSecretSet: true`이며 활성화하지 않았다.
+- callback은 `/t/gaegaeting-dev/interaction/idp/kakao/callback`, scope는
+  `profile_nickname`으로 확인되었다.
+- 등록 당시 실행 이미지는 service `0.2.1`, image digest
+  `sha256:d3a9a7aa642bc150a34dd98545affd68460e12a6283fc955a27cdf9619d33889`였고
+  rollout 중인 다른 service Pod는 없었다.
+- client secret은 현재 운영 `JWKS_ENCRYPTION_KEY`와 동일한 key로 보호된 `enc:v1`
+  형식이며 원문은 이 문서나 관리 API 조회에 남기지 않는다.
+- `gaegaeting-web`의 external UI는 `https://test-ggt-ui.rvkang.app/interaction`, 등록된
+  앱 복귀 URI는 `https://test-ggt-ui.rvkang.app/login`으로 확인되었다.
+- Doppler `auth/prd`에는 위 `HTTP_CORS_ORIGINS` 값이 준비되었지만, K3s runtime-sync
+  allowlist와 service workload의 explicit secret env 매핑은 아직 배포되지 않았다.
+
+provider 활성화는 새 service 이미지와 migration Job 성공, CORS env 주입, readiness 확인
+뒤에 수행한다. 그 전까지 비활성 상태를 유지한다. 활성화 후에는 실제 Kakao 로그인과 기존
+계정 identity-link를 각각 검증하며, 실패하면 provider를 다시 비활성화하고 기존
+`0.2.1` 코드로 암호문을 사용하려 하지 않는다.
 
 ## 이미지 계약
 

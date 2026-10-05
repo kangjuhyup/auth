@@ -43,7 +43,7 @@ export class IdentityProviderOrmEntity extends BaseEntity {
   @Property({
     fieldName: 'client_secret',
     type: 'varchar',
-    length: 255,
+    length: 2048,
     nullable: true,
   })
   clientSecret?: string | null;

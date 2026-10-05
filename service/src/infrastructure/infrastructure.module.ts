@@ -1,3 +1,11 @@
+import { IdentityUnlinkPort } from '@application/ports/identity-unlink.port';
+import { IdentityUnlinkAdapter } from './repositories/identity-unlink.adapter';
+import {
+  ExternalSignupStorePort,
+  ExternalSignupRepositoryPort,
+} from '@application/ports/external-signup.port';
+import { RedisExternalSignupStore } from './repositories/redis-external-signup.store';
+import { ExternalSignupRepository } from './repositories/external-signup.repository';
 import { Module, Global } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OidcProviderModule } from './oidc-provider/oidc-provider.module';
@@ -105,6 +113,12 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
 @Module({
   imports: [OidcProviderModule, NotificationModule, RedisModule],
   providers: [
+    { provide: IdentityUnlinkPort, useClass: IdentityUnlinkAdapter },
+    { provide: ExternalSignupStorePort, useClass: RedisExternalSignupStore },
+    {
+      provide: ExternalSignupRepositoryPort,
+      useClass: ExternalSignupRepository,
+    },
     {
       provide: TenantRepository,
       useClass: TenantRepositoryImpl,
@@ -297,6 +311,9 @@ import { Pbkdf2Sha256Hash } from './crypto/password/impl/pbkdf-hash';
     },
   ],
   exports: [
+    IdentityUnlinkPort,
+    ExternalSignupStorePort,
+    ExternalSignupRepositoryPort,
     OidcProviderModule,
     NotificationModule,
     UserWriteRepositoryPort,

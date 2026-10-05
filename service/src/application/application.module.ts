@@ -1,3 +1,5 @@
+import { ExternalSignupCommandPort } from './ports/external-signup.port';
+import { ExternalSignupCommandHandler } from './commands/handlers/external-signup-command.handler';
 import { Module } from '@nestjs/common';
 import { InfrastructureModule } from '@infrastructure/infrastructure.module';
 
@@ -240,8 +242,18 @@ const bootstrapProviders = [
 
 @Module({
   imports: [InfrastructureModule],
-  providers: [AuditRecorder, ...commands, ...queries, ...bootstrapProviders],
+  providers: [
+    {
+      provide: ExternalSignupCommandPort,
+      useClass: ExternalSignupCommandHandler,
+    },
+    AuditRecorder,
+    ...commands,
+    ...queries,
+    ...bootstrapProviders,
+  ],
   exports: [
+    ExternalSignupCommandPort,
     AuditRecorder,
     ...commands,
     ...queries,

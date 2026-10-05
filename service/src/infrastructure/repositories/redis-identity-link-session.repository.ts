@@ -23,12 +23,9 @@ export class RedisIdentityLinkSessionRepository extends IdentityLinkSessionPort 
 
   async consume(state: string): Promise<IdentityLinkSession | null> {
     const key = this.key(state);
-    const raw = await this.redis.get(key);
-    if (!raw) {
-      return null;
-    }
+    const raw = await this.redis.getdel(key);
+    if (!raw) return null;
 
-    await this.redis.del(key);
     return JSON.parse(raw) as IdentityLinkSession;
   }
 

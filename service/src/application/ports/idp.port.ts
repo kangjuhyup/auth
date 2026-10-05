@@ -20,7 +20,7 @@ export abstract class IdpPort {
     provider: string,
     oauthConfig: IdpOauthEndpointsConfig | null,
     clientId: string,
-    clientSecret: string | null,
+    clientSecretEnc: string | null,
     code: string,
     redirectUri: string,
   ): Promise<IdpUserInfo>;

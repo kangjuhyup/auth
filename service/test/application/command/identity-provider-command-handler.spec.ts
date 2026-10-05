@@ -3,6 +3,7 @@ import { IdentityProviderCommandHandler } from '@application/commands/handlers/i
 import { IdentityProviderModel } from '@domain/models/identity-provider';
 import type { IdentityProviderRepository } from '@domain/repositories';
 import type { AuditRecorder } from '@application/services/audit-recorder';
+import type { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
 
 function makeModel(
   overrides: Partial<
@@ -53,11 +54,19 @@ function makeAuditRecorder(): jest.Mocked<AuditRecorder> {
   } as any;
 }
 
+function makeCrypto(): jest.Mocked<SymmetricCryptoPort> {
+  return {
+    encrypt: jest.fn().mockReturnValue('ciphertext'),
+    decrypt: jest.fn().mockReturnValue('secret'),
+  };
+}
+
 describe('IdentityProviderCommandHandler', () => {
   it('IdP를 생성하고 감사 로그를 기록한다', async () => {
     const repo = makeRepository();
     const audit = makeAuditRecorder();
-    const handler = new IdentityProviderCommandHandler(repo, audit);
+    const crypto = makeCrypto();
+    const handler = new IdentityProviderCommandHandler(repo, crypto, audit);
 
     const result = await handler.createIdentityProvider(
       'tenant-1',
@@ -84,6 +93,10 @@ describe('IdentityProviderCommandHandler', () => {
         enabled: true,
       }),
     );
+    expect(crypto.encrypt).toHaveBeenCalledWith('secret');
+    expect(
+      (repo.save.mock.calls[0][0] as IdentityProviderModel).clientSecret,
+    ).toBe('enc:v1:ciphertext');
     expect(audit.recordAdminAction).toHaveBeenCalledWith(
       expect.objectContaining({
         tenantId: 'tenant-1',
@@ -102,7 +115,7 @@ describe('IdentityProviderCommandHandler', () => {
   it('tenant/provider 조합이 이미 있으면 생성하지 않고 ConflictException을 던진다', async () => {
     const repo = makeRepository();
     repo.findByTenantAndProvider.mockResolvedValue(makeModel());
-    const handler = new IdentityProviderCommandHandler(repo);
+    const handler = new IdentityProviderCommandHandler(repo, makeCrypto());
 
     await expect(
       handler.createIdentityProvider('tenant-1', {
@@ -121,7 +134,8 @@ describe('IdentityProviderCommandHandler', () => {
     const audit = makeAuditRecorder();
     const model = makeModel();
     repo.findByIdForTenant.mockResolvedValue(model);
-    const handler = new IdentityProviderCommandHandler(repo, audit);
+    const crypto = makeCrypto();
+    const handler = new IdentityProviderCommandHandler(repo, crypto, audit);
 
     await handler.updateIdentityProvider(
       'tenant-1',
@@ -143,6 +157,7 @@ describe('IdentityProviderCommandHandler', () => {
     expect(model.displayName).toBe('Google Workspace');
     expect(model.clientId).toBe('new-client');
     expect(model.clientSecret).toBeNull();
+    expect(crypto.encrypt).not.toHaveBeenCalled();
     expect(model.redirectUri).toBe('https://app.example.com/new-callback');
     expect(model.enabled).toBe(false);
     expect(model.oauthConfig).toEqual({
@@ -171,7 +186,7 @@ describe('IdentityProviderCommandHandler', () => {
     const repo = makeRepository();
     const model = makeModel();
     repo.findByIdForTenant.mockResolvedValue(model);
-    const handler = new IdentityProviderCommandHandler(repo);
+    const handler = new IdentityProviderCommandHandler(repo, makeCrypto());
 
     await handler.updateIdentityProvider('tenant-1', 'idp-1', {
       protocol: 'saml2',
@@ -193,7 +208,7 @@ describe('IdentityProviderCommandHandler', () => {
   it('수정 대상이 없으면 NotFoundException을 던진다', async () => {
     const repo = makeRepository();
     repo.findByIdForTenant.mockResolvedValue(null);
-    const handler = new IdentityProviderCommandHandler(repo);
+    const handler = new IdentityProviderCommandHandler(repo, makeCrypto());
 
     await expect(
       handler.updateIdentityProvider('tenant-1', 'missing', {
@@ -205,7 +220,11 @@ describe('IdentityProviderCommandHandler', () => {
   it('IdP를 삭제하고 감사 로그 이후 repository 삭제를 호출한다', async () => {
     const repo = makeRepository();
     const audit = makeAuditRecorder();
-    const handler = new IdentityProviderCommandHandler(repo, audit);
+    const handler = new IdentityProviderCommandHandler(
+      repo,
+      makeCrypto(),
+      audit,
+    );
 
     await handler.deleteIdentityProvider('tenant-1', 'idp-1', {
       actorUserId: 'admin-1',
@@ -225,7 +244,7 @@ describe('IdentityProviderCommandHandler', () => {
   it('삭제 대상이 없으면 NotFoundException을 던진다', async () => {
     const repo = makeRepository();
     repo.findByIdForTenant.mockResolvedValue(null);
-    const handler = new IdentityProviderCommandHandler(repo);
+    const handler = new IdentityProviderCommandHandler(repo, makeCrypto());
 
     await expect(
       handler.deleteIdentityProvider('tenant-1', 'missing'),
