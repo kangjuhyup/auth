@@ -1,7 +1,49 @@
+import { MikroORM } from '@mikro-orm/core';
 import { Migrator } from '@mikro-orm/migrations';
 import { runMigrationCli, runMigrations } from '../../src/cli/migrate';
 
 describe('compiled migration runner', () => {
+  it('uses a forked EntityManager in the default IdP secret protection path', async () => {
+    const up = jest.fn().mockResolvedValue(undefined);
+    const close = jest.fn().mockResolvedValue(undefined);
+    const scopedFind = jest.fn().mockResolvedValue([]);
+    const scopedFlush = jest.fn().mockResolvedValue(undefined);
+    const scopedEm = { find: scopedFind, flush: scopedFlush };
+    const globalFind = jest
+      .fn()
+      .mockRejectedValue(
+        new Error(
+          'Using global EntityManager instance methods for context specific actions is disallowed',
+        ),
+      );
+    const fork = jest.fn().mockReturnValue(scopedEm);
+    const init = jest.spyOn(MikroORM, 'init').mockResolvedValue({
+      getMigrator: () => ({ up }),
+      em: { find: globalFind, fork },
+      close,
+    } as never);
+    const previousEncryptionKey = process.env.JWKS_ENCRYPTION_KEY;
+    process.env.JWKS_ENCRYPTION_KEY = 'ab'.repeat(32);
+
+    try {
+      await runMigrations();
+    } finally {
+      init.mockRestore();
+      if (previousEncryptionKey === undefined) {
+        delete process.env.JWKS_ENCRYPTION_KEY;
+      } else {
+        process.env.JWKS_ENCRYPTION_KEY = previousEncryptionKey;
+      }
+    }
+
+    expect(up).toHaveBeenCalledTimes(1);
+    expect(fork).toHaveBeenCalledTimes(1);
+    expect(globalFind).not.toHaveBeenCalled();
+    expect(scopedFind).toHaveBeenCalledTimes(1);
+    expect(scopedFlush).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledWith(true);
+  });
+
   it('initializes Migrator, applies migrations, and closes the ORM', async () => {
     const up = jest.fn().mockResolvedValue(undefined);
     const close = jest.fn().mockResolvedValue(undefined);

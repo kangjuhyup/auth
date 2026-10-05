@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.1](https://github.com/kangjuhyup/auth/compare/auth-service-v0.3.0...auth-service-v0.3.1) (2026-10-05)
+
+### Bug Fixes
+
+- use a forked EntityManager for migration-time IdP secret protection when global context access is disabled
+
 ## [0.3.0](https://github.com/kangjuhyup/auth/compare/auth-service-v0.2.1...auth-service-v0.3.0) (2026-10-05)
 
 ### Features
