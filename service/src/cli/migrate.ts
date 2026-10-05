@@ -40,7 +40,7 @@ export async function runMigrations(
       const key = process.env.JWKS_ENCRYPTION_KEY;
       if (!key) throw new Error('IdP secret protection key unavailable');
       await protectStoredIdpClientSecrets(
-        orm.em,
+        orm.em.fork(),
         new SymmetricCryptoAdapter(key),
       );
     },

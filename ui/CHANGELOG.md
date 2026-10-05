@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.1](https://github.com/kangjuhyup/auth/compare/auth-ui-v0.3.0...auth-ui-v0.3.1) (2026-10-05)
+
+### Miscellaneous Chores
+
+- synchronize the admin UI image with the Auth 0.3.1 patch release
+
 ## [0.3.0](https://github.com/kangjuhyup/auth/compare/auth-ui-v0.2.1...auth-ui-v0.3.0) (2026-10-05)
 
 ### Miscellaneous Chores

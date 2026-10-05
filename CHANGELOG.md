@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.1](https://github.com/kangjuhyup/auth/compare/auth-v0.3.0...auth-v0.3.1) (2026-10-05)
+
+### Bug Fixes
+
+- **service:** use a forked MikroORM EntityManager for migration-time IdP secret protection
+
 ## [0.3.0](https://github.com/kangjuhyup/auth/compare/auth-v0.2.1...auth-v0.3.0) (2026-10-05)
 
 ### Features
