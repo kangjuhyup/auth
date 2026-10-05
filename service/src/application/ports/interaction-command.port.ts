@@ -116,12 +116,36 @@ export abstract class InteractionCommandPort {
 
   abstract handleIdpCallback(params: {
     tenantCode: string;
-    uid: string;
     providerName: string;
     req: unknown;
     res: unknown;
     tenant?: TenantContext;
   }): Promise<InteractionIdpCallbackResult>;
+
+  async continueIdpLogin(_params: {
+    tenantCode: string;
+    uid: string;
+    providerName: string;
+    req: unknown;
+    res: unknown;
+    tenant?: TenantContext;
+  }): Promise<InteractionIdpCallbackResult> {
+    void _params;
+    throw new Error('Not implemented');
+  }
+  async resumeExternalSignup(_params: {
+    tenantCode: string;
+    uid: string;
+    ticket: string;
+    attemptId: string;
+    req: unknown;
+    res: unknown;
+    tenant?: TenantContext;
+    externalAccessId?: string;
+  }): Promise<InteractionResponse> {
+    void _params;
+    throw new Error('Not implemented');
+  }
 
   abstract getSamlMetadata(params: {
     tenantCode: string;

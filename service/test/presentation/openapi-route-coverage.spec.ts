@@ -1,3 +1,5 @@
+import { ExternalSignupController } from '@presentation/controllers/external-signup.controller';
+import { ExternalSignupCommandPort } from '@application/ports/external-signup.port';
 import { INestApplication, InjectionToken, Provider } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
@@ -136,6 +138,7 @@ describe('openapi route coverage', () => {
   beforeAll(async () => {
     moduleRef = await Test.createTestingModule({
       controllers: [
+        ExternalSignupController,
         HealthController,
         InteractionController,
         AuthController,
@@ -155,6 +158,7 @@ describe('openapi route coverage', () => {
         UserProvisioningController,
       ],
       providers: [
+        provider(ExternalSignupCommandPort),
         provider(ObservabilityQueryPort),
         provider(InteractionCommandPort),
         provider(AccessVerifierPort),

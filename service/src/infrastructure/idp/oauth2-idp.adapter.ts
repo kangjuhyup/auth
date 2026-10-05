@@ -1,17 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { IdpPort } from '@application/ports/idp.port';
 import type { IdpUserInfo } from '@application/ports/idp.port';
-import type {
-  IdpOauthEndpointsConfig,
-  IdpOauthResolvedEndpoints,
-} from '@domain/models';
+import type { IdpOauthEndpointsConfig } from '@domain/models';
 import { resolveIdpOauthEndpoints } from '@domain/models';
 import { request as httpsRequest } from 'node:https';
 import { request as httpRequest } from 'node:http';
 import { URL } from 'node:url';
+import { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
+import { unprotectIdpClientSecret } from '@application/services/idp-client-secret';
 
 @Injectable()
 export class OAuth2IdpAdapter implements IdpPort {
+  constructor(private readonly symmetricCrypto: SymmetricCryptoPort) {}
+
   getAuthorizationUrl(
     provider: string,
     oauthConfig: IdpOauthEndpointsConfig | null,
@@ -21,7 +22,9 @@ export class OAuth2IdpAdapter implements IdpPort {
     scopes?: string[],
   ): string {
     const endpoints = resolveIdpOauthEndpoints(provider, oauthConfig);
-    const finalScopes = scopes ?? endpoints.scopes;
+    const finalScopes = (scopes ?? endpoints.scopes).filter(
+      (scope) => scope !== 'account_ci' && scope !== 'ci',
+    );
 
     const params = new URLSearchParams({
       response_type: 'code',
@@ -32,6 +35,16 @@ export class OAuth2IdpAdapter implements IdpPort {
     });
     if (endpoints.extraAuthParams) {
       for (const [k, v] of Object.entries(endpoints.extraAuthParams)) {
+        if (
+          [
+            'response_type',
+            'client_id',
+            'redirect_uri',
+            'state',
+            'scope',
+          ].includes(k)
+        )
+          throw new Error('Reserved IdP authorization parameter');
         params.set(k, v);
       }
     }
@@ -43,7 +56,7 @@ export class OAuth2IdpAdapter implements IdpPort {
     provider: string,
     oauthConfig: IdpOauthEndpointsConfig | null,
     clientId: string,
-    clientSecret: string | null,
+    clientSecretEnc: string | null,
     code: string,
     redirectUri: string,
   ): Promise<IdpUserInfo> {
@@ -55,8 +68,11 @@ export class OAuth2IdpAdapter implements IdpPort {
       redirect_uri: redirectUri,
       client_id: clientId,
     };
-    if (clientSecret) {
-      tokenBody.client_secret = clientSecret;
+    if (clientSecretEnc) {
+      tokenBody.client_secret = unprotectIdpClientSecret(
+        this.symmetricCrypto,
+        clientSecretEnc,
+      );
     }
 
     const tokenData = await this.httpPost(
@@ -64,53 +80,64 @@ export class OAuth2IdpAdapter implements IdpPort {
       new URLSearchParams(tokenBody).toString(),
       { 'Content-Type': 'application/x-www-form-urlencoded' },
     );
-    const accessToken = tokenData.access_token as string;
+    const accessToken = tokenData.access_token;
+    if (typeof accessToken !== 'string' || !accessToken)
+      throw new Error('IdP token unavailable');
 
     if (!endpoints.userinfo) {
-      return this.parseIdToken(tokenData.id_token as string, endpoints);
+      throw new Error(
+        'IdP userinfo endpoint required; unverified ID token is not authentication',
+      );
     }
 
     const profile = await this.httpGet(endpoints.userinfo, {
       Authorization: `Bearer ${accessToken}`,
     });
 
-    return {
-      sub: String(this.getNestedField(profile, endpoints.subField)),
-      email: endpoints.emailField
-        ? (this.getNestedField(profile, endpoints.emailField) as
-            | string
-            | undefined)
-        : undefined,
+    const rawSub = this.getNestedField(
       profile,
+      provider === 'kakao' ? 'id' : endpoints.subField,
+    );
+    if (
+      (typeof rawSub !== 'string' && typeof rawSub !== 'number') ||
+      !String(rawSub) ||
+      String(rawSub).length > 191 ||
+      [...String(rawSub)].some((character) => character.charCodeAt(0) <= 32) ||
+      !Number.isFinite(typeof rawSub === 'number' ? rawSub : 0)
+    )
+      throw new Error('IdP subject unavailable');
+    if (provider === 'kakao' && !/^[1-9][0-9]{0,18}$/.test(String(rawSub)))
+      throw new Error('IdP subject unavailable');
+    if (typeof rawSub === 'number' && !Number.isSafeInteger(rawSub))
+      throw new Error('IdP subject unavailable');
+    const email = endpoints.emailField
+      ? this.getNestedField(profile, endpoints.emailField)
+      : undefined;
+    const nickname = this.getNestedField(
+      profile,
+      provider === 'kakao' ? 'kakao_account.profile.nickname' : 'name',
+    );
+    return {
+      sub: String(rawSub),
+      email:
+        typeof email === 'string' && email.length <= 191 ? email : undefined,
+      profile:
+        typeof nickname === 'string'
+          ? { nickname: nickname.slice(0, 128) }
+          : {},
     };
   }
 
-  private getNestedField(
-    obj: Record<string, unknown>,
-    path: string,
-  ): unknown {
+  private getNestedField(obj: Record<string, unknown>, path: string): unknown {
     return path
       .split('.')
       .reduce<unknown>(
         (acc, key) =>
-          acc && typeof acc === 'object' ? (acc as Record<string, unknown>)[key] : undefined,
+          acc && typeof acc === 'object'
+            ? (acc as Record<string, unknown>)[key]
+            : undefined,
         obj,
       );
-  }
-
-  private parseIdToken(
-    idToken: string,
-    endpoints: IdpOauthResolvedEndpoints,
-  ): IdpUserInfo {
-    const payload = JSON.parse(
-      Buffer.from(idToken.split('.')[1], 'base64url').toString(),
-    ) as Record<string, unknown>;
-
-    return {
-      sub: String(payload[endpoints.subField] ?? payload.sub),
-      email: (payload[endpoints.emailField ?? 'email'] as string) ?? undefined,
-      profile: payload,
-    };
   }
 
   private httpPost(
@@ -123,13 +150,25 @@ export class OAuth2IdpAdapter implements IdpPort {
       const reqFn = parsed.protocol === 'https:' ? httpsRequest : httpRequest;
       const req = reqFn(
         parsed,
-        { method: 'POST', headers: { ...headers, 'Content-Length': Buffer.byteLength(body).toString() } },
+        {
+          method: 'POST',
+          headers: {
+            ...headers,
+            'Content-Length': Buffer.byteLength(body).toString(),
+          },
+        },
         (res) => {
           let data = '';
-          res.on('data', (chunk) => (data += chunk));
+          res.on('data', (chunk) => {
+            data += chunk;
+            if (data.length > 1048576)
+              req.destroy(new Error('IdP response too large'));
+          });
           res.on('end', () => {
             if (res.statusCode && res.statusCode >= 400) {
-              return reject(new Error(`IdP token exchange failed: ${res.statusCode}`));
+              return reject(
+                new Error(`IdP token exchange failed: ${res.statusCode}`),
+              );
             }
             try {
               resolve(JSON.parse(data));
@@ -138,6 +177,9 @@ export class OAuth2IdpAdapter implements IdpPort {
             }
           });
         },
+      );
+      req.setTimeout(10000, () =>
+        req.destroy(new Error('IdP request timeout')),
       );
       req.on('error', reject);
       req.write(body);
@@ -154,7 +196,11 @@ export class OAuth2IdpAdapter implements IdpPort {
       const reqFn = parsed.protocol === 'https:' ? httpsRequest : httpRequest;
       const req = reqFn(parsed, { method: 'GET', headers }, (res) => {
         let data = '';
-        res.on('data', (chunk) => (data += chunk));
+        res.on('data', (chunk) => {
+          data += chunk;
+          if (data.length > 1048576)
+            req.destroy(new Error('IdP response too large'));
+        });
         res.on('end', () => {
           if (res.statusCode && res.statusCode >= 400) {
             return reject(new Error(`IdP userinfo failed: ${res.statusCode}`));
@@ -166,6 +212,9 @@ export class OAuth2IdpAdapter implements IdpPort {
           }
         });
       });
+      req.setTimeout(10000, () =>
+        req.destroy(new Error('IdP request timeout')),
+      );
       req.on('error', reject);
       req.end();
     });

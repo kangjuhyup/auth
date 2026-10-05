@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.0](https://github.com/kangjuhyup/auth/compare/auth-interaction-ui-v0.2.1...auth-interaction-ui-v0.3.0) (2026-10-05)
+
+### Miscellaneous Chores
+
+- synchronize the embedded interaction UI with the Auth 0.3.0 release
+
 ## [0.2.1](https://github.com/kangjuhyup/auth/compare/auth-interaction-ui-v0.2.0...auth-interaction-ui-v0.2.1) (2026-09-19)
 
 ### Bug Fixes

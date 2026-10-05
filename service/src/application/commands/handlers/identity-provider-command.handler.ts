@@ -14,6 +14,8 @@ import { IdentityProviderRepository } from '@domain/repositories';
 import { IdentityProviderModel } from '@domain/models/identity-provider';
 import { orThrow } from '@domain/utils';
 import { AuditRecorder } from '@application/services/audit-recorder';
+import { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.port';
+import { protectIdpClientSecret } from '@application/services/idp-client-secret';
 
 @Injectable()
 export class IdentityProviderCommandHandler implements IdentityProviderCommandPort {
@@ -21,6 +23,7 @@ export class IdentityProviderCommandHandler implements IdentityProviderCommandPo
 
   constructor(
     private readonly idpRepo: IdentityProviderRepository,
+    private readonly symmetricCrypto: SymmetricCryptoPort,
     private readonly auditRecorder?: AuditRecorder,
   ) {}
 
@@ -47,7 +50,9 @@ export class IdentityProviderCommandHandler implements IdentityProviderCommandPo
       protocol: dto.protocol ?? 'oauth2',
       displayName: dto.displayName,
       clientId: dto.clientId,
-      clientSecret: dto.clientSecret ?? null,
+      clientSecret: dto.clientSecret
+        ? protectIdpClientSecret(this.symmetricCrypto, dto.clientSecret)
+        : null,
       redirectUri: dto.redirectUri,
       enabled: dto.enabled ?? true,
       oauthConfig: dto.oauthConfig ?? null,
@@ -99,7 +104,11 @@ export class IdentityProviderCommandHandler implements IdentityProviderCommandPo
       model.changeClientId(dto.clientId);
     }
     if (dto.clientSecret !== undefined) {
-      model.changeClientSecret(dto.clientSecret);
+      model.changeClientSecret(
+        dto.clientSecret
+          ? protectIdpClientSecret(this.symmetricCrypto, dto.clientSecret)
+          : null,
+      );
     }
     if (dto.redirectUri !== undefined) {
       model.changeRedirectUri(dto.redirectUri);

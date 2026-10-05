@@ -1,3 +1,4 @@
+import { ExternalSignupCommandPort } from '@application/ports/external-signup.port';
 import { createHash, createHmac, createPublicKey, verify } from 'node:crypto';
 import request from 'supertest';
 import { ConsentModel } from '@domain/models/consent';
@@ -503,6 +504,8 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
         });
 
       const location = resumeResponse.headers.location as string;
+      if (/\/idp\/[^/]+\/continue(?:[?#]|$)/.test(redirectTo))
+        return resolveAuthorizationCode(agent, location, remainingConsentSteps);
       const callbackLocation = new URL(location, 'http://127.0.0.1');
       const code = callbackLocation.searchParams.get('code');
 
@@ -3863,6 +3866,16 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
             username: 'alice',
             password: 'Password123!',
           })
+          .expect(403);
+
+        const denied = await beginOidcInteraction({
+          tenantCode: 'acme',
+          clientId: client.clientId,
+          redirectUri: client.redirectUri,
+        });
+        await denied.agent
+          .post(`/t/acme/interaction/${denied.uid}/api/login`)
+          .send({ username: 'alice', password: 'Password123!' })
           .expect(401);
 
         const secondLogin = await loginUserViaOidc({
@@ -4016,14 +4029,14 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
         expect(authorizationUrl.searchParams.get('client_id')).toBe(
           mockIdp.clientId,
         );
-        expect(authorizationUrl.searchParams.get('state')).toContain(
-          `${interaction.uid}:`,
+        expect(authorizationUrl.searchParams.get('state')).toMatch(
+          /^[A-Za-z0-9_-]{43}$/,
         );
 
         const idpCallbackUrl = await fetchMockIdpRedirect(authorizationUrl);
 
         expect(idpCallbackUrl.pathname).toBe(
-          `/t/acme/interaction/${interaction.uid}/idp/${provider}/callback`,
+          `/t/acme/interaction/idp/${provider}/callback`,
         );
         expect(idpCallbackUrl.searchParams.get('code')).toBeTruthy();
 
@@ -4060,6 +4073,73 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
         });
       });
 
+      it('resource-less PKCE issues native opaque proof for browser-bound identity linking', async () => {
+        const adminToken = await loginAsAdmin();
+        await createTenant(adminToken, 'acme', 'Acme');
+        const client = await createClient(
+          adminToken,
+          'acme',
+          'external-link-proof',
+          { allowedResources: ['https://resource.example.test'] },
+        );
+        const signup = await signupUser('acme', {
+          username: 'external-link-proof-user',
+          password: 'Password123!',
+        });
+        const login = await loginUserViaOidc({
+          tenantCode: 'acme',
+          clientId: client.clientId,
+          redirectUri: client.redirectUri,
+          username: signup.username,
+          password: signup.password,
+          scope: 'openid profile',
+          prompt: 'login',
+        });
+        expect(login.accessToken.split('.')).toHaveLength(1);
+        await request(fixture.app.getHttpServer())
+          .get('/auth/profile')
+          .query({ tenantCode: 'acme' })
+          .set('Authorization', `Bearer ${login.accessToken}`)
+          .expect(200);
+        const provider = 'mock_oidc';
+        await createMockOidcIdentityProvider({
+          adminToken,
+          tenantCode: 'acme',
+          provider,
+        });
+        const browser = request.agent(fixture.app.getHttpServer());
+        const start = await browser
+          .post(`/auth/identity-links/${provider}/start`)
+          .query({ tenantCode: 'acme' })
+          .set('Authorization', `Bearer ${login.accessToken}`)
+          .send({ returnTo: '/admin/security' })
+          .expect(201);
+        expect(Object.keys(start.body)).toEqual(['authorizationUrl']);
+        const cookie = (
+          start.headers['set-cookie'] as unknown as string[]
+        ).find((value) => value.startsWith(`_identity_link_${provider}=`));
+        expect(cookie).toContain('HttpOnly');
+        expect(cookie).toContain('SameSite=Lax');
+        const authorizationUrl = new URL(start.body.authorizationUrl);
+        const callback = await fetchMockIdpRedirect(authorizationUrl);
+        // A forwarded authorization URL cannot attach a Kakao identity to its initiator.
+        await request(fixture.app.getHttpServer())
+          .get(callback.pathname + callback.search)
+          .expect(302)
+          .expect('Location', '/admin/security?identityError=invalid_state');
+        const tenant = await fixture.runInRequestContext(() =>
+          fixture.tenantRepository.findByCode('acme'),
+        );
+        expect(
+          await fixture.runInRequestContext(() =>
+            fixture.userIdentityRepository.listByUser(
+              tenant!.id,
+              signup.userId,
+            ),
+          ),
+        ).toHaveLength(0);
+      });
+
       it('로그인한 사용자는 mock OIDC IdP 계정을 연결한 뒤 외부 인증으로 로그인할 수 있다', async () => {
         const adminToken = await loginAsAdmin();
         await createTenant(adminToken, 'acme', 'Acme Corp');
@@ -4093,7 +4173,8 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           password: signup.password,
         });
 
-        const startResponse = await request(fixture.app.getHttpServer())
+        const linkBrowser = request.agent(fixture.app.getHttpServer());
+        const startResponse = await linkBrowser
           .post(`/auth/identity-links/${provider}/start`)
           .query({ tenantCode: 'acme' })
           .set('host', 'auth.e2e.test')
@@ -4116,7 +4197,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
         expect(idpCallbackUrl.searchParams.get('tenantCode')).toBe('acme');
         expect(idpCallbackUrl.searchParams.get('code')).toBeTruthy();
 
-        const callbackResponse = await request(fixture.app.getHttpServer())
+        const callbackResponse = await linkBrowser
           .get(toAppPath(idpCallbackUrl.toString()))
           .set('host', 'auth.e2e.test')
           .expect(302);
@@ -4184,7 +4265,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
         });
       });
 
-      it('mock OIDC IdP 사용자가 연결되지 않았으면 interaction 오류로 되돌린다', async () => {
+      it('unlinked external identity waits for membership claim then resumes passwordless PKCE login', async () => {
         const adminToken = await loginAsAdmin();
         await createTenant(adminToken, 'acme', 'Acme Corp');
         const client = await createClient(
@@ -4221,17 +4302,85 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
           .get(toAppPath(idpCallbackUrl.toString()))
           .set('host', 'auth.e2e.test')
           .expect(302);
+        const continuation = await interaction.agent
+          .get(callbackResponse.headers.location)
+          .expect(302);
         const callbackLocation = new URL(
-          callbackResponse.headers.location as string,
+          continuation.headers.location as string,
           'http://127.0.0.1',
         );
 
         expect(callbackLocation.pathname).toBe(
           `/t/acme/interaction/${interaction.uid}`,
         );
-        expect(callbackLocation.searchParams.get('error')).toBe(
-          'idp_user_not_linked',
+        const details = await interaction.agent
+          .get(`/t/acme/interaction/${interaction.uid}/api/details`)
+          .expect(200);
+        expect(details.body.externalSignup).toMatchObject({
+          provider,
+          ticket: expect.any(String),
+          attemptId: expect.any(String),
+        });
+        const tenant = await fixture.runInRequestContext(() =>
+          fixture.tenantRepository.findByCode('acme'),
         );
+        const before = await fixture.orm.em
+          .fork()
+          .getConnection()
+          .execute(
+            'select count(*)::int as count from "user" where tenant_id=?',
+            [tenant!.id],
+          );
+        expect(before[0].count).toBe(0);
+        const commands = fixture.app.get(ExternalSignupCommandPort);
+        const body = {
+          ticket: details.body.externalSignup.ticket,
+          clientId: client.clientId,
+          attemptId: details.body.externalSignup.attemptId,
+        };
+        await fixture.runInRequestContext(() =>
+          commands.claim(tenant!.id, 'service', body),
+        );
+        const subject = await fixture.runInRequestContext(() =>
+          commands.complete(
+            tenant!.id,
+            'service',
+            body,
+            'external-signup-idempotency-key',
+          ),
+        );
+        const resume = await interaction.agent
+          .post(
+            `/t/acme/interaction/${interaction.uid}/api/external-signup/resume`,
+          )
+          .send({ ticket: body.ticket, attemptId: body.attemptId })
+          .expect(200);
+        const code = await resolveAuthorizationCode(
+          interaction.agent,
+          resume.body.redirectTo,
+        );
+        const token = await exchangeAuthorizationCode({
+          agent: interaction.agent,
+          tenantCode: 'acme',
+          clientId: client.clientId,
+          redirectUri: client.redirectUri,
+          code,
+          codeVerifier: interaction.verifier,
+        }).expect(200);
+        const profile = await request(fixture.app.getHttpServer())
+          .get('/auth/profile')
+          .query({ tenantCode: 'acme' })
+          .set('Authorization', `Bearer ${token.body.access_token}`)
+          .expect(200);
+        expect(profile.body.id).toBe(subject.subject);
+        const credentials = await fixture.orm.em
+          .fork()
+          .getConnection()
+          .execute(
+            'select count(*)::int as count from "user_credential" where user_id=?',
+            [subject.subject],
+          );
+        expect(credentials[0].count).toBe(0);
       });
 
       it('TOTP MFA 등록 후 OIDC 로그인은 MFA 검증을 거쳐 토큰 교환에 성공한다', async () => {
@@ -4644,6 +4793,19 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
             username: signup.username,
             password: signup.password,
           })
+          .expect(403);
+        const withdrawn = await fixture.runInRequestContext(() =>
+          fixture.userWriteRepository.findById(signup.userId),
+        );
+        expect(withdrawn?.status).toBe('WITHDRAWN');
+        const denied = await beginOidcInteraction({
+          tenantCode: 'acme',
+          clientId: client.clientId,
+          redirectUri: client.redirectUri,
+        });
+        await denied.agent
+          .post(`/t/acme/interaction/${denied.uid}/api/login`)
+          .send({ username: signup.username, password: signup.password })
           .expect(401);
       });
 
@@ -4718,7 +4880,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
             password: 'Password123!',
             email: 'missing-tenant@acme.test',
           })
-          .expect(400);
+          .expect(404);
 
         await request(fixture.app.getHttpServer())
           .post('/auth/signup')
@@ -4728,7 +4890,7 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
             password: 'Password123!',
             phone: 'not-a-phone',
           })
-          .expect(400);
+          .expect(404);
 
         await request(fixture.app.getHttpServer())
           .post('/auth/signup')
@@ -4738,7 +4900,19 @@ export function registerApiE2eSuite(groups: ApiE2eSuiteGroup[]): void {
             password: 'Password123!',
             email: 'policy-bypass@acme.test',
           })
-          .expect(410);
+          .expect(404);
+
+        const tenant = await fixture.runInRequestContext(() =>
+          fixture.tenantRepository.findByCode('acme'),
+        );
+        const users = await fixture.orm.em
+          .fork()
+          .getConnection()
+          .execute(
+            'select count(*)::int as count from "user" where tenant_id=?',
+            [tenant!.id],
+          );
+        expect(users[0].count).toBe(1);
 
         await request(fixture.app.getHttpServer())
           .get('/auth/profile')

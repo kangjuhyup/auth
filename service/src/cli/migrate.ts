@@ -1,16 +1,20 @@
-import { MikroORM, type Options } from '@mikro-orm/core';
+import { MikroORM, type EntityManager, type Options } from '@mikro-orm/core';
 import { Migrator } from '@mikro-orm/migrations';
 import { canonicalizeAdminUiUrl } from '@application/process-managers/admin-bootstrap-url';
 import { buildMikroOrmConfig } from '../infrastructure/mikro-orm/config/mikro-orm.config';
+import { SymmetricCryptoAdapter } from '../infrastructure/crypto/symmetric/symmetric-crypto.adapter';
+import { protectStoredIdpClientSecrets } from '../infrastructure/repositories/idp-client-secret-protector';
 
 type MigrationOrm = {
   getMigrator(): { up(): Promise<unknown> };
+  em?: EntityManager;
   close(force?: boolean): Promise<void>;
 };
 
 export type MigrationDependencies = {
   readConfig(key: string): string | undefined;
   init(options: Options): Promise<MigrationOrm>;
+  protectIdpSecrets?(orm: MigrationOrm): Promise<void>;
 };
 
 export type MigrationCliDependencies = {
@@ -31,6 +35,15 @@ export async function runMigrations(
   deps: MigrationDependencies = {
     readConfig: (key) => process.env[key],
     init: (options) => MikroORM.init(options),
+    protectIdpSecrets: async (orm) => {
+      if (!orm.em) throw new Error('IdP secret protection unavailable');
+      const key = process.env.JWKS_ENCRYPTION_KEY;
+      if (!key) throw new Error('IdP secret protection key unavailable');
+      await protectStoredIdpClientSecrets(
+        orm.em,
+        new SymmetricCryptoAdapter(key),
+      );
+    },
   },
 ): Promise<void> {
   const rawAdminUiUrl = deps.readConfig('ADMIN_UI_URL');
@@ -45,6 +58,7 @@ export async function runMigrations(
   const orm = await deps.init({ ...config, extensions: [Migrator] });
   try {
     await orm.getMigrator().up();
+    await deps.protectIdpSecrets?.(orm);
   } finally {
     await orm.close(true);
   }

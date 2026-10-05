@@ -6,7 +6,7 @@
 export interface IdpOauthEndpointsConfig {
   authorizationUrl?: string;
   tokenUrl?: string;
-  /** 생략 시 내장 기본. 빈 문자열이면 userinfo 호출 없이 id_token 사용 */
+  /** 생략 시 내장 기본. 빈 문자열이면 검증 가능한 userinfo가 없어 로그인을 지원하지 않음 */
   userinfoUrl?: string;
   scopes?: string[];
   subField?: string;
@@ -47,7 +47,7 @@ export const WELL_KNOWN_IDP_OAUTH_ENDPOINTS: Record<
     authorization: 'https://kauth.kakao.com/oauth/authorize',
     token: 'https://kauth.kakao.com/oauth/token',
     userinfo: 'https://kapi.kakao.com/v2/user/me',
-    scopes: ['openid', 'account_email', 'profile_nickname'],
+    scopes: ['profile_nickname'],
     subField: 'id',
     emailField: 'kakao_account.email',
   },

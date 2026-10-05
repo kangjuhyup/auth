@@ -12,10 +12,12 @@ describe('compiled migration runner', () => {
     const readConfig = jest.fn((key: string) =>
       key === 'DB_NAME' ? 'auth_test' : undefined,
     );
+    const protectIdpSecrets = jest.fn().mockResolvedValue(undefined);
 
     await runMigrations({
       readConfig,
       init,
+      protectIdpSecrets,
     });
 
     expect(readConfig.mock.calls[0]).toEqual(['ADMIN_UI_URL']);
@@ -26,6 +28,10 @@ describe('compiled migration runner', () => {
       }),
     );
     expect(up).toHaveBeenCalledTimes(1);
+    expect(protectIdpSecrets).toHaveBeenCalledTimes(1);
+    expect(up.mock.invocationCallOrder[0]).toBeLessThan(
+      protectIdpSecrets.mock.invocationCallOrder[0],
+    );
     expect(close).toHaveBeenCalledWith(true);
   });
 
@@ -92,6 +98,25 @@ describe('compiled migration runner', () => {
     await expect(
       runMigrations({ readConfig: () => undefined, init }),
     ).rejects.toThrow('driver failure');
+    expect(close).toHaveBeenCalledWith(true);
+  });
+
+  it('closes the ORM and fails before service startup when IdP secret protection fails', async () => {
+    const close = jest.fn().mockResolvedValue(undefined);
+    const init = jest.fn().mockResolvedValue({
+      getMigrator: () => ({ up: jest.fn().mockResolvedValue(undefined) }),
+      close,
+    });
+
+    await expect(
+      runMigrations({
+        readConfig: () => undefined,
+        init,
+        protectIdpSecrets: jest
+          .fn()
+          .mockRejectedValue(new Error('secret protection failed')),
+      }),
+    ).rejects.toThrow('secret protection failed');
     expect(close).toHaveBeenCalledWith(true);
   });
 

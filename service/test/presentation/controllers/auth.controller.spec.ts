@@ -169,7 +169,7 @@ describe('AuthController', () => {
 
     await expect(
       controller.beginTotpEnrollment(tenant, authUser),
-    ).resolves.toBe(result);
+    ).resolves.toEqual(result);
     expect(commandPort.beginTotpEnrollment).toHaveBeenCalledWith(
       tenant.id,
       authUser.userId,
@@ -183,7 +183,7 @@ describe('AuthController', () => {
 
     await expect(
       controller.confirmTotpEnrollment(tenant, authUser, dto),
-    ).resolves.toBe(result);
+    ).resolves.toEqual(result);
     expect(commandPort.confirmTotpEnrollment).toHaveBeenCalledWith(
       tenant.id,
       authUser.userId,
@@ -209,7 +209,7 @@ describe('AuthController', () => {
 
     await expect(
       controller.getRecoveryCodeStatus(tenant, authUser),
-    ).resolves.toBe(result);
+    ).resolves.toEqual(result);
     expect(queryPort.getRecoveryCodeStatus).toHaveBeenCalledWith(
       tenant.id,
       authUser.userId,
@@ -222,7 +222,7 @@ describe('AuthController', () => {
 
     await expect(
       controller.rotateRecoveryCodes(tenant, authUser),
-    ).resolves.toBe(result);
+    ).resolves.toEqual(result);
     expect(commandPort.rotateRecoveryCodes).toHaveBeenCalledWith(
       tenant.id,
       authUser.userId,
@@ -316,7 +316,7 @@ describe('AuthController', () => {
         { returnTo: '/admin/security' },
         req,
       ),
-    ).resolves.toBe(result);
+    ).resolves.toEqual(result);
     expect(commandPort.startIdentityLink).toHaveBeenCalledWith(
       tenant.id,
       authUser.userId,
@@ -328,6 +328,51 @@ describe('AuthController', () => {
         returnTo: '/admin/security',
       },
     );
+  });
+
+  it('연결 cookie는 HttpOnly이고 JSON에 browser binding을 노출하지 않는다', async () => {
+    commandPort.startIdentityLink.mockResolvedValue({
+      authorizationUrl: 'https://idp.example/authorize',
+      browserBinding: 'secret-browser',
+    });
+    const response = { cookie: jest.fn() } as any;
+    const result = await controller.startIdentityLink(
+      tenant,
+      authUser,
+      'kakao',
+      { returnTo: '/admin/security' },
+      { protocol: 'https', get: () => 'auth.example' } as any,
+      response,
+    );
+    expect(result).toEqual({
+      authorizationUrl: 'https://idp.example/authorize',
+    });
+    expect(response.cookie).toHaveBeenCalledWith(
+      '_identity_link_kakao',
+      'secret-browser',
+      expect.objectContaining({
+        httpOnly: true,
+        secure: true,
+        sameSite: 'lax',
+        path: '/auth/identity-links/kakao/callback',
+      }),
+    );
+  });
+  it('연결 callback은 요청 cookie로만 브라우저 증명을 전달한다', async () => {
+    commandPort.completeIdentityLink.mockResolvedValue({
+      redirectTo: '/admin/security',
+    });
+    const response = { clearCookie: jest.fn(), redirect: jest.fn() } as any;
+    await controller.completeIdentityLink(
+      'kakao',
+      { state: 'state', code: 'code' },
+      response,
+      { headers: { cookie: '_identity_link_kakao=browser' } } as any,
+    );
+    expect(commandPort.completeIdentityLink).toHaveBeenCalledWith(
+      expect.objectContaining({ browserBinding: 'browser' }),
+    );
+    expect(response.clearCookie).toHaveBeenCalled();
   });
 
   it('completeIdentityLink는 command 결과로 redirect 한다', async () => {

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { AuthCommandHandler } from '@application/commands/handlers/auth-command.handler';
 import type { UserWriteRepositoryPort } from '@application/commands/ports/user-write-repository.port';
 import type {
@@ -159,6 +160,7 @@ function createMockIdentityLinkSession(): jest.Mocked<IdentityLinkSessionPort> {
     create: jest.fn().mockResolvedValue(undefined),
     consume: jest.fn().mockResolvedValue({
       state: 'state-1',
+      browserHash: createHash('sha256').update('link-browser').digest('hex'),
       tenantId: 'tenant-1',
       tenantCode: 'acme',
       userId: 'user-1',
@@ -302,6 +304,18 @@ describe('AuthCommandHandler', () => {
       idpPort,
       identityLinkSession,
       eventRepo,
+      {
+        findByClientId: jest.fn(async () => ({
+          enabled: true,
+          externalInteractionUiUrl: 'https://app.example/interaction',
+          redirectUris: ['https://app.example/login'],
+        })),
+      } as any,
+      {
+        remove: jest.fn(async (_tenant: string, _user: string, id: string) =>
+          userIdentityRepo.delete(id),
+        ),
+      },
     );
   });
 
@@ -1296,6 +1310,27 @@ describe('AuthCommandHandler', () => {
   });
 
   describe('identity link flow', () => {
+    it('다른 브라우저에서 전달된 연결 URL은 카카오 identity를 쓰지 않는다', async () => {
+      identityLinkSession.consume.mockResolvedValue({
+        state: 'state',
+        createdAt: new Date().toISOString(),
+        tenantId: 'tenant-1',
+        tenantCode: 'acme',
+        userId: 'user-1',
+        provider: 'google',
+        redirectUri: 'https://auth.example/auth/identity-links/google/callback',
+        browserHash: 'expected-browser-hash',
+      });
+      await handler.completeIdentityLink({
+        provider: 'google',
+        state: 'forwarded-state',
+        code: 'code',
+        browserBinding: 'other-browser',
+      } as any);
+      expect(idpPort.exchangeCode).not.toHaveBeenCalled();
+      expect(userIdentityRepo.save).not.toHaveBeenCalled();
+    });
+
     it('startIdentityLink는 state 세션을 저장하고 IdP authorization URL을 반환한다', async () => {
       const result = await handler.startIdentityLink('tenant-1', 'user-1', {
         provider: 'google',
@@ -1328,24 +1363,55 @@ describe('AuthCommandHandler', () => {
         'https://auth.example/auth/identity-links/google/callback?tenantCode=acme',
         expect.any(String),
       );
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         authorizationUrl: 'https://idp.example/authorize?state=state-1',
+        browserBinding: expect.any(String),
       });
     });
 
-    it('startIdentityLink는 외부 returnTo를 기본 보안 설정 경로로 치환한다', async () => {
+    it('등록 클라이언트 바인딩이 없는 외부 returnTo를 거절한다', async () => {
+      await expect(
+        handler.startIdentityLink('tenant-1', 'user-1', {
+          provider: 'google',
+          tenantCode: 'acme',
+          redirectUri:
+            'https://auth.example/auth/identity-links/google/callback',
+          returnTo: 'https://evil.example/callback',
+        } as any),
+      ).rejects.toThrow('Invalid identity-link return');
+      expect(identityLinkSession.create).not.toHaveBeenCalled();
+    });
+
+    it('external app return requires both exact registered redirect and interaction UI origin', async () => {
       await handler.startIdentityLink('tenant-1', 'user-1', {
         provider: 'google',
         tenantCode: 'acme',
-        redirectUri:
-          'https://auth.example/auth/identity-links/google/callback?tenantCode=acme',
-        returnTo: 'https://evil.example/callback',
+        redirectUri: 'https://auth.example/auth/identity-links/google/callback',
+        returnTo: 'https://app.example/login',
+        callerClientId: 'app',
       });
-
       expect(identityLinkSession.create).toHaveBeenCalledWith(
-        expect.objectContaining({ returnTo: '/admin/security' }),
-        expect.any(Number),
+        expect.objectContaining({ returnTo: 'https://app.example/login' }),
+        300,
       );
+    });
+    it('matching UI origin alone cannot authorize an unregistered /login return', async () => {
+      (handler as any).clients.findByClientId.mockResolvedValue({
+        enabled: true,
+        externalInteractionUiUrl: 'https://app.example/interaction',
+        redirectUris: ['https://app.example/another-callback'],
+      });
+      await expect(
+        handler.startIdentityLink('tenant-1', 'user-1', {
+          provider: 'google',
+          tenantCode: 'acme',
+          redirectUri:
+            'https://auth.example/auth/identity-links/google/callback',
+          returnTo: 'https://app.example/login',
+          callerClientId: 'app',
+        }),
+      ).rejects.toThrow('Invalid identity-link return');
+      expect(identityLinkSession.create).not.toHaveBeenCalled();
     });
 
     it('completeIdentityLink는 state를 소비하고 외부 계정을 현재 사용자에게 연결한다', async () => {
@@ -1353,6 +1419,7 @@ describe('AuthCommandHandler', () => {
       userIdentityRepo.listByUser.mockResolvedValue([]);
 
       const result = await handler.completeIdentityLink({
+        browserBinding: 'link-browser',
         provider: 'google',
         state: 'state-1',
         code: 'authorization-code',
@@ -1401,6 +1468,7 @@ describe('AuthCommandHandler', () => {
       );
 
       const result = await handler.completeIdentityLink({
+        browserBinding: 'link-browser',
         provider: 'google',
         state: 'state-1',
         code: 'authorization-code',
@@ -1426,6 +1494,7 @@ describe('AuthCommandHandler', () => {
       ]);
 
       const result = await handler.completeIdentityLink({
+        browserBinding: 'link-browser',
         provider: 'google',
         state: 'state-1',
         code: 'authorization-code',
@@ -1441,12 +1510,20 @@ describe('AuthCommandHandler', () => {
       identityLinkSession.consume.mockResolvedValue(null);
 
       await expect(
-        handler.completeIdentityLink({ state: null, code: 'code' }),
+        handler.completeIdentityLink({
+          browserBinding: 'link-browser',
+          state: null,
+          code: 'code',
+        }),
       ).resolves.toEqual({
         redirectTo: '/admin/security?identityError=invalid_state',
       });
       await expect(
-        handler.completeIdentityLink({ state: 'expired', code: 'code' }),
+        handler.completeIdentityLink({
+          browserBinding: 'link-browser',
+          state: 'expired',
+          code: 'code',
+        }),
       ).resolves.toEqual({
         redirectTo: '/admin/security?identityError=invalid_state',
       });

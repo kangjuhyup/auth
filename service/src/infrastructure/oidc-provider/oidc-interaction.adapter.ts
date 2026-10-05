@@ -1,5 +1,6 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { randomBytes } from 'node:crypto';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { createHash, randomBytes } from 'node:crypto';
+import { ExternalSignupStorePort } from '@application/ports/external-signup.port';
 import { isIP } from 'node:net';
 import type { Request } from 'express';
 import type {
@@ -48,6 +49,7 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
     private readonly metrics: OperationalMetricsPort,
     private readonly eventRepo: EventRepository,
     private readonly sessionControl: OidcSessionControlService,
+    @Optional() private readonly externalSignup?: ExternalSignupStorePort,
   ) {
     super();
   }
@@ -136,7 +138,26 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
           [])
         : [];
 
+    const signup =
+      params.tenant && this.externalSignup
+        ? await this.externalSignup.getInteractionTicket(
+            params.tenant.id,
+            params.uid,
+          )
+        : null;
+    const externalSignup =
+      signup &&
+      signup.clientId === clientId &&
+      signup.browserHash === externalBrowserHash(params.req, params.tenantCode)
+        ? {
+            ticket: signup.ticket,
+            provider: signup.provider,
+            expiresAt: signup.expiresAt,
+            attemptId: signup.attemptId,
+          }
+        : undefined;
     return {
+      ...(externalSignup ? { externalSignup } : {}),
       uid: params.uid,
       prompt: prompt.name,
       clientId,
@@ -377,124 +398,223 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
       return { redirectTo };
     }
 
+    if (!this.externalSignup)
+      return { status: 503, body: { error: 'external_signup_unavailable' } };
     const req = params.req as Request;
-    const callbackUrl = `${req.protocol}://${req.get('host')}/t/${params.tenantCode}/interaction/${params.uid}/idp/${params.providerName}/callback`;
-    const state = `${params.uid}:${randomBytes(16).toString('hex')}`;
-    const redirectTo = this.idpPort.getAuthorizationUrl(
-      idpConfig.provider,
-      idpConfig.oauthConfig,
-      idpConfig.clientId,
-      callbackUrl,
-      state,
+    const provider = await this.registry.get(params.tenantCode);
+    const details = await provider.interactionDetails(
+      req as any,
+      params.res as any,
     );
-
-    return { redirectTo };
+    if (details.uid !== params.uid || details.prompt.name !== 'login')
+      return { status: 403, body: { error: 'interaction_denied' } };
+    const browserHash = externalBrowserHash(req, params.tenantCode);
+    if (!browserHash)
+      return { status: 403, body: { error: 'interaction_denied' } };
+    const callbackUrl = `${new URL(provider.issuer).origin}/t/${params.tenantCode}/interaction/idp/${params.providerName}/callback`;
+    const state = randomBytes(32).toString('base64url');
+    const browser = randomBytes(32).toString('base64url');
+    (params.res as any).cookie(oauthCookie(params.providerName), browser, {
+      httpOnly: true,
+      secure: new URL(provider.issuer).protocol === 'https:',
+      sameSite: 'lax',
+      path: new URL(callbackUrl).pathname,
+      maxAge: 600000,
+    });
+    await this.externalSignup.putState(state, {
+      tenantId: params.tenant.id,
+      tenantCode: params.tenantCode,
+      clientId: String(details.params.client_id),
+      uid: params.uid,
+      provider: params.providerName,
+      redirectUri: callbackUrl,
+      intent: req.query.intent === 'signup' ? 'signup' : 'login',
+      browserHash,
+      callbackHash: hash(browser),
+    });
+    return {
+      redirectTo: this.idpPort.getAuthorizationUrl(
+        idpConfig.provider,
+        idpConfig.oauthConfig,
+        idpConfig.clientId,
+        callbackUrl,
+        state,
+      ),
+    };
   }
 
   async handleIdpCallback(params: {
+    tenantCode: string;
+    providerName: string;
+    req: unknown;
+    res: unknown;
+    tenant?: TenantContext;
+  }): Promise<InteractionIdpCallbackResult> {
+    const req = params.req as Request;
+    const state =
+      typeof req.query.state === 'string' &&
+      /^[A-Za-z0-9_-]{43}$/.test(req.query.state)
+        ? req.query.state
+        : '';
+    const session =
+      state && this.externalSignup
+        ? await this.externalSignup.consumeState(state)
+        : null;
+    if (
+      !session ||
+      !params.tenant ||
+      session.tenantId !== params.tenant.id ||
+      session.tenantCode !== params.tenantCode ||
+      session.provider !== params.providerName ||
+      session.callbackHash !==
+        hash(readCookie(req, oauthCookie(params.providerName)) ?? '')
+    )
+      return { redirectTo: '/' };
+    (params.res as any).clearCookie(oauthCookie(params.providerName), {
+      path: new URL(session.redirectUri).pathname,
+    });
+    const fail = (error: string) =>
+      this.interactionRedirect(session.tenantCode, session.uid, error);
+    if (
+      req.query.error ||
+      typeof req.query.code !== 'string' ||
+      !req.query.code ||
+      req.query.code.length > 4096
+    )
+      return fail('idp_no_code');
+    const config = await this.idpRepo.findByTenantAndProvider(
+      session.tenantId,
+      session.provider,
+    );
+    if (!config?.enabled || config.protocol !== 'oauth2')
+      return fail('idp_not_found');
+    const binding = await this.findInteractionBinding({
+      tenantCode: session.tenantCode,
+      uid: session.uid,
+    });
+    if (!binding || binding.clientId !== session.clientId)
+      return fail('interaction_denied');
+    try {
+      const info = await this.idpPort.exchangeCode(
+        config.provider,
+        config.oauthConfig,
+        config.clientId,
+        config.clientSecret,
+        req.query.code,
+        session.redirectUri,
+      );
+      if (!validExternalSubject(info.sub)) return fail('idp_missing_subject');
+      await this.externalSignup!.putIdentity({
+        ...session,
+        providerSub: info.sub,
+        profile: minimumProfile(info.profile),
+      });
+      return {
+        redirectTo: `/t/${session.tenantCode}/interaction/${session.uid}/idp/${session.provider}/continue`,
+      };
+    } catch {
+      return fail('idp_exchange_failed');
+    }
+  }
+
+  async continueIdpLogin(params: {
     tenantCode: string;
     uid: string;
     providerName: string;
     req: unknown;
     res: unknown;
     tenant?: TenantContext;
-  }): Promise<InteractionIdpCallbackResult> {
-    if (!params.tenant) {
+  }): Promise<{ userId: string; uid: string } | InteractionRedirectResult> {
+    if (!params.tenant || !this.externalSignup)
       return this.interactionRedirect(
         params.tenantCode,
         params.uid,
-        'tenant_not_found',
+        'interaction_denied',
       );
-    }
-
-    const req = params.req as Request;
-    const code = req.query.code as string | undefined;
-    if (!code) {
-      return this.interactionRedirect(
-        params.tenantCode,
-        params.uid,
-        'idp_no_code',
-      );
-    }
-
-    const idpConfig = await this.idpRepo.findByTenantAndProvider(
-      params.tenant.id,
-      params.providerName,
+    const provider = await this.registry.get(params.tenantCode);
+    const details = await provider.interactionDetails(
+      params.req as any,
+      params.res as any,
     );
-    if (!idpConfig) {
+    if (details.uid !== params.uid || details.prompt.name !== 'login')
       return this.interactionRedirect(
         params.tenantCode,
         params.uid,
-        'idp_not_found',
+        'interaction_denied',
       );
-    }
+    const verified = await this.externalSignup.consumeIdentity(
+      params.tenant.id,
+      params.uid,
+    );
     if (
+      !verified ||
+      verified.provider !== params.providerName ||
+      verified.clientId !== String(details.params.client_id) ||
+      verified.browserHash !==
+        externalBrowserHash(params.req, params.tenantCode) ||
       !(await this.isIdpAllowedForInteraction({
+        ...params,
         tenant: params.tenant,
-        tenantCode: params.tenantCode,
-        providerName: params.providerName,
-        req: params.req,
-        res: params.res,
       }))
-    ) {
+    )
       return this.interactionRedirect(
         params.tenantCode,
         params.uid,
-        'idp_not_allowed',
+        'interaction_denied',
       );
+    const identity = await this.userIdentityRepo.findByProviderSub(
+      params.tenant.id,
+      verified.provider,
+      verified.providerSub,
+    );
+    if (!identity || verified.intent === 'signup') {
+      await this.externalSignup.issueTicket(verified);
+      return {
+        redirectTo: `/t/${params.tenantCode}/interaction/${params.uid}`,
+      };
     }
+    return { userId: identity.userId, uid: params.uid };
+  }
 
-    try {
-      const callbackUrl = `${req.protocol}://${req.get('host')}/t/${params.tenantCode}/interaction/${params.uid}/idp/${params.providerName}/callback`;
-      const userInfo = await this.idpPort.exchangeCode(
-        idpConfig.provider,
-        idpConfig.oauthConfig,
-        idpConfig.clientId,
-        idpConfig.clientSecret,
-        code,
-        callbackUrl,
-      );
-      const identity = await this.userIdentityRepo.findByProviderSub(
-        params.tenant.id,
-        params.providerName,
-        userInfo.sub,
-      );
-      if (!identity) {
-        return this.interactionRedirect(
-          params.tenantCode,
-          params.uid,
-          'idp_user_not_linked',
-        );
-      }
-
-      const provider = await this.registry.get(params.tenantCode);
-      const conflict = await this.enforceSessionPolicy({
-        tenantCode: params.tenantCode,
-        req: params.req,
-        res: params.res,
-        tenant: params.tenant,
-        userId: identity.userId,
-      });
-      if (conflict) {
-        return this.interactionRedirect(
-          params.tenantCode,
-          params.uid,
-          'session_limit_exceeded',
-        );
-      }
-
-      await provider.interactionFinished(params.req as any, params.res as any, {
-        login: { accountId: identity.userId },
-      });
-
-      return { redirectTo: '' };
-    } catch {
-      return this.interactionRedirect(
-        params.tenantCode,
-        params.uid,
-        'idp_exchange_failed',
-      );
-    }
+  async resolveExternalSignup(params: {
+    tenantCode: string;
+    uid: string;
+    ticket: string;
+    attemptId: string;
+    req: unknown;
+    res: unknown;
+    tenant?: TenantContext;
+  }): Promise<{ userId: string }> {
+    const ticket = await this.externalSignup?.getTicket(params.ticket);
+    const provider = await this.registry.get(params.tenantCode);
+    const details = await provider.interactionDetails(
+      params.req as any,
+      params.res as any,
+    );
+    if (
+      !ticket ||
+      !ticket.subject ||
+      !params.tenant ||
+      ticket.tenantId !== params.tenant.id ||
+      ticket.tenantCode !== params.tenantCode ||
+      ticket.uid !== params.uid ||
+      details.uid !== params.uid ||
+      details.prompt.name !== 'login' ||
+      ticket.clientId !== String(details.params.client_id) ||
+      ticket.attemptId !== params.attemptId ||
+      ticket.browserHash !==
+        externalBrowserHash(params.req, params.tenantCode) ||
+      Date.parse(ticket.expiresAt) <= Date.now()
+    )
+      throw new Error('interaction_denied');
+    const identity = await this.userIdentityRepo.findByProviderSub(
+      params.tenant.id,
+      ticket.provider,
+      ticket.providerSub,
+    );
+    if (!identity || identity.userId !== ticket.subject)
+      throw new Error('interaction_denied');
+    return { userId: ticket.subject };
   }
 
   async getSamlMetadata(params: {
@@ -694,6 +814,7 @@ export class OidcInteractionAdapter extends OidcInteractionPort {
       params.tenant.id,
       clientId,
     );
+    if (!client || client.enabled === false) return false;
     if (client) {
       const policy = await this.clientAuthPolicyRepo.findByClientRefId(
         client.id,
@@ -1095,4 +1216,45 @@ function getOidcErrorCode(error: unknown): string | null {
     return 'invalid_client';
   }
   return null;
+}
+
+function hash(value: string) {
+  return createHash('sha256').update(value).digest('hex');
+}
+function oauthCookie(provider: string) {
+  return `_external_oauth_${provider}`;
+}
+function readCookie(req: unknown, name: string): string | undefined {
+  const header = (req as Request).headers?.cookie;
+  const item = header
+    ?.split(';')
+    .map((v) => v.trim())
+    .find((v) => v.startsWith(`${name}=`));
+  return item?.slice(name.length + 1);
+}
+export function externalBrowserHash(
+  req: unknown,
+  tenantCode: string,
+): string | undefined {
+  const value = readCookie(req, `_interaction_${tenantCode}`);
+  const signature = readCookie(req, `_interaction_${tenantCode}.sig`);
+  return value && signature ? hash(`${value}\0${signature}`) : undefined;
+}
+function validExternalSubject(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 191 &&
+    value !== 'undefined' &&
+    value !== 'null' &&
+    ![...value].some((character) => character.charCodeAt(0) <= 32)
+  );
+}
+function minimumProfile(
+  profile: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const nickname = profile?.nickname;
+  return typeof nickname === 'string'
+    ? { nickname: nickname.slice(0, 128) }
+    : {};
 }

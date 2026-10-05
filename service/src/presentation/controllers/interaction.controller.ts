@@ -8,6 +8,7 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
+import { ExternalSignupResumeBody } from '@presentation/dto/provisioning/external-signup.dto';
 import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
 import { resolve } from 'node:path';
@@ -346,18 +347,16 @@ export class InteractionController {
     return res.redirect(result.redirectTo);
   }
 
-  @Get(':uid/idp/:provider/callback')
+  @Get('idp/:provider/callback')
   @ApiRedirectSchema('Handle external identity provider callback')
   async idpCallback(
     @Param('tenantCode') tenantCode: string,
-    @Param('uid') uid: string,
     @Param('provider') providerName: string,
     @Req() req: Request,
     @Res() res: Response,
   ) {
     const result = await this.interactionCommand.handleIdpCallback({
       tenantCode,
-      uid,
       providerName,
       req,
       res,
@@ -366,6 +365,51 @@ export class InteractionController {
     if (result.redirectTo) {
       return res.redirect(result.redirectTo);
     }
+  }
+
+  @Get(':uid/idp/:provider/continue')
+  @ApiRedirectSchema('Continue browser-bound external login')
+  async continueIdpLogin(
+    @Param('tenantCode') tenantCode: string,
+    @Param('uid') uid: string,
+    @Param('provider') providerName: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const result = await this.interactionCommand.continueIdpLogin({
+      tenantCode,
+      uid,
+      providerName,
+      req,
+      res,
+      tenant: this.getTenant(req),
+    });
+    return res.redirect(result.redirectTo);
+  }
+
+  @Post(':uid/api/external-signup/resume')
+  @UseGuards(ExternalInteractionGuard)
+  @ApiOkSchema(
+    'Resume completed external signup',
+    OpenApiResponseSchemas.interactionResponse,
+  )
+  async resumeExternalSignup(
+    @Param('tenantCode') tenantCode: string,
+    @Param('uid') uid: string,
+    @Body() body: ExternalSignupResumeBody,
+    @Req() req: ExternalInteractionRequest,
+    @Res() res: Response,
+  ) {
+    const result = await this.interactionCommand.resumeExternalSignup({
+      tenantCode,
+      uid,
+      ...body,
+      req,
+      res,
+      tenant: this.getTenant(req),
+      externalAccessId: req.externalInteractionAccess?.accessId,
+    });
+    return res.status(result.status ?? 200).json(result.body);
   }
 
   @Get('saml/:provider/metadata')
