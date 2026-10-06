@@ -17,6 +17,7 @@ import {
 } from 'class-validator';
 import { Expose, Transform } from 'class-transformer';
 import { MaskLog } from '@kangjuhyup/rvlog';
+import { IsClientRedirectUri } from './client-redirect-uri.validator';
 
 const CLIENT_TYPES = ['confidential', 'public', 'service'] as const;
 const APPLICATION_TYPES = ['web', 'native'] as const;
@@ -44,8 +45,6 @@ const USER_AUTH_METHODS = [
 ] as const;
 const MFA_METHODS = ['totp', 'webauthn', 'recovery_code'] as const;
 const REFRESH_TOKEN_REUSE_ACTIONS = ['revoke_grant'] as const;
-
-const URL_OPTIONS = { require_tld: false } as const;
 
 export class CreateClientDto {
   @IsString()
@@ -75,7 +74,7 @@ export class CreateClientDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(20)
-  @IsUrl(URL_OPTIONS, { each: true })
+  @IsClientRedirectUri({ each: true })
   redirectUris?: string[];
 
   @IsOptional()
@@ -107,7 +106,7 @@ export class CreateClientDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(20)
-  @IsUrl(URL_OPTIONS, { each: true })
+  @IsClientRedirectUri({ each: true })
   postLogoutRedirectUris?: string[];
 
   @IsOptional()
@@ -180,7 +179,7 @@ export class UpdateClientDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(20)
-  @IsUrl(URL_OPTIONS, { each: true })
+  @IsClientRedirectUri({ each: true })
   redirectUris?: string[];
 
   @IsOptional()
@@ -212,7 +211,7 @@ export class UpdateClientDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(20)
-  @IsUrl(URL_OPTIONS, { each: true })
+  @IsClientRedirectUri({ each: true })
   postLogoutRedirectUris?: string[];
 
   @IsOptional()
