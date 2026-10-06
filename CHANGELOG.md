@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.2](https://github.com/kangjuhyup/auth/compare/auth-v0.3.1...auth-v0.3.2) (2026-10-06)
+
+### Bug Fixes
+
+- **service:** allow reverse-domain native redirect and logout URIs for native public clients
+
 ## [0.3.1](https://github.com/kangjuhyup/auth/compare/auth-v0.3.0...auth-v0.3.1) (2026-10-05)
 
 ### Bug Fixes

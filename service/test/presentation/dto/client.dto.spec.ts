@@ -14,6 +14,53 @@ async function getErrors(DtoClass: any, plain: object) {
 describe('CreateClientDto', () => {
   const valid = { clientId: 'my-client', name: 'My App' };
 
+  it('native client의 reverse-domain 앱 복귀 URI를 등록할 수 있다', async () => {
+    expect(
+      await getErrors(CreateClientDto, {
+        ...valid,
+        applicationType: 'native',
+        redirectUris: ['app.gaegaeting:/oauth/callback'],
+        postLogoutRedirectUris: ['app.gaegaeting:/oauth/logout'],
+      }),
+    ).toHaveLength(0);
+  });
+
+  it('web client에는 앱 스킴 복귀 URI를 허용하지 않는다', async () => {
+    const errors = await getErrors(CreateClientDto, {
+      ...valid,
+      applicationType: 'web',
+      redirectUris: ['app.gaegaeting:/oauth/callback'],
+    });
+    expect(errors.some((error) => error.property === 'redirectUris')).toBe(
+      true,
+    );
+  });
+
+  it.each([
+    'javascript:alert(1)',
+    'not a uri',
+    'app.gaegaeting:/oauth/callback#token',
+  ])('native의 잘못된 복귀 URI %s를 거부한다', async (uri) => {
+    const errors = await getErrors(CreateClientDto, {
+      ...valid,
+      applicationType: 'native',
+      redirectUris: [uri],
+    });
+    expect(errors.some((error) => error.property === 'redirectUris')).toBe(
+      true,
+    );
+  });
+
+  it('native client 복귀 URI를 수정할 수 있다', async () => {
+    expect(
+      await getErrors(UpdateClientDto, {
+        applicationType: 'native',
+        redirectUris: ['app.gaegaeting:/oauth/callback'],
+        postLogoutRedirectUris: ['app.gaegaeting:/oauth/logout'],
+      }),
+    ).toHaveLength(0);
+  });
+
   it('유효한 값이면 에러 없음', async () => {
     expect(await getErrors(CreateClientDto, valid)).toHaveLength(0);
   });

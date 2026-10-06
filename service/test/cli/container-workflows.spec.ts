@@ -170,7 +170,7 @@ describe('container version resolution', () => {
       status: 0,
       stderr: '',
     });
-    expect(result.stdout.trim()).toBe('v0.3.1');
+    expect(result.stdout.trim()).toBe('v0.3.2');
   });
 
   it('rejects a workspace version that differs from the release manifest', () => {
@@ -235,7 +235,7 @@ describe('release version contract', () => {
         jsonpath: '$.version',
       },
     ]);
-    expect(manifest).toEqual({ '.': '0.3.1' });
+    expect(manifest).toEqual({ '.': '0.3.2' });
   });
 });
 
