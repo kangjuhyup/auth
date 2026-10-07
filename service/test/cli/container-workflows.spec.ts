@@ -21,9 +21,9 @@ const workflowFiles = readdirSync(workflowsDirectory)
   .filter((filename) => /\.ya?ml$/.test(filename))
   .sort();
 
-describe('self-hosted workflow routing', () => {
+describe('GitHub-hosted workflow routing', () => {
   it.each(workflowFiles)(
-    '%s routes every job to the macOS ARM64 self-hosted runner',
+    '%s runs without the offline private runner',
     (filename) => {
       const workflow = readWorkflow(filename);
       const jobs = readWorkflowJobs(workflow);
@@ -37,14 +37,15 @@ describe('self-hosted workflow routing', () => {
       ).toEqual(
         jobs.map((job) => ({
           job: job.name,
-          runsOn: ['    runs-on: [self-hosted, macOS, ARM64]'],
+          runsOn: ['    runs-on: ubuntu-24.04'],
         })),
       );
+      expect(workflow).not.toContain('self-hosted');
       expect(workflow).not.toContain('ubuntu-latest');
     },
   );
 
-  it('keeps untrusted fork code off the persistent PR runner', () => {
+  it('keeps privileged PR checks restricted to the same repository', () => {
     const workflow = readWorkflow('pr-test-comment.yml');
     const unitTestsJob = readWorkflowJobs(workflow).find(
       (job) => job.name === 'unit-tests',
