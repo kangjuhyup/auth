@@ -44,7 +44,7 @@ env:
 
 jobs:
   verify:
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     outputs:
@@ -82,7 +82,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version-file: .nvmrc
 
       - name: Enable Yarn
         run: corepack enable && corepack prepare yarn@4.12.0 --activate
@@ -111,7 +111,7 @@ jobs:
 
   docker-publish:
     needs: verify
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
@@ -179,7 +179,7 @@ jobs:
   github-release:
     needs: [verify, docker-publish]
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_github_release == true }}
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:

@@ -16,7 +16,7 @@ env:
 jobs:
   docker-publish:
     name: Build and publish ${{ matrix.image_name }}
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
@@ -44,7 +44,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version-file: .nvmrc
 
       - name: Resolve image version
         id: version
@@ -90,7 +90,7 @@ jobs:
   deploy-webhook:
     name: Trigger deployment webhook
     needs: docker-publish
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     env:

@@ -1,6 +1,6 @@
 # PR 생성·업데이트 시 service unit(+커버리지)·모듈 의존성(dependency-cruiser)·UI unit 테스트 후
 # 같은 코멘트에 결과를 남깁니다.
-# 공개 저장소의 fork PR은 영구 self-hosted runner에서 실행하지 않습니다.
+# 쓰기 권한이 있는 PR 검증은 동일 저장소의 PR만 실행합니다.
 
 name: PR tests & comment
 
@@ -20,9 +20,9 @@ permissions:
 jobs:
   # 브랜치 보호 규칙에 잡혀 있을 수 있어 job id 는 유지합니다.
   unit-tests:
-    # 공개 저장소의 fork PR 코드를 영구 self-hosted runner에서 실행하지 않습니다.
+    # fork PR 코드는 쓰기 권한이 있는 PR 검증에서 실행하지 않습니다.
     if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,8 +35,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
-          cache: yarn
+          node-version-file: .nvmrc
 
       - name: Enable Yarn
         run: corepack enable && corepack prepare yarn@4.12.0 --activate
