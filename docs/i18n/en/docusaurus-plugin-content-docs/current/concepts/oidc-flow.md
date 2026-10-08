@@ -126,6 +126,48 @@ Default claims:
 
 Sensitive information, credentials, and internal policy state must not be exposed as claims.
 
+## Refresh Tokens and Logout
+
+| Feature       | Endpoint                                    | Description                                |
+| ------------- | ------------------------------------------- | ------------------------------------------ |
+| Refresh token | `POST /t/:tenantCode/oidc/token`            | Issue an access token with `refresh_token` |
+| Token revoke  | `POST /t/:tenantCode/oidc/token/revocation` | Revoke a token                             |
+| End session   | `/t/:tenantCode/oidc/session/end`           | RP-Initiated Logout                        |
+
+### Confirmation-free RP-Initiated Logout
+
+Auth skips the confirmation page only when every condition below is satisfied.
+
+| Condition     | Requirement                                                                            |
+| ------------- | -------------------------------------------------------------------------------------- |
+| ID Token hint | Signed and issued by the current tenant issuer and validated by the provider           |
+| RP            | Explicit `client_id` matches both the hint audience and the current session client     |
+| User          | The hint `sub` matches the current OP session account                                  |
+| Session       | The hint `sid` exactly matches the sid issued to that client in the current OP session |
+| Return URI    | `post_logout_redirect_uri` exactly matches a registered `postLogoutRedirectUris` value |
+
+The RP must request `sid` through the standard claims parameter during authorization.
+
+```text
+claims={"id_token":{"sid":null}}
+```
+
+The claims parameter currently accepts only `id_token.sid` for this logout session binding. Request other claims through registered scopes and the existing ID Token/UserInfo contract.
+
+Send logout as top-level navigation in the current window, not through a popup or iframe.
+
+```text
+GET /t/:tenantCode/oidc/session/end
+  ?id_token_hint={verified_id_token}
+  &client_id={client_id}
+  &post_logout_redirect_uri={exact_registered_uri}
+  &state={opaque_state}
+```
+
+Auth auto-submits the provider-generated native confirmation form with its CSRF value. `state` is only an opaque round-trip value and never authorizes automatic logout. A missing hint or a tenant, issuer, audience, client, user, or `sid` mismatch keeps the confirmation page. The provider rejects a tampered hint or an unregistered return URI.
+
+Token revocation and OP session termination are separate operations. An RP can revoke its token first and then navigate to the end-session endpoint. Admin UI `DELETE /admin/session` only terminates the Admin API session and is independent of RP-Initiated Logout.
+
 ## Security Rules
 
 | Rule               | Description                                                        |

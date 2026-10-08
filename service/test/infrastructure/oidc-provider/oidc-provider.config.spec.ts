@@ -13,6 +13,15 @@ import type { SymmetricCryptoPort } from '@application/ports/symmetric-crypto.po
 import type { ScopeRegistryPort } from '@application/ports/scope-registry.port';
 import type { ScopeClaimResolverPort } from '@application/ports/scope-claim-resolver.port';
 
+jest.mock('@infrastructure/oidc-provider/oidc-provider.loader', () => ({
+  createOidcInvalidRequestError: jest.fn(async (description: string) =>
+    Object.assign(new Error(description), {
+      error: 'invalid_request',
+      statusCode: 400,
+    }),
+  ),
+}));
+
 describe('buildOidcConfiguration', () => {
   const makeCtx = (tenantId?: string) =>
     ({
@@ -291,7 +300,49 @@ describe('buildOidcConfiguration', () => {
     });
 
     expect(cfg.features?.backchannelLogout?.enabled).toBe(true);
+    expect(cfg.features?.claimsParameter?.enabled).toBe(true);
+    expect(cfg.features?.rpInitiatedLogout?.enabled).toBe(true);
+    expect(typeof cfg.features?.rpInitiatedLogout?.logoutSource).toBe(
+      'function',
+    );
     expect(typeof cfg.fetch).toBe('function');
+  });
+
+  it('claims parameter는 logout session binding용 id_token sid만 허용한다', async () => {
+    const cfg = buildOidcConfiguration({
+      ...makeDeps(),
+      tenantCode: 'acme',
+    });
+    const assertClaimsParameter =
+      cfg.features?.claimsParameter?.assertClaimsParameter;
+
+    await expect(
+      assertClaimsParameter?.(
+        {} as never,
+        { id_token: { sid: null } },
+        {} as never,
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      assertClaimsParameter?.(
+        {} as never,
+        { id_token: { email: null } },
+        {} as never,
+      ),
+    ).rejects.toMatchObject({
+      error: 'invalid_request',
+      statusCode: 400,
+    });
+    await expect(
+      assertClaimsParameter?.(
+        {} as never,
+        { userinfo: { email: null } },
+        {} as never,
+      ),
+    ).rejects.toMatchObject({
+      error: 'invalid_request',
+      statusCode: 400,
+    });
   });
 
   it('refresh_token과 client_credentials grant를 provider 지원 목록에 포함한다', () => {
